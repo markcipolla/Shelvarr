@@ -1,0 +1,56 @@
+version: '3.8'
+
+# Example docker-compose for pulling pre-built image from ghcr.io
+# Usage: docker-compose -f docker-compose.ghcr.yml up -d
+
+services:
+  shelvarr:
+    image: ghcr.io/YOUR_USERNAME/shelvarr:latest
+    container_name: shelvarr
+    ports:
+      - "3000:3000"
+    volumes:
+      - shelvarr_data:/app/data
+      # Mount your book libraries here:
+      - /path/to/ebooks:/libraries/ebooks:rw
+      - /path/to/comics:/libraries/comics:rw
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATA_DIR=/app/data
+      - LIBRARY_ROOT=/libraries
+      - DATABASE_URL=postgresql://shelvarr:shelvarr@postgres:5432/shelvarr
+      # Optional Komga integration:
+      # - KOMGA_URL=http://komga:25600
+      # - KOMGA_USERNAME=admin
+      # - KOMGA_PASSWORD=secret
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: shelvarr-postgres
+    environment:
+      - POSTGRES_USER=shelvarr
+      - POSTGRES_PASSWORD=shelvarr
+      - POSTGRES_DB=shelvarr
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shelvarr -d shelvarr"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  shelvarr_data:
+  postgres_data:

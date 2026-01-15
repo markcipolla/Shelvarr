@@ -1,4 +1,4 @@
-# Komgarr
+# Shelvarr
 
 A self-hosted *arr-style web application for book/comic metadata management and file organization, designed to work alongside [Komga](https://komga.org/) and [Komf](https://github.com/Snd-R/komf).
 
@@ -15,12 +15,30 @@ A self-hosted *arr-style web application for book/comic metadata management and 
 
 ## Quick Start
 
-### Docker (Recommended)
+### Docker from GHCR (Recommended)
+
+Pull the pre-built image from GitHub Container Registry:
+
+```bash
+# Download the example compose file
+curl -O https://raw.githubusercontent.com/YOUR_USERNAME/shelvarr/main/docker-compose.ghcr.yml
+
+# Edit the file to:
+# 1. Replace YOUR_USERNAME with the actual GitHub username/org
+# 2. Update volume mounts for your book libraries
+
+# Start the stack
+docker-compose -f docker-compose.ghcr.yml up -d
+```
+
+Then open http://localhost:3000
+
+### Docker (Build from Source)
 
 ```bash
 # Clone and build
-git clone <repo-url> komgarr
-cd komgarr
+git clone <repo-url> shelvarr
+cd shelvarr
 docker-compose up -d
 ```
 
