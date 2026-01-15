@@ -55,6 +55,17 @@ const state = {
   metadataSearchLoading: false,
   metadataSearchQuery: '',
   metadataSearchBookId: null,
+  // Series state
+  series: [],
+  seriesLoading: false,
+  // Duplicates state
+  duplicates: { hashDuplicates: [], similarityDuplicates: [], total: 0 },
+  duplicatesLoading: false,
+  // Organization state
+  organizePreview: null,
+  organizeLibraryId: null,
+  organizeTemplate: '{author}/{title}',
+  organizeLoading: false,
 };
 
 // Router
@@ -74,6 +85,10 @@ async function loadPageData(page) {
       await loadBooks();
     } else if (page === 'dashboard') {
       await loadDashboardStats();
+    } else if (page === 'series') {
+      await loadSeries();
+    } else if (page === 'duplicates') {
+      await loadDuplicates();
     }
   } catch (error) {
     console.error('Error loading page data:', error);
@@ -109,18 +124,96 @@ async function loadBooks() {
 
 async function loadDashboardStats() {
   try {
-    const [libResult, booksResult] = await Promise.all([
+    const [libResult, booksResult, seriesResult] = await Promise.all([
       api.getLibraries(),
       api.getBooks({ pageSize: 1 }),
+      api.getSeries(),
     ]);
     state.libraries = libResult.libraries || [];
     state.dashboardStats = {
       libraries: state.libraries.length,
       books: booksResult.total || 0,
+      series: seriesResult.series?.length || 0,
     };
     render();
   } catch (error) {
     console.error('Error loading dashboard stats:', error);
+  }
+}
+
+async function loadSeries() {
+  try {
+    state.seriesLoading = true;
+    render();
+    const result = await api.getSeries();
+    state.series = result.series || [];
+    state.seriesLoading = false;
+    render();
+  } catch (error) {
+    console.error('Error loading series:', error);
+    state.seriesLoading = false;
+    render();
+  }
+}
+
+async function loadDuplicates() {
+  try {
+    state.duplicatesLoading = true;
+    render();
+    const result = await api.getDuplicates();
+    state.duplicates = result;
+    state.duplicatesLoading = false;
+    render();
+  } catch (error) {
+    console.error('Error loading duplicates:', error);
+    state.duplicatesLoading = false;
+    render();
+  }
+}
+
+async function previewOrganize(libraryId, template) {
+  try {
+    state.organizeLoading = true;
+    state.organizeLibraryId = libraryId;
+    state.organizeTemplate = template;
+    render();
+    const result = await api.previewOrganize({ libraryId, template });
+    state.organizePreview = result;
+    state.organizeLoading = false;
+    render();
+  } catch (error) {
+    console.error('Error previewing organization:', error);
+    state.organizeLoading = false;
+    alert(`Error: ${error.message}`);
+    render();
+  }
+}
+
+async function applyOrganize() {
+  if (!state.organizeLibraryId || !state.organizePreview) return;
+
+  if (!confirm(`This will move ${state.organizePreview.willMove} files. Continue?`)) {
+    return;
+  }
+
+  try {
+    state.organizeLoading = true;
+    render();
+    const result = await api.applyOrganize({
+      libraryId: state.organizeLibraryId,
+      template: state.organizeTemplate,
+    });
+    state.organizeLoading = false;
+    state.organizePreview = null;
+    alert(`Organization complete: ${result.moved} files moved`);
+    // Reload library data
+    await loadLibraries();
+    render();
+  } catch (error) {
+    console.error('Error applying organization:', error);
+    state.organizeLoading = false;
+    alert(`Error: ${error.message}`);
+    render();
   }
 }
 
@@ -206,30 +299,92 @@ function formatAuthors(authorsJson) {
   }
 }
 
+// Render organize modal
+function renderOrganizeModal() {
+  const preview = state.organizePreview;
+  if (!preview) return '';
+
+  const previewItems = preview.preview.filter(p => p.willMove).slice(0, 20);
+  const hasMore = preview.willMove > 20;
+
+  return `
+    <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div class="bg-shelvarr-surface rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
+        <div class="flex justify-between items-center p-4 border-b border-shelvarr-border">
+          <h3 class="text-lg font-semibold">Organize Library</h3>
+          <button class="text-shelvarr-text-muted hover:text-white" data-action="close-organize">&times;</button>
+        </div>
+        <div class="p-4 flex-1 overflow-y-auto">
+          <div class="mb-4">
+            <label class="block text-sm text-shelvarr-text-muted mb-1">Naming Template</label>
+            <input type="text" class="input w-full" id="organize-template" value="${state.organizeTemplate}">
+            <p class="text-xs text-shelvarr-text-muted mt-1">
+              Variables: {author}, {title}, {series}, {series_number}, {year}, {isbn}
+            </p>
+          </div>
+
+          <div class="mb-4 p-3 bg-shelvarr-bg rounded-lg border border-shelvarr-border">
+            <div class="flex justify-between text-sm">
+              <span>Files to move:</span>
+              <span class="font-semibold">${preview.willMove}</span>
+            </div>
+            <div class="flex justify-between text-sm">
+              <span>No changes needed:</span>
+              <span class="text-shelvarr-text-muted">${preview.noChange}</span>
+            </div>
+          </div>
+
+          ${preview.willMove > 0 ? `
+            <h4 class="font-semibold mb-2">Preview Changes:</h4>
+            <div class="space-y-2 max-h-60 overflow-y-auto">
+              ${previewItems.map(item => `
+                <div class="text-xs p-2 bg-shelvarr-bg rounded border border-shelvarr-border">
+                  <div class="text-shelvarr-text-muted truncate">${item.currentPath}</div>
+                  <div class="text-shelvarr-primary truncate">→ ${item.newPath}</div>
+                </div>
+              `).join('')}
+              ${hasMore ? `<div class="text-center text-shelvarr-text-muted text-sm">... and ${preview.willMove - 20} more</div>` : ''}
+            </div>
+          ` : '<p class="text-shelvarr-text-muted">All files are already organized according to this template.</p>'}
+        </div>
+        <div class="flex justify-between items-center p-4 border-t border-shelvarr-border">
+          <button class="btn-secondary" data-action="preview-organize">Refresh Preview</button>
+          <div class="flex gap-2">
+            <button class="btn-secondary" data-action="close-organize">Cancel</button>
+            <button class="btn-primary" data-action="apply-organize" ${preview.willMove === 0 ? 'disabled' : ''}>
+              Apply Changes
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 // Page renderers
 const pages = {
   dashboard: () => {
-    const stats = state.dashboardStats || { libraries: 0, books: 0 };
+    const stats = state.dashboardStats || { libraries: 0, books: 0, series: 0 };
     return `
       <div class="space-y-6">
         ${pageHeader('Dashboard')}
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div class="card">
+          <div class="card cursor-pointer hover:border-shelvarr-primary" data-nav="libraries">
             <div class="text-shelvarr-text-muted text-sm">Libraries</div>
             <div class="text-3xl font-bold mt-1">${stats.libraries}</div>
           </div>
-          <div class="card">
+          <div class="card cursor-pointer hover:border-shelvarr-primary" data-nav="books">
             <div class="text-shelvarr-text-muted text-sm">Books</div>
             <div class="text-3xl font-bold mt-1">${stats.books}</div>
           </div>
-          <div class="card">
+          <div class="card cursor-pointer hover:border-shelvarr-primary" data-nav="series">
             <div class="text-shelvarr-text-muted text-sm">Series</div>
-            <div class="text-3xl font-bold mt-1">0</div>
+            <div class="text-3xl font-bold mt-1">${stats.series}</div>
           </div>
-          <div class="card">
-            <div class="text-shelvarr-text-muted text-sm">Authors Tracked</div>
-            <div class="text-3xl font-bold mt-1">0</div>
+          <div class="card cursor-pointer hover:border-shelvarr-primary" data-nav="duplicates">
+            <div class="text-shelvarr-text-muted text-sm">Find Duplicates</div>
+            <div class="text-3xl font-bold mt-1">${icons.duplicate}</div>
           </div>
         </div>
 
@@ -269,6 +424,9 @@ const pages = {
                   <button class="btn-secondary text-sm py-1 px-3" data-scan-library="${lib.id}" title="Scan Library">
                     ${icons.refresh} Scan
                   </button>
+                  <button class="btn-secondary text-sm py-1 px-3" data-organize-library="${lib.id}" title="Organize Files">
+                    ${icons.folder} Organize
+                  </button>
                   <button class="btn-secondary text-sm py-1 px-3 text-red-400 hover:text-red-300" data-delete-library="${lib.id}" title="Delete Library">
                     ${icons.trash}
                   </button>
@@ -306,6 +464,7 @@ const pages = {
           </div>
         </form>
       `)}
+      ${state.organizePreview ? renderOrganizeModal() : ''}
     `;
   },
 
@@ -518,23 +677,105 @@ const pages = {
     `;
   },
 
-  series: () => `
-    <div class="space-y-6">
-      ${pageHeader('Series')}
-      <div class="card">
-        <p class="text-shelvarr-text-muted">No series detected. Series are automatically detected when scanning libraries.</p>
-      </div>
-    </div>
-  `,
+  series: () => {
+    if (state.seriesLoading) {
+      return `
+        <div class="space-y-6">
+          ${pageHeader('Series')}
+          <div class="card">
+            <p class="text-shelvarr-text-muted">${icons.spinner} Loading series...</p>
+          </div>
+        </div>
+      `;
+    }
 
-  duplicates: () => `
-    <div class="space-y-6">
-      ${pageHeader('Duplicates')}
-      <div class="card">
-        <p class="text-shelvarr-text-muted">No duplicate books detected.</p>
+    const seriesHtml = state.series.length === 0
+      ? '<p class="text-shelvarr-text-muted">No series detected. Series are automatically detected from book metadata when scanning libraries.</p>'
+      : `
+        <div class="space-y-4">
+          ${state.series.map(s => `
+            <div class="p-4 bg-shelvarr-bg rounded-lg border border-shelvarr-border">
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="font-semibold text-lg">${s.name}</h3>
+                <span class="text-sm text-shelvarr-text-muted">${s.books.length} books</span>
+              </div>
+              <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                ${s.books.slice(0, 6).map(book => `
+                  <div class="text-sm p-2 bg-shelvarr-surface rounded" title="${book.title}">
+                    <div class="truncate">${book.seriesNumber ? `#${book.seriesNumber} - ` : ''}${book.title || 'Untitled'}</div>
+                  </div>
+                `).join('')}
+                ${s.books.length > 6 ? `<div class="text-sm p-2 text-shelvarr-text-muted">+${s.books.length - 6} more</div>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+
+    return `
+      <div class="space-y-6">
+        ${pageHeader('Series', `<span class="text-shelvarr-text-muted">${state.series.length} series found</span>`)}
+        <div class="card">${seriesHtml}</div>
       </div>
-    </div>
-  `,
+    `;
+  },
+
+  duplicates: () => {
+    if (state.duplicatesLoading) {
+      return `
+        <div class="space-y-6">
+          ${pageHeader('Duplicates')}
+          <div class="card">
+            <p class="text-shelvarr-text-muted">${icons.spinner} Scanning for duplicates...</p>
+          </div>
+        </div>
+      `;
+    }
+
+    const { hashDuplicates, similarityDuplicates, total } = state.duplicates;
+
+    const renderDuplicateGroup = (group, type) => `
+      <div class="p-4 bg-shelvarr-bg rounded-lg border border-shelvarr-border mb-3">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-sm font-medium ${type === 'hash' ? 'text-red-400' : 'text-yellow-400'}">
+            ${type === 'hash' ? 'Exact Match' : `${Math.round(group.similarity * 100)}% Similar`}
+          </span>
+          <span class="text-sm text-shelvarr-text-muted">${group.books.length} copies</span>
+        </div>
+        <div class="space-y-2">
+          ${group.books.map(book => `
+            <div class="flex items-center justify-between text-sm p-2 bg-shelvarr-surface rounded">
+              <div class="truncate flex-1 mr-4">
+                <div class="font-medium">${book.title || 'Untitled'}</div>
+                <div class="text-shelvarr-text-muted text-xs truncate">${book.filePath}</div>
+              </div>
+              <div class="text-shelvarr-text-muted">${formatSize(book.fileSize)}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+
+    const duplicatesHtml = total === 0
+      ? '<p class="text-shelvarr-text-muted">No duplicate books detected. Duplicates are found by comparing file hashes and metadata similarity.</p>'
+      : `
+        ${hashDuplicates.length > 0 ? `
+          <h3 class="text-lg font-semibold mb-3">Exact Duplicates (${hashDuplicates.length} groups)</h3>
+          ${hashDuplicates.map(g => renderDuplicateGroup(g, 'hash')).join('')}
+        ` : ''}
+        ${similarityDuplicates.length > 0 ? `
+          <h3 class="text-lg font-semibold mb-3 mt-6">Similar Books (${similarityDuplicates.length} groups)</h3>
+          ${similarityDuplicates.map(g => renderDuplicateGroup(g, 'similar')).join('')}
+        ` : ''}
+      `;
+
+    return `
+      <div class="space-y-6">
+        ${pageHeader('Duplicates', `<span class="text-shelvarr-text-muted">${total} duplicate groups</span>`)}
+        <div class="card">${duplicatesHtml}</div>
+      </div>
+    `;
+  },
 
   authors: () => `
     <div class="space-y-6">
@@ -745,6 +986,45 @@ function attachEventListeners() {
       } catch (error) {
         alert(`Error deleting library: ${error.message}`);
       }
+    });
+  });
+
+  // Organize library buttons
+  document.querySelectorAll('[data-organize-library]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const libraryId = parseInt(e.currentTarget.dataset.organizeLibrary);
+      await previewOrganize(libraryId, state.organizeTemplate);
+    });
+  });
+
+  // Organize modal actions
+  document.querySelectorAll('[data-action="close-organize"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.organizePreview = null;
+      render();
+    });
+  });
+
+  document.querySelectorAll('[data-action="preview-organize"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const templateInput = document.getElementById('organize-template');
+      const template = templateInput?.value || state.organizeTemplate;
+      state.organizeTemplate = template;
+      await previewOrganize(state.organizeLibraryId, template);
+    });
+  });
+
+  document.querySelectorAll('[data-action="apply-organize"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await applyOrganize();
+    });
+  });
+
+  // Dashboard stat card navigation
+  document.querySelectorAll('[data-nav]').forEach(card => {
+    card.addEventListener('click', (e) => {
+      const page = e.currentTarget.dataset.nav;
+      navigate(page);
     });
   });
 

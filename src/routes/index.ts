@@ -25,6 +25,7 @@ import {
   deleteBook,
 } from '../services/scanner/index.js';
 import * as metadataService from '../services/metadata/index.js';
+import * as organizerService from '../services/organizer/index.js';
 import type { HealthResponse, Settings } from '../types/index.js';
 
 const router = Router();
@@ -482,9 +483,19 @@ router.post('/books/:id/apply-metadata', async (req: Request, res: Response) => 
   }
 });
 
-// Series - placeholder
-router.get('/series', (_req: Request, res: Response) => {
-  res.json({ series: [], message: 'Not yet implemented' });
+// Series endpoints
+router.get('/series', async (req: Request, res: Response) => {
+  try {
+    const libraryId = req.query['libraryId']
+      ? parseInt(req.query['libraryId'] as string, 10)
+      : undefined;
+
+    const series = await organizerService.detectSeries(libraryId);
+    res.json({ series });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
 });
 
 // Tasks - placeholder
@@ -502,15 +513,85 @@ router.get('/downloads', (_req: Request, res: Response) => {
   res.json({ downloads: [], message: 'Not yet implemented' });
 });
 
-// Duplicates - placeholder
-router.get('/duplicates', (_req: Request, res: Response) => {
-  res.json({ duplicates: [], message: 'Not yet implemented' });
+// Duplicates endpoints
+router.get('/duplicates', async (req: Request, res: Response) => {
+  try {
+    const libraryId = req.query['libraryId']
+      ? parseInt(req.query['libraryId'] as string, 10)
+      : undefined;
+    const threshold = req.query['threshold']
+      ? parseFloat(req.query['threshold'] as string)
+      : 0.8;
+
+    const { hashDuplicates, similarityDuplicates } = await organizerService.getAllDuplicates(
+      libraryId,
+      threshold
+    );
+
+    res.json({
+      hashDuplicates,
+      similarityDuplicates,
+      total: hashDuplicates.length + similarityDuplicates.length,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+// Organization endpoints
+router.post('/organize/preview', async (req: Request, res: Response) => {
+  try {
+    const { libraryId, template } = req.body as {
+      libraryId?: number;
+      template?: string;
+    };
+
+    if (!libraryId) {
+      res.status(400).json({ error: 'libraryId is required' });
+      return;
+    }
+
+    const preview = await organizerService.previewReorganization(libraryId, template);
+    const willMove = preview.filter(p => p.willMove).length;
+
+    res.json({
+      preview,
+      total: preview.length,
+      willMove,
+      noChange: preview.length - willMove,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+router.post('/organize/apply', async (req: Request, res: Response) => {
+  try {
+    const { libraryId, template, dryRun } = req.body as {
+      libraryId?: number;
+      template?: string;
+      dryRun?: boolean;
+    };
+
+    if (!libraryId) {
+      res.status(400).json({ error: 'libraryId is required' });
+      return;
+    }
+
+    const result = await organizerService.applyReorganization(libraryId, template, dryRun);
+    res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
 });
 
 // Browse server directories
 router.get('/browse', (req: Request, res: Response) => {
   try {
-    let requestedPath = (req.query['path'] as string) || config.libraryRoot || '/';
+    const requestedPath = (req.query['path'] as string) || config.libraryRoot || '/';
 
     // Resolve to absolute path
     let absPath = resolve(requestedPath);
