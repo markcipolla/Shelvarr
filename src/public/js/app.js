@@ -817,7 +817,13 @@ function attachEventListeners() {
       e.stopPropagation();
       if (state.selectedBook) {
         state.metadataSearchBookId = state.selectedBook.id;
-        state.metadataSearchQuery = state.selectedBook.title || '';
+        // Build search query from title and author
+        let query = state.selectedBook.title || '';
+        const authors = formatAuthors(state.selectedBook.authors);
+        if (authors && authors !== 'Unknown') {
+          query = query ? `${query} ${authors}` : authors;
+        }
+        state.metadataSearchQuery = query;
         state.metadataSearchResults = [];
         state.selectedBook = null;
         render();
