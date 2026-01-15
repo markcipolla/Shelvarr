@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  komgarr:
+    build: .
+    container_name: komgarr
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+      # Add your library mounts here:
+      # - /path/to/ebooks:/libraries/ebooks:rw
+      # - /path/to/comics:/libraries/comics:rw
+      # - /path/to/audiobooks:/libraries/audiobooks:rw
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATA_DIR=/app/data
+      - LIBRARY_ROOT=/libraries
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
