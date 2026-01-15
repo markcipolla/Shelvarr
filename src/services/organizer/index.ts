@@ -109,7 +109,7 @@ function extractYear(publishDate: string | null): string {
 
   // Try to extract 4-digit year
   const match = publishDate.match(/(\d{4})/);
-  return match ? match[1] : '';
+  return match?.[1] ?? '';
 }
 
 /**
