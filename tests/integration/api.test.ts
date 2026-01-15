@@ -189,11 +189,17 @@ describe('API Integration Tests', () => {
   });
 
   describe('GET /api/duplicates', () => {
-    it('should return empty duplicates list (placeholder)', async () => {
-      const { status, data } = await fetchApi<{ duplicates: unknown[] }>('/duplicates');
+    it('should return duplicates structure', async () => {
+      const { status, data } = await fetchApi<{
+        hashDuplicates: unknown[];
+        similarityDuplicates: unknown[];
+        total: number;
+      }>('/duplicates');
 
       assert.strictEqual(status, 200);
-      assert.ok(Array.isArray(data.duplicates));
+      assert.ok(Array.isArray(data.hashDuplicates));
+      assert.ok(Array.isArray(data.similarityDuplicates));
+      assert.strictEqual(typeof data.total, 'number');
     });
   });
 });
