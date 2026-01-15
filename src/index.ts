@@ -15,13 +15,13 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files from dist (built CSS)
-const distPath = join(__dirname, '../dist');
-if (existsSync(distPath)) {
-  app.use('/dist', express.static(distPath));
+// Serve built CSS from dist/public (for dev mode)
+const distPublicPath = join(__dirname, '../dist/public');
+if (existsSync(distPublicPath)) {
+  app.use(express.static(distPublicPath));
 }
 
-// Serve static files from public
+// Serve static files from public (HTML, JS)
 app.use(express.static(join(__dirname, 'public')));
 
 // API routes
@@ -74,7 +74,7 @@ async function start(): Promise<void> {
     app.listen(config.port, () => {
       console.log(`
 ╔═══════════════════════════════════════════╗
-║             KOMGARR v0.1.0                ║
+║             KOMGARR v0.0.1                ║
 ╠═══════════════════════════════════════════╣
 ║  Server running on port ${String(config.port).padEnd(17)}║
 ║  Environment: ${config.env.padEnd(25)}║

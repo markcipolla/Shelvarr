@@ -355,13 +355,13 @@ Each phase must include tests before marking complete:
 - [x] 1.8 ESLint configuration
 - [x] 1.9 **Tests**: Unit (6), Integration (11), E2E (10) - all passing
 
-### Phase 2: Core Features
-- [ ] 2.1 Library management API (add, list, remove)
-- [ ] 2.2 File scanner service
-- [ ] 2.3 Book listing API with pagination
-- [ ] 2.4 Libraries UI page
-- [ ] 2.5 Books UI page with pagination
-- [ ] 2.6 **Tests**: Unit tests for scanner, integration tests for library/book APIs, E2E for library management
+### Phase 2: Core Features ✅ COMPLETE
+- [x] 2.1 Library management API (add, list, remove, scan)
+- [x] 2.2 File scanner service (finds books, parses filenames, tracks changes)
+- [x] 2.3 Book listing API with pagination and search
+- [x] 2.4 Libraries UI page (add, scan, delete libraries)
+- [x] 2.5 Books UI page with pagination, search, and library filter
+- [x] 2.6 **Tests**: Unit (8 scanner), Integration (17 library/book APIs), E2E (14) - all passing
 
 ### Phase 3: Metadata
 - [ ] 3.1 Google Books API integration

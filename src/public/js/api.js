@@ -158,6 +158,12 @@ class ApiClient {
     return this.request('/duplicates');
   }
 
+  // Browse server directories
+  browse(path = '') {
+    const query = path ? `?path=${encodeURIComponent(path)}` : '';
+    return this.request(`/browse${query}`);
+  }
+
   // Organization
   previewOrganize(options) {
     return this.request('/organize/preview', {

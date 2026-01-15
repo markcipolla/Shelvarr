@@ -83,7 +83,7 @@ describe('API Integration Tests', () => {
 
       assert.strictEqual(status, 200);
       assert.strictEqual(data.status, 'ok');
-      assert.strictEqual(data.version, '0.1.0');
+      assert.strictEqual(data.version, '0.0.1');
       assert.ok(data.timestamp);
     });
   });
@@ -138,12 +138,21 @@ describe('API Integration Tests', () => {
   });
 
   describe('GET /api/books', () => {
-    it('should return empty books list (placeholder)', async () => {
-      const { status, data } = await fetchApi<{ books: unknown[]; total: number }>('/books');
+    it('should return books list with pagination', async () => {
+      const { status, data } = await fetchApi<{
+        books: unknown[];
+        total: number;
+        page: number;
+        pageSize: number;
+        totalPages: number;
+      }>('/books');
 
       assert.strictEqual(status, 200);
       assert.ok(Array.isArray(data.books));
-      assert.strictEqual(data.total, 0);
+      assert.ok(typeof data.total === 'number');
+      assert.ok(typeof data.page === 'number');
+      assert.ok(typeof data.pageSize === 'number');
+      assert.ok(typeof data.totalPages === 'number');
     });
   });
 
