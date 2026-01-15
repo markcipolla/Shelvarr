@@ -5,6 +5,7 @@ WORKDIR /app
 
 COPY package*.json ./
 COPY tsconfig.json ./
+COPY tailwind.config.js ./
 RUN npm ci
 
 COPY src ./src
