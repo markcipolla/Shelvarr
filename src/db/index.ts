@@ -1,67 +1,112 @@
-import Database from 'better-sqlite3';
-import { readFileSync, existsSync, mkdirSync } from 'fs';
+import pg from 'pg';
+import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import config from '../config/index.js';
 
+const { Pool } = pg;
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-let db: Database.Database | null = null;
+let pool: pg.Pool | null = null;
 
 /**
- * Initialize the database connection and run migrations
+ * Initialize the database connection pool and run migrations
  */
-export function initDatabase(): Database.Database {
-  // Ensure data directory exists
-  const dataDir = dirname(config.dbPath);
-  if (!existsSync(dataDir)) {
-    mkdirSync(dataDir, { recursive: true });
+export async function initDatabase(): Promise<pg.Pool> {
+  // Create connection pool
+  pool = new Pool({
+    connectionString: config.databaseUrl,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000,
+  });
+
+  // Test connection
+  const client = await pool.connect();
+  try {
+    // Run schema
+    const schemaPath = join(__dirname, 'schema.sql');
+    const schema = readFileSync(schemaPath, 'utf-8');
+    await client.query(schema);
+    console.log(`Database connected to PostgreSQL`);
+  } finally {
+    client.release();
   }
 
-  // Create database connection
-  db = new Database(config.dbPath);
-
-  // Enable foreign keys
-  db.pragma('foreign_keys = ON');
-
-  // Run schema
-  const schemaPath = join(__dirname, 'schema.sql');
-  const schema = readFileSync(schemaPath, 'utf-8');
-  db.exec(schema);
-
-  console.log(`Database initialized at ${config.dbPath}`);
-
-  return db;
+  return pool;
 }
 
 /**
- * Get the database instance
+ * Get the database pool
  */
-export function getDatabase(): Database.Database {
-  if (!db) {
+export function getPool(): pg.Pool {
+  if (!pool) {
     throw new Error('Database not initialized. Call initDatabase() first.');
   }
-  return db;
+  return pool;
 }
 
 /**
- * Close the database connection
+ * Close the database connection pool
  */
-export function closeDatabase(): void {
-  if (db) {
-    db.close();
-    db = null;
+export async function closeDatabase(): Promise<void> {
+  if (pool) {
+    await pool.end();
+    pool = null;
   }
+}
+
+/**
+ * Execute a query and return all rows
+ */
+export async function query<T = Record<string, unknown>>(
+  sql: string,
+  params: unknown[] = []
+): Promise<T[]> {
+  const result = await getPool().query(sql, params);
+  return result.rows as T[];
+}
+
+/**
+ * Execute a query and return the first row
+ */
+export async function queryOne<T = Record<string, unknown>>(
+  sql: string,
+  params: unknown[] = []
+): Promise<T | null> {
+  const rows = await query<T>(sql, params);
+  return rows[0] || null;
+}
+
+/**
+ * Execute a query that modifies data (INSERT, UPDATE, DELETE)
+ */
+export async function execute(
+  sql: string,
+  params: unknown[] = []
+): Promise<{ rowCount: number }> {
+  const result = await getPool().query(sql, params);
+  return { rowCount: result.rowCount || 0 };
+}
+
+/**
+ * Execute an INSERT and return the inserted row
+ */
+export async function insertReturning<T = Record<string, unknown>>(
+  sql: string,
+  params: unknown[] = []
+): Promise<T | null> {
+  const result = await getPool().query(sql, params);
+  return (result.rows[0] as T) || null;
 }
 
 /**
  * Get a setting value
  */
-export function getSetting<T = unknown>(key: string, defaultValue: T | null = null): T | null {
-  const row = getDatabase()
-    .prepare('SELECT value FROM settings WHERE key = ?')
-    .get(key) as { value: string } | undefined;
+export async function getSetting<T = unknown>(key: string, defaultValue: T | null = null): Promise<T | null> {
+  const row = await queryOne<{ value: string }>('SELECT value FROM settings WHERE key = $1', [key]);
 
   if (!row) return defaultValue;
 
@@ -75,20 +120,19 @@ export function getSetting<T = unknown>(key: string, defaultValue: T | null = nu
 /**
  * Set a setting value
  */
-export function setSetting(key: string, value: unknown): void {
+export async function setSetting(key: string, value: unknown): Promise<void> {
   const serialized = typeof value === 'string' ? value : JSON.stringify(value);
-  getDatabase()
-    .prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
-    .run(key, serialized);
+  await execute(
+    'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2',
+    [key, serialized]
+  );
 }
 
 /**
  * Get all settings
  */
-export function getAllSettings(): Record<string, unknown> {
-  const rows = getDatabase()
-    .prepare('SELECT key, value FROM settings')
-    .all() as Array<{ key: string; value: string }>;
+export async function getAllSettings(): Promise<Record<string, unknown>> {
+  const rows = await query<{ key: string; value: string }>('SELECT key, value FROM settings');
 
   const settings: Record<string, unknown> = {};
 
@@ -105,8 +149,12 @@ export function getAllSettings(): Record<string, unknown> {
 
 export default {
   initDatabase,
-  getDatabase,
+  getPool,
   closeDatabase,
+  query,
+  queryOne,
+  execute,
+  insertReturning,
   getSetting,
   setSetting,
   getAllSettings,

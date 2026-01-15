@@ -17,26 +17,66 @@ A self-hosted *arr-style web application for book/comic metadata management and 
 
 ### Docker from GHCR (Recommended)
 
-Pull the pre-built image from GitHub Container Registry:
+Create a `docker-compose.yml` file:
 
-```bash
-# Download the example compose file
-curl -O https://raw.githubusercontent.com/YOUR_USERNAME/shelvarr/main/docker-compose.ghcr.yml
+```yaml
+version: '3.8'
 
-# Edit the file to:
-# 1. Replace YOUR_USERNAME with the actual GitHub username/org
-# 2. Update volume mounts for your book libraries
+services:
+  shelvarr:
+    image: ghcr.io/YOUR_USERNAME/shelvarr:latest
+    container_name: shelvarr
+    ports:
+      - "3000:3000"
+    volumes:
+      - shelvarr_data:/app/data
+      # Mount your book libraries:
+      - /path/to/ebooks:/libraries/ebooks:rw
+      - /path/to/comics:/libraries/comics:rw
+    environment:
+      - DATABASE_URL=postgresql://shelvarr:shelvarr@postgres:5432/shelvarr
+      # Optional Komga integration:
+      # - KOMGA_URL=http://komga:25600
+      # - KOMGA_USERNAME=admin
+      # - KOMGA_PASSWORD=secret
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
-# Start the stack
-docker-compose -f docker-compose.ghcr.yml up -d
+  postgres:
+    image: postgres:16-alpine
+    container_name: shelvarr-postgres
+    environment:
+      - POSTGRES_USER=shelvarr
+      - POSTGRES_PASSWORD=shelvarr
+      - POSTGRES_DB=shelvarr
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shelvarr -d shelvarr"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  shelvarr_data:
+  postgres_data:
 ```
 
-Then open http://localhost:3000
+Then run:
+
+```bash
+# Replace YOUR_USERNAME with the GitHub username/org
+docker-compose up -d
+```
+
+Open http://localhost:3000
 
 ### Docker (Build from Source)
 
 ```bash
-# Clone and build
 git clone <repo-url> shelvarr
 cd shelvarr
 docker-compose up -d
@@ -59,13 +99,21 @@ npm run dev
 
 ### Running Tests
 
+Tests require a PostgreSQL database. Start the test database first:
+
 ```bash
-# Unit + Integration tests
+# Start test database
+docker compose -f docker-compose.test.yml up -d
+
+# Run unit + integration tests
 npm test
 
-# E2E tests (requires Playwright browsers)
+# Run E2E tests (requires Playwright browsers)
 npx playwright install chromium
 npm run test:e2e
+
+# Stop test database when done
+docker compose -f docker-compose.test.yml down
 ```
 
 ## Configuration
@@ -75,33 +123,21 @@ npm run test:e2e
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | 3000 | Server port |
-| `DATA_DIR` | ./data | Data directory for SQLite database |
+| `DATABASE_URL` | postgresql://shelvarr:shelvarr@localhost:5432/shelvarr | PostgreSQL connection string |
+| `DATA_DIR` | ./data | Data directory for app files |
 | `LIBRARY_ROOT` | /libraries | Base path for library mounts |
 | `KOMGA_URL` | - | Komga server URL |
 | `KOMGA_USERNAME` | - | Komga username |
 | `KOMGA_PASSWORD` | - | Komga password |
 
-### Docker Compose
-
-Mount your book libraries under `/libraries/`:
-
-```yaml
-volumes:
-  - ./data:/app/data
-  - /path/to/ebooks:/libraries/ebooks:rw
-  - /path/to/comics:/libraries/comics:rw
-```
-
 ## Development Status
 
 See [PLAN.md](./PLAN.md) for detailed implementation progress.
 
-### Current Phase: 1 (Foundation) ✅ Complete
-
-- Express.js server with API routing
-- SQLite database with schema
-- Tailwind CSS UI shell
-- Playwright E2E test infrastructure
+### Completed
+- **Phase 1**: Foundation - Express.js, PostgreSQL, TypeScript, Tailwind CSS
+- **Phase 2**: Library management, file scanner, book listing
+- **Phase 3**: Metadata fetching from Google Books and OpenLibrary
 
 ## License
 

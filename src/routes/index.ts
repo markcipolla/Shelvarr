@@ -40,9 +40,9 @@ router.get('/health', (_req: Request, res: Response) => {
 });
 
 // Settings endpoints
-router.get('/settings', (_req: Request, res: Response) => {
+router.get('/settings', async (_req: Request, res: Response) => {
   try {
-    const settings = getAllSettings() as Settings;
+    const settings = await getAllSettings() as Settings;
     settings._config = {
       libraryRoot: config.libraryRoot,
       supportedExtensions: config.supportedExtensions,
@@ -55,14 +55,14 @@ router.get('/settings', (_req: Request, res: Response) => {
   }
 });
 
-router.put('/settings', (req: Request, res: Response) => {
+router.put('/settings', async (req: Request, res: Response) => {
   try {
     const { key, value } = req.body as { key?: string; value?: unknown };
     if (!key) {
       res.status(400).json({ error: 'Key is required' });
       return;
     }
-    setSetting(key, value);
+    await setSetting(key, value);
     res.json({ success: true, key, value });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -71,13 +71,15 @@ router.put('/settings', (req: Request, res: Response) => {
 });
 
 // Libraries endpoints
-router.get('/libraries', (_req: Request, res: Response) => {
+router.get('/libraries', async (_req: Request, res: Response) => {
   try {
-    const libraries = getAllLibraries();
-    const librariesWithCount = libraries.map(lib => ({
-      ...lib,
-      bookCount: getLibraryBookCount(lib.id),
-    }));
+    const libraries = await getAllLibraries();
+    const librariesWithCount = await Promise.all(
+      libraries.map(async lib => ({
+        ...lib,
+        bookCount: await getLibraryBookCount(lib.id),
+      }))
+    );
     res.json({ libraries: librariesWithCount });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -85,7 +87,7 @@ router.get('/libraries', (_req: Request, res: Response) => {
   }
 });
 
-router.get('/libraries/:id', (req: Request, res: Response) => {
+router.get('/libraries/:id', async (req: Request, res: Response) => {
   try {
     const id = parseIdParam(req.params['id']);
     if (isNaN(id)) {
@@ -93,7 +95,7 @@ router.get('/libraries/:id', (req: Request, res: Response) => {
       return;
     }
 
-    const library = getLibraryById(id);
+    const library = await getLibraryById(id);
     if (!library) {
       res.status(404).json({ error: 'Library not found' });
       return;
@@ -101,7 +103,7 @@ router.get('/libraries/:id', (req: Request, res: Response) => {
 
     res.json({
       ...library,
-      bookCount: getLibraryBookCount(library.id),
+      bookCount: await getLibraryBookCount(library.id),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -109,7 +111,7 @@ router.get('/libraries/:id', (req: Request, res: Response) => {
   }
 });
 
-router.post('/libraries', (req: Request, res: Response) => {
+router.post('/libraries', async (req: Request, res: Response) => {
   try {
     const { name, path, komgaLibraryId } = req.body as {
       name?: string;
@@ -122,7 +124,7 @@ router.post('/libraries', (req: Request, res: Response) => {
       return;
     }
 
-    const result = createLibrary({ name, path, komgaLibraryId });
+    const result = await createLibrary({ name, path, komgaLibraryId });
 
     if (!result.success) {
       res.status(400).json({ error: result.error });
@@ -136,7 +138,7 @@ router.post('/libraries', (req: Request, res: Response) => {
   }
 });
 
-router.put('/libraries/:id', (req: Request, res: Response) => {
+router.put('/libraries/:id', async (req: Request, res: Response) => {
   try {
     const id = parseIdParam(req.params['id']);
     if (isNaN(id)) {
@@ -149,7 +151,7 @@ router.put('/libraries/:id', (req: Request, res: Response) => {
       komgaLibraryId?: string;
     };
 
-    const result = updateLibrary(id, { name, komgaLibraryId });
+    const result = await updateLibrary(id, { name, komgaLibraryId });
 
     if (!result.success) {
       res.status(400).json({ error: result.error });
@@ -163,7 +165,7 @@ router.put('/libraries/:id', (req: Request, res: Response) => {
   }
 });
 
-router.delete('/libraries/:id', (req: Request, res: Response) => {
+router.delete('/libraries/:id', async (req: Request, res: Response) => {
   try {
     const id = parseIdParam(req.params['id']);
     if (isNaN(id)) {
@@ -171,7 +173,7 @@ router.delete('/libraries/:id', (req: Request, res: Response) => {
       return;
     }
 
-    const result = deleteLibrary(id);
+    const result = await deleteLibrary(id);
 
     if (!result.success) {
       res.status(404).json({ error: result.error });
@@ -193,7 +195,7 @@ router.post('/libraries/:id/scan', async (req: Request, res: Response) => {
       return;
     }
 
-    const library = getLibraryById(id);
+    const library = await getLibraryById(id);
     if (!library) {
       res.status(404).json({ error: 'Library not found' });
       return;
@@ -211,7 +213,7 @@ router.post('/libraries/:id/scan', async (req: Request, res: Response) => {
 });
 
 // Books endpoints
-router.get('/books', (req: Request, res: Response) => {
+router.get('/books', async (req: Request, res: Response) => {
   try {
     const libraryId = req.query['libraryId']
       ? parseInt(req.query['libraryId'] as string, 10)
@@ -224,7 +226,7 @@ router.get('/books', (req: Request, res: Response) => {
       ? parseInt(req.query['pageSize'] as string, 10)
       : 20;
 
-    const result = getBooks({ libraryId, search, page, pageSize });
+    const result = await getBooks({ libraryId, search, page, pageSize });
     res.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -232,7 +234,7 @@ router.get('/books', (req: Request, res: Response) => {
   }
 });
 
-router.get('/books/:id', (req: Request, res: Response) => {
+router.get('/books/:id', async (req: Request, res: Response) => {
   try {
     const id = parseIdParam(req.params['id']);
     if (isNaN(id)) {
@@ -240,7 +242,7 @@ router.get('/books/:id', (req: Request, res: Response) => {
       return;
     }
 
-    const book = getBookById(id);
+    const book = await getBookById(id);
     if (!book) {
       res.status(404).json({ error: 'Book not found' });
       return;
@@ -253,7 +255,7 @@ router.get('/books/:id', (req: Request, res: Response) => {
   }
 });
 
-router.put('/books/:id', (req: Request, res: Response) => {
+router.put('/books/:id', async (req: Request, res: Response) => {
   try {
     const id = parseIdParam(req.params['id']);
     if (isNaN(id)) {
@@ -273,7 +275,7 @@ router.put('/books/:id', (req: Request, res: Response) => {
       coverUrl?: string;
     };
 
-    const result = updateBook(id, updates);
+    const result = await updateBook(id, updates);
 
     if (!result.success) {
       res.status(404).json({ error: result.error });
@@ -287,7 +289,7 @@ router.put('/books/:id', (req: Request, res: Response) => {
   }
 });
 
-router.delete('/books/:id', (req: Request, res: Response) => {
+router.delete('/books/:id', async (req: Request, res: Response) => {
   try {
     const id = parseIdParam(req.params['id']);
     if (isNaN(id)) {
@@ -295,7 +297,7 @@ router.delete('/books/:id', (req: Request, res: Response) => {
       return;
     }
 
-    const result = deleteBook(id);
+    const result = await deleteBook(id);
 
     if (!result.success) {
       res.status(404).json({ error: result.error });
@@ -362,7 +364,7 @@ router.post('/books/:id/refresh', async (req: Request, res: Response) => {
       return;
     }
 
-    const book = getBookById(id);
+    const book = await getBookById(id);
     if (!book) {
       res.status(404).json({ error: 'Book not found' });
       return;
@@ -395,7 +397,7 @@ router.post('/books/:id/refresh', async (req: Request, res: Response) => {
     }
 
     // Update book with found metadata
-    const result = updateBook(id, {
+    const result = await updateBook(id, {
       title: metadata.title,
       authors: metadata.authors,
       publisher: metadata.publisher,
@@ -430,7 +432,7 @@ router.post('/books/:id/apply-metadata', async (req: Request, res: Response) => 
       return;
     }
 
-    const book = getBookById(id);
+    const book = await getBookById(id);
     if (!book) {
       res.status(404).json({ error: 'Book not found' });
       return;
@@ -454,7 +456,7 @@ router.post('/books/:id/apply-metadata', async (req: Request, res: Response) => 
     }
 
     // Update book with the metadata
-    const result = updateBook(id, {
+    const result = await updateBook(id, {
       title: metadata.title,
       authors: metadata.authors,
       publisher: metadata.publisher,

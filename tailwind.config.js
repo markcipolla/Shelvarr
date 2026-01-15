@@ -7,7 +7,7 @@ export default {
     extend: {
       colors: {
         // *arr-style dark theme colors
-        'komgarr': {
+        'shelvarr': {
           'bg': '#1a1d23',
           'surface': '#242830',
           'surface-light': '#2d323c',

@@ -3,9 +3,6 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install build dependencies for better-sqlite3
-RUN apk add --no-cache python3 make g++
-
 COPY package*.json ./
 COPY tsconfig.json ./
 RUN npm ci
@@ -18,12 +15,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install runtime dependencies for better-sqlite3
-RUN apk add --no-cache python3 make g++
-
 # Create non-root user
-RUN addgroup -g 1001 -S komgarr && \
-    adduser -S komgarr -u 1001 -G komgarr
+RUN addgroup -g 1001 -S shelvarr && \
+    adduser -S shelvarr -u 1001 -G shelvarr
 
 COPY package*.json ./
 RUN npm ci --only=production && npm cache clean --force
@@ -34,9 +28,9 @@ COPY src/db/schema.sql ./dist/db/schema.sql
 COPY src/public ./dist/public
 
 # Create data directory
-RUN mkdir -p /app/data && chown -R komgarr:komgarr /app/data
+RUN mkdir -p /app/data && chown -R shelvarr:shelvarr /app/data
 
-USER komgarr
+USER shelvarr
 
 ENV NODE_ENV=production
 ENV PORT=3000

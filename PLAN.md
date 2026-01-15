@@ -1,4 +1,4 @@
-# Komgarr - Implementation Plan
+# Shelvarr - Implementation Plan
 
 A self-hosted *arr-style web application for book/comic metadata management and file organization, designed to work alongside Komga and Komf.
 
@@ -17,7 +17,7 @@ A self-hosted *arr-style web application for book/comic metadata management and 
 ## Project Structure
 
 ```
-komgarr/
+shelvarr/
 ├── PLAN.md                      # This file - keep updated!
 ├── docker-compose.yml
 ├── Dockerfile
@@ -276,9 +276,9 @@ DELETE     /api/downloads/:id       - Cancel/remove download
 ```yaml
 version: '3.8'
 services:
-  komgarr:
+  shelvarr:
     build: .
-    container_name: komgarr
+    container_name: shelvarr
     ports:
       - "3000:3000"
     volumes:
@@ -295,7 +295,7 @@ services:
     restart: unless-stopped
 ```
 
-**Note**: Mount multiple library folders under `/libraries/` - Komgarr will detect and let you manage each separately.
+**Note**: Mount multiple library folders under `/libraries/` - Shelvarr will detect and let you manage each separately.
 
 ## Development Commands
 

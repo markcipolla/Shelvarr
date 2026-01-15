@@ -1,4 +1,4 @@
-// Core domain types for Komgarr
+// Core domain types for Shelvarr
 
 export interface Library {
   id: number;
@@ -135,7 +135,8 @@ export interface AppConfig {
   port: number;
   dataDir: string;
   libraryRoot: string;
-  dbPath: string;
+  databaseUrl: string;
+  dbPath: string; // deprecated
   komga: KomgaConfig;
   supportedExtensions: string[];
   rateLimits: {

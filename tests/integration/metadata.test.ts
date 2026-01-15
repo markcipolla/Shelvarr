@@ -6,8 +6,12 @@ import { mkdirSync, rmSync, writeFileSync, mkdtempSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
+// Set test database URL before importing db module
+process.env['DATABASE_URL'] = process.env['TEST_DATABASE_URL'] ||
+  'postgresql://shelvarr_test:shelvarr_test@localhost:5433/shelvarr_test';
+
 import apiRoutes from '../../src/routes/index.js';
-import { initDatabase, closeDatabase } from '../../src/db/index.js';
+import { initDatabase, closeDatabase, getPool } from '../../src/db/index.js';
 
 interface ApiResponse<T = unknown> {
   status: number;
@@ -18,18 +22,23 @@ describe('Metadata API Integration Tests', () => {
   let server: Server;
   let baseUrl: string;
   let tempDir: string;
-  const testLibraryPath = '/tmp/test-metadata-library';
+  let testLibraryPath: string;
 
   before(async () => {
-    // Create temp directory for test database
-    tempDir = mkdtempSync(join(tmpdir(), 'komgarr-metadata-test-'));
-
-    // Set test config
-    process.env['DATA_DIR'] = tempDir;
-    process.env['DB_PATH'] = join(tempDir, 'test.db');
+    // Create temp directory for test library files
+    tempDir = mkdtempSync(join(tmpdir(), 'shelvarr-metadata-test-'));
+    testLibraryPath = join(tempDir, 'test-library');
+    mkdirSync(testLibraryPath, { recursive: true });
 
     // Initialize database
-    initDatabase();
+    await initDatabase();
+
+    // Clean up any existing test data
+    const pool = getPool();
+    await pool.query(`
+      TRUNCATE TABLE downloads, author_works, authors, book_series, series, tasks, books, libraries, settings
+      RESTART IDENTITY CASCADE
+    `);
 
     // Create test app
     const app: Express = express();
@@ -48,16 +57,14 @@ describe('Metadata API Integration Tests', () => {
     });
 
     // Create test library with a book
-    mkdirSync(testLibraryPath, { recursive: true });
     writeFileSync(join(testLibraryPath, 'Test Book.epub'), 'test content');
   });
 
   after(async () => {
     // Cleanup
     server?.close();
-    closeDatabase();
+    await closeDatabase();
     rmSync(tempDir, { recursive: true, force: true });
-    rmSync(testLibraryPath, { recursive: true, force: true });
   });
 
   // Helper to make requests

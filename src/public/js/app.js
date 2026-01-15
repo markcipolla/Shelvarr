@@ -134,10 +134,10 @@ window.addEventListener('popstate', (event) => {
 // Render sidebar
 function renderSidebar() {
   return `
-    <aside class="w-64 bg-komgarr-surface border-r border-komgarr-border flex flex-col">
-      <div class="p-4 border-b border-komgarr-border">
-        <h1 class="text-xl font-bold text-komgarr-primary">Komgarr</h1>
-        <p class="text-sm text-komgarr-text-muted">Book Library Manager</p>
+    <aside class="w-64 bg-shelvarr-surface border-r border-shelvarr-border flex flex-col">
+      <div class="p-4 border-b border-shelvarr-border">
+        <h1 class="text-xl font-bold text-shelvarr-primary">Shelvarr</h1>
+        <p class="text-sm text-shelvarr-text-muted">Book Library Manager</p>
       </div>
       <nav class="flex-1 p-4 space-y-1">
         ${navItems.map(item => `
@@ -149,7 +149,7 @@ function renderSidebar() {
           </a>
         `).join('')}
       </nav>
-      <div class="p-4 border-t border-komgarr-border text-sm text-komgarr-text-muted">
+      <div class="p-4 border-t border-shelvarr-border text-sm text-shelvarr-text-muted">
         <div>v0.0.1</div>
       </div>
     </aside>
@@ -170,10 +170,10 @@ function pageHeader(title, actions = '') {
 function modal(id, title, content) {
   return `
     <div id="${id}" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden">
-      <div class="bg-komgarr-surface rounded-lg shadow-xl w-full max-w-md mx-4">
-        <div class="flex justify-between items-center p-4 border-b border-komgarr-border">
+      <div class="bg-shelvarr-surface rounded-lg shadow-xl w-full max-w-md mx-4">
+        <div class="flex justify-between items-center p-4 border-b border-shelvarr-border">
           <h3 class="text-lg font-semibold">${title}</h3>
-          <button class="text-komgarr-text-muted hover:text-white" data-close-modal="${id}">&times;</button>
+          <button class="text-shelvarr-text-muted hover:text-white" data-close-modal="${id}">&times;</button>
         </div>
         <div class="p-4">
           ${content}
@@ -216,19 +216,19 @@ const pages = {
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div class="card">
-            <div class="text-komgarr-text-muted text-sm">Libraries</div>
+            <div class="text-shelvarr-text-muted text-sm">Libraries</div>
             <div class="text-3xl font-bold mt-1">${stats.libraries}</div>
           </div>
           <div class="card">
-            <div class="text-komgarr-text-muted text-sm">Books</div>
+            <div class="text-shelvarr-text-muted text-sm">Books</div>
             <div class="text-3xl font-bold mt-1">${stats.books}</div>
           </div>
           <div class="card">
-            <div class="text-komgarr-text-muted text-sm">Series</div>
+            <div class="text-shelvarr-text-muted text-sm">Series</div>
             <div class="text-3xl font-bold mt-1">0</div>
           </div>
           <div class="card">
-            <div class="text-komgarr-text-muted text-sm">Authors Tracked</div>
+            <div class="text-shelvarr-text-muted text-sm">Authors Tracked</div>
             <div class="text-3xl font-bold mt-1">0</div>
           </div>
         </div>
@@ -243,7 +243,7 @@ const pages = {
 
         <div class="card">
           <h3 class="text-lg font-semibold mb-4">Recent Activity</h3>
-          <p class="text-komgarr-text-muted">No recent activity.</p>
+          <p class="text-shelvarr-text-muted">No recent activity.</p>
         </div>
       </div>
     `;
@@ -251,20 +251,20 @@ const pages = {
 
   libraries: () => {
     const librariesHtml = state.libraries.length === 0
-      ? '<p class="text-komgarr-text-muted">No libraries configured. Add a library to get started.</p>'
+      ? '<p class="text-shelvarr-text-muted">No libraries configured. Add a library to get started.</p>'
       : `
         <div class="space-y-3">
           ${state.libraries.map(lib => `
-            <div class="flex items-center justify-between p-4 bg-komgarr-bg rounded-lg border border-komgarr-border">
+            <div class="flex items-center justify-between p-4 bg-shelvarr-bg rounded-lg border border-shelvarr-border">
               <div class="flex items-center gap-4">
-                <div class="text-komgarr-primary">${icons.folder}</div>
+                <div class="text-shelvarr-primary">${icons.folder}</div>
                 <div>
                   <div class="font-semibold">${lib.name}</div>
-                  <div class="text-sm text-komgarr-text-muted">${lib.path}</div>
+                  <div class="text-sm text-shelvarr-text-muted">${lib.path}</div>
                 </div>
               </div>
               <div class="flex items-center gap-4">
-                <div class="text-sm text-komgarr-text-muted">${lib.bookCount || 0} books</div>
+                <div class="text-sm text-shelvarr-text-muted">${lib.bookCount || 0} books</div>
                 <div class="flex gap-2">
                   <button class="btn-secondary text-sm py-1 px-3" data-scan-library="${lib.id}" title="Scan Library">
                     ${icons.refresh} Scan
@@ -287,16 +287,16 @@ const pages = {
       ${modal('add-library-modal', 'Add Library', `
         <form id="add-library-form" class="space-y-4">
           <div>
-            <label class="block text-sm text-komgarr-text-muted mb-1">Library Name</label>
+            <label class="block text-sm text-shelvarr-text-muted mb-1">Library Name</label>
             <input type="text" class="input w-full" name="name" placeholder="My Books" required>
           </div>
           <div>
-            <label class="block text-sm text-komgarr-text-muted mb-1">Path</label>
+            <label class="block text-sm text-shelvarr-text-muted mb-1">Path</label>
             <div class="flex gap-2">
               <input type="text" class="input flex-1" name="path" id="library-path-input" placeholder="/libraries/books" required>
               <button type="button" class="btn-secondary" id="browse-folders-btn">${icons.folder}</button>
             </div>
-            <div id="folder-browser" class="hidden mt-2 border border-komgarr-border rounded-lg bg-komgarr-bg max-h-48 overflow-y-auto">
+            <div id="folder-browser" class="hidden mt-2 border border-shelvarr-border rounded-lg bg-shelvarr-bg max-h-48 overflow-y-auto">
               <div id="folder-browser-content" class="p-2"></div>
             </div>
           </div>
@@ -317,11 +317,11 @@ const pages = {
     ).join('');
 
     const booksHtml = books.length === 0
-      ? '<p class="text-komgarr-text-muted">No books found. Add a library and scan to import books.</p>'
+      ? '<p class="text-shelvarr-text-muted">No books found. Add a library and scan to import books.</p>'
       : `
         <table class="w-full">
           <thead>
-            <tr class="text-left text-komgarr-text-muted text-sm border-b border-komgarr-border">
+            <tr class="text-left text-shelvarr-text-muted text-sm border-b border-shelvarr-border">
               <th class="pb-3">Title</th>
               <th class="pb-3">Author</th>
               <th class="pb-3">Series</th>
@@ -330,29 +330,29 @@ const pages = {
           </thead>
           <tbody>
             ${books.map(book => `
-              <tr class="border-b border-komgarr-border/50 hover:bg-komgarr-bg/50 cursor-pointer" data-book-id="${book.id}">
+              <tr class="border-b border-shelvarr-border/50 hover:bg-shelvarr-bg/50 cursor-pointer" data-book-id="${book.id}">
                 <td class="py-3">
                   <div class="flex items-center gap-3">
                     ${book.coverUrl
                       ? `<img src="${book.coverUrl}" alt="" class="w-10 h-14 object-cover rounded">`
-                      : `<div class="w-10 h-14 bg-komgarr-border rounded flex items-center justify-center text-komgarr-text-muted">${icons.book}</div>`
+                      : `<div class="w-10 h-14 bg-shelvarr-border rounded flex items-center justify-center text-shelvarr-text-muted">${icons.book}</div>`
                     }
                     <div>
                       <div class="font-medium">${book.title || 'Untitled'}</div>
-                      <div class="text-xs text-komgarr-text-muted truncate max-w-xs">${book.filePath.split('/').pop()}</div>
+                      <div class="text-xs text-shelvarr-text-muted truncate max-w-xs">${book.filePath.split('/').pop()}</div>
                     </div>
                   </div>
                 </td>
-                <td class="py-3 text-komgarr-text-muted">${formatAuthors(book.authors)}</td>
-                <td class="py-3 text-komgarr-text-muted">${book.seriesName || '-'}</td>
-                <td class="py-3 text-komgarr-text-muted">${formatSize(book.fileSize)}</td>
+                <td class="py-3 text-shelvarr-text-muted">${formatAuthors(book.authors)}</td>
+                <td class="py-3 text-shelvarr-text-muted">${book.seriesName || '-'}</td>
+                <td class="py-3 text-shelvarr-text-muted">${formatSize(book.fileSize)}</td>
               </tr>
             `).join('')}
           </tbody>
         </table>
         ${totalPages > 1 ? `
-          <div class="flex items-center justify-between mt-4 pt-4 border-t border-komgarr-border">
-            <div class="text-sm text-komgarr-text-muted">
+          <div class="flex items-center justify-between mt-4 pt-4 border-t border-shelvarr-border">
+            <div class="text-sm text-shelvarr-text-muted">
               Showing ${(page - 1) * pageSize + 1}-${Math.min(page * pageSize, total)} of ${total} books
             </div>
             <div class="flex gap-2">
@@ -366,28 +366,28 @@ const pages = {
     // Book detail modal content
     const bookDetailModal = state.selectedBook ? `
       <div id="book-detail-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div class="bg-komgarr-surface rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
-          <div class="flex justify-between items-center p-4 border-b border-komgarr-border">
+        <div class="bg-shelvarr-surface rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+          <div class="flex justify-between items-center p-4 border-b border-shelvarr-border">
             <h3 class="text-lg font-semibold">Book Details</h3>
-            <button class="text-komgarr-text-muted hover:text-white" data-close-modal="book-detail-modal">&times;</button>
+            <button class="text-shelvarr-text-muted hover:text-white" data-close-modal="book-detail-modal">&times;</button>
           </div>
           <div class="p-4 overflow-y-auto flex-1">
             <div class="flex gap-4 mb-4">
               ${state.selectedBook.coverUrl
                 ? `<img src="${state.selectedBook.coverUrl}" alt="" class="w-32 h-48 object-cover rounded flex-shrink-0">`
-                : `<div class="w-32 h-48 bg-komgarr-border rounded flex items-center justify-center text-komgarr-text-muted flex-shrink-0">${icons.book}</div>`
+                : `<div class="w-32 h-48 bg-shelvarr-border rounded flex items-center justify-center text-shelvarr-text-muted flex-shrink-0">${icons.book}</div>`
               }
               <div class="flex-1 min-w-0">
                 <h4 class="text-xl font-semibold mb-1">${state.selectedBook.title || 'Untitled'}</h4>
-                <p class="text-komgarr-text-muted mb-2">${formatAuthors(state.selectedBook.authors)}</p>
-                ${state.selectedBook.seriesName ? `<p class="text-sm text-komgarr-text-muted mb-2">Series: ${state.selectedBook.seriesName}${state.selectedBook.seriesNumber ? ` #${state.selectedBook.seriesNumber}` : ''}</p>` : ''}
-                ${state.selectedBook.isbn ? `<p class="text-sm text-komgarr-text-muted mb-2">ISBN: ${state.selectedBook.isbn}</p>` : ''}
-                ${state.selectedBook.publisher ? `<p class="text-sm text-komgarr-text-muted mb-2">Publisher: ${state.selectedBook.publisher}</p>` : ''}
-                ${state.selectedBook.publishDate ? `<p class="text-sm text-komgarr-text-muted mb-2">Published: ${state.selectedBook.publishDate}</p>` : ''}
+                <p class="text-shelvarr-text-muted mb-2">${formatAuthors(state.selectedBook.authors)}</p>
+                ${state.selectedBook.seriesName ? `<p class="text-sm text-shelvarr-text-muted mb-2">Series: ${state.selectedBook.seriesName}${state.selectedBook.seriesNumber ? ` #${state.selectedBook.seriesNumber}` : ''}</p>` : ''}
+                ${state.selectedBook.isbn ? `<p class="text-sm text-shelvarr-text-muted mb-2">ISBN: ${state.selectedBook.isbn}</p>` : ''}
+                ${state.selectedBook.publisher ? `<p class="text-sm text-shelvarr-text-muted mb-2">Publisher: ${state.selectedBook.publisher}</p>` : ''}
+                ${state.selectedBook.publishDate ? `<p class="text-sm text-shelvarr-text-muted mb-2">Published: ${state.selectedBook.publishDate}</p>` : ''}
               </div>
             </div>
-            ${state.selectedBook.description ? `<p class="text-sm text-komgarr-text-muted mb-4 line-clamp-4">${state.selectedBook.description}</p>` : ''}
-            <div class="text-xs text-komgarr-text-muted mb-4 truncate">
+            ${state.selectedBook.description ? `<p class="text-sm text-shelvarr-text-muted mb-4 line-clamp-4">${state.selectedBook.description}</p>` : ''}
+            <div class="text-xs text-shelvarr-text-muted mb-4 truncate">
               <span class="font-medium">File:</span> ${state.selectedBook.filePath}
             </div>
             <div class="flex gap-2 flex-wrap">
@@ -403,10 +403,10 @@ const pages = {
     // Metadata search modal content
     const metadataSearchModal = state.metadataSearchQuery ? `
       <div id="metadata-search-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div class="bg-komgarr-surface rounded-lg shadow-xl w-full max-w-3xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
-          <div class="flex justify-between items-center p-4 border-b border-komgarr-border">
+        <div class="bg-shelvarr-surface rounded-lg shadow-xl w-full max-w-3xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+          <div class="flex justify-between items-center p-4 border-b border-shelvarr-border">
             <h3 class="text-lg font-semibold">Search Metadata</h3>
-            <button class="text-komgarr-text-muted hover:text-white" data-close-modal="metadata-search-modal">&times;</button>
+            <button class="text-shelvarr-text-muted hover:text-white" data-close-modal="metadata-search-modal">&times;</button>
           </div>
           <div class="p-4 overflow-y-auto flex-1">
             <div class="flex gap-2 mb-4">
@@ -414,22 +414,22 @@ const pages = {
               <button class="btn-primary" id="metadata-search-btn">${state.metadataSearchLoading ? icons.spinner : 'Search'}</button>
             </div>
             <div id="metadata-search-results">
-              ${state.metadataSearchLoading ? '<p class="text-center text-komgarr-text-muted">Searching...</p>' :
-                state.metadataSearchResults.length === 0 ? '<p class="text-center text-komgarr-text-muted">No results found. Try a different search.</p>' :
+              ${state.metadataSearchLoading ? '<p class="text-center text-shelvarr-text-muted">Searching...</p>' :
+                state.metadataSearchResults.length === 0 ? '<p class="text-center text-shelvarr-text-muted">No results found. Try a different search.</p>' :
                 `<div class="space-y-2">
                   ${state.metadataSearchResults.map(result => `
-                    <div class="flex gap-3 p-3 rounded border border-komgarr-border hover:border-komgarr-primary cursor-pointer" data-apply-metadata data-source="${result.source}" data-source-id="${result.sourceId}">
+                    <div class="flex gap-3 p-3 rounded border border-shelvarr-border hover:border-shelvarr-primary cursor-pointer" data-apply-metadata data-source="${result.source}" data-source-id="${result.sourceId}">
                       ${result.coverUrl
                         ? `<img src="${result.coverUrl}" alt="" class="w-12 h-18 object-cover rounded flex-shrink-0">`
-                        : `<div class="w-12 h-18 bg-komgarr-border rounded flex items-center justify-center text-komgarr-text-muted flex-shrink-0">${icons.book}</div>`
+                        : `<div class="w-12 h-18 bg-shelvarr-border rounded flex items-center justify-center text-shelvarr-text-muted flex-shrink-0">${icons.book}</div>`
                       }
                       <div class="flex-1 min-w-0">
                         <div class="font-medium truncate">${result.title}</div>
-                        <div class="text-sm text-komgarr-text-muted">${result.authors}</div>
-                        <div class="text-xs text-komgarr-text-muted mt-1">
+                        <div class="text-sm text-shelvarr-text-muted">${result.authors}</div>
+                        <div class="text-xs text-shelvarr-text-muted mt-1">
                           ${result.isbn ? `ISBN: ${result.isbn} · ` : ''}${result.publisher || ''}${result.publishDate ? ` (${result.publishDate})` : ''}
                         </div>
-                        <div class="text-xs text-komgarr-primary mt-1">Source: ${result.source === 'googlebooks' ? 'Google Books' : 'OpenLibrary'}</div>
+                        <div class="text-xs text-shelvarr-primary mt-1">Source: ${result.source === 'googlebooks' ? 'Google Books' : 'OpenLibrary'}</div>
                       </div>
                       <button class="btn-primary text-sm self-center">${icons.check} Apply</button>
                     </div>
@@ -445,10 +445,10 @@ const pages = {
     // Edit book modal content
     const editBookModal = state.editingBook ? `
       <div id="edit-book-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div class="bg-komgarr-surface rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-hidden flex flex-col">
-          <div class="flex justify-between items-center p-4 border-b border-komgarr-border">
+        <div class="bg-shelvarr-surface rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+          <div class="flex justify-between items-center p-4 border-b border-shelvarr-border">
             <h3 class="text-lg font-semibold">Edit Book Metadata</h3>
-            <button class="text-komgarr-text-muted hover:text-white" data-close-modal="edit-book-modal">&times;</button>
+            <button class="text-shelvarr-text-muted hover:text-white" data-close-modal="edit-book-modal">&times;</button>
           </div>
           <form id="edit-book-form" class="p-4 overflow-y-auto flex-1 space-y-4">
             <div>
@@ -522,7 +522,7 @@ const pages = {
     <div class="space-y-6">
       ${pageHeader('Series')}
       <div class="card">
-        <p class="text-komgarr-text-muted">No series detected. Series are automatically detected when scanning libraries.</p>
+        <p class="text-shelvarr-text-muted">No series detected. Series are automatically detected when scanning libraries.</p>
       </div>
     </div>
   `,
@@ -531,7 +531,7 @@ const pages = {
     <div class="space-y-6">
       ${pageHeader('Duplicates')}
       <div class="card">
-        <p class="text-komgarr-text-muted">No duplicate books detected.</p>
+        <p class="text-shelvarr-text-muted">No duplicate books detected.</p>
       </div>
     </div>
   `,
@@ -541,7 +541,7 @@ const pages = {
       ${pageHeader('Authors', '<button class="btn-primary" data-action="add-author">Track Author</button>')}
 
       <div class="card">
-        <p class="text-komgarr-text-muted">No authors tracked. Track authors to see their full bibliography and find missing books.</p>
+        <p class="text-shelvarr-text-muted">No authors tracked. Track authors to see their full bibliography and find missing books.</p>
       </div>
     </div>
   `,
@@ -550,7 +550,7 @@ const pages = {
     <div class="space-y-6">
       ${pageHeader('Wanted Books')}
       <div class="card">
-        <p class="text-komgarr-text-muted">No books on your wanted list. Track authors and mark books as wanted to see them here.</p>
+        <p class="text-shelvarr-text-muted">No books on your wanted list. Track authors and mark books as wanted to see them here.</p>
       </div>
     </div>
   `,
@@ -564,7 +564,7 @@ const pages = {
           <input type="text" class="input flex-1" placeholder="Search by title, author, or ISBN...">
           <button class="btn-primary">Search</button>
         </div>
-        <p class="text-komgarr-text-muted text-sm">Search across Z-Library, Anna's Archive, and Library Genesis.</p>
+        <p class="text-shelvarr-text-muted text-sm">Search across Z-Library, Anna's Archive, and Library Genesis.</p>
       </div>
     </div>
   `,
@@ -573,7 +573,7 @@ const pages = {
     <div class="space-y-6">
       ${pageHeader('Downloads')}
       <div class="card">
-        <p class="text-komgarr-text-muted">No active downloads.</p>
+        <p class="text-shelvarr-text-muted">No active downloads.</p>
       </div>
     </div>
   `,
@@ -582,7 +582,7 @@ const pages = {
     <div class="space-y-6">
       ${pageHeader('Background Tasks')}
       <div class="card">
-        <p class="text-komgarr-text-muted">No tasks running.</p>
+        <p class="text-shelvarr-text-muted">No tasks running.</p>
       </div>
     </div>
   `,
@@ -595,15 +595,15 @@ const pages = {
         <h3 class="text-lg font-semibold mb-4">Komga Integration</h3>
         <div class="space-y-4">
           <div>
-            <label class="block text-sm text-komgarr-text-muted mb-1">Komga URL</label>
+            <label class="block text-sm text-shelvarr-text-muted mb-1">Komga URL</label>
             <input type="text" class="input" placeholder="http://localhost:25600" id="komga-url">
           </div>
           <div>
-            <label class="block text-sm text-komgarr-text-muted mb-1">Username</label>
+            <label class="block text-sm text-shelvarr-text-muted mb-1">Username</label>
             <input type="text" class="input" id="komga-username">
           </div>
           <div>
-            <label class="block text-sm text-komgarr-text-muted mb-1">Password</label>
+            <label class="block text-sm text-shelvarr-text-muted mb-1">Password</label>
             <input type="password" class="input" id="komga-password">
           </div>
           <div class="flex gap-2">
@@ -617,9 +617,9 @@ const pages = {
         <h3 class="text-lg font-semibold mb-4">File Organization</h3>
         <div class="space-y-4">
           <div>
-            <label class="block text-sm text-komgarr-text-muted mb-1">Naming Template</label>
+            <label class="block text-sm text-shelvarr-text-muted mb-1">Naming Template</label>
             <input type="text" class="input" value="{author}/{series}/{title} ({year})" id="naming-template">
-            <p class="text-xs text-komgarr-text-muted mt-1">Variables: {author}, {title}, {series}, {series_number}, {year}, {isbn}</p>
+            <p class="text-xs text-shelvarr-text-muted mt-1">Variables: {author}, {title}, {series}, {series_number}, {year}, {isbn}</p>
           </div>
           <button class="btn-primary">Save</button>
         </div>
@@ -1003,7 +1003,7 @@ async function loadFolderBrowser(path = '') {
   const content = document.getElementById('folder-browser-content');
   if (!content) return;
 
-  content.innerHTML = `<div class="text-komgarr-text-muted text-sm p-2">${icons.spinner} Loading...</div>`;
+  content.innerHTML = `<div class="text-shelvarr-text-muted text-sm p-2">${icons.spinner} Loading...</div>`;
 
   try {
     const result = await api.browse(path);
@@ -1012,8 +1012,8 @@ async function loadFolderBrowser(path = '') {
 
     // Current path display with select button
     html += `
-      <div class="flex items-center justify-between gap-2 p-2 bg-komgarr-surface rounded mb-2">
-        <div class="text-sm text-komgarr-text-muted truncate flex-1" title="${result.current}">${result.current}</div>
+      <div class="flex items-center justify-between gap-2 p-2 bg-shelvarr-surface rounded mb-2">
+        <div class="text-sm text-shelvarr-text-muted truncate flex-1" title="${result.current}">${result.current}</div>
         <button type="button" class="btn-primary text-xs py-1 px-2" data-select-path="${result.current}">Select</button>
       </div>
     `;
@@ -1021,8 +1021,8 @@ async function loadFolderBrowser(path = '') {
     // Parent directory
     if (result.parent) {
       html += `
-        <div class="flex items-center gap-2 p-2 hover:bg-komgarr-surface rounded cursor-pointer" data-browse-path="${result.parent}">
-          <span class="text-komgarr-text-muted">${icons.chevronUp}</span>
+        <div class="flex items-center gap-2 p-2 hover:bg-shelvarr-surface rounded cursor-pointer" data-browse-path="${result.parent}">
+          <span class="text-shelvarr-text-muted">${icons.chevronUp}</span>
           <span class="text-sm">..</span>
         </div>
       `;
@@ -1030,12 +1030,12 @@ async function loadFolderBrowser(path = '') {
 
     // Subdirectories
     if (result.directories.length === 0) {
-      html += `<div class="text-komgarr-text-muted text-sm p-2">No subdirectories</div>`;
+      html += `<div class="text-shelvarr-text-muted text-sm p-2">No subdirectories</div>`;
     } else {
       for (const dir of result.directories) {
         html += `
-          <div class="flex items-center gap-2 p-2 hover:bg-komgarr-surface rounded cursor-pointer" data-browse-path="${dir.path}">
-            <span class="text-komgarr-primary">${icons.folder}</span>
+          <div class="flex items-center gap-2 p-2 hover:bg-shelvarr-surface rounded cursor-pointer" data-browse-path="${dir.path}">
+            <span class="text-shelvarr-primary">${icons.folder}</span>
             <span class="text-sm">${dir.name}</span>
           </div>
         `;

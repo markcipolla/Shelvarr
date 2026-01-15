@@ -55,26 +55,26 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 // Graceful shutdown
-function shutdown(): void {
+async function shutdown(): Promise<void> {
   console.log('\nShutting down...');
-  closeDatabase();
+  await closeDatabase();
   process.exit(0);
 }
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+process.on('SIGINT', () => void shutdown());
+process.on('SIGTERM', () => void shutdown());
 
 // Start server
 async function start(): Promise<void> {
   try {
     // Initialize database
-    initDatabase();
+    await initDatabase();
 
     // Start listening
     app.listen(config.port, () => {
       console.log(`
 ╔═══════════════════════════════════════════╗
-║             KOMGARR v0.0.1                ║
+║             SHELVARR v0.0.1                ║
 ╠═══════════════════════════════════════════╣
 ║  Server running on port ${String(config.port).padEnd(17)}║
 ║  Environment: ${config.env.padEnd(25)}║

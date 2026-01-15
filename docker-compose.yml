@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  komgarr:
+  shelvarr:
     build: .
-    container_name: komgarr
+    container_name: shelvarr
     ports:
       - "3000:3000"
     volumes:
@@ -11,12 +11,15 @@ services:
       # Add your library mounts here:
       # - /path/to/ebooks:/libraries/ebooks:rw
       # - /path/to/comics:/libraries/comics:rw
-      # - /path/to/audiobooks:/libraries/audiobooks:rw
     environment:
       - NODE_ENV=production
       - PORT=3000
       - DATA_DIR=/app/data
       - LIBRARY_ROOT=/libraries
+      - DATABASE_URL=postgresql://shelvarr:shelvarr@postgres:5432/shelvarr
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
@@ -24,3 +27,22 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: shelvarr-postgres
+    environment:
+      - POSTGRES_USER=shelvarr
+      - POSTGRES_PASSWORD=shelvarr
+      - POSTGRES_DB=shelvarr
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shelvarr -d shelvarr"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

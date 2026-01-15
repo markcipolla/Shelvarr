@@ -2,11 +2,16 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
 import type { Server } from 'http';
 import express, { Express } from 'express';
-import apiRoutes from '../../src/routes/index.js';
-import { initDatabase, closeDatabase } from '../../src/db/index.js';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+
+// Set test database URL before importing db module
+process.env['DATABASE_URL'] = process.env['TEST_DATABASE_URL'] ||
+  'postgresql://shelvarr_test:shelvarr_test@localhost:5433/shelvarr_test';
+
+import apiRoutes from '../../src/routes/index.js';
+import { initDatabase, closeDatabase, getPool } from '../../src/db/index.js';
 
 interface ApiResponse<T = unknown> {
   status: number;
@@ -20,17 +25,20 @@ describe('Library API Integration Tests', () => {
   let libraryPath: string;
 
   before(async () => {
-    // Create temp directory for test database and library
-    tempDir = mkdtempSync(join(tmpdir(), 'komgarr-lib-test-'));
+    // Create temp directory for test library files
+    tempDir = mkdtempSync(join(tmpdir(), 'shelvarr-lib-test-'));
     libraryPath = join(tempDir, 'test-library');
     mkdirSync(libraryPath);
 
-    // Set test config
-    process.env['DATA_DIR'] = tempDir;
-    process.env['DB_PATH'] = join(tempDir, 'test.db');
-
     // Initialize database
-    initDatabase();
+    await initDatabase();
+
+    // Clean up any existing test data
+    const pool = getPool();
+    await pool.query(`
+      TRUNCATE TABLE downloads, author_works, authors, book_series, series, tasks, books, libraries, settings
+      RESTART IDENTITY CASCADE
+    `);
 
     // Create test app
     const app: Express = express();
@@ -53,7 +61,7 @@ describe('Library API Integration Tests', () => {
     if (server) {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
-    closeDatabase();
+    await closeDatabase();
     if (tempDir) {
       rmSync(tempDir, { recursive: true, force: true });
     }

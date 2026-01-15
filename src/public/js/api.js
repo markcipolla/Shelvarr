@@ -1,5 +1,5 @@
 /**
- * Komgarr API Client
+ * Shelvarr API Client
  */
 
 const API_BASE = '/api';

@@ -6,8 +6,8 @@ test.describe('Dashboard', () => {
     await page.waitForSelector('#app');
   });
 
-  test('should display the Komgarr title', async ({ page }) => {
-    await expect(page.locator('h1')).toContainText('Komgarr');
+  test('should display the Shelvarr title', async ({ page }) => {
+    await expect(page.locator('h1')).toContainText('Shelvarr');
   });
 
   test('should display dashboard content', async ({ page }) => {

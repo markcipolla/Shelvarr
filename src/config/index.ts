@@ -9,13 +9,16 @@ const config: AppConfig = {
   env: process.env['NODE_ENV'] || 'development',
   port: parseInt(process.env['PORT'] || '3000', 10),
 
-  // Data directory for SQLite and config
+  // Data directory for config files
   dataDir: process.env['DATA_DIR'] || join(__dirname, '../../data'),
 
   // Root path for library mounts
   libraryRoot: process.env['LIBRARY_ROOT'] || '/libraries',
 
-  // Database path - will be set below
+  // PostgreSQL connection URL
+  databaseUrl: process.env['DATABASE_URL'] || 'postgresql://shelvarr:shelvarr@localhost:5432/shelvarr',
+
+  // Legacy SQLite path (deprecated)
   dbPath: '',
 
   // Komga integration (optional)
@@ -36,6 +39,6 @@ const config: AppConfig = {
 };
 
 // Derive dbPath if not explicitly set
-config.dbPath = process.env['DB_PATH'] || join(config.dataDir, 'komgarr.db');
+config.dbPath = process.env['DB_PATH'] || join(config.dataDir, 'shelvarr.db');
 
 export default config;

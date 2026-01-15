@@ -2,11 +2,13 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
 import type { Server } from 'http';
 import express, { Express } from 'express';
+
+// Set test database URL before importing db module
+process.env['DATABASE_URL'] = process.env['TEST_DATABASE_URL'] ||
+  'postgresql://shelvarr_test:shelvarr_test@localhost:5433/shelvarr_test';
+
 import apiRoutes from '../../src/routes/index.js';
-import { initDatabase, closeDatabase } from '../../src/db/index.js';
-import { mkdtempSync, rmSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
+import { initDatabase, closeDatabase, getPool } from '../../src/db/index.js';
 
 interface ApiResponse<T = unknown> {
   status: number;
@@ -16,18 +18,17 @@ interface ApiResponse<T = unknown> {
 describe('API Integration Tests', () => {
   let server: Server;
   let baseUrl: string;
-  let tempDir: string;
 
   before(async () => {
-    // Create temp directory for test database
-    tempDir = mkdtempSync(join(tmpdir(), 'komgarr-test-'));
-
-    // Set test config
-    process.env['DATA_DIR'] = tempDir;
-    process.env['DB_PATH'] = join(tempDir, 'test.db');
-
     // Initialize database
-    initDatabase();
+    await initDatabase();
+
+    // Clean up any existing test data
+    const pool = getPool();
+    await pool.query(`
+      TRUNCATE TABLE downloads, author_works, authors, book_series, series, tasks, books, libraries, settings
+      RESTART IDENTITY CASCADE
+    `);
 
     // Create test app
     const app: Express = express();
@@ -53,12 +54,7 @@ describe('API Integration Tests', () => {
     }
 
     // Close database
-    closeDatabase();
-
-    // Cleanup temp directory
-    if (tempDir) {
-      rmSync(tempDir, { recursive: true, force: true });
-    }
+    await closeDatabase();
   });
 
   async function fetchApi<T = unknown>(

@@ -1,4 +1,4 @@
-import { getDatabase } from '../../db/index.js';
+import { query, queryOne, execute, insertReturning } from '../../db/index.js';
 import type { Library } from '../../types/index.js';
 import { existsSync, statSync } from 'fs';
 
@@ -20,24 +20,18 @@ function rowToLibrary(row: LibraryRow): Library {
   };
 }
 
-export function getAllLibraries(): Library[] {
-  const rows = getDatabase()
-    .prepare('SELECT * FROM libraries ORDER BY name')
-    .all() as LibraryRow[];
+export async function getAllLibraries(): Promise<Library[]> {
+  const rows = await query<LibraryRow>('SELECT * FROM libraries ORDER BY name');
   return rows.map(rowToLibrary);
 }
 
-export function getLibraryById(id: number): Library | null {
-  const row = getDatabase()
-    .prepare('SELECT * FROM libraries WHERE id = ?')
-    .get(id) as LibraryRow | undefined;
+export async function getLibraryById(id: number): Promise<Library | null> {
+  const row = await queryOne<LibraryRow>('SELECT * FROM libraries WHERE id = $1', [id]);
   return row ? rowToLibrary(row) : null;
 }
 
-export function getLibraryByPath(path: string): Library | null {
-  const row = getDatabase()
-    .prepare('SELECT * FROM libraries WHERE path = ?')
-    .get(path) as LibraryRow | undefined;
+export async function getLibraryByPath(path: string): Promise<Library | null> {
+  const row = await queryOne<LibraryRow>('SELECT * FROM libraries WHERE path = $1', [path]);
   return row ? rowToLibrary(row) : null;
 }
 
@@ -53,7 +47,7 @@ export interface CreateLibraryResult {
   error?: string;
 }
 
-export function createLibrary(input: CreateLibraryInput): CreateLibraryResult {
+export async function createLibrary(input: CreateLibraryInput): Promise<CreateLibraryResult> {
   const { name, path, komgaLibraryId } = input;
 
   // Validate name
@@ -77,29 +71,33 @@ export function createLibrary(input: CreateLibraryInput): CreateLibraryResult {
   }
 
   // Check for duplicate path
-  const existing = getLibraryByPath(path);
+  const existing = await getLibraryByPath(path);
   if (existing) {
     return { success: false, error: `Library already exists for path: ${path}` };
   }
 
   try {
-    const result = getDatabase()
-      .prepare('INSERT INTO libraries (name, path, komga_library_id) VALUES (?, ?, ?)')
-      .run(name.trim(), path, komgaLibraryId || null);
+    const row = await insertReturning<LibraryRow>(
+      'INSERT INTO libraries (name, path, komga_library_id) VALUES ($1, $2, $3) RETURNING *',
+      [name.trim(), path, komgaLibraryId || null]
+    );
 
-    const library = getLibraryById(result.lastInsertRowid as number);
-    return { success: true, library: library! };
+    if (!row) {
+      return { success: false, error: 'Failed to create library' };
+    }
+
+    return { success: true, library: rowToLibrary(row) };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return { success: false, error: message };
   }
 }
 
-export function updateLibrary(
+export async function updateLibrary(
   id: number,
   updates: Partial<Pick<Library, 'name' | 'komgaLibraryId'>>
-): CreateLibraryResult {
-  const existing = getLibraryById(id);
+): Promise<CreateLibraryResult> {
+  const existing = await getLibraryById(id);
   if (!existing) {
     return { success: false, error: 'Library not found' };
   }
@@ -110,11 +108,12 @@ export function updateLibrary(
     : existing.komgaLibraryId;
 
   try {
-    getDatabase()
-      .prepare('UPDATE libraries SET name = ?, komga_library_id = ? WHERE id = ?')
-      .run(name, komgaLibraryId, id);
+    await execute(
+      'UPDATE libraries SET name = $1, komga_library_id = $2 WHERE id = $3',
+      [name, komgaLibraryId, id]
+    );
 
-    const library = getLibraryById(id);
+    const library = await getLibraryById(id);
     return { success: true, library: library! };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -122,17 +121,15 @@ export function updateLibrary(
   }
 }
 
-export function deleteLibrary(id: number): { success: boolean; error?: string } {
-  const existing = getLibraryById(id);
+export async function deleteLibrary(id: number): Promise<{ success: boolean; error?: string }> {
+  const existing = await getLibraryById(id);
   if (!existing) {
     return { success: false, error: 'Library not found' };
   }
 
   try {
     // Books will be cascade deleted due to FK constraint
-    getDatabase()
-      .prepare('DELETE FROM libraries WHERE id = ?')
-      .run(id);
+    await execute('DELETE FROM libraries WHERE id = $1', [id]);
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -140,9 +137,7 @@ export function deleteLibrary(id: number): { success: boolean; error?: string } 
   }
 }
 
-export function getLibraryBookCount(id: number): number {
-  const row = getDatabase()
-    .prepare('SELECT COUNT(*) as count FROM books WHERE library_id = ?')
-    .get(id) as { count: number };
-  return row.count;
+export async function getLibraryBookCount(id: number): Promise<number> {
+  const row = await queryOne<{ count: string }>('SELECT COUNT(*) as count FROM books WHERE library_id = $1', [id]);
+  return parseInt(row?.count || '0', 10);
 }

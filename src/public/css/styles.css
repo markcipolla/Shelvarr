@@ -5,42 +5,42 @@
 /* Custom base styles */
 @layer base {
   body {
-    @apply bg-komgarr-bg text-komgarr-text;
+    @apply bg-shelvarr-bg text-shelvarr-text;
   }
 }
 
 /* Component styles */
 @layer components {
   .sidebar-link {
-    @apply flex items-center gap-3 px-4 py-3 text-komgarr-text-muted hover:bg-komgarr-surface-light hover:text-komgarr-text transition-colors rounded-lg;
+    @apply flex items-center gap-3 px-4 py-3 text-shelvarr-text-muted hover:bg-shelvarr-surface-light hover:text-shelvarr-text transition-colors rounded-lg;
   }
 
   .sidebar-link.active {
-    @apply bg-komgarr-primary text-white;
+    @apply bg-shelvarr-primary text-white;
   }
 
   .card {
-    @apply bg-komgarr-surface rounded-lg border border-komgarr-border p-4;
+    @apply bg-shelvarr-surface rounded-lg border border-shelvarr-border p-4;
   }
 
   .btn {
-    @apply px-4 py-2 rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-komgarr-bg inline-flex items-center justify-center;
+    @apply px-4 py-2 rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-shelvarr-bg inline-flex items-center justify-center;
   }
 
   .btn-primary {
-    @apply btn bg-komgarr-primary text-white hover:bg-komgarr-primary-hover focus:ring-komgarr-primary;
+    @apply btn bg-shelvarr-primary text-white hover:bg-shelvarr-primary-hover focus:ring-shelvarr-primary;
   }
 
   .btn-secondary {
-    @apply btn bg-komgarr-surface-light text-komgarr-text hover:bg-komgarr-border focus:ring-komgarr-border;
+    @apply btn bg-shelvarr-surface-light text-shelvarr-text hover:bg-shelvarr-border focus:ring-shelvarr-border;
   }
 
   .btn-danger {
-    @apply btn bg-komgarr-danger text-white hover:bg-red-600 focus:ring-komgarr-danger;
+    @apply btn bg-shelvarr-danger text-white hover:bg-red-600 focus:ring-shelvarr-danger;
   }
 
   .input {
-    @apply w-full px-3 py-2 bg-komgarr-surface-light border border-komgarr-border rounded-lg text-komgarr-text placeholder-komgarr-text-muted focus:outline-none focus:ring-2 focus:ring-komgarr-primary focus:border-transparent;
+    @apply w-full px-3 py-2 bg-shelvarr-surface-light border border-shelvarr-border rounded-lg text-shelvarr-text placeholder-shelvarr-text-muted focus:outline-none focus:ring-2 focus:ring-shelvarr-primary focus:border-transparent;
   }
 
   .badge {
@@ -68,14 +68,14 @@
   }
 
   .table th {
-    @apply px-4 py-3 text-komgarr-text-muted font-medium text-sm uppercase tracking-wider border-b border-komgarr-border;
+    @apply px-4 py-3 text-shelvarr-text-muted font-medium text-sm uppercase tracking-wider border-b border-shelvarr-border;
   }
 
   .table td {
-    @apply px-4 py-3 border-b border-komgarr-border;
+    @apply px-4 py-3 border-b border-shelvarr-border;
   }
 
   .table tr:hover td {
-    @apply bg-komgarr-surface-light;
+    @apply bg-shelvarr-surface-light;
   }
 }
