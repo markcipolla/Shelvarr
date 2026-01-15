@@ -24,6 +24,7 @@ import {
   updateBook,
   deleteBook,
 } from '../services/scanner/index.js';
+import * as metadataService from '../services/metadata/index.js';
 import type { HealthResponse, Settings } from '../types/index.js';
 
 const router = Router();
@@ -302,6 +303,163 @@ router.delete('/books/:id', (req: Request, res: Response) => {
     }
 
     res.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+// Metadata search endpoints
+router.get('/search/books', async (req: Request, res: Response) => {
+  try {
+    const query = req.query['q'] as string;
+    if (!query) {
+      res.status(400).json({ error: 'Query parameter "q" is required' });
+      return;
+    }
+
+    const sources = req.query['sources'] as string | undefined;
+    const sourceList = sources
+      ? (sources.split(',') as ('googlebooks' | 'openlibrary')[])
+      : undefined;
+
+    const results = await metadataService.searchBooks(query, { sources: sourceList });
+    res.json({ results });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+router.get('/search/isbn/:isbn', async (req: Request, res: Response) => {
+  try {
+    const isbnParam = req.params['isbn'];
+    const isbn = Array.isArray(isbnParam) ? isbnParam[0] : isbnParam;
+    if (!isbn) {
+      res.status(400).json({ error: 'ISBN is required' });
+      return;
+    }
+
+    const result = await metadataService.searchByIsbn(isbn);
+    if (!result) {
+      res.status(404).json({ error: 'No book found for this ISBN' });
+      return;
+    }
+
+    res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+// Refresh book metadata from external sources
+router.post('/books/:id/refresh', async (req: Request, res: Response) => {
+  try {
+    const id = parseIdParam(req.params['id']);
+    if (isNaN(id)) {
+      res.status(400).json({ error: 'Invalid book ID' });
+      return;
+    }
+
+    const book = getBookById(id);
+    if (!book) {
+      res.status(404).json({ error: 'Book not found' });
+      return;
+    }
+
+    // Try to auto-match based on existing metadata
+    const metadata = await metadataService.autoMatch(
+      book.title || '',
+      book.authors || undefined,
+      book.isbn || undefined
+    );
+
+    if (!metadata) {
+      res.status(404).json({ error: 'No metadata found for this book' });
+      return;
+    }
+
+    // Update book with found metadata
+    const result = updateBook(id, {
+      title: metadata.title,
+      authors: metadata.authors,
+      publisher: metadata.publisher,
+      publishDate: metadata.publishDate,
+      description: metadata.description,
+      isbn: metadata.isbn,
+      coverUrl: metadata.coverUrl,
+    });
+
+    if (!result.success) {
+      res.status(500).json({ error: result.error });
+      return;
+    }
+
+    res.json({
+      book: result.book,
+      source: metadata.source,
+      sourceId: metadata.sourceId,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+// Apply metadata from search result to a book
+router.post('/books/:id/apply-metadata', async (req: Request, res: Response) => {
+  try {
+    const id = parseIdParam(req.params['id']);
+    if (isNaN(id)) {
+      res.status(400).json({ error: 'Invalid book ID' });
+      return;
+    }
+
+    const book = getBookById(id);
+    if (!book) {
+      res.status(404).json({ error: 'Book not found' });
+      return;
+    }
+
+    const { source, sourceId } = req.body as {
+      source?: 'googlebooks' | 'openlibrary';
+      sourceId?: string;
+    };
+
+    if (!source || !sourceId) {
+      res.status(400).json({ error: 'source and sourceId are required' });
+      return;
+    }
+
+    // Fetch the metadata from the source
+    const metadata = await metadataService.getBookBySourceId(source, sourceId);
+    if (!metadata) {
+      res.status(404).json({ error: 'Metadata not found' });
+      return;
+    }
+
+    // Update book with the metadata
+    const result = updateBook(id, {
+      title: metadata.title,
+      authors: metadata.authors,
+      publisher: metadata.publisher,
+      publishDate: metadata.publishDate,
+      description: metadata.description,
+      isbn: metadata.isbn,
+      coverUrl: metadata.coverUrl,
+    });
+
+    if (!result.success) {
+      res.status(500).json({ error: result.error });
+      return;
+    }
+
+    res.json({
+      book: result.book,
+      source: metadata.source,
+      sourceId: metadata.sourceId,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ error: message });

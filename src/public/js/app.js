@@ -19,6 +19,10 @@ const icons = {
   refresh: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>',
   trash: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>',
   spinner: '<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>',
+  edit: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>',
+  externalLink: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>',
+  check: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>',
+  x: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>',
 };
 
 // Navigation items
@@ -45,6 +49,12 @@ const state = {
   books: { books: [], total: 0, page: 1, pageSize: 20, totalPages: 0 },
   booksSearch: '',
   booksLibraryFilter: '',
+  selectedBook: null,
+  editingBook: null,
+  metadataSearchResults: [],
+  metadataSearchLoading: false,
+  metadataSearchQuery: '',
+  metadataSearchBookId: null,
 };
 
 // Router
@@ -320,10 +330,18 @@ const pages = {
           </thead>
           <tbody>
             ${books.map(book => `
-              <tr class="border-b border-komgarr-border/50 hover:bg-komgarr-bg/50">
+              <tr class="border-b border-komgarr-border/50 hover:bg-komgarr-bg/50 cursor-pointer" data-book-id="${book.id}">
                 <td class="py-3">
-                  <div class="font-medium">${book.title || 'Untitled'}</div>
-                  <div class="text-xs text-komgarr-text-muted truncate max-w-xs">${book.filePath.split('/').pop()}</div>
+                  <div class="flex items-center gap-3">
+                    ${book.coverUrl
+                      ? `<img src="${book.coverUrl}" alt="" class="w-10 h-14 object-cover rounded">`
+                      : `<div class="w-10 h-14 bg-komgarr-border rounded flex items-center justify-center text-komgarr-text-muted">${icons.book}</div>`
+                    }
+                    <div>
+                      <div class="font-medium">${book.title || 'Untitled'}</div>
+                      <div class="text-xs text-komgarr-text-muted truncate max-w-xs">${book.filePath.split('/').pop()}</div>
+                    </div>
+                  </div>
                 </td>
                 <td class="py-3 text-komgarr-text-muted">${formatAuthors(book.authors)}</td>
                 <td class="py-3 text-komgarr-text-muted">${book.seriesName || '-'}</td>
@@ -345,6 +363,143 @@ const pages = {
         ` : ''}
       `;
 
+    // Book detail modal content
+    const bookDetailModal = state.selectedBook ? `
+      <div id="book-detail-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div class="bg-komgarr-surface rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+          <div class="flex justify-between items-center p-4 border-b border-komgarr-border">
+            <h3 class="text-lg font-semibold">Book Details</h3>
+            <button class="text-komgarr-text-muted hover:text-white" data-close-modal="book-detail-modal">&times;</button>
+          </div>
+          <div class="p-4 overflow-y-auto flex-1">
+            <div class="flex gap-4 mb-4">
+              ${state.selectedBook.coverUrl
+                ? `<img src="${state.selectedBook.coverUrl}" alt="" class="w-32 h-48 object-cover rounded flex-shrink-0">`
+                : `<div class="w-32 h-48 bg-komgarr-border rounded flex items-center justify-center text-komgarr-text-muted flex-shrink-0">${icons.book}</div>`
+              }
+              <div class="flex-1 min-w-0">
+                <h4 class="text-xl font-semibold mb-1">${state.selectedBook.title || 'Untitled'}</h4>
+                <p class="text-komgarr-text-muted mb-2">${formatAuthors(state.selectedBook.authors)}</p>
+                ${state.selectedBook.seriesName ? `<p class="text-sm text-komgarr-text-muted mb-2">Series: ${state.selectedBook.seriesName}${state.selectedBook.seriesNumber ? ` #${state.selectedBook.seriesNumber}` : ''}</p>` : ''}
+                ${state.selectedBook.isbn ? `<p class="text-sm text-komgarr-text-muted mb-2">ISBN: ${state.selectedBook.isbn}</p>` : ''}
+                ${state.selectedBook.publisher ? `<p class="text-sm text-komgarr-text-muted mb-2">Publisher: ${state.selectedBook.publisher}</p>` : ''}
+                ${state.selectedBook.publishDate ? `<p class="text-sm text-komgarr-text-muted mb-2">Published: ${state.selectedBook.publishDate}</p>` : ''}
+              </div>
+            </div>
+            ${state.selectedBook.description ? `<p class="text-sm text-komgarr-text-muted mb-4 line-clamp-4">${state.selectedBook.description}</p>` : ''}
+            <div class="text-xs text-komgarr-text-muted mb-4 truncate">
+              <span class="font-medium">File:</span> ${state.selectedBook.filePath}
+            </div>
+            <div class="flex gap-2 flex-wrap">
+              <button class="btn-primary text-sm" data-action="edit-book" data-book-id="${state.selectedBook.id}">${icons.edit} Edit Metadata</button>
+              <button class="btn-secondary text-sm" data-action="search-metadata" data-book-id="${state.selectedBook.id}">${icons.search} Search Metadata</button>
+              <button class="btn-secondary text-sm" data-action="refresh-metadata" data-book-id="${state.selectedBook.id}">${icons.refresh} Auto-Match</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    ` : '';
+
+    // Metadata search modal content
+    const metadataSearchModal = state.metadataSearchQuery ? `
+      <div id="metadata-search-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div class="bg-komgarr-surface rounded-lg shadow-xl w-full max-w-3xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+          <div class="flex justify-between items-center p-4 border-b border-komgarr-border">
+            <h3 class="text-lg font-semibold">Search Metadata</h3>
+            <button class="text-komgarr-text-muted hover:text-white" data-close-modal="metadata-search-modal">&times;</button>
+          </div>
+          <div class="p-4 overflow-y-auto flex-1">
+            <div class="flex gap-2 mb-4">
+              <input type="text" class="input flex-1" id="metadata-search-input" placeholder="Search by title, author, or ISBN..." value="${state.metadataSearchQuery}">
+              <button class="btn-primary" id="metadata-search-btn">${state.metadataSearchLoading ? icons.spinner : 'Search'}</button>
+            </div>
+            <div id="metadata-search-results">
+              ${state.metadataSearchLoading ? '<p class="text-center text-komgarr-text-muted">Searching...</p>' :
+                state.metadataSearchResults.length === 0 ? '<p class="text-center text-komgarr-text-muted">No results found. Try a different search.</p>' :
+                `<div class="space-y-2">
+                  ${state.metadataSearchResults.map(result => `
+                    <div class="flex gap-3 p-3 rounded border border-komgarr-border hover:border-komgarr-primary cursor-pointer" data-apply-metadata data-source="${result.source}" data-source-id="${result.sourceId}">
+                      ${result.coverUrl
+                        ? `<img src="${result.coverUrl}" alt="" class="w-12 h-18 object-cover rounded flex-shrink-0">`
+                        : `<div class="w-12 h-18 bg-komgarr-border rounded flex items-center justify-center text-komgarr-text-muted flex-shrink-0">${icons.book}</div>`
+                      }
+                      <div class="flex-1 min-w-0">
+                        <div class="font-medium truncate">${result.title}</div>
+                        <div class="text-sm text-komgarr-text-muted">${result.authors}</div>
+                        <div class="text-xs text-komgarr-text-muted mt-1">
+                          ${result.isbn ? `ISBN: ${result.isbn} · ` : ''}${result.publisher || ''}${result.publishDate ? ` (${result.publishDate})` : ''}
+                        </div>
+                        <div class="text-xs text-komgarr-primary mt-1">Source: ${result.source === 'googlebooks' ? 'Google Books' : 'OpenLibrary'}</div>
+                      </div>
+                      <button class="btn-primary text-sm self-center">${icons.check} Apply</button>
+                    </div>
+                  `).join('')}
+                </div>`
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+    ` : '';
+
+    // Edit book modal content
+    const editBookModal = state.editingBook ? `
+      <div id="edit-book-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div class="bg-komgarr-surface rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+          <div class="flex justify-between items-center p-4 border-b border-komgarr-border">
+            <h3 class="text-lg font-semibold">Edit Book Metadata</h3>
+            <button class="text-komgarr-text-muted hover:text-white" data-close-modal="edit-book-modal">&times;</button>
+          </div>
+          <form id="edit-book-form" class="p-4 overflow-y-auto flex-1 space-y-4">
+            <div>
+              <label class="block text-sm font-medium mb-1">Title</label>
+              <input type="text" class="input w-full" name="title" value="${state.editingBook.title || ''}">
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">Authors</label>
+              <input type="text" class="input w-full" name="authors" value="${formatAuthors(state.editingBook.authors)}" placeholder="Author 1, Author 2">
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium mb-1">Series Name</label>
+                <input type="text" class="input w-full" name="seriesName" value="${state.editingBook.seriesName || ''}">
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-1">Series #</label>
+                <input type="number" class="input w-full" name="seriesNumber" value="${state.editingBook.seriesNumber || ''}" step="0.1">
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">ISBN</label>
+              <input type="text" class="input w-full" name="isbn" value="${state.editingBook.isbn || ''}">
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium mb-1">Publisher</label>
+                <input type="text" class="input w-full" name="publisher" value="${state.editingBook.publisher || ''}">
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-1">Publish Date</label>
+                <input type="text" class="input w-full" name="publishDate" value="${state.editingBook.publishDate || ''}" placeholder="YYYY-MM-DD">
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">Description</label>
+              <textarea class="input w-full h-24" name="description">${state.editingBook.description || ''}</textarea>
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">Cover URL</label>
+              <input type="url" class="input w-full" name="coverUrl" value="${state.editingBook.coverUrl || ''}">
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+              <button type="button" class="btn-secondary" data-close-modal="edit-book-modal">Cancel</button>
+              <button type="submit" class="btn-primary">Save Changes</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    ` : '';
+
     return `
       <div class="space-y-6">
         ${pageHeader('Books', `
@@ -357,6 +512,9 @@ const pages = {
 
         <div class="card">${booksHtml}</div>
       </div>
+      ${bookDetailModal}
+      ${metadataSearchModal}
+      ${editBookModal}
     `;
   },
 
@@ -510,7 +668,12 @@ function attachEventListeners() {
   document.querySelectorAll('[data-close-modal]').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const modalId = e.currentTarget.dataset.closeModal;
-      document.getElementById(modalId)?.classList.add('hidden');
+      // For state-driven modals, use closeModal helper
+      if (['book-detail-modal', 'metadata-search-modal', 'edit-book-modal'].includes(modalId)) {
+        closeModal(modalId);
+      } else {
+        document.getElementById(modalId)?.classList.add('hidden');
+      }
     });
   });
 
@@ -619,6 +782,198 @@ function attachEventListeners() {
       }
     });
   });
+
+  // Book row clicks - open detail modal
+  document.querySelectorAll('[data-book-id]').forEach(row => {
+    if (row.tagName === 'TR') {
+      row.addEventListener('click', async (e) => {
+        const bookId = parseInt(e.currentTarget.dataset.bookId);
+        try {
+          const book = await api.getBook(bookId);
+          state.selectedBook = book;
+          render();
+        } catch (error) {
+          alert(`Error loading book: ${error.message}`);
+        }
+      });
+    }
+  });
+
+  // Edit book button
+  document.querySelectorAll('[data-action="edit-book"]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (state.selectedBook) {
+        state.editingBook = { ...state.selectedBook };
+        state.selectedBook = null;
+        render();
+      }
+    });
+  });
+
+  // Search metadata button
+  document.querySelectorAll('[data-action="search-metadata"]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (state.selectedBook) {
+        state.metadataSearchBookId = state.selectedBook.id;
+        state.metadataSearchQuery = state.selectedBook.title || '';
+        state.metadataSearchResults = [];
+        state.selectedBook = null;
+        render();
+        // Auto-search
+        performMetadataSearch();
+      }
+    });
+  });
+
+  // Refresh/auto-match metadata button
+  document.querySelectorAll('[data-action="refresh-metadata"]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const bookId = state.selectedBook?.id;
+      if (!bookId) return;
+
+      const originalHtml = e.currentTarget.innerHTML;
+      e.currentTarget.innerHTML = `${icons.spinner} Matching...`;
+      e.currentTarget.disabled = true;
+
+      try {
+        const result = await api.refreshBookMetadata(bookId);
+        state.selectedBook = result.book;
+        alert(`Metadata updated from ${result.source === 'googlebooks' ? 'Google Books' : 'OpenLibrary'}`);
+        await loadBooks();
+        render();
+      } catch (error) {
+        alert(`Error: ${error.message}`);
+        e.currentTarget.innerHTML = originalHtml;
+        e.currentTarget.disabled = false;
+      }
+    });
+  });
+
+  // Metadata search input
+  const metadataSearchInput = document.getElementById('metadata-search-input');
+  if (metadataSearchInput) {
+    metadataSearchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        state.metadataSearchQuery = e.target.value;
+        performMetadataSearch();
+      }
+    });
+  }
+
+  // Metadata search button
+  const metadataSearchBtn = document.getElementById('metadata-search-btn');
+  if (metadataSearchBtn) {
+    metadataSearchBtn.addEventListener('click', () => {
+      const input = document.getElementById('metadata-search-input');
+      if (input) {
+        state.metadataSearchQuery = input.value;
+        performMetadataSearch();
+      }
+    });
+  }
+
+  // Apply metadata buttons
+  document.querySelectorAll('[data-apply-metadata]').forEach(el => {
+    el.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const source = e.currentTarget.dataset.source;
+      const sourceId = e.currentTarget.dataset.sourceId;
+
+      if (!state.metadataSearchBookId || !source || !sourceId) return;
+
+      try {
+        const result = await api.applyMetadata(state.metadataSearchBookId, source, sourceId);
+        alert('Metadata applied successfully!');
+        state.metadataSearchQuery = '';
+        state.metadataSearchResults = [];
+        state.metadataSearchBookId = null;
+        await loadBooks();
+        render();
+      } catch (error) {
+        alert(`Error applying metadata: ${error.message}`);
+      }
+    });
+  });
+
+  // Edit book form
+  const editBookForm = document.getElementById('edit-book-form');
+  if (editBookForm) {
+    editBookForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!state.editingBook) return;
+
+      const formData = new FormData(e.target);
+      const updates = {
+        title: formData.get('title'),
+        authors: formData.get('authors'),
+        seriesName: formData.get('seriesName') || null,
+        seriesNumber: formData.get('seriesNumber') ? parseFloat(formData.get('seriesNumber')) : null,
+        isbn: formData.get('isbn') || null,
+        publisher: formData.get('publisher') || null,
+        publishDate: formData.get('publishDate') || null,
+        description: formData.get('description') || null,
+        coverUrl: formData.get('coverUrl') || null,
+      };
+
+      try {
+        await api.updateBook(state.editingBook.id, updates);
+        state.editingBook = null;
+        await loadBooks();
+        render();
+      } catch (error) {
+        alert(`Error updating book: ${error.message}`);
+      }
+    });
+  }
+
+  // Close modals when clicking backdrop
+  ['book-detail-modal', 'metadata-search-modal', 'edit-book-modal'].forEach(modalId => {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          closeModal(modalId);
+        }
+      });
+    }
+  });
+}
+
+// Close modal helper
+function closeModal(modalId) {
+  if (modalId === 'book-detail-modal') {
+    state.selectedBook = null;
+  } else if (modalId === 'metadata-search-modal') {
+    state.metadataSearchQuery = '';
+    state.metadataSearchResults = [];
+    state.metadataSearchBookId = null;
+  } else if (modalId === 'edit-book-modal') {
+    state.editingBook = null;
+  }
+  render();
+}
+
+// Perform metadata search
+async function performMetadataSearch() {
+  if (!state.metadataSearchQuery.trim()) return;
+
+  state.metadataSearchLoading = true;
+  render();
+
+  try {
+    const result = await api.searchBooks(state.metadataSearchQuery);
+    state.metadataSearchResults = result.results || [];
+  } catch (error) {
+    alert(`Search error: ${error.message}`);
+    state.metadataSearchResults = [];
+  } finally {
+    state.metadataSearchLoading = false;
+    render();
+  }
 }
 
 // Action handlers

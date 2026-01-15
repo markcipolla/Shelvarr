@@ -180,8 +180,23 @@ class ApiClient {
   }
 
   // Search (external sources)
-  searchBooks(query) {
-    return this.request(`/search/books?q=${encodeURIComponent(query)}`);
+  searchBooks(query, sources = null) {
+    let url = `/search/books?q=${encodeURIComponent(query)}`;
+    if (sources) {
+      url += `&sources=${sources.join(',')}`;
+    }
+    return this.request(url);
+  }
+
+  searchByIsbn(isbn) {
+    return this.request(`/search/isbn/${encodeURIComponent(isbn)}`);
+  }
+
+  applyMetadata(bookId, source, sourceId) {
+    return this.request(`/books/${bookId}/apply-metadata`, {
+      method: 'POST',
+      body: { source, sourceId },
+    });
   }
 }
 
