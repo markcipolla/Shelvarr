@@ -4,43 +4,47 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-// Set test database URL before importing db module
-process.env['DATABASE_URL'] = process.env['TEST_DATABASE_URL'] ||
-  'postgresql://shelvarr_test:shelvarr_test@localhost:5433/shelvarr_test';
+// Set test database path before importing db module
+const testDir = mkdtempSync(join(tmpdir(), 'shelvarr-scanner-test-'));
+process.env['DATA_DIR'] = testDir;
+process.env['DB_PATH'] = join(testDir, 'test.db');
 
-import { initDatabase, closeDatabase, getPool } from '../../src/db/index.js';
+import { initDatabase, closeDatabase, getDb } from '../../src/db/index.js';
 import { createLibrary, deleteLibrary } from '../../src/services/library/index.js';
 import { scanLibrary, getBooks } from '../../src/services/scanner/index.js';
 
 describe('Scanner Service', () => {
-  let tempDir: string;
   let libraryPath: string;
 
-  before(async () => {
-    // Create temp directory for test library files
-    tempDir = mkdtempSync(join(tmpdir(), 'shelvarr-scanner-test-'));
-    libraryPath = join(tempDir, 'test-library');
+  before(() => {
+    // Create library path inside test dir
+    libraryPath = join(testDir, 'test-library');
     mkdirSync(libraryPath);
 
     // Initialize database
-    await initDatabase();
+    initDatabase();
 
     // Clean up any existing test data
-    const pool = getPool();
-    await pool.query(`
-      TRUNCATE TABLE downloads, author_works, authors, book_series, series, tasks, books, libraries, settings
-      RESTART IDENTITY CASCADE
+    const db = getDb();
+    db.exec(`
+      DELETE FROM downloads;
+      DELETE FROM author_works;
+      DELETE FROM authors;
+      DELETE FROM book_series;
+      DELETE FROM series;
+      DELETE FROM tasks;
+      DELETE FROM books;
+      DELETE FROM libraries;
+      DELETE FROM settings;
     `);
   });
 
-  after(async () => {
+  after(() => {
     // Close database
-    await closeDatabase();
+    closeDatabase();
 
     // Cleanup temp directory
-    if (tempDir) {
-      rmSync(tempDir, { recursive: true, force: true });
-    }
+    rmSync(testDir, { recursive: true, force: true });
   });
 
   describe('scanLibrary', () => {

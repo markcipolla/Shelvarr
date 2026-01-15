@@ -1,6 +1,9 @@
 # Build stage
 FROM node:20-alpine AS builder
 
+# Install build dependencies for better-sqlite3
+RUN apk add --no-cache python3 make g++
+
 WORKDIR /app
 
 COPY package*.json ./
@@ -13,6 +16,9 @@ RUN npm run build
 
 # Production stage
 FROM node:20-alpine
+
+# Install runtime dependencies for better-sqlite3
+RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 

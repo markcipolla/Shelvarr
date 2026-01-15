@@ -26,6 +26,7 @@ import {
 } from '../services/scanner/index.js';
 import * as metadataService from '../services/metadata/index.js';
 import * as organizerService from '../services/organizer/index.js';
+import { komgaClient } from '../services/komga/index.js';
 import type { HealthResponse, Settings } from '../types/index.js';
 
 const router = Router();
@@ -569,10 +570,11 @@ router.post('/organize/preview', async (req: Request, res: Response) => {
 
 router.post('/organize/apply', async (req: Request, res: Response) => {
   try {
-    const { libraryId, template, dryRun } = req.body as {
+    const { libraryId, template, dryRun, triggerKomgaScan } = req.body as {
       libraryId?: number;
       template?: string;
       dryRun?: boolean;
+      triggerKomgaScan?: boolean;
     };
 
     if (!libraryId) {
@@ -581,7 +583,22 @@ router.post('/organize/apply', async (req: Request, res: Response) => {
     }
 
     const result = await organizerService.applyReorganization(libraryId, template, dryRun);
-    res.json(result);
+
+    // Trigger Komga scan if requested and files were moved
+    let komgaScanResult: { triggered: boolean; libraryId?: string; error?: string } | undefined;
+    if (triggerKomgaScan && !dryRun && result.moved > 0 && komgaClient.isConfigured()) {
+      const library = await getLibraryById(libraryId);
+      if (library) {
+        const scanResult = await komgaClient.scanLibraryByPath(library.path);
+        komgaScanResult = {
+          triggered: scanResult.success,
+          libraryId: scanResult.libraryId,
+          error: scanResult.error,
+        };
+      }
+    }
+
+    res.json({ ...result, komgaScan: komgaScanResult });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ error: message });
@@ -636,6 +653,109 @@ router.get('/browse', (req: Request, res: Response) => {
       parent: absPath !== '/' ? dirname(absPath) : null,
       directories,
     });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+// Komga integration endpoints
+router.get('/komga/status', async (_req: Request, res: Response) => {
+  try {
+    if (!komgaClient.isConfigured()) {
+      res.json({
+        configured: false,
+        connected: false,
+        message: 'Komga not configured. Set KOMGA_URL, KOMGA_USERNAME, and KOMGA_PASSWORD environment variables.',
+      });
+      return;
+    }
+
+    const status = await komgaClient.testConnection();
+    res.json({
+      configured: true,
+      connected: status.connected,
+      serverVersion: status.serverVersion,
+      error: status.error,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+router.get('/komga/libraries', async (_req: Request, res: Response) => {
+  try {
+    if (!komgaClient.isConfigured()) {
+      res.status(400).json({ error: 'Komga not configured' });
+      return;
+    }
+
+    const libraries = await komgaClient.getLibraries();
+    res.json({ libraries });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+router.post('/komga/libraries/:id/scan', async (req: Request, res: Response) => {
+  try {
+    if (!komgaClient.isConfigured()) {
+      res.status(400).json({ error: 'Komga not configured' });
+      return;
+    }
+
+    const idParam = req.params['id'];
+    const id = Array.isArray(idParam) ? idParam[0] : idParam;
+    if (!id) {
+      res.status(400).json({ error: 'Library ID is required' });
+      return;
+    }
+
+    await komgaClient.scanLibrary(id);
+    res.json({ success: true, message: `Scan triggered for library ${id}` });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+router.post('/komga/scan-all', async (_req: Request, res: Response) => {
+  try {
+    if (!komgaClient.isConfigured()) {
+      res.status(400).json({ error: 'Komga not configured' });
+      return;
+    }
+
+    await komgaClient.scanAllLibraries();
+    res.json({ success: true, message: 'Scan triggered for all libraries' });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+// Scan Komga library by path (used after file reorganization)
+router.post('/komga/scan-path', async (req: Request, res: Response) => {
+  try {
+    if (!komgaClient.isConfigured()) {
+      res.status(400).json({ error: 'Komga not configured' });
+      return;
+    }
+
+    const { path } = req.body as { path?: string };
+    if (!path) {
+      res.status(400).json({ error: 'Path is required' });
+      return;
+    }
+
+    const result = await komgaClient.scanLibraryByPath(path);
+    if (result.success) {
+      res.json({ success: true, libraryId: result.libraryId });
+    } else {
+      res.status(404).json({ success: false, error: result.error });
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ error: message });

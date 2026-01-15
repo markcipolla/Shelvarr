@@ -198,6 +198,34 @@ class ApiClient {
       body: { source, sourceId },
     });
   }
+
+  // Komga integration
+  getKomgaStatus() {
+    return this.request('/komga/status');
+  }
+
+  getKomgaLibraries() {
+    return this.request('/komga/libraries');
+  }
+
+  scanKomgaLibrary(id) {
+    return this.request(`/komga/libraries/${id}/scan`, {
+      method: 'POST',
+    });
+  }
+
+  scanAllKomgaLibraries() {
+    return this.request('/komga/scan-all', {
+      method: 'POST',
+    });
+  }
+
+  scanKomgaByPath(path) {
+    return this.request('/komga/scan-path', {
+      method: 'POST',
+      body: { path },
+    });
+  }
 }
 
 export const api = new ApiClient();

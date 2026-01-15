@@ -181,13 +181,13 @@ export async function previewReorganization(
   template: string = DEFAULT_TEMPLATE
 ): Promise<ReorgPreviewItem[]> {
   // Get library path
-  const library = await queryOne<{ path: string }>('SELECT path FROM libraries WHERE id = $1', [libraryId]);
+  const library = await queryOne<{ path: string }>('SELECT path FROM libraries WHERE id = ?', [libraryId]);
   if (!library) {
     throw new Error('Library not found');
   }
 
   // Get all books in library
-  const books = await query<Book>('SELECT * FROM books WHERE library_id = $1', [libraryId]);
+  const books = await query<Book>('SELECT * FROM books WHERE library_id = ?', [libraryId]);
 
   const preview: ReorgPreviewItem[] = [];
 
@@ -268,7 +268,7 @@ export async function applyReorganization(
 
         // Update database
         await query(
-          'UPDATE books SET file_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+          'UPDATE books SET file_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
           [item.newPath, item.bookId]
         );
       }
@@ -313,12 +313,12 @@ export function calculateFileHash(filePath: string): string {
  * Update file hash for a book
  */
 export async function updateBookHash(bookId: number): Promise<string | null> {
-  const book = await queryOne<Book>('SELECT file_path FROM books WHERE id = $1', [bookId]);
+  const book = await queryOne<Book>('SELECT file_path FROM books WHERE id = ?', [bookId]);
   if (!book) return null;
 
   const hash = calculateFileHash(book.filePath);
   if (hash) {
-    await query('UPDATE books SET file_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [hash, bookId]);
+    await query('UPDATE books SET file_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [hash, bookId]);
   }
 
   return hash;
@@ -332,7 +332,7 @@ export async function findDuplicatesByHash(libraryId?: number): Promise<Duplicat
   let booksToHash: Book[];
   if (libraryId) {
     booksToHash = await query<Book>(
-      'SELECT id, file_path FROM books WHERE library_id = $1 AND (file_hash IS NULL OR file_hash = \'\')',
+      'SELECT id, file_path FROM books WHERE library_id = ? AND (file_hash IS NULL OR file_hash = \'\')',
       [libraryId]
     );
   } else {
@@ -352,7 +352,7 @@ export async function findDuplicatesByHash(libraryId?: number): Promise<Duplicat
     duplicateHashes = await query<{ file_hash: string; count: string }>(
       `SELECT file_hash, COUNT(*) as count
        FROM books
-       WHERE library_id = $1 AND file_hash IS NOT NULL AND file_hash != ''
+       WHERE library_id = ? AND file_hash IS NOT NULL AND file_hash != ''
        GROUP BY file_hash
        HAVING COUNT(*) > 1`,
       [libraryId]
@@ -371,7 +371,7 @@ export async function findDuplicatesByHash(libraryId?: number): Promise<Duplicat
 
   for (const { file_hash } of duplicateHashes) {
     const books = await query<Book>(
-      'SELECT * FROM books WHERE file_hash = $1',
+      'SELECT * FROM books WHERE file_hash = ?',
       [file_hash]
     );
 
@@ -459,7 +459,7 @@ export async function findDuplicatesBySimilarity(
 ): Promise<DuplicateGroup[]> {
   let books: Book[];
   if (libraryId) {
-    books = await query<Book>('SELECT * FROM books WHERE library_id = $1', [libraryId]);
+    books = await query<Book>('SELECT * FROM books WHERE library_id = ?', [libraryId]);
   } else {
     books = await query<Book>('SELECT * FROM books');
   }
@@ -510,7 +510,7 @@ export async function detectSeries(libraryId?: number): Promise<SeriesGroup[]> {
     seriesQuery = `
       SELECT series_name, COUNT(*) as book_count
       FROM books
-      WHERE library_id = $1 AND series_name IS NOT NULL AND series_name != ''
+      WHERE library_id = ? AND series_name IS NOT NULL AND series_name != ''
       GROUP BY series_name
       ORDER BY series_name
     `;
@@ -534,12 +534,12 @@ export async function detectSeries(libraryId?: number): Promise<SeriesGroup[]> {
     let books: Book[];
     if (libraryId) {
       books = await query<Book>(
-        'SELECT * FROM books WHERE library_id = $1 AND series_name = $2 ORDER BY series_number',
+        'SELECT * FROM books WHERE library_id = ? AND series_name = ? ORDER BY series_number',
         [libraryId, series_name]
       );
     } else {
       books = await query<Book>(
-        'SELECT * FROM books WHERE series_name = $1 ORDER BY series_number',
+        'SELECT * FROM books WHERE series_name = ? ORDER BY series_number',
         [series_name]
       );
     }

@@ -6,12 +6,13 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-// Set test database URL before importing db module
-process.env['DATABASE_URL'] = process.env['TEST_DATABASE_URL'] ||
-  'postgresql://shelvarr_test:shelvarr_test@localhost:5433/shelvarr_test';
+// Set test database path before importing db module
+const testDir = mkdtempSync(join(tmpdir(), 'shelvarr-lib-test-'));
+process.env['DATA_DIR'] = testDir;
+process.env['DB_PATH'] = join(testDir, 'test.db');
 
 import apiRoutes from '../../src/routes/index.js';
-import { initDatabase, closeDatabase, getPool } from '../../src/db/index.js';
+import { initDatabase, closeDatabase, getDb } from '../../src/db/index.js';
 
 interface ApiResponse<T = unknown> {
   status: number;
@@ -21,23 +22,28 @@ interface ApiResponse<T = unknown> {
 describe('Library API Integration Tests', () => {
   let server: Server;
   let baseUrl: string;
-  let tempDir: string;
   let libraryPath: string;
 
-  before(async () => {
-    // Create temp directory for test library files
-    tempDir = mkdtempSync(join(tmpdir(), 'shelvarr-lib-test-'));
-    libraryPath = join(tempDir, 'test-library');
+  before(() => {
+    // Create library path inside test dir
+    libraryPath = join(testDir, 'test-library');
     mkdirSync(libraryPath);
 
     // Initialize database
-    await initDatabase();
+    initDatabase();
 
     // Clean up any existing test data
-    const pool = getPool();
-    await pool.query(`
-      TRUNCATE TABLE downloads, author_works, authors, book_series, series, tasks, books, libraries, settings
-      RESTART IDENTITY CASCADE
+    const db = getDb();
+    db.exec(`
+      DELETE FROM downloads;
+      DELETE FROM author_works;
+      DELETE FROM authors;
+      DELETE FROM book_series;
+      DELETE FROM series;
+      DELETE FROM tasks;
+      DELETE FROM books;
+      DELETE FROM libraries;
+      DELETE FROM settings;
     `);
 
     // Create test app
@@ -46,25 +52,19 @@ describe('Library API Integration Tests', () => {
     app.use('/api', apiRoutes);
 
     // Start server
-    await new Promise<void>((resolve) => {
-      server = app.listen(0, () => {
-        const addr = server.address();
-        if (addr && typeof addr === 'object') {
-          baseUrl = `http://localhost:${addr.port}`;
-        }
-        resolve();
-      });
-    });
+    server = app.listen(0);
+    const addr = server.address();
+    if (addr && typeof addr === 'object') {
+      baseUrl = `http://localhost:${addr.port}`;
+    }
   });
 
-  after(async () => {
+  after(() => {
     if (server) {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      server.close();
     }
-    await closeDatabase();
-    if (tempDir) {
-      rmSync(tempDir, { recursive: true, force: true });
-    }
+    closeDatabase();
+    rmSync(testDir, { recursive: true, force: true });
   });
 
   async function fetchApi<T = unknown>(
@@ -143,7 +143,6 @@ describe('Library API Integration Tests', () => {
 
   describe('GET /api/libraries/:id', () => {
     it('should get library by id', async () => {
-      // Get an existing library
       const listRes = await fetchApi<{ libraries: Array<{ id: number }> }>('/libraries');
       const libId = listRes.data.libraries[0]?.id;
 
@@ -165,10 +164,8 @@ describe('Library API Integration Tests', () => {
 
   describe('POST /api/libraries/:id/scan', () => {
     it('should scan library and return results', async () => {
-      // Create test files
       writeFileSync(join(libraryPath, 'test.epub'), 'content');
 
-      // Get library id
       const listRes = await fetchApi<{ libraries: Array<{ id: number }> }>('/libraries');
       const libId = listRes.data.libraries[0]?.id;
 
@@ -225,8 +222,7 @@ describe('Library API Integration Tests', () => {
 
   describe('DELETE /api/libraries/:id', () => {
     it('should delete library', async () => {
-      // Create a new library to delete
-      const newPath = join(tempDir, 'to-delete');
+      const newPath = join(testDir, 'to-delete');
       mkdirSync(newPath);
 
       const createRes = await fetchApi<{ id: number }>('/libraries', {
@@ -242,7 +238,6 @@ describe('Library API Integration Tests', () => {
       assert.strictEqual(status, 200);
       assert.strictEqual(data.success, true);
 
-      // Verify it's gone
       const getRes = await fetchApi(`/libraries/${createRes.data.id}`);
       assert.strictEqual(getRes.status, 404);
     });

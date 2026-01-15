@@ -26,12 +26,12 @@ export async function getAllLibraries(): Promise<Library[]> {
 }
 
 export async function getLibraryById(id: number): Promise<Library | null> {
-  const row = await queryOne<LibraryRow>('SELECT * FROM libraries WHERE id = $1', [id]);
+  const row = await queryOne<LibraryRow>('SELECT * FROM libraries WHERE id = ?', [id]);
   return row ? rowToLibrary(row) : null;
 }
 
 export async function getLibraryByPath(path: string): Promise<Library | null> {
-  const row = await queryOne<LibraryRow>('SELECT * FROM libraries WHERE path = $1', [path]);
+  const row = await queryOne<LibraryRow>('SELECT * FROM libraries WHERE path = ?', [path]);
   return row ? rowToLibrary(row) : null;
 }
 
@@ -78,7 +78,7 @@ export async function createLibrary(input: CreateLibraryInput): Promise<CreateLi
 
   try {
     const row = await insertReturning<LibraryRow>(
-      'INSERT INTO libraries (name, path, komga_library_id) VALUES ($1, $2, $3) RETURNING *',
+      'INSERT INTO libraries (name, path, komga_library_id) VALUES (?, ?, ?) RETURNING *',
       [name.trim(), path, komgaLibraryId || null]
     );
 
@@ -109,7 +109,7 @@ export async function updateLibrary(
 
   try {
     await execute(
-      'UPDATE libraries SET name = $1, komga_library_id = $2 WHERE id = $3',
+      'UPDATE libraries SET name = ?, komga_library_id = ? WHERE id = ?',
       [name, komgaLibraryId, id]
     );
 
@@ -129,7 +129,7 @@ export async function deleteLibrary(id: number): Promise<{ success: boolean; err
 
   try {
     // Books will be cascade deleted due to FK constraint
-    await execute('DELETE FROM libraries WHERE id = $1', [id]);
+    await execute('DELETE FROM libraries WHERE id = ?', [id]);
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -138,6 +138,6 @@ export async function deleteLibrary(id: number): Promise<{ success: boolean; err
 }
 
 export async function getLibraryBookCount(id: number): Promise<number> {
-  const row = await queryOne<{ count: string }>('SELECT COUNT(*) as count FROM books WHERE library_id = $1', [id]);
+  const row = await queryOne<{ count: string }>('SELECT COUNT(*) as count FROM books WHERE library_id = ?', [id]);
   return parseInt(row?.count || '0', 10);
 }

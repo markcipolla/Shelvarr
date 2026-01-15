@@ -66,6 +66,10 @@ const state = {
   organizeLibraryId: null,
   organizeTemplate: '{author}/{title}',
   organizeLoading: false,
+  // Komga state
+  komgaStatus: null,
+  komgaTesting: false,
+  komgaLibraries: [],
 };
 
 // Router
@@ -89,6 +93,8 @@ async function loadPageData(page) {
       await loadSeries();
     } else if (page === 'duplicates') {
       await loadDuplicates();
+    } else if (page === 'settings') {
+      await loadKomgaStatus();
     }
   } catch (error) {
     console.error('Error loading page data:', error);
@@ -168,6 +174,66 @@ async function loadDuplicates() {
     console.error('Error loading duplicates:', error);
     state.duplicatesLoading = false;
     render();
+  }
+}
+
+async function loadKomgaStatus() {
+  if (!state.settings?._config?.komgaConfigured) {
+    return;
+  }
+
+  try {
+    state.komgaTesting = true;
+    render();
+
+    const status = await api.getKomgaStatus();
+    state.komgaStatus = status;
+
+    if (status.connected) {
+      const libResult = await api.getKomgaLibraries();
+      state.komgaLibraries = libResult.libraries || [];
+    }
+
+    state.komgaTesting = false;
+    render();
+  } catch (error) {
+    console.error('Error loading Komga status:', error);
+    state.komgaStatus = { connected: false, error: error.message };
+    state.komgaTesting = false;
+    render();
+  }
+}
+
+async function testKomgaConnection() {
+  try {
+    state.komgaTesting = true;
+    state.komgaStatus = null;
+    render();
+
+    const status = await api.getKomgaStatus();
+    state.komgaStatus = status;
+
+    if (status.connected) {
+      const libResult = await api.getKomgaLibraries();
+      state.komgaLibraries = libResult.libraries || [];
+    }
+
+    state.komgaTesting = false;
+    render();
+  } catch (error) {
+    console.error('Error testing Komga connection:', error);
+    state.komgaStatus = { connected: false, error: error.message };
+    state.komgaTesting = false;
+    render();
+  }
+}
+
+async function scanAllKomgaLibraries() {
+  try {
+    await api.scanAllKomgaLibraries();
+    alert('Scan triggered for all Komga libraries!');
+  } catch (error) {
+    alert(`Error triggering Komga scan: ${error.message}`);
   }
 }
 
@@ -828,28 +894,68 @@ const pages = {
     </div>
   `,
 
-  settings: () => `
+  settings: () => {
+    const komgaConfigured = state.settings?._config?.komgaConfigured || false;
+    const komgaStatus = state.komgaStatus;
+
+    return `
     <div class="space-y-6">
       ${pageHeader('Settings')}
 
       <div class="card">
         <h3 class="text-lg font-semibold mb-4">Komga Integration</h3>
         <div class="space-y-4">
-          <div>
-            <label class="block text-sm text-shelvarr-text-muted mb-1">Komga URL</label>
-            <input type="text" class="input" placeholder="http://localhost:25600" id="komga-url">
+          <div class="p-3 rounded-lg border ${komgaConfigured ? 'border-green-500/30 bg-green-500/10' : 'border-yellow-500/30 bg-yellow-500/10'}">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="font-medium ${komgaConfigured ? 'text-green-400' : 'text-yellow-400'}">
+                  ${komgaConfigured ? 'Komga Configured' : 'Komga Not Configured'}
+                </div>
+                <p class="text-sm text-shelvarr-text-muted mt-1">
+                  ${komgaConfigured
+                    ? 'Komga integration is configured via environment variables.'
+                    : 'Set KOMGA_URL, KOMGA_USERNAME, and KOMGA_PASSWORD environment variables.'}
+                </p>
+              </div>
+              ${komgaConfigured ? `
+                <button class="btn-secondary text-sm" id="test-komga-btn">
+                  ${state.komgaTesting ? icons.spinner + ' Testing...' : 'Test Connection'}
+                </button>
+              ` : ''}
+            </div>
+            ${komgaStatus ? `
+              <div class="mt-3 pt-3 border-t border-shelvarr-border">
+                <div class="flex items-center gap-2">
+                  <div class="w-2 h-2 rounded-full ${komgaStatus.connected ? 'bg-green-500' : 'bg-red-500'}"></div>
+                  <span class="text-sm ${komgaStatus.connected ? 'text-green-400' : 'text-red-400'}">
+                    ${komgaStatus.connected ? 'Connected to Komga' : 'Connection Failed'}
+                  </span>
+                </div>
+                ${komgaStatus.error ? `<p class="text-sm text-red-400 mt-1">${komgaStatus.error}</p>` : ''}
+                ${komgaStatus.connected && state.komgaLibraries?.length ? `
+                  <div class="mt-2">
+                    <span class="text-xs text-shelvarr-text-muted">Libraries: ${state.komgaLibraries.map(l => l.name).join(', ')}</span>
+                  </div>
+                ` : ''}
+              </div>
+            ` : ''}
           </div>
-          <div>
-            <label class="block text-sm text-shelvarr-text-muted mb-1">Username</label>
-            <input type="text" class="input" id="komga-username">
-          </div>
-          <div>
-            <label class="block text-sm text-shelvarr-text-muted mb-1">Password</label>
-            <input type="password" class="input" id="komga-password">
-          </div>
-          <div class="flex gap-2">
-            <button class="btn-primary">Save</button>
-            <button class="btn-secondary">Test Connection</button>
+
+          ${komgaConfigured && komgaStatus?.connected ? `
+            <div class="flex gap-2">
+              <button class="btn-primary" id="scan-all-komga-btn">
+                ${icons.refresh} Scan All Komga Libraries
+              </button>
+            </div>
+          ` : ''}
+
+          <div class="text-sm text-shelvarr-text-muted">
+            <p class="font-medium mb-2">Environment Variables:</p>
+            <code class="block bg-shelvarr-bg p-2 rounded text-xs">
+              KOMGA_URL=http://your-komga-server:25600<br>
+              KOMGA_USERNAME=your-username<br>
+              KOMGA_PASSWORD=your-password
+            </code>
           </div>
         </div>
       </div>
@@ -858,15 +964,29 @@ const pages = {
         <h3 class="text-lg font-semibold mb-4">File Organization</h3>
         <div class="space-y-4">
           <div>
-            <label class="block text-sm text-shelvarr-text-muted mb-1">Naming Template</label>
-            <input type="text" class="input" value="{author}/{series}/{title} ({year})" id="naming-template">
+            <label class="block text-sm text-shelvarr-text-muted mb-1">Default Naming Template</label>
+            <input type="text" class="input w-full" value="${state.organizeTemplate}" id="naming-template">
             <p class="text-xs text-shelvarr-text-muted mt-1">Variables: {author}, {title}, {series}, {series_number}, {year}, {isbn}</p>
           </div>
-          <button class="btn-primary">Save</button>
+          <button class="btn-primary" id="save-template-btn">Save Template</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 class="text-lg font-semibold mb-4">About</h3>
+        <div class="text-sm text-shelvarr-text-muted space-y-2">
+          <p><strong>Shelvarr</strong> v0.0.1</p>
+          <p>Self-hosted book/comic metadata management and file organization.</p>
+          <p>
+            <a href="https://github.com/markcipolla/shelvarr" target="_blank" class="text-shelvarr-primary hover:underline">
+              ${icons.externalLink} GitHub Repository
+            </a>
+          </p>
         </div>
       </div>
     </div>
-  `,
+  `;
+  },
 };
 
 // Main render function
@@ -1227,6 +1347,30 @@ function attachEventListeners() {
       });
     }
   });
+
+  // Settings page - Komga test connection
+  const testKomgaBtn = document.getElementById('test-komga-btn');
+  if (testKomgaBtn) {
+    testKomgaBtn.addEventListener('click', testKomgaConnection);
+  }
+
+  // Settings page - Scan all Komga libraries
+  const scanAllKomgaBtn = document.getElementById('scan-all-komga-btn');
+  if (scanAllKomgaBtn) {
+    scanAllKomgaBtn.addEventListener('click', scanAllKomgaLibraries);
+  }
+
+  // Settings page - Save template
+  const saveTemplateBtn = document.getElementById('save-template-btn');
+  if (saveTemplateBtn) {
+    saveTemplateBtn.addEventListener('click', () => {
+      const templateInput = document.getElementById('naming-template');
+      if (templateInput) {
+        state.organizeTemplate = templateInput.value;
+        alert('Template saved for this session.');
+      }
+    });
+  }
 }
 
 // Close modal helper

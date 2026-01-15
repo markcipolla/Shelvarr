@@ -36,9 +36,8 @@ describe('Config', () => {
     assert.ok(typeof config.rateLimits.openLibrary === 'number');
   });
 
-  it('should have a database URL', () => {
-    assert.ok(config.databaseUrl);
-    assert.ok(config.databaseUrl.startsWith('postgresql://'));
+  it('should have a database path', () => {
+    assert.ok(typeof config.dbPath === 'string');
   });
 
   it('should have a data directory', () => {

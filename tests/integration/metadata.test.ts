@@ -6,12 +6,13 @@ import { mkdirSync, rmSync, writeFileSync, mkdtempSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
-// Set test database URL before importing db module
-process.env['DATABASE_URL'] = process.env['TEST_DATABASE_URL'] ||
-  'postgresql://shelvarr_test:shelvarr_test@localhost:5433/shelvarr_test';
+// Set test database path before importing db module
+const testDir = mkdtempSync(join(tmpdir(), 'shelvarr-metadata-test-'));
+process.env['DATA_DIR'] = testDir;
+process.env['DB_PATH'] = join(testDir, 'test.db');
 
 import apiRoutes from '../../src/routes/index.js';
-import { initDatabase, closeDatabase, getPool } from '../../src/db/index.js';
+import { initDatabase, closeDatabase, getDb } from '../../src/db/index.js';
 
 interface ApiResponse<T = unknown> {
   status: number;
@@ -21,23 +22,28 @@ interface ApiResponse<T = unknown> {
 describe('Metadata API Integration Tests', () => {
   let server: Server;
   let baseUrl: string;
-  let tempDir: string;
   let testLibraryPath: string;
 
-  before(async () => {
+  before(() => {
     // Create temp directory for test library files
-    tempDir = mkdtempSync(join(tmpdir(), 'shelvarr-metadata-test-'));
-    testLibraryPath = join(tempDir, 'test-library');
+    testLibraryPath = join(testDir, 'test-library');
     mkdirSync(testLibraryPath, { recursive: true });
 
     // Initialize database
-    await initDatabase();
+    initDatabase();
 
     // Clean up any existing test data
-    const pool = getPool();
-    await pool.query(`
-      TRUNCATE TABLE downloads, author_works, authors, book_series, series, tasks, books, libraries, settings
-      RESTART IDENTITY CASCADE
+    const db = getDb();
+    db.exec(`
+      DELETE FROM downloads;
+      DELETE FROM author_works;
+      DELETE FROM authors;
+      DELETE FROM book_series;
+      DELETE FROM series;
+      DELETE FROM tasks;
+      DELETE FROM books;
+      DELETE FROM libraries;
+      DELETE FROM settings;
     `);
 
     // Create test app
@@ -46,25 +52,21 @@ describe('Metadata API Integration Tests', () => {
     app.use('/api', apiRoutes);
 
     // Start server on random port
-    await new Promise<void>((resolve) => {
-      server = app.listen(0, () => {
-        const addr = server.address();
-        if (addr && typeof addr === 'object') {
-          baseUrl = `http://localhost:${addr.port}`;
-        }
-        resolve();
-      });
-    });
+    server = app.listen(0);
+    const addr = server.address();
+    if (addr && typeof addr === 'object') {
+      baseUrl = `http://localhost:${addr.port}`;
+    }
 
     // Create test library with a book
     writeFileSync(join(testLibraryPath, 'Test Book.epub'), 'test content');
   });
 
-  after(async () => {
+  after(() => {
     // Cleanup
     server?.close();
-    await closeDatabase();
-    rmSync(tempDir, { recursive: true, force: true });
+    closeDatabase();
+    rmSync(testDir, { recursive: true, force: true });
   });
 
   // Helper to make requests

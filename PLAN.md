@@ -363,28 +363,28 @@ Each phase must include tests before marking complete:
 - [x] 2.5 Books UI page with pagination, search, and library filter
 - [x] 2.6 **Tests**: Unit (8 scanner), Integration (17 library/book APIs), E2E (14) - all passing
 
-### Phase 3: Metadata
-- [ ] 3.1 Google Books API integration
-- [ ] 3.2 OpenLibrary API integration
-- [ ] 3.3 Metadata search/match API
-- [ ] 3.4 Manual metadata editing API
-- [ ] 3.5 Metadata UI (search, match, edit)
-- [ ] 3.6 **Tests**: Unit tests for metadata services (mocked), integration tests for metadata APIs, E2E for metadata workflow
+### Phase 3: Metadata ✅ COMPLETE
+- [x] 3.1 Google Books API integration
+- [x] 3.2 OpenLibrary API integration
+- [x] 3.3 Metadata search/match API
+- [x] 3.4 Manual metadata editing API
+- [x] 3.5 Metadata UI (search, match, edit)
+- [x] 3.6 **Tests**: Unit tests for metadata services (mocked), integration tests for metadata APIs, E2E for metadata workflow
 
-### Phase 4: Organization
-- [ ] 4.1 File renaming service with templates
-- [ ] 4.2 Preview/apply reorganization API
-- [ ] 4.3 Duplicate detection service (hash + similarity)
-- [ ] 4.4 Series detection and grouping
-- [ ] 4.5 Organization UI (preview, apply, duplicates, series)
-- [ ] 4.6 **Tests**: Unit tests for renamer/duplicates/series, integration tests for organize APIs, E2E for organize workflow
+### Phase 4: Organization ✅ COMPLETE
+- [x] 4.1 File renaming service with templates
+- [x] 4.2 Preview/apply reorganization API
+- [x] 4.3 Duplicate detection service (hash + similarity)
+- [x] 4.4 Series detection and grouping
+- [x] 4.5 Organization UI (preview, apply, duplicates, series)
+- [x] 4.6 **Tests**: Unit tests for renamer/duplicates/series, integration tests for organize APIs, E2E for organize workflow
 
-### Phase 5: Komga Integration
-- [ ] 5.1 Komga API client
-- [ ] 5.2 Komga library sync
-- [ ] 5.3 Post-reorganization scan triggers
-- [ ] 5.4 Settings UI for Komga config
-- [ ] 5.5 **Tests**: Unit tests for Komga client (mocked), integration tests for Komga settings, E2E for Komga connection flow
+### Phase 5: Komga Integration ✅ COMPLETE
+- [x] 5.1 Komga API client
+- [x] 5.2 Komga library sync
+- [x] 5.3 Post-reorganization scan triggers
+- [x] 5.4 Settings UI for Komga config
+- [x] 5.5 **Tests**: Unit tests for Komga client (mocked), integration tests for Komga settings, E2E for Komga connection flow
 
 ### Phase 6: Background Jobs & Polish
 - [ ] 6.1 Background job queue implementation

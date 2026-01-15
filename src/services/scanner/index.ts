@@ -187,7 +187,7 @@ export async function scanLibrary(
 
   // Get existing books for this library
   const existingBooks = await query<{ id: number; file_path: string }>(
-    'SELECT id, file_path FROM books WHERE library_id = $1',
+    'SELECT id, file_path FROM books WHERE library_id = ?',
     [libraryId]
   );
 
@@ -214,7 +214,7 @@ export async function scanLibrary(
       if (existingPaths.has(filePath)) {
         // Update existing book
         await execute(
-          'UPDATE books SET file_size = $1, file_hash = $2, updated_at = CURRENT_TIMESTAMP WHERE file_path = $3',
+          'UPDATE books SET file_size = ?, file_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE file_path = ?',
           [fileSize, fileHash, filePath]
         );
         result.updated++;
@@ -222,7 +222,7 @@ export async function scanLibrary(
         // Add new book
         const parsed = parseFilename(filePath);
         await execute(
-          'INSERT INTO books (library_id, file_path, file_size, file_hash, title, authors) VALUES ($1, $2, $3, $4, $5, $6)',
+          'INSERT INTO books (library_id, file_path, file_size, file_hash, title, authors) VALUES (?, ?, ?, ?, ?, ?)',
           [libraryId, filePath, fileSize, fileHash, parsed.title, JSON.stringify(parsed.authors)]
         );
         result.added++;
@@ -236,7 +236,7 @@ export async function scanLibrary(
   // Remove books that no longer exist
   for (const book of existingBooks) {
     if (!foundPaths.has(book.file_path)) {
-      await execute('DELETE FROM books WHERE id = $1', [book.id]);
+      await execute('DELETE FROM books WHERE id = ?', [book.id]);
       result.removed++;
     }
   }
@@ -268,32 +268,30 @@ export async function getBooks(queryParams: BookQuery = {}): Promise<BookListRes
 
   let whereClause = 'WHERE 1=1';
   const params: unknown[] = [];
-  let paramIndex = 1;
 
   if (queryParams.libraryId) {
-    whereClause += ` AND library_id = $${paramIndex++}`;
+    whereClause += ' AND library_id = ?';
     params.push(queryParams.libraryId);
   }
 
   if (queryParams.search) {
-    whereClause += ` AND (title ILIKE $${paramIndex} OR authors ILIKE $${paramIndex} OR file_path ILIKE $${paramIndex})`;
-    paramIndex++;
+    whereClause += ' AND (title LIKE ? OR authors LIKE ? OR file_path LIKE ?)';
     const searchTerm = `%${queryParams.search}%`;
-    params.push(searchTerm);
+    params.push(searchTerm, searchTerm, searchTerm);
   }
 
   // Get total count
-  const countRow = await queryOne<{ count: string }>(
+  const countRow = queryOne<{ count: number }>(
     `SELECT COUNT(*) as count FROM books ${whereClause}`,
     params
   );
 
-  const total = parseInt(countRow?.count || '0', 10);
+  const total = countRow?.count || 0;
   const totalPages = Math.ceil(total / pageSize);
 
   // Get paginated results
-  const rows = await query<BookRow>(
-    `SELECT * FROM books ${whereClause} ORDER BY COALESCE(title, file_path) LIMIT $${paramIndex++} OFFSET $${paramIndex}`,
+  const rows = query<BookRow>(
+    `SELECT * FROM books ${whereClause} ORDER BY COALESCE(title, file_path) LIMIT ? OFFSET ?`,
     [...params, pageSize, offset]
   );
 
@@ -307,7 +305,7 @@ export async function getBooks(queryParams: BookQuery = {}): Promise<BookListRes
 }
 
 export async function getBookById(id: number): Promise<Book | null> {
-  const row = await queryOne<BookRow>('SELECT * FROM books WHERE id = $1', [id]);
+  const row = await queryOne<BookRow>('SELECT * FROM books WHERE id = ?', [id]);
   return row ? rowToBook(row) : null;
 }
 
@@ -322,42 +320,41 @@ export async function updateBook(
 
   const fields: string[] = [];
   const values: unknown[] = [];
-  let paramIndex = 1;
 
   if (updates.title !== undefined) {
-    fields.push(`title = $${paramIndex++}`);
+    fields.push('title = ?');
     values.push(updates.title);
   }
   if (updates.authors !== undefined) {
-    fields.push(`authors = $${paramIndex++}`);
+    fields.push('authors = ?');
     values.push(updates.authors);
   }
   if (updates.seriesName !== undefined) {
-    fields.push(`series_name = $${paramIndex++}`);
+    fields.push('series_name = ?');
     values.push(updates.seriesName);
   }
   if (updates.seriesNumber !== undefined) {
-    fields.push(`series_number = $${paramIndex++}`);
+    fields.push('series_number = ?');
     values.push(updates.seriesNumber);
   }
   if (updates.isbn !== undefined) {
-    fields.push(`isbn = $${paramIndex++}`);
+    fields.push('isbn = ?');
     values.push(updates.isbn);
   }
   if (updates.publisher !== undefined) {
-    fields.push(`publisher = $${paramIndex++}`);
+    fields.push('publisher = ?');
     values.push(updates.publisher);
   }
   if (updates.publishDate !== undefined) {
-    fields.push(`publish_date = $${paramIndex++}`);
+    fields.push('publish_date = ?');
     values.push(updates.publishDate);
   }
   if (updates.description !== undefined) {
-    fields.push(`description = $${paramIndex++}`);
+    fields.push('description = ?');
     values.push(updates.description);
   }
   if (updates.coverUrl !== undefined) {
-    fields.push(`cover_url = $${paramIndex++}`);
+    fields.push('cover_url = ?');
     values.push(updates.coverUrl);
   }
 
@@ -369,8 +366,8 @@ export async function updateBook(
   values.push(id);
 
   try {
-    await execute(
-      `UPDATE books SET ${fields.join(', ')} WHERE id = $${paramIndex}`,
+    execute(
+      `UPDATE books SET ${fields.join(', ')} WHERE id = ?`,
       values
     );
 
@@ -389,7 +386,7 @@ export async function deleteBook(id: number): Promise<{ success: boolean; error?
   }
 
   try {
-    await execute('DELETE FROM books WHERE id = $1', [id]);
+    await execute('DELETE FROM books WHERE id = ?', [id]);
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

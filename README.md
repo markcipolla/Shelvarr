@@ -20,11 +20,9 @@ A self-hosted *arr-style web application for book/comic metadata management and 
 Create a `docker-compose.yml` file:
 
 ```yaml
-version: '3.8'
-
 services:
   shelvarr:
-    image: ghcr.io/YOUR_USERNAME/shelvarr:latest
+    image: ghcr.io/markcipolla/shelvarr:latest
     container_name: shelvarr
     ports:
       - "3000:3000"
@@ -34,41 +32,19 @@ services:
       - /path/to/ebooks:/libraries/ebooks:rw
       - /path/to/comics:/libraries/comics:rw
     environment:
-      - DATABASE_URL=postgresql://shelvarr:shelvarr@postgres:5432/shelvarr
       # Optional Komga integration:
-      # - KOMGA_URL=http://komga:25600
-      # - KOMGA_USERNAME=admin
-      # - KOMGA_PASSWORD=secret
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-
-  postgres:
-    image: postgres:16-alpine
-    container_name: shelvarr-postgres
-    environment:
-      - POSTGRES_USER=shelvarr
-      - POSTGRES_PASSWORD=shelvarr
-      - POSTGRES_DB=shelvarr
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U shelvarr -d shelvarr"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - KOMGA_URL=http://your-komga-server:25600
+      - KOMGA_USERNAME=your-username
+      - KOMGA_PASSWORD=your-password
     restart: unless-stopped
 
 volumes:
   shelvarr_data:
-  postgres_data:
 ```
 
 Then run:
 
 ```bash
-# Replace YOUR_USERNAME with the GitHub username/org
 docker-compose up -d
 ```
 
@@ -99,21 +75,13 @@ npm run dev
 
 ### Running Tests
 
-Tests require a PostgreSQL database. Start the test database first:
-
 ```bash
-# Start test database
-docker compose -f docker-compose.test.yml up -d
-
 # Run unit + integration tests
 npm test
 
 # Run E2E tests (requires Playwright browsers)
 npx playwright install chromium
 npm run test:e2e
-
-# Stop test database when done
-docker compose -f docker-compose.test.yml down
 ```
 
 ## Configuration
@@ -123,8 +91,7 @@ docker compose -f docker-compose.test.yml down
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | 3000 | Server port |
-| `DATABASE_URL` | postgresql://shelvarr:shelvarr@localhost:5432/shelvarr | PostgreSQL connection string |
-| `DATA_DIR` | ./data | Data directory for app files |
+| `DATA_DIR` | ./data | Data directory for SQLite database and app files |
 | `LIBRARY_ROOT` | /libraries | Base path for library mounts |
 | `KOMGA_URL` | - | Komga server URL |
 | `KOMGA_USERNAME` | - | Komga username |
@@ -135,9 +102,11 @@ docker compose -f docker-compose.test.yml down
 See [PLAN.md](./PLAN.md) for detailed implementation progress.
 
 ### Completed
-- **Phase 1**: Foundation - Express.js, PostgreSQL, TypeScript, Tailwind CSS
+- **Phase 1**: Foundation - Express.js, SQLite, TypeScript, Tailwind CSS
 - **Phase 2**: Library management, file scanner, book listing
 - **Phase 3**: Metadata fetching from Google Books and OpenLibrary
+- **Phase 4**: File organization, duplicate detection, series grouping
+- **Phase 5**: Komga integration
 
 ## License
 

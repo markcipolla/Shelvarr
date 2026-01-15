@@ -55,20 +55,20 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 // Graceful shutdown
-async function shutdown(): Promise<void> {
+function shutdown(): void {
   console.log('\nShutting down...');
-  await closeDatabase();
+  closeDatabase();
   process.exit(0);
 }
 
-process.on('SIGINT', () => void shutdown());
-process.on('SIGTERM', () => void shutdown());
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
 
 // Start server
-async function start(): Promise<void> {
+function start(): void {
   try {
     // Initialize database
-    await initDatabase();
+    initDatabase();
 
     // Start listening
     app.listen(config.port, () => {

@@ -135,8 +135,7 @@ export interface AppConfig {
   port: number;
   dataDir: string;
   libraryRoot: string;
-  databaseUrl: string;
-  dbPath: string; // deprecated
+  dbPath: string;
   komga: KomgaConfig;
   supportedExtensions: string[];
   rateLimits: {

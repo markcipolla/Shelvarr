@@ -15,11 +15,8 @@ const config: AppConfig = {
   // Root path for library mounts
   libraryRoot: process.env['LIBRARY_ROOT'] || '/libraries',
 
-  // PostgreSQL connection URL
-  databaseUrl: process.env['DATABASE_URL'] || 'postgresql://shelvarr:shelvarr@localhost:5432/shelvarr',
-
-  // Legacy SQLite path (deprecated)
-  dbPath: '',
+  // SQLite database path
+  dbPath: process.env['DB_PATH'] || '',
 
   // Komga integration (optional)
   komga: {
