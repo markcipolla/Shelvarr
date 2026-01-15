@@ -368,10 +368,24 @@ router.post('/books/:id/refresh', async (req: Request, res: Response) => {
       return;
     }
 
+    // Parse authors from JSON string
+    let authorString: string | undefined;
+    if (book.authors) {
+      try {
+        const authors = JSON.parse(book.authors);
+        if (Array.isArray(authors) && authors.length > 0) {
+          authorString = authors[0]; // Use first author for search
+        }
+      } catch {
+        // If not valid JSON, use as-is
+        authorString = book.authors;
+      }
+    }
+
     // Try to auto-match based on existing metadata
     const metadata = await metadataService.autoMatch(
       book.title || '',
-      book.authors || undefined,
+      authorString,
       book.isbn || undefined
     );
 
