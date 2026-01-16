@@ -151,6 +151,8 @@ export interface Settings {
     libraryRoot: string;
     supportedExtensions: string[];
     komgaConfigured: boolean;
+    komgaUrl?: string | null;
+    komgaUsername?: string | null;
   };
 }
 
