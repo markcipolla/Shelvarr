@@ -55,6 +55,7 @@ const state = {
   metadataSearchLoading: false,
   metadataSearchQuery: '',
   metadataSearchBookId: null,
+  metadataSearchRequestId: 0,
   // Series state
   series: [],
   seriesLoading: false,
@@ -1787,6 +1788,7 @@ function closeModal(modalId) {
     state.metadataSearchQuery = '';
     state.metadataSearchResults = [];
     state.metadataSearchBookId = null;
+    state.metadataSearchRequestId++; // Invalidate any pending requests
   } else if (modalId === 'edit-book-modal') {
     state.editingBook = null;
   }
@@ -1797,18 +1799,37 @@ function closeModal(modalId) {
 async function performMetadataSearch() {
   if (!state.metadataSearchQuery.trim()) return;
 
+  // Increment request ID to track this specific search
+  state.metadataSearchRequestId++;
+  const currentRequestId = state.metadataSearchRequestId;
+  const currentBookId = state.metadataSearchBookId;
+
   state.metadataSearchLoading = true;
   render();
 
   try {
     const result = await api.searchBooks(state.metadataSearchQuery);
-    state.metadataSearchResults = result.results || [];
+
+    // Only update results if this is still the current search request
+    // and we're still searching for the same book
+    if (currentRequestId === state.metadataSearchRequestId &&
+        currentBookId === state.metadataSearchBookId) {
+      state.metadataSearchResults = result.results || [];
+    }
   } catch (error) {
-    alert(`Search error: ${error.message}`);
-    state.metadataSearchResults = [];
+    // Only show error if this is still the current search
+    if (currentRequestId === state.metadataSearchRequestId &&
+        currentBookId === state.metadataSearchBookId) {
+      alert(`Search error: ${error.message}`);
+      state.metadataSearchResults = [];
+    }
   } finally {
-    state.metadataSearchLoading = false;
-    render();
+    // Only update loading state if this is still the current search
+    if (currentRequestId === state.metadataSearchRequestId &&
+        currentBookId === state.metadataSearchBookId) {
+      state.metadataSearchLoading = false;
+      render();
+    }
   }
 }
 
