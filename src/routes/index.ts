@@ -701,9 +701,8 @@ router.get('/duplicates', async (req: Request, res: Response) => {
 // Organization endpoints
 router.post('/organize/preview', async (req: Request, res: Response) => {
   try {
-    const { libraryId, template } = req.body as {
+    const { libraryId } = req.body as {
       libraryId?: number;
-      template?: string;
     };
 
     if (!libraryId) {
@@ -711,7 +710,7 @@ router.post('/organize/preview', async (req: Request, res: Response) => {
       return;
     }
 
-    const preview = await organizerService.previewReorganization(libraryId, template);
+    const preview = await organizerService.previewReorganization(libraryId);
     const willMove = preview.filter(p => p.willMove).length;
 
     res.json({
@@ -728,9 +727,8 @@ router.post('/organize/preview', async (req: Request, res: Response) => {
 
 router.post('/organize/apply', async (req: Request, res: Response) => {
   try {
-    const { libraryId, template, dryRun, triggerKomgaScan } = req.body as {
+    const { libraryId, dryRun, triggerKomgaScan } = req.body as {
       libraryId?: number;
-      template?: string;
       dryRun?: boolean;
       triggerKomgaScan?: boolean;
     };
@@ -740,7 +738,7 @@ router.post('/organize/apply', async (req: Request, res: Response) => {
       return;
     }
 
-    const result = await organizerService.applyReorganization(libraryId, template, dryRun);
+    const result = await organizerService.applyReorganization(libraryId, dryRun);
 
     // Trigger Komga scan if requested and files were moved
     let komgaScanResult: { triggered: boolean; libraryId?: string; error?: string } | undefined;

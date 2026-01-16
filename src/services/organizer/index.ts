@@ -9,9 +9,9 @@ import { dirname, basename, extname, join } from 'path';
 import { query, queryOne } from '../../db/index.js';
 import type { Book } from '../../types/index.js';
 
-// Default naming template (Komga-friendly: series first, zero-padded number)
-// Year and ISBN are included but will be cleaned up if empty
-const DEFAULT_TEMPLATE = '{series}/Book {number} - {title} - {author} ({year}) [{isbn}]';
+// Smart organization:
+// - Books WITH series: {series}/Book {number} - {title}
+// - Books WITHOUT series: {author}/{title}
 
 /**
  * Template variables that can be used in naming patterns
@@ -78,8 +78,8 @@ export interface SeriesGroup {
  * Sanitize a string for use in file paths
  * Removes or replaces invalid characters
  */
-export function sanitizePathComponent(str: string): string {
-  if (!str) return 'Unknown';
+export function sanitizePathComponent(str: string, fallback: string = ''): string {
+  if (!str) return fallback;
 
   return str
     // Replace characters invalid in file paths
@@ -109,37 +109,6 @@ function parseAuthors(authorsJson: string | null): string {
   } catch {
     return authorsJson || 'Unknown Author';
   }
-}
-
-/**
- * Extract year from publish date
- */
-function extractYear(publishDate: string | null): string {
-  if (!publishDate) return '';
-
-  // Try to extract 4-digit year
-  const match = publishDate.match(/(\d{4})/);
-  return match?.[1] ?? '';
-}
-
-/**
- * Build template variables from a book
- */
-function buildTemplateVars(book: Book): TemplateVars {
-  const ext = extname(book.filePath);
-  // Zero-pad series number to 3 digits (handles series up to 999 books)
-  const paddedNumber = book.seriesNumber ? String(book.seriesNumber).padStart(3, '0') : '';
-
-  return {
-    author: sanitizePathComponent(parseAuthors(book.authors)),
-    title: sanitizePathComponent(book.title || basename(book.filePath, ext)),
-    series: sanitizePathComponent(book.seriesName || ''),
-    number: paddedNumber,
-    series_number: paddedNumber,  // Alias
-    year: extractYear(book.publishDate),
-    isbn: book.isbn || '',
-    ext: ext,
-  };
 }
 
 /**
@@ -179,20 +148,75 @@ export function applyTemplate(template: string, vars: TemplateVars): string {
 }
 
 /**
- * Generate a new path for a book based on template
+ * Generate a new path for a book using smart organization
+ * - Books WITH series: {series}/Book {number} - {title}.ext
+ * - Books WITHOUT series: {author}/{title}.ext
  */
-export function generateNewPath(book: Book, libraryPath: string, template: string = DEFAULT_TEMPLATE): string {
-  const vars = buildTemplateVars(book);
-  const relativePath = applyTemplate(template, vars);
+export function generateNewPath(book: Book, libraryPath: string): string {
+  const ext = extname(book.filePath);
+  const author = sanitizePathComponent(parseAuthors(book.authors), 'Unknown Author');
+  const title = sanitizePathComponent(book.title || basename(book.filePath, ext), 'Untitled');
+  const series = sanitizePathComponent(book.seriesName || '');
+  const number = book.seriesNumber ? String(book.seriesNumber).padStart(3, '0') : '';
+
+  let relativePath: string;
+
+  if (series && number) {
+    // Series with number: Series Name/Book 001 - Title.ext
+    relativePath = `${series}/Book ${number} - ${title}${ext}`;
+  } else if (series) {
+    // Series without number: Series Name/Title.ext
+    relativePath = `${series}/${title}${ext}`;
+  } else {
+    // No series: Author/Title.ext
+    relativePath = `${author}/${title}${ext}`;
+  }
+
   return join(libraryPath, relativePath);
+}
+
+// Database row type (snake_case)
+interface BookRow {
+  id: number;
+  library_id: number;
+  file_path: string;
+  title: string | null;
+  authors: string | null;
+  series_name: string | null;
+  series_number: number | null;
+  isbn: string | null;
+  publish_date: string | null;
+}
+
+// Convert database row to Book type
+function rowToBook(row: BookRow): Book {
+  return {
+    id: row.id,
+    libraryId: row.library_id,
+    filePath: row.file_path,
+    fileHash: null,
+    fileSize: null,
+    title: row.title,
+    authors: row.authors,
+    seriesName: row.series_name,
+    seriesNumber: row.series_number,
+    isbn: row.isbn,
+    publisher: null,
+    publishDate: row.publish_date,
+    description: null,
+    coverUrl: null,
+    metadataSource: null,
+    metadataId: null,
+    createdAt: '',
+    updatedAt: '',
+  };
 }
 
 /**
  * Preview reorganization for a library
  */
 export async function previewReorganization(
-  libraryId: number,
-  template: string = DEFAULT_TEMPLATE
+  libraryId: number
 ): Promise<ReorgPreviewItem[]> {
   // Get library path
   const library = await queryOne<{ path: string }>('SELECT path FROM libraries WHERE id = ?', [libraryId]);
@@ -201,13 +225,14 @@ export async function previewReorganization(
   }
 
   // Get all books in library
-  const books = await query<Book>('SELECT * FROM books WHERE library_id = ?', [libraryId]);
+  const rows = query<BookRow>('SELECT * FROM books WHERE library_id = ?', [libraryId]);
+  const books = rows.map(rowToBook);
 
   const preview: ReorgPreviewItem[] = [];
 
   for (const book of books) {
     try {
-      const newPath = generateNewPath(book, library.path, template);
+      const newPath = generateNewPath(book, library.path);
       const willMove = newPath !== book.filePath;
 
       preview.push({
@@ -235,10 +260,9 @@ export async function previewReorganization(
  */
 export async function applyReorganization(
   libraryId: number,
-  template: string = DEFAULT_TEMPLATE,
   dryRun: boolean = false
 ): Promise<ReorgResult> {
-  const preview = await previewReorganization(libraryId, template);
+  const preview = await previewReorganization(libraryId);
 
   const result: ReorgResult = {
     success: true,

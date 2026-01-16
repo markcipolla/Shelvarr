@@ -17,8 +17,10 @@ describe('Organizer Service - Pure Functions', () => {
     });
 
     it('should handle empty or null values', () => {
-      assert.strictEqual(sanitizePathComponent(''), 'Unknown');
-      assert.strictEqual(sanitizePathComponent(null as unknown as string), 'Unknown');
+      assert.strictEqual(sanitizePathComponent(''), '');
+      assert.strictEqual(sanitizePathComponent(null as unknown as string), '');
+      // With fallback
+      assert.strictEqual(sanitizePathComponent('', 'Fallback'), 'Fallback');
     });
 
     it('should trim whitespace', () => {

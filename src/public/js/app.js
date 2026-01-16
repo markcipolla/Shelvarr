@@ -64,7 +64,7 @@ const state = {
   // Organization state
   organizePreview: null,
   organizeLibraryId: null,
-  organizeTemplate: '{series}/Book {number} - {title} - {author} ({year}) [{isbn}]',
+  // Organization uses smart defaults (no custom template)
   organizeLoading: false,
   // Komga state
   komgaStatus: null,
@@ -278,13 +278,12 @@ async function scanAllKomgaLibraries() {
   }
 }
 
-async function previewOrganize(libraryId, template) {
+async function previewOrganize(libraryId) {
   try {
     state.organizeLoading = true;
     state.organizeLibraryId = libraryId;
-    state.organizeTemplate = template;
     render();
-    const result = await api.previewOrganize({ libraryId, template });
+    const result = await api.previewOrganize({ libraryId });
     state.organizePreview = result;
     state.organizeLoading = false;
     render();
@@ -308,7 +307,6 @@ async function applyOrganize() {
     render();
     const result = await api.applyOrganize({
       libraryId: state.organizeLibraryId,
-      template: state.organizeTemplate,
     });
     state.organizeLoading = false;
     state.organizePreview = null;
@@ -422,16 +420,12 @@ function renderOrganizeModal() {
           <button class="text-shelvarr-text-muted hover:text-white" data-action="close-organize">&times;</button>
         </div>
         <div class="p-4 flex-1 overflow-y-auto">
-          <div class="mb-4">
-            <label class="block text-sm text-shelvarr-text-muted mb-1">Naming Template</label>
-            <input type="text" class="input w-full" id="organize-template" value="${state.organizeTemplate}">
-            <p class="text-xs text-shelvarr-text-muted mt-1">
-              Variables: {author}, {title}, {series}, {number} (zero-padded), {year}, {isbn}<br>
-              Empty variables and their brackets/parentheses are automatically removed.
-            </p>
-          </div>
-
           <div class="mb-4 p-3 bg-shelvarr-bg rounded-lg border border-shelvarr-border">
+            <p class="text-sm text-shelvarr-text-muted mb-3">
+              Files will be organized as:<br>
+              <strong>With series:</strong> Series Name/Book 001 - Title.ext<br>
+              <strong>Without series:</strong> Author/Title.ext
+            </p>
             <div class="flex justify-between text-sm">
               <span>Files to move:</span>
               <span class="font-semibold">${preview.willMove}</span>
@@ -453,16 +447,13 @@ function renderOrganizeModal() {
               `).join('')}
               ${hasMore ? `<div class="text-center text-shelvarr-text-muted text-sm">... and ${preview.willMove - 20} more</div>` : ''}
             </div>
-          ` : '<p class="text-shelvarr-text-muted">All files are already organized according to this template.</p>'}
+          ` : '<p class="text-shelvarr-text-muted">All files are already organized.</p>'}
         </div>
-        <div class="flex justify-between items-center p-4 border-t border-shelvarr-border">
-          <button class="btn-secondary" data-action="preview-organize">Refresh Preview</button>
-          <div class="flex gap-2">
-            <button class="btn-secondary" data-action="close-organize">Cancel</button>
-            <button class="btn-primary" data-action="apply-organize" ${preview.willMove === 0 ? 'disabled' : ''}>
-              Apply Changes
-            </button>
-          </div>
+        <div class="flex justify-end items-center gap-2 p-4 border-t border-shelvarr-border">
+          <button class="btn-secondary" data-action="close-organize">Cancel</button>
+          <button class="btn-primary" data-action="apply-organize" ${preview.willMove === 0 ? 'disabled' : ''}>
+            Apply Changes
+          </button>
         </div>
       </div>
     </div>
@@ -1177,13 +1168,13 @@ const pages = {
 
       <div class="card">
         <h3 class="text-lg font-semibold mb-4">File Organization</h3>
-        <div class="space-y-4">
-          <div>
-            <label class="block text-sm text-shelvarr-text-muted mb-1">Default Naming Template</label>
-            <input type="text" class="input w-full" value="${state.organizeTemplate}" id="naming-template">
-            <p class="text-xs text-shelvarr-text-muted mt-1">Variables: {author}, {title}, {series}, {series_number}, {year}, {isbn}</p>
-          </div>
-          <button class="btn-primary" id="save-template-btn">Save Template</button>
+        <div class="text-sm text-shelvarr-text-muted">
+          <p class="mb-2">Files are automatically organized using smart defaults:</p>
+          <ul class="list-disc list-inside space-y-1">
+            <li><strong>Books with series:</strong> Series Name/Book 001 - Title.ext</li>
+            <li><strong>Books without series:</strong> Author/Title.ext</li>
+          </ul>
+          <p class="mt-3">Use the "Organize" button on the Libraries page to reorganize files.</p>
         </div>
       </div>
 
@@ -1356,7 +1347,7 @@ function attachEventListeners() {
   document.querySelectorAll('[data-organize-library]').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       const libraryId = parseInt(e.currentTarget.dataset.organizeLibrary);
-      await previewOrganize(libraryId, state.organizeTemplate);
+      await previewOrganize(libraryId);
     });
   });
 
@@ -1387,15 +1378,6 @@ function attachEventListeners() {
     btn.addEventListener('click', () => {
       state.organizePreview = null;
       render();
-    });
-  });
-
-  document.querySelectorAll('[data-action="preview-organize"]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const templateInput = document.getElementById('organize-template');
-      const template = templateInput?.value || state.organizeTemplate;
-      state.organizeTemplate = template;
-      await previewOrganize(state.organizeLibraryId, template);
     });
   });
 
@@ -1625,17 +1607,6 @@ function attachEventListeners() {
     scanAllKomgaBtn.addEventListener('click', scanAllKomgaLibraries);
   }
 
-  // Settings page - Save template
-  const saveTemplateBtn = document.getElementById('save-template-btn');
-  if (saveTemplateBtn) {
-    saveTemplateBtn.addEventListener('click', () => {
-      const templateInput = document.getElementById('naming-template');
-      if (templateInput) {
-        state.organizeTemplate = templateInput.value;
-        alert('Template saved for this session.');
-      }
-    });
-  }
 
   // Tasks page - Refresh button
   const refreshTasksBtn = document.getElementById('refresh-tasks-btn');
