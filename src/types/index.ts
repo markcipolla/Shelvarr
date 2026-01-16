@@ -141,7 +141,15 @@ export interface AppConfig {
   rateLimits: {
     googleBooks: number;
     openLibrary: number;
+    hardcover: number;
+    bookbrainz: number;
+    audnexus: number;
+    comicvine: number;
+    wikidata: number;
   };
+  // API keys from environment
+  hardcoverToken: string | null;
+  comicvineApiKey: string | null;
 }
 
 // Settings stored in database
@@ -157,8 +165,17 @@ export interface Settings {
 }
 
 // Metadata provider types
+export type MetadataSource =
+  | 'googlebooks'
+  | 'openlibrary'
+  | 'hardcover'
+  | 'bookbrainz'
+  | 'audnexus'
+  | 'comicvine'
+  | 'wikidata';
+
 export interface MetadataSearchResult {
-  source: 'googleBooks' | 'openLibrary';
+  source: MetadataSource;
   id: string;
   title: string;
   authors: string[];
@@ -168,6 +185,18 @@ export interface MetadataSearchResult {
   description?: string;
   coverUrl?: string;
   pageCount?: number;
+  seriesName?: string;
+  seriesNumber?: number;
+}
+
+// Metadata source configuration
+export interface MetadataSourceConfig {
+  name: MetadataSource;
+  displayName: string;
+  enabled: boolean;
+  requiresApiKey: boolean;
+  apiKey?: string;
+  apiKeyUrl?: string;  // URL to get API key
 }
 
 // File organization types

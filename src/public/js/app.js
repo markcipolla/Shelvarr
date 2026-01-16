@@ -75,6 +75,10 @@ const state = {
   taskStats: { total: 0, pending: 0, running: 0, completed: 0, failed: 0 },
   tasksLoading: false,
   recentTasks: [],
+  // Metadata sources state
+  sources: [],
+  sourcesLoading: false,
+  sourcesTesting: {},
 };
 
 // Router
@@ -99,7 +103,7 @@ async function loadPageData(page) {
     } else if (page === 'duplicates') {
       await loadDuplicates();
     } else if (page === 'settings') {
-      await loadKomgaStatus();
+      await Promise.all([loadKomgaStatus(), loadSources()]);
     } else if (page === 'tasks') {
       await loadTasks();
     }
@@ -235,6 +239,49 @@ async function testKomgaConnection() {
     console.error('Error testing Komga connection:', error);
     state.komgaStatus = { connected: false, error: error.message };
     state.komgaTesting = false;
+    render();
+  }
+}
+
+async function loadSources() {
+  try {
+    state.sourcesLoading = true;
+    render();
+    const result = await api.getSources();
+    state.sources = result.sources || [];
+    state.sourcesLoading = false;
+    render();
+  } catch (error) {
+    console.error('Error loading sources:', error);
+    state.sourcesLoading = false;
+    render();
+  }
+}
+
+async function toggleSource(sourceName, enabled) {
+  try {
+    await api.updateSource(sourceName, enabled);
+    await loadSources();
+  } catch (error) {
+    alert(`Error updating source: ${error.message}`);
+  }
+}
+
+async function testSource(sourceName) {
+  try {
+    state.sourcesTesting[sourceName] = true;
+    render();
+    const result = await api.testSource(sourceName);
+    state.sourcesTesting[sourceName] = false;
+    if (result.success) {
+      alert(`${sourceName}: Connection successful!`);
+    } else {
+      alert(`${sourceName}: ${result.error || 'Connection failed'}`);
+    }
+    render();
+  } catch (error) {
+    state.sourcesTesting[sourceName] = false;
+    alert(`Error testing source: ${error.message}`);
     render();
   }
 }
@@ -1167,6 +1214,65 @@ const pages = {
       </div>
 
       <div class="card">
+        <h3 class="text-lg font-semibold mb-4">Metadata Sources</h3>
+        <p class="text-sm text-shelvarr-text-muted mb-4">
+          Configure which metadata providers to use when searching for book information.
+          Sources are searched in order and results are combined.
+        </p>
+        ${state.sourcesLoading ? `
+          <div class="flex items-center gap-2 text-shelvarr-text-muted">
+            ${icons.spinner} Loading sources...
+          </div>
+        ` : `
+          <div class="space-y-3">
+            ${state.sources.map(source => `
+              <div class="p-3 rounded-lg border border-shelvarr-border bg-shelvarr-bg">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-3">
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" class="sr-only peer"
+                        ${source.enabled ? 'checked' : ''}
+                        ${!source.configured && source.requiresApiKey ? 'disabled' : ''}
+                        data-toggle-source="${source.name}">
+                      <div class="w-9 h-5 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-shelvarr-primary peer-disabled:opacity-50"></div>
+                    </label>
+                    <div>
+                      <div class="font-medium">${source.displayName}</div>
+                      <div class="text-xs text-shelvarr-text-muted">
+                        ${source.requiresApiKey
+                          ? source.configured
+                            ? 'API key configured via environment variable'
+                            : `<span class="text-yellow-400">Requires API key</span>`
+                          : 'No configuration required'}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    ${source.configured ? `
+                      <button class="btn-secondary text-xs py-1 px-2" data-test-source="${source.name}">
+                        ${state.sourcesTesting[source.name] ? icons.spinner : 'Test'}
+                      </button>
+                    ` : ''}
+                    <div class="w-2 h-2 rounded-full ${source.enabled && source.configured ? 'bg-green-500' : source.configured ? 'bg-gray-500' : 'bg-yellow-500'}"></div>
+                  </div>
+                </div>
+                ${source.requiresApiKey && !source.configured && source.apiKeyUrl ? `
+                  <div class="mt-2 pt-2 border-t border-shelvarr-border/50">
+                    <p class="text-xs text-shelvarr-text-muted">
+                      Set the environment variable to enable this source.
+                      <a href="${source.apiKeyUrl}" target="_blank" class="text-shelvarr-primary hover:underline ml-1">
+                        Get API key ${icons.externalLink}
+                      </a>
+                    </p>
+                  </div>
+                ` : ''}
+              </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
+
+      <div class="card">
         <h3 class="text-lg font-semibold mb-4">File Organization</h3>
         <div class="text-sm text-shelvarr-text-muted">
           <p class="mb-2">Files are automatically organized using smart defaults:</p>
@@ -1607,6 +1713,21 @@ function attachEventListeners() {
     scanAllKomgaBtn.addEventListener('click', scanAllKomgaLibraries);
   }
 
+  // Settings page - Source toggles
+  document.querySelectorAll('[data-toggle-source]').forEach(checkbox => {
+    checkbox.addEventListener('change', (e) => {
+      const sourceName = e.target.dataset.toggleSource;
+      toggleSource(sourceName, e.target.checked);
+    });
+  });
+
+  // Settings page - Test source buttons
+  document.querySelectorAll('[data-test-source]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const sourceName = e.currentTarget.dataset.testSource;
+      testSource(sourceName);
+    });
+  });
 
   // Tasks page - Refresh button
   const refreshTasksBtn = document.getElementById('refresh-tasks-btn');

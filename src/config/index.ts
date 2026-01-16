@@ -28,11 +28,20 @@ const config: AppConfig = {
   // Supported file extensions
   supportedExtensions: ['.epub', '.pdf', '.cbz', '.cbr', '.mobi', '.azw', '.azw3'],
 
-  // Rate limiting for external APIs
+  // Rate limiting for external APIs (requests per minute)
   rateLimits: {
-    googleBooks: 100, // requests per minute
+    googleBooks: 100,
     openLibrary: 100,
+    hardcover: 60,
+    bookbrainz: 30,
+    audnexus: 60,
+    comicvine: 200, // 200/hour = ~3/minute, but they allow bursts
+    wikidata: 60,
   },
+
+  // API keys from environment
+  hardcoverToken: process.env['HARDCOVER_API_TOKEN'] || null,
+  comicvineApiKey: process.env['COMICVINE_API_KEY'] || null,
 };
 
 // Derive dbPath if not explicitly set

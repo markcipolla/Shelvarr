@@ -28,7 +28,7 @@ import * as metadataService from '../services/metadata/index.js';
 import * as organizerService from '../services/organizer/index.js';
 import { komgaClient } from '../services/komga/index.js';
 import * as queueService from '../services/queue/index.js';
-import type { HealthResponse, Settings } from '../types/index.js';
+import type { HealthResponse, Settings, MetadataSource } from '../types/index.js';
 
 const router = Router();
 
@@ -69,6 +69,82 @@ router.put('/settings', async (req: Request, res: Response) => {
     }
     await setSetting(key, value);
     res.json({ success: true, key, value });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+// Metadata sources endpoints
+router.get('/sources', async (_req: Request, res: Response) => {
+  try {
+    const sources = await metadataService.getAllSourcesStatus();
+    res.json({ sources });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+router.put('/sources/:name', async (req: Request, res: Response) => {
+  try {
+    const sourceName = req.params['name'];
+    const { enabled } = req.body as { enabled?: boolean };
+
+    if (typeof enabled !== 'boolean') {
+      res.status(400).json({ error: 'enabled must be a boolean' });
+      return;
+    }
+
+    // Get current source settings
+    const currentSettings = await getAllSettings();
+    const sourceSettings: Record<string, { enabled: boolean }> =
+      (currentSettings['metadata_sources'] as Record<string, { enabled: boolean }>) || {};
+
+    // Update the specific source
+    sourceSettings[sourceName as string] = { enabled };
+
+    // Save back
+    await setSetting('metadata_sources', sourceSettings);
+
+    // Return updated status
+    const sources = await metadataService.getAllSourcesStatus();
+    const updatedSource = sources.find(s => s.name === sourceName);
+
+    res.json({ success: true, source: updatedSource });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+router.post('/sources/:name/test', async (req: Request, res: Response) => {
+  try {
+    const sourceName = req.params['name'] as string;
+
+    // Check if the source is configured
+    const isConfigured = metadataService.isSourceConfigured(sourceName as Parameters<typeof metadataService.isSourceConfigured>[0]);
+
+    if (!isConfigured) {
+      res.json({
+        success: false,
+        error: 'Source is not configured (missing API key)',
+      });
+      return;
+    }
+
+    // Try a simple search to test the source
+    const testQuery = 'test';
+    try {
+      await metadataService.searchBooks(testQuery, {
+        sources: [sourceName as MetadataSource],
+        maxResults: 1,
+      });
+      res.json({ success: true, message: 'Source is working' });
+    } catch (testError) {
+      const testMessage = testError instanceof Error ? testError.message : 'Unknown error';
+      res.json({ success: false, error: testMessage });
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ error: message });

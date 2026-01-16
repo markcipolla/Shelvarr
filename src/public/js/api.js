@@ -266,6 +266,24 @@ class ApiClient {
       body: { path },
     });
   }
+
+  // Metadata Sources
+  getSources() {
+    return this.request('/sources');
+  }
+
+  updateSource(name, enabled) {
+    return this.request(`/sources/${name}`, {
+      method: 'PUT',
+      body: { enabled },
+    });
+  }
+
+  testSource(name) {
+    return this.request(`/sources/${name}/test`, {
+      method: 'POST',
+    });
+  }
 }
 
 export const api = new ApiClient();

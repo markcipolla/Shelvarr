@@ -180,13 +180,13 @@ function parsePathInfo(filePath: string, libraryPath: string): PathInfo {
 
   // Try "[Series Name Book N] rest" pattern first (with series number)
   const bracketWithNumMatch = filename.match(/^\[(.+?)\s+Book\s+(\d+)\]\s*(.+)$/i);
-  if (bracketWithNumMatch) {
+  if (bracketWithNumMatch && bracketWithNumMatch[1] && bracketWithNumMatch[2] && bracketWithNumMatch[3]) {
     series = bracketWithNumMatch[1];
     seriesNumber = bracketWithNumMatch[2];
     const rest = bracketWithNumMatch[3];
     // Rest might be "Author - Title (Year)" or just "Title"
     const dashMatch = rest.match(/^(.+?)\s+-\s+(.+?)(?:\s*\(\d{4}\))?$/);
-    if (dashMatch) {
+    if (dashMatch && dashMatch[1] && dashMatch[2]) {
       author = dashMatch[1];
       title = dashMatch[2].replace(/\s*\(\d{4}\)$/, '');
     } else {
@@ -195,11 +195,11 @@ function parsePathInfo(filePath: string, libraryPath: string): PathInfo {
   } else {
     // Try "[Series Name] rest" pattern (without series number)
     const bracketMatch = filename.match(/^\[([^\]]+)\]\s*(.+)$/);
-    if (bracketMatch) {
+    if (bracketMatch && bracketMatch[1] && bracketMatch[2]) {
       series = bracketMatch[1];
       const rest = bracketMatch[2];
       const dashMatch = rest.match(/^(.+?)\s+-\s+(.+?)(?:\s*\(\d{4}\))?$/);
-      if (dashMatch) {
+      if (dashMatch && dashMatch[1] && dashMatch[2]) {
         author = dashMatch[1];
         title = dashMatch[2].replace(/\s*\(\d{4}\)$/, '');
       } else {
@@ -211,17 +211,18 @@ function parsePathInfo(filePath: string, libraryPath: string): PathInfo {
   if (!series) {
     // "Author - Title" pattern
     const dashMatch = filename.match(/^(.+?)\s+-\s+(.+?)(?:\s*\(\d+\))?$/);
-    if (dashMatch) {
+    if (dashMatch && dashMatch[1] && dashMatch[2]) {
       // Could be "Author - Title" or "Title - Author"
       // Try to detect which based on directory structure
       const possibleAuthor = dashMatch[1];
       const possibleTitle = dashMatch[2].replace(/\s*\(\d+\)$/, '');
 
       // If first part matches a parent directory, it's likely the author
-      if (parts.length > 1 && parts[0].toLowerCase() === possibleAuthor.toLowerCase()) {
+      const firstPart = parts[0];
+      if (parts.length > 1 && firstPart && firstPart.toLowerCase() === possibleAuthor.toLowerCase()) {
         author = possibleAuthor;
         title = possibleTitle;
-      } else if (parts.length > 1 && parts[0].toLowerCase() === possibleTitle.toLowerCase()) {
+      } else if (parts.length > 1 && firstPart && firstPart.toLowerCase() === possibleTitle.toLowerCase()) {
         // Reversed: "Title - Author"
         author = possibleTitle;
         title = possibleAuthor;
@@ -240,19 +241,21 @@ function parsePathInfo(filePath: string, libraryPath: string): PathInfo {
   // Author/Series/Filename.epub (3 levels, filename might differ)
   if (parts.length >= 2) {
     // First directory is usually author
-    if (!author) {
-      author = parts[0];
+    const firstDir = parts[0];
+    if (!author && firstDir) {
+      author = firstDir;
     }
     // If 3+ levels, second directory might be series
     if (parts.length >= 3 && !series) {
       const middleDir = parts[1];
       // Check if it looks like a series (not same as title/author)
-      if (middleDir.toLowerCase() !== title.toLowerCase() &&
+      if (middleDir &&
+          middleDir.toLowerCase() !== title.toLowerCase() &&
           middleDir.toLowerCase() !== author.toLowerCase()) {
         series = middleDir;
         // Try to extract series number from directory like "Series Name (33)"
         const numMatch = middleDir.match(/^(.+?)\s*\((\d+)\)$/);
-        if (numMatch) {
+        if (numMatch && numMatch[1] && numMatch[2]) {
           series = numMatch[1];
           seriesNumber = numMatch[2];
         }
