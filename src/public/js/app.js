@@ -613,28 +613,6 @@ const pages = {
         ${pageHeader('Libraries', '<button class="btn-primary" data-action="add-library">Add Library</button>')}
         <div class="card">${librariesHtml}</div>
       </div>
-      ${modal('add-library-modal', 'Add Library', `
-        <form id="add-library-form" class="space-y-4">
-          <div>
-            <label class="block text-sm text-shelvarr-text-muted mb-1">Library Name</label>
-            <input type="text" class="input w-full" name="name" placeholder="My Books" required>
-          </div>
-          <div>
-            <label class="block text-sm text-shelvarr-text-muted mb-1">Path</label>
-            <div class="flex gap-2">
-              <input type="text" class="input flex-1" name="path" id="library-path-input" placeholder="/libraries/books" required>
-              <button type="button" class="btn-secondary" id="browse-folders-btn">${icons.folder}</button>
-            </div>
-            <div id="folder-browser" class="hidden mt-2 border border-shelvarr-border rounded-lg bg-shelvarr-bg max-h-48 overflow-y-auto">
-              <div id="folder-browser-content" class="p-2"></div>
-            </div>
-          </div>
-          <div class="flex justify-end gap-2">
-            <button type="button" class="btn-secondary" data-close-modal="add-library-modal">Cancel</button>
-            <button type="submit" class="btn-primary">Add Library</button>
-          </div>
-        </form>
-      `)}
       ${state.organizePreview ? renderOrganizeModal() : ''}
     `;
   },
@@ -725,6 +703,10 @@ const pages = {
               <button class="btn-secondary text-sm" data-action="search-metadata" data-book-id="${state.selectedBook.id}">${icons.search} Search Metadata</button>
               <button class="btn-secondary text-sm" data-action="refresh-metadata" data-book-id="${state.selectedBook.id}">${icons.refresh} Auto-Match</button>
             </div>
+            <details class="mt-4">
+              <summary class="text-sm text-shelvarr-text-muted cursor-pointer hover:text-white">Raw Metadata (JSON)</summary>
+              <pre class="mt-2 p-3 bg-shelvarr-bg rounded text-xs overflow-x-auto max-h-64 overflow-y-auto">${JSON.stringify(state.selectedBook, null, 2)}</pre>
+            </details>
           </div>
         </div>
       </div>
@@ -1226,10 +1208,38 @@ function render() {
         ${pageContent}
       </main>
     </div>
+    ${renderGlobalModals()}
   `;
 
   // Attach event listeners
   attachEventListeners();
+}
+
+function renderGlobalModals() {
+  return `
+    ${modal('add-library-modal', 'Add Library', `
+      <form id="add-library-form" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium mb-1">Name</label>
+          <input type="text" name="name" class="input w-full" placeholder="My Books" required>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Path</label>
+          <div class="flex gap-2">
+            <input type="text" name="path" id="library-path-input" class="input flex-1" placeholder="/libraries/ebooks" required>
+            <button type="button" class="btn-secondary" id="browse-folders-btn">${icons.folder} Browse</button>
+          </div>
+          <div id="folder-browser" class="hidden mt-2 max-h-64 overflow-auto border border-shelvarr-border rounded bg-shelvarr-bg">
+            <div id="folder-browser-content" class="p-2"></div>
+          </div>
+        </div>
+        <div class="flex justify-end gap-2 pt-4">
+          <button type="button" class="btn-secondary" data-close-modal="add-library-modal">Cancel</button>
+          <button type="submit" class="btn-primary">Add Library</button>
+        </div>
+      </form>
+    `)}
+  `;
 }
 
 // Event listeners

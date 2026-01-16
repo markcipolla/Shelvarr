@@ -175,15 +175,22 @@ export async function autoMatch(
     }
   }
 
-  // Otherwise search by title/author and return best match
-  const results = await searchByTitleAuthor(title, author);
+  // Build a combined search query (like manual search does)
+  const query = author ? `${title} ${author}` : title;
+
+  // Try plain text search first (more flexible, like manual search)
+  let results = await searchBooks(query, { maxResults: 5 });
+
+  // If no results, try the more specific title+author search
+  if (results.length === 0 && title) {
+    results = await searchByTitleAuthor(title, author);
+  }
 
   if (results.length === 0) {
     return null;
   }
 
   // Return the first result (usually the best match)
-  // Could add fuzzy matching scoring here for better results
   return results[0] || null;
 }
 
