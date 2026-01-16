@@ -6,7 +6,9 @@ import {
   sanitizePathComponent,
   applyTemplate,
   calculateMetadataSimilarity,
+  generateNewPath,
 } from '../../src/services/organizer/index.js';
+import type { Book } from '../../src/types/index.js';
 
 describe('Organizer Service - Pure Functions', () => {
   describe('sanitizePathComponent', () => {
@@ -174,6 +176,72 @@ describe('Organizer Service - Pure Functions', () => {
 
       const similarity = calculateMetadataSimilarity(book1 as never, book2 as never);
       assert.ok(similarity > 0.4, `Expected similarity > 0.4 due to ISBN match, got ${similarity}`);
+    });
+  });
+
+  describe('generateNewPath', () => {
+    const libraryPath = '/libraries/ebooks';
+
+    function makeBook(filePath: string): Book {
+      return {
+        id: 1,
+        libraryId: 1,
+        filePath,
+        fileHash: null,
+        fileSize: null,
+        title: null,
+        authors: null,
+        seriesName: null,
+        seriesNumber: null,
+        isbn: null,
+        publisher: null,
+        publishDate: null,
+        description: null,
+        coverUrl: null,
+        metadataSource: null,
+        metadataId: null,
+        createdAt: '',
+        updatedAt: '',
+      };
+    }
+
+    it('should handle Author/Series/Filename pattern', () => {
+      const book = makeBook('/libraries/ebooks/Aaron Dembski-Bowden/Betrayer/Betrayer - Aaron Dembski-Bowden.epub');
+      const result = generateNewPath(book, libraryPath);
+      // Betrayer folder is same as title, so no series detected -> Author/Title
+      assert.strictEqual(result, '/libraries/ebooks/Aaron Dembski-Bowden/Betrayer.epub');
+    });
+
+    it('should handle [Series Book N] filename pattern', () => {
+      const book = makeBook('/libraries/ebooks/Ada Palmer/[Terra Ignota Book 1] Ada Palmer - Too Like the Lightning (2016).epub');
+      const result = generateNewPath(book, libraryPath);
+      // Series detected from filename -> Series/Book N - Title
+      assert.strictEqual(result, '/libraries/ebooks/Terra Ignota/Book 001 - Too Like the Lightning.epub');
+    });
+
+    it('should handle [Series Book N] with Book 2', () => {
+      const book = makeBook('/libraries/ebooks/Ada Palmer/[Terra Ignota Book 2] Ada Palmer - Seven Surrenders (2017).epub');
+      const result = generateNewPath(book, libraryPath);
+      assert.strictEqual(result, '/libraries/ebooks/Terra Ignota/Book 002 - Seven Surrenders.epub');
+    });
+
+    it('should handle series number in directory name', () => {
+      const book = makeBook('/libraries/ebooks/Aaron Dembski-Bowden/War Without End (33)/Aaron Dembski-Bowden - War Without End (33).epub');
+      const result = generateNewPath(book, libraryPath);
+      // Series number from directory (33) -> Series/Book 033 - Title
+      assert.strictEqual(result, '/libraries/ebooks/War Without End/Book 033 - War Without End.epub');
+    });
+
+    it('should handle simple Author/Title pattern', () => {
+      const book = makeBook('/libraries/ebooks/Adrian Tchaikovsky/Alien Clay.epub');
+      const result = generateNewPath(book, libraryPath);
+      assert.strictEqual(result, '/libraries/ebooks/Adrian Tchaikovsky/Alien Clay.epub');
+    });
+
+    it('should handle Author/Title/Filename pattern with dash', () => {
+      const book = makeBook('/libraries/ebooks/Adrian Tchaikovsky/Dogs of War/Dogs of War - Adrian Tchaikovsky.epub');
+      const result = generateNewPath(book, libraryPath);
+      assert.strictEqual(result, '/libraries/ebooks/Adrian Tchaikovsky/Dogs of War.epub');
     });
   });
 });

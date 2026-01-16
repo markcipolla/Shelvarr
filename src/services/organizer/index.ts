@@ -148,28 +148,150 @@ export function applyTemplate(template: string, vars: TemplateVars): string {
 }
 
 /**
+ * Parse path info from existing file path
+ * Extracts author, series, title from the current file structure
+ */
+interface PathInfo {
+  author: string;
+  series: string;
+  seriesNumber: string;
+  title: string;
+}
+
+function parsePathInfo(filePath: string, libraryPath: string): PathInfo {
+  // Get path relative to library
+  const relativePath = filePath.startsWith(libraryPath)
+    ? filePath.slice(libraryPath.length).replace(/^\//, '')
+    : filePath;
+
+  const ext = extname(filePath);
+  const filename = basename(filePath, ext);
+  const parts = relativePath.split('/').filter(p => p);
+
+  let author = '';
+  let series = '';
+  let seriesNumber = '';
+  let title = filename;
+
+  // Parse filename patterns:
+  // "[Series Book N] Author - Title (Year)"
+  // "Author - Title"
+  // "Title"
+
+  // Try "[Series Name Book N] rest" pattern first (with series number)
+  const bracketWithNumMatch = filename.match(/^\[(.+?)\s+Book\s+(\d+)\]\s*(.+)$/i);
+  if (bracketWithNumMatch) {
+    series = bracketWithNumMatch[1];
+    seriesNumber = bracketWithNumMatch[2];
+    const rest = bracketWithNumMatch[3];
+    // Rest might be "Author - Title (Year)" or just "Title"
+    const dashMatch = rest.match(/^(.+?)\s+-\s+(.+?)(?:\s*\(\d{4}\))?$/);
+    if (dashMatch) {
+      author = dashMatch[1];
+      title = dashMatch[2].replace(/\s*\(\d{4}\)$/, '');
+    } else {
+      title = rest.replace(/\s*\(\d{4}\)$/, '');
+    }
+  } else {
+    // Try "[Series Name] rest" pattern (without series number)
+    const bracketMatch = filename.match(/^\[([^\]]+)\]\s*(.+)$/);
+    if (bracketMatch) {
+      series = bracketMatch[1];
+      const rest = bracketMatch[2];
+      const dashMatch = rest.match(/^(.+?)\s+-\s+(.+?)(?:\s*\(\d{4}\))?$/);
+      if (dashMatch) {
+        author = dashMatch[1];
+        title = dashMatch[2].replace(/\s*\(\d{4}\)$/, '');
+      } else {
+        title = rest.replace(/\s*\(\d{4}\)$/, '');
+      }
+    }
+  }
+
+  if (!series) {
+    // "Author - Title" pattern
+    const dashMatch = filename.match(/^(.+?)\s+-\s+(.+?)(?:\s*\(\d+\))?$/);
+    if (dashMatch) {
+      // Could be "Author - Title" or "Title - Author"
+      // Try to detect which based on directory structure
+      const possibleAuthor = dashMatch[1];
+      const possibleTitle = dashMatch[2].replace(/\s*\(\d+\)$/, '');
+
+      // If first part matches a parent directory, it's likely the author
+      if (parts.length > 1 && parts[0].toLowerCase() === possibleAuthor.toLowerCase()) {
+        author = possibleAuthor;
+        title = possibleTitle;
+      } else if (parts.length > 1 && parts[0].toLowerCase() === possibleTitle.toLowerCase()) {
+        // Reversed: "Title - Author"
+        author = possibleTitle;
+        title = possibleAuthor;
+      } else {
+        // Default: assume "Author - Title" pattern
+        author = possibleAuthor;
+        title = possibleTitle;
+      }
+    }
+  }
+
+  // Extract from directory structure if not found in filename
+  // Typical patterns:
+  // Author/Title.epub (2 levels)
+  // Author/Series/Title.epub (3 levels)
+  // Author/Series/Filename.epub (3 levels, filename might differ)
+  if (parts.length >= 2) {
+    // First directory is usually author
+    if (!author) {
+      author = parts[0];
+    }
+    // If 3+ levels, second directory might be series
+    if (parts.length >= 3 && !series) {
+      const middleDir = parts[1];
+      // Check if it looks like a series (not same as title/author)
+      if (middleDir.toLowerCase() !== title.toLowerCase() &&
+          middleDir.toLowerCase() !== author.toLowerCase()) {
+        series = middleDir;
+        // Try to extract series number from directory like "Series Name (33)"
+        const numMatch = middleDir.match(/^(.+?)\s*\((\d+)\)$/);
+        if (numMatch) {
+          series = numMatch[1];
+          seriesNumber = numMatch[2];
+        }
+      }
+    }
+  }
+
+  return {
+    author: sanitizePathComponent(author, 'Unknown Author'),
+    series: sanitizePathComponent(series),
+    seriesNumber,
+    title: sanitizePathComponent(title, 'Untitled'),
+  };
+}
+
+/**
  * Generate a new path for a book using smart organization
+ * Parses existing path structure - does NOT use unreliable metadata
  * - Books WITH series: {series}/Book {number} - {title}.ext
  * - Books WITHOUT series: {author}/{title}.ext
  */
 export function generateNewPath(book: Book, libraryPath: string): string {
   const ext = extname(book.filePath);
-  const author = sanitizePathComponent(parseAuthors(book.authors), 'Unknown Author');
-  const title = sanitizePathComponent(book.title || basename(book.filePath, ext), 'Untitled');
-  const series = sanitizePathComponent(book.seriesName || '');
-  const number = book.seriesNumber ? String(book.seriesNumber).padStart(3, '0') : '';
+
+  // Parse info from existing file path (not metadata!)
+  const info = parsePathInfo(book.filePath, libraryPath);
 
   let relativePath: string;
 
-  if (series && number) {
+  if (info.series && info.seriesNumber) {
     // Series with number: Series Name/Book 001 - Title.ext
-    relativePath = `${series}/Book ${number} - ${title}${ext}`;
-  } else if (series) {
+    const paddedNumber = info.seriesNumber.padStart(3, '0');
+    relativePath = `${info.series}/Book ${paddedNumber} - ${info.title}${ext}`;
+  } else if (info.series) {
     // Series without number: Series Name/Title.ext
-    relativePath = `${series}/${title}${ext}`;
+    relativePath = `${info.series}/${info.title}${ext}`;
   } else {
     // No series: Author/Title.ext
-    relativePath = `${author}/${title}${ext}`;
+    relativePath = `${info.author}/${info.title}${ext}`;
   }
 
   return join(libraryPath, relativePath);
