@@ -45,7 +45,7 @@ test.describe('Settings Page', () => {
   test('should have naming template input', async ({ page }) => {
     const template = page.locator('#naming-template');
     await expect(template).toBeAttached();
-    await expect(template).toHaveValue('{author}/{title}');
+    await expect(template).toHaveValue('{series}/Book {number} - {title} - {author} ({year}) [{isbn}]');
   });
 
   test('should display Komga integration section', async ({ page }) => {

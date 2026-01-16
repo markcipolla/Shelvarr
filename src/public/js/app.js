@@ -562,6 +562,7 @@ const pages = {
           <div class="flex flex-wrap gap-3">
             <button class="btn-primary" data-action="add-library">Add Library</button>
             <button class="btn-secondary" data-action="scan-all">Scan All Libraries</button>
+            <button class="btn-secondary" data-action="fetch-all-metadata">Fetch All Missing Metadata</button>
           </div>
         </div>
 
@@ -1692,6 +1693,9 @@ function handleAction(action) {
     case 'scan-all':
       scanAllLibraries();
       break;
+    case 'fetch-all-metadata':
+      fetchAllMetadata();
+      break;
     case 'add-author':
       alert('Add Author dialog - coming soon!');
       break;
@@ -1783,6 +1787,16 @@ async function scanAllLibraries() {
     await loadDashboardStats();
   } catch (error) {
     alert(`Error scanning libraries: ${error.message}`);
+  }
+}
+
+async function fetchAllMetadata() {
+  try {
+    const result = await api.fetchAllMetadata(true);
+    alert(`Metadata fetch task started (Task #${result.taskId}). Check the Tasks page for progress.`);
+    navigate('tasks');
+  } catch (error) {
+    alert(`Error starting metadata fetch: ${error.message}`);
   }
 }
 

@@ -102,7 +102,14 @@ const metadataHandler: TaskHandler = async (taskId, onProgress, signal) => {
       [data.libraryId]
     );
   } else {
-    throw new Error('Must specify libraryId or bookIds');
+    // All books across all libraries
+    const whereClause = data.unmatchedOnly
+      ? 'WHERE metadata_source IS NULL'
+      : '';
+    books = query<{ id: number; title: string | null; authors: string | null; isbn: string | null }>(
+      `SELECT id, title, authors, isbn FROM books ${whereClause}`,
+      []
+    );
   }
 
   const total = books.length;

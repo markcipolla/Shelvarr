@@ -605,6 +605,27 @@ router.delete('/tasks/cleanup', (req: Request, res: Response) => {
   }
 });
 
+// Batch metadata fetch for ALL libraries (unmatched only)
+router.post('/metadata/fetch-all', async (req: Request, res: Response) => {
+  try {
+    const { unmatchedOnly } = req.body as { unmatchedOnly?: boolean };
+
+    // Create and start the metadata fetch task for all books
+    const task = queueService.enqueueTask('metadata', {
+      unmatchedOnly: unmatchedOnly ?? true,
+    });
+
+    res.status(202).json({
+      message: 'Metadata fetch started for all libraries',
+      taskId: task.id,
+      task,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
 // Batch metadata fetch for a library
 router.post('/libraries/:id/fetch-metadata', async (req: Request, res: Response) => {
   try {
