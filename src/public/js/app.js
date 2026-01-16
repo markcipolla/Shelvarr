@@ -638,9 +638,19 @@ const pages = {
                   <button class="btn-secondary text-sm py-1 px-3" data-organize-library="${lib.id}" title="Organize Files">
                     ${icons.folder} Organize
                   </button>
-                  <button class="btn-secondary text-sm py-1 px-3" data-fetch-metadata="${lib.id}" title="Fetch Missing Metadata">
-                    ${icons.search} Metadata
-                  </button>
+                  <div class="relative inline-block">
+                    <button class="btn-secondary text-sm py-1 px-3" data-metadata-menu="${lib.id}" title="Metadata Options">
+                      ${icons.search} Metadata ▾
+                    </button>
+                    <div id="metadata-menu-${lib.id}" class="hidden absolute right-0 mt-1 w-40 bg-shelvarr-surface border border-shelvarr-border rounded shadow-lg z-10">
+                      <button class="w-full text-left px-3 py-2 text-sm hover:bg-shelvarr-bg" data-fetch-metadata="${lib.id}" data-unmatched-only="true">
+                        Find Missing
+                      </button>
+                      <button class="w-full text-left px-3 py-2 text-sm hover:bg-shelvarr-bg border-t border-shelvarr-border" data-fetch-metadata="${lib.id}" data-unmatched-only="false">
+                        Refresh All
+                      </button>
+                    </div>
+                  </div>
                   <button class="btn-secondary text-sm py-1 px-3 text-red-400 hover:text-red-300" data-delete-library="${lib.id}" title="Delete Library">
                     ${icons.trash}
                   </button>
@@ -1457,24 +1467,47 @@ function attachEventListeners() {
     });
   });
 
+  // Metadata menu toggle buttons
+  document.querySelectorAll('[data-metadata-menu]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const libraryId = e.currentTarget.dataset.metadataMenu;
+      const menu = document.getElementById(`metadata-menu-${libraryId}`);
+      // Close all other menus first
+      document.querySelectorAll('[id^="metadata-menu-"]').forEach(m => {
+        if (m !== menu) m.classList.add('hidden');
+      });
+      menu?.classList.toggle('hidden');
+    });
+  });
+
+  // Close metadata menus when clicking outside
+  document.addEventListener('click', () => {
+    document.querySelectorAll('[id^="metadata-menu-"]').forEach(m => {
+      m.classList.add('hidden');
+    });
+  });
+
   // Fetch metadata buttons
   document.querySelectorAll('[data-fetch-metadata]').forEach(btn => {
     btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
       const libraryId = e.currentTarget.dataset.fetchMetadata;
-      const originalHtml = e.currentTarget.innerHTML;
-      e.currentTarget.innerHTML = `${icons.spinner} Starting...`;
-      e.currentTarget.disabled = true;
+      const unmatchedOnly = e.currentTarget.dataset.unmatchedOnly !== 'false';
+      const actionName = unmatchedOnly ? 'Find Missing' : 'Refresh All';
+
+      // Close the menu
+      document.querySelectorAll('[id^="metadata-menu-"]').forEach(m => {
+        m.classList.add('hidden');
+      });
 
       try {
-        const result = await api.fetchLibraryMetadata(libraryId, true);
-        alert(`Metadata fetch task started (Task #${result.taskId}). Check the Tasks page for progress.`);
+        const result = await api.fetchLibraryMetadata(libraryId, unmatchedOnly);
+        alert(`${actionName} metadata task started (Task #${result.taskId}). Check the Tasks page for progress.`);
         // Navigate to tasks page to show progress
         navigate('tasks');
       } catch (error) {
         alert(`Error starting metadata fetch: ${error.message}`);
-      } finally {
-        e.currentTarget.innerHTML = originalHtml;
-        e.currentTarget.disabled = false;
       }
     });
   });
