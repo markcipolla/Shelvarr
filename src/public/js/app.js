@@ -70,6 +70,11 @@ const state = {
   komgaStatus: null,
   komgaTesting: false,
   komgaLibraries: [],
+  // Tasks state
+  tasks: { tasks: [], total: 0 },
+  taskStats: { total: 0, pending: 0, running: 0, completed: 0, failed: 0 },
+  tasksLoading: false,
+  recentTasks: [],
 };
 
 // Router
@@ -95,6 +100,8 @@ async function loadPageData(page) {
       await loadDuplicates();
     } else if (page === 'settings') {
       await loadKomgaStatus();
+    } else if (page === 'tasks') {
+      await loadTasks();
     }
   } catch (error) {
     console.error('Error loading page data:', error);
@@ -130,10 +137,12 @@ async function loadBooks() {
 
 async function loadDashboardStats() {
   try {
-    const [libResult, booksResult, seriesResult] = await Promise.all([
+    const [libResult, booksResult, seriesResult, recentTasksResult, taskStatsResult] = await Promise.all([
       api.getLibraries(),
       api.getBooks({ pageSize: 1 }),
       api.getSeries(),
+      api.getRecentTasks(5),
+      api.getTaskStats(),
     ]);
     state.libraries = libResult.libraries || [];
     state.dashboardStats = {
@@ -141,6 +150,8 @@ async function loadDashboardStats() {
       books: booksResult.total || 0,
       series: seriesResult.series?.length || 0,
     };
+    state.recentTasks = recentTasksResult.tasks || [];
+    state.taskStats = taskStatsResult;
     render();
   } catch (error) {
     console.error('Error loading dashboard stats:', error);
@@ -225,6 +236,36 @@ async function testKomgaConnection() {
     state.komgaStatus = { connected: false, error: error.message };
     state.komgaTesting = false;
     render();
+  }
+}
+
+async function loadTasks() {
+  try {
+    state.tasksLoading = true;
+    render();
+
+    const [tasksResult, statsResult] = await Promise.all([
+      api.getTasks({ limit: 50 }),
+      api.getTaskStats(),
+    ]);
+
+    state.tasks = tasksResult;
+    state.taskStats = statsResult;
+    state.tasksLoading = false;
+    render();
+  } catch (error) {
+    console.error('Error loading tasks:', error);
+    state.tasksLoading = false;
+    render();
+  }
+}
+
+async function cancelTask(taskId) {
+  try {
+    await api.cancelTask(taskId);
+    await loadTasks();
+  } catch (error) {
+    alert(`Error cancelling task: ${error.message}`);
   }
 }
 
@@ -431,9 +472,70 @@ function renderOrganizeModal() {
 const pages = {
   dashboard: () => {
     const stats = state.dashboardStats || { libraries: 0, books: 0, series: 0 };
+    const taskStats = state.taskStats || { running: 0 };
+    const recentTasks = state.recentTasks || [];
+
+    const formatTaskType = (type) => {
+      const types = {
+        scan: 'Library Scan',
+        metadata: 'Metadata Fetch',
+        organize: 'File Organization',
+        download: 'Download',
+        author_sync: 'Author Sync',
+      };
+      return types[type] || type;
+    };
+
+    const formatTime = (timestamp) => {
+      if (!timestamp) return '';
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return 'just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      return `${diffDays}d ago`;
+    };
+
+    const statusIcon = (status) => {
+      if (status === 'running') return `<span class="text-blue-400">${icons.spinner}</span>`;
+      if (status === 'completed') return `<span class="text-green-400">${icons.check}</span>`;
+      if (status === 'failed') return `<span class="text-red-400">${icons.x}</span>`;
+      if (status === 'pending') return `<span class="text-yellow-400">○</span>`;
+      return `<span class="text-gray-400">○</span>`;
+    };
+
+    const recentActivityHtml = recentTasks.length === 0
+      ? '<p class="text-shelvarr-text-muted">No recent activity.</p>'
+      : `
+        <div class="space-y-2">
+          ${recentTasks.map(task => `
+            <div class="flex items-center justify-between py-2 border-b border-shelvarr-border/50 last:border-0">
+              <div class="flex items-center gap-3">
+                ${statusIcon(task.status)}
+                <div>
+                  <div class="text-sm font-medium">${formatTaskType(task.type)}</div>
+                  ${task.error ? `<div class="text-xs text-red-400">${task.error}</div>` : ''}
+                </div>
+              </div>
+              <div class="text-xs text-shelvarr-text-muted">${formatTime(task.createdAt)}</div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+
     return `
       <div class="space-y-6">
-        ${pageHeader('Dashboard')}
+        ${pageHeader('Dashboard', taskStats.running > 0 ? `
+          <div class="flex items-center gap-2 text-blue-400">
+            ${icons.spinner}
+            <span class="text-sm">${taskStats.running} task${taskStats.running > 1 ? 's' : ''} running</span>
+          </div>
+        ` : '')}
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div class="card cursor-pointer hover:border-shelvarr-primary" data-nav="libraries">
@@ -463,8 +565,11 @@ const pages = {
         </div>
 
         <div class="card">
-          <h3 class="text-lg font-semibold mb-4">Recent Activity</h3>
-          <p class="text-shelvarr-text-muted">No recent activity.</p>
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold">Recent Activity</h3>
+            <a href="/tasks" class="text-sm text-shelvarr-primary hover:underline" data-nav="tasks">View All</a>
+          </div>
+          ${recentActivityHtml}
         </div>
       </div>
     `;
@@ -885,14 +990,134 @@ const pages = {
     </div>
   `,
 
-  tasks: () => `
-    <div class="space-y-6">
-      ${pageHeader('Background Tasks')}
-      <div class="card">
-        <p class="text-shelvarr-text-muted">No tasks running.</p>
+  tasks: () => {
+    if (state.tasksLoading) {
+      return `
+        <div class="space-y-6">
+          ${pageHeader('Background Tasks')}
+          <div class="card">
+            <p class="text-shelvarr-text-muted">${icons.spinner} Loading tasks...</p>
+          </div>
+        </div>
+      `;
+    }
+
+    const { tasks, total } = state.tasks;
+    const stats = state.taskStats;
+
+    const statusColors = {
+      pending: 'text-yellow-400',
+      running: 'text-blue-400',
+      completed: 'text-green-400',
+      failed: 'text-red-400',
+      cancelled: 'text-gray-400',
+    };
+
+    const statusBadge = (status) => `
+      <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusColors[status] || ''} bg-shelvarr-bg">
+        ${status === 'running' ? icons.spinner : ''}
+        ${status}
+      </span>
+    `;
+
+    const formatTaskType = (type) => {
+      const types = {
+        scan: 'Library Scan',
+        metadata: 'Metadata Fetch',
+        organize: 'File Organization',
+        download: 'Download',
+        author_sync: 'Author Sync',
+      };
+      return types[type] || type;
+    };
+
+    const formatTime = (timestamp) => {
+      if (!timestamp) return '-';
+      const date = new Date(timestamp);
+      return date.toLocaleString();
+    };
+
+    const tasksHtml = tasks.length === 0
+      ? '<p class="text-shelvarr-text-muted">No tasks found. Tasks are created when you scan libraries, fetch metadata, or organize files.</p>'
+      : `
+        <table class="w-full">
+          <thead>
+            <tr class="text-left text-shelvarr-text-muted text-sm border-b border-shelvarr-border">
+              <th class="pb-3">Type</th>
+              <th class="pb-3">Status</th>
+              <th class="pb-3">Progress</th>
+              <th class="pb-3">Created</th>
+              <th class="pb-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tasks.map(task => `
+              <tr class="border-b border-shelvarr-border/50">
+                <td class="py-3">
+                  <div class="font-medium">${formatTaskType(task.type)}</div>
+                  <div class="text-xs text-shelvarr-text-muted">ID: ${task.id}</div>
+                </td>
+                <td class="py-3">${statusBadge(task.status)}</td>
+                <td class="py-3">
+                  ${task.total ? `
+                    <div class="flex items-center gap-2">
+                      <div class="flex-1 h-2 bg-shelvarr-bg rounded-full overflow-hidden">
+                        <div class="h-full bg-shelvarr-primary rounded-full" style="width: ${Math.round((task.progress / task.total) * 100)}%"></div>
+                      </div>
+                      <span class="text-xs text-shelvarr-text-muted">${task.progress}/${task.total}</span>
+                    </div>
+                  ` : '-'}
+                </td>
+                <td class="py-3 text-sm text-shelvarr-text-muted">${formatTime(task.createdAt)}</td>
+                <td class="py-3">
+                  ${task.status === 'running' || task.status === 'pending' ? `
+                    <button class="btn-secondary text-xs py-1 px-2 text-red-400 hover:text-red-300" data-cancel-task="${task.id}">
+                      ${icons.x} Cancel
+                    </button>
+                  ` : ''}
+                  ${task.error ? `
+                    <span class="text-xs text-red-400" title="${task.error}">Error</span>
+                  ` : ''}
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+
+    return `
+      <div class="space-y-6">
+        ${pageHeader('Background Tasks', `
+          <button class="btn-secondary" id="refresh-tasks-btn">${icons.refresh} Refresh</button>
+        `)}
+
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div class="card text-center">
+            <div class="text-2xl font-bold">${stats.total}</div>
+            <div class="text-sm text-shelvarr-text-muted">Total</div>
+          </div>
+          <div class="card text-center">
+            <div class="text-2xl font-bold text-yellow-400">${stats.pending}</div>
+            <div class="text-sm text-shelvarr-text-muted">Pending</div>
+          </div>
+          <div class="card text-center">
+            <div class="text-2xl font-bold text-blue-400">${stats.running}</div>
+            <div class="text-sm text-shelvarr-text-muted">Running</div>
+          </div>
+          <div class="card text-center">
+            <div class="text-2xl font-bold text-green-400">${stats.completed}</div>
+            <div class="text-sm text-shelvarr-text-muted">Completed</div>
+          </div>
+          <div class="card text-center">
+            <div class="text-2xl font-bold text-red-400">${stats.failed}</div>
+            <div class="text-sm text-shelvarr-text-muted">Failed</div>
+          </div>
+        </div>
+
+        <div class="card">${tasksHtml}</div>
       </div>
-    </div>
-  `,
+    `;
+  },
 
   settings: () => {
     const komgaConfigured = state.settings?._config?.komgaConfigured || false;
@@ -1371,6 +1596,22 @@ function attachEventListeners() {
       }
     });
   }
+
+  // Tasks page - Refresh button
+  const refreshTasksBtn = document.getElementById('refresh-tasks-btn');
+  if (refreshTasksBtn) {
+    refreshTasksBtn.addEventListener('click', loadTasks);
+  }
+
+  // Tasks page - Cancel task buttons
+  document.querySelectorAll('[data-cancel-task]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const taskId = parseInt(e.currentTarget.dataset.cancelTask);
+      if (confirm('Cancel this task?')) {
+        await cancelTask(taskId);
+      }
+    });
+  });
 }
 
 // Close modal helper

@@ -27,6 +27,7 @@ import {
 import * as metadataService from '../services/metadata/index.js';
 import * as organizerService from '../services/organizer/index.js';
 import { komgaClient } from '../services/komga/index.js';
+import * as queueService from '../services/queue/index.js';
 import type { HealthResponse, Settings } from '../types/index.js';
 
 const router = Router();
@@ -203,11 +204,21 @@ router.post('/libraries/:id/scan', async (req: Request, res: Response) => {
       return;
     }
 
-    // For now, run scan synchronously
-    // TODO: Move to background job queue in Phase 6
-    const result = await scanLibrary(id);
+    const { async: runAsync } = req.body as { async?: boolean };
 
-    res.json(result);
+    if (runAsync) {
+      // Run scan as background task
+      const task = queueService.enqueueTask('scan', { libraryId: id });
+      res.status(202).json({
+        message: 'Scan started in background',
+        taskId: task.id,
+        task,
+      });
+    } else {
+      // Run scan synchronously
+      const result = await scanLibrary(id);
+      res.json(result);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     res.status(500).json({ error: message });
@@ -499,9 +510,99 @@ router.get('/series', async (req: Request, res: Response) => {
   }
 });
 
-// Tasks - placeholder
-router.get('/tasks', (_req: Request, res: Response) => {
-  res.json({ tasks: [], message: 'Not yet implemented' });
+// Tasks endpoints
+router.get('/tasks', (req: Request, res: Response) => {
+  try {
+    const type = req.query['type'] as queueService.TaskType | undefined;
+    const status = req.query['status'] as queueService.TaskStatus | undefined;
+    const limit = req.query['limit'] ? parseInt(req.query['limit'] as string, 10) : 50;
+    const offset = req.query['offset'] ? parseInt(req.query['offset'] as string, 10) : 0;
+
+    const result = queueService.getTasks({ type, status, limit, offset });
+    res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+router.get('/tasks/recent', (req: Request, res: Response) => {
+  try {
+    const limit = req.query['limit'] ? parseInt(req.query['limit'] as string, 10) : 10;
+    const tasks = queueService.getRecentTasks(limit);
+    res.json({ tasks });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+router.get('/tasks/running', (_req: Request, res: Response) => {
+  try {
+    const tasks = queueService.getRunningTasks();
+    res.json({ tasks });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+router.get('/tasks/stats', (_req: Request, res: Response) => {
+  try {
+    const stats = queueService.getTaskStats();
+    res.json(stats);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+router.get('/tasks/:id', (req: Request, res: Response) => {
+  try {
+    const id = parseIdParam(req.params['id']);
+    if (isNaN(id)) {
+      res.status(400).json({ error: 'Invalid task ID' });
+      return;
+    }
+
+    const task = queueService.getTask(id);
+    if (!task) {
+      res.status(404).json({ error: 'Task not found' });
+      return;
+    }
+
+    res.json(task);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+router.post('/tasks/:id/cancel', (req: Request, res: Response) => {
+  try {
+    const id = parseIdParam(req.params['id']);
+    if (isNaN(id)) {
+      res.status(400).json({ error: 'Invalid task ID' });
+      return;
+    }
+
+    const success = queueService.cancelTask(id);
+    res.json({ success });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
+router.delete('/tasks/cleanup', (req: Request, res: Response) => {
+  try {
+    const days = req.query['days'] ? parseInt(req.query['days'] as string, 10) : 7;
+    const deleted = queueService.cleanupOldTasks(days);
+    res.json({ deleted });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
 });
 
 // Authors - placeholder

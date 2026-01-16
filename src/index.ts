@@ -5,6 +5,10 @@ import { existsSync } from 'fs';
 import config from './config/index.js';
 import { initDatabase, closeDatabase } from './db/index.js';
 import apiRoutes from './routes/index.js';
+import { registerAllHandlers } from './services/queue/handlers.js';
+import { createLogger } from './utils/logger.js';
+
+const log = createLogger('server');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -46,9 +50,13 @@ function isErrorWithMessage(error: unknown): error is ErrorWithMessage {
   );
 }
 
-app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('Error:', err);
+app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
   const message = isErrorWithMessage(err) ? err.message : 'Internal server error';
+  log.error('Request error', {
+    method: req.method,
+    path: req.path,
+    error: message,
+  });
   res.status(500).json({
     error: config.env === 'development' ? message : 'Internal server error',
   });
@@ -56,7 +64,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
 // Graceful shutdown
 function shutdown(): void {
-  console.log('\nShutting down...');
+  log.info('Shutting down...');
   closeDatabase();
   process.exit(0);
 }
@@ -69,9 +77,20 @@ function start(): void {
   try {
     // Initialize database
     initDatabase();
+    log.info('Database initialized');
+
+    // Register task handlers
+    registerAllHandlers();
+    log.info('Task handlers registered');
 
     // Start listening
     app.listen(config.port, () => {
+      log.info('Server started', {
+        port: config.port,
+        env: config.env,
+        libraryRoot: config.libraryRoot,
+      });
+
       console.log(`
 ╔═══════════════════════════════════════════╗
 ║             SHELVARR v0.0.1                ║
@@ -83,7 +102,9 @@ function start(): void {
       `);
     });
   } catch (error) {
-    console.error('Failed to start server:', error);
+    log.error('Failed to start server', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
     process.exit(1);
   }
 }

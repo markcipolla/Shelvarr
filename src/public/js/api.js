@@ -64,9 +64,10 @@ class ApiClient {
     });
   }
 
-  scanLibrary(id) {
+  scanLibrary(id, async = false) {
     return this.request(`/libraries/${id}/scan`, {
       method: 'POST',
+      body: { async },
     });
   }
 
@@ -105,12 +106,37 @@ class ApiClient {
   }
 
   // Tasks
-  getTasks() {
-    return this.request('/tasks');
+  getTasks(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return this.request(`/tasks${query ? `?${query}` : ''}`);
   }
 
   getTask(id) {
     return this.request(`/tasks/${id}`);
+  }
+
+  getRecentTasks(limit = 10) {
+    return this.request(`/tasks/recent?limit=${limit}`);
+  }
+
+  getRunningTasks() {
+    return this.request('/tasks/running');
+  }
+
+  getTaskStats() {
+    return this.request('/tasks/stats');
+  }
+
+  cancelTask(id) {
+    return this.request(`/tasks/${id}/cancel`, {
+      method: 'POST',
+    });
+  }
+
+  cleanupTasks(days = 7) {
+    return this.request(`/tasks/cleanup?days=${days}`, {
+      method: 'DELETE',
+    });
   }
 
   // Authors
