@@ -9,17 +9,27 @@ import { dirname, basename, extname, join } from 'path';
 import { query, queryOne } from '../../db/index.js';
 import type { Book } from '../../types/index.js';
 
-// Default naming template
-const DEFAULT_TEMPLATE = '{author}/{title}';
+// Default naming template (Komga-friendly: series first, zero-padded number)
+// Year and ISBN are included but will be cleaned up if empty
+const DEFAULT_TEMPLATE = '{series}/Book {number} - {title} - {author} ({year}) [{isbn}]';
 
 /**
  * Template variables that can be used in naming patterns
+ *
+ * Available variables:
+ * - {author} - First author name
+ * - {title} - Book title
+ * - {series} - Series name (empty if standalone)
+ * - {number} or {series_number} - Zero-padded series number (e.g., "01", "02")
+ * - {year} - Publication year
+ * - {isbn} - ISBN
  */
 interface TemplateVars {
   author: string;
   title: string;
   series: string;
-  series_number: string;
+  number: string;  // Zero-padded series number
+  series_number: string;  // Alias for number
   year: string;
   isbn: string;
   ext: string;
@@ -117,12 +127,15 @@ function extractYear(publishDate: string | null): string {
  */
 function buildTemplateVars(book: Book): TemplateVars {
   const ext = extname(book.filePath);
+  // Zero-pad series number to 3 digits (handles series up to 999 books)
+  const paddedNumber = book.seriesNumber ? String(book.seriesNumber).padStart(3, '0') : '';
 
   return {
     author: sanitizePathComponent(parseAuthors(book.authors)),
     title: sanitizePathComponent(book.title || basename(book.filePath, ext)),
     series: sanitizePathComponent(book.seriesName || ''),
-    series_number: book.seriesNumber ? String(book.seriesNumber).padStart(2, '0') : '',
+    number: paddedNumber,
+    series_number: paddedNumber,  // Alias
     year: extractYear(book.publishDate),
     isbn: book.isbn || '',
     ext: ext,
@@ -139,6 +152,7 @@ export function applyTemplate(template: string, vars: TemplateVars): string {
   result = result.replace(/\{author\}/g, vars.author);
   result = result.replace(/\{title\}/g, vars.title);
   result = result.replace(/\{series\}/g, vars.series);
+  result = result.replace(/\{number\}/g, vars.number);
   result = result.replace(/\{series_number\}/g, vars.series_number);
   result = result.replace(/\{year\}/g, vars.year);
   result = result.replace(/\{isbn\}/g, vars.isbn);

@@ -605,6 +605,40 @@ router.delete('/tasks/cleanup', (req: Request, res: Response) => {
   }
 });
 
+// Batch metadata fetch for a library
+router.post('/libraries/:id/fetch-metadata', async (req: Request, res: Response) => {
+  try {
+    const id = parseIdParam(req.params['id']);
+    if (isNaN(id)) {
+      res.status(400).json({ error: 'Invalid library ID' });
+      return;
+    }
+
+    const library = await getLibraryById(id);
+    if (!library) {
+      res.status(404).json({ error: 'Library not found' });
+      return;
+    }
+
+    const { unmatchedOnly } = req.body as { unmatchedOnly?: boolean };
+
+    // Create and start the metadata fetch task
+    const task = queueService.enqueueTask('metadata', {
+      libraryId: id,
+      unmatchedOnly: unmatchedOnly ?? true,
+    });
+
+    res.status(202).json({
+      message: 'Metadata fetch started in background',
+      taskId: task.id,
+      task,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: message });
+  }
+});
+
 // Authors - placeholder
 router.get('/authors', (_req: Request, res: Response) => {
   res.json({ authors: [], message: 'Not yet implemented' });

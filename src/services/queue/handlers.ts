@@ -3,10 +3,11 @@
  * Register handlers for different task types
  */
 
-import { registerTaskHandler, type TaskHandler } from './index.js';
-import { scanLibrary } from '../scanner/index.js';
+import { registerTaskHandler, enqueueTask, type TaskHandler } from './index.js';
+import { scanLibrary, updateBook } from '../scanner/index.js';
 import { getLibraryById } from '../library/index.js';
-import { query, queryOne } from '../../db/index.js';
+import { query, queryOne, execute } from '../../db/index.js';
+import * as metadataService from '../metadata/index.js';
 
 /**
  * Scan library task handler
@@ -42,6 +43,14 @@ const scanHandler: TaskHandler = async (taskId, onProgress, signal) => {
     onProgress(progress.current, progress.total);
   });
 
+  // If new books were added, automatically queue a metadata fetch task
+  if (result.added > 0) {
+    enqueueTask('metadata', {
+      libraryId,
+      unmatchedOnly: true,
+    });
+  }
+
   return {
     libraryId,
     libraryName: library.name,
@@ -50,6 +59,7 @@ const scanHandler: TaskHandler = async (taskId, onProgress, signal) => {
     removed: result.removed,
     total: result.total,
     errors: result.errors,
+    metadataTaskQueued: result.added > 0,
   };
 };
 
@@ -73,13 +83,13 @@ const metadataHandler: TaskHandler = async (taskId, onProgress, signal) => {
   };
 
   // Get books to process
-  let books: { id: number; title: string | null }[];
+  let books: { id: number; title: string | null; authors: string | null; isbn: string | null }[];
 
   if (data.bookIds && data.bookIds.length > 0) {
     // Specific books
     const placeholders = data.bookIds.map(() => '?').join(',');
-    books = query<{ id: number; title: string | null }>(
-      `SELECT id, title FROM books WHERE id IN (${placeholders})`,
+    books = query<{ id: number; title: string | null; authors: string | null; isbn: string | null }>(
+      `SELECT id, title, authors, isbn FROM books WHERE id IN (${placeholders})`,
       data.bookIds
     );
   } else if (data.libraryId) {
@@ -87,8 +97,8 @@ const metadataHandler: TaskHandler = async (taskId, onProgress, signal) => {
     const whereClause = data.unmatchedOnly
       ? 'WHERE library_id = ? AND metadata_source IS NULL'
       : 'WHERE library_id = ?';
-    books = query<{ id: number; title: string | null }>(
-      `SELECT id, title FROM books ${whereClause}`,
+    books = query<{ id: number; title: string | null; authors: string | null; isbn: string | null }>(
+      `SELECT id, title, authors, isbn FROM books ${whereClause}`,
       [data.libraryId]
     );
   } else {
@@ -98,6 +108,7 @@ const metadataHandler: TaskHandler = async (taskId, onProgress, signal) => {
   const total = books.length;
   let matched = 0;
   let failed = 0;
+  let skipped = 0;
   const errors: string[] = [];
 
   for (let i = 0; i < books.length; i++) {
@@ -111,20 +122,69 @@ const metadataHandler: TaskHandler = async (taskId, onProgress, signal) => {
     onProgress(i + 1, total);
 
     try {
-      // For now, just mark as processed
-      // TODO: Actually call metadata service when integrated
-      matched++;
+      if (!book.title) {
+        skipped++;
+        continue;
+      }
+
+      // Parse authors from JSON if present
+      let authorName: string | undefined;
+      if (book.authors) {
+        try {
+          const authorsArr = JSON.parse(book.authors);
+          if (Array.isArray(authorsArr) && authorsArr.length > 0) {
+            authorName = authorsArr[0];
+          }
+        } catch {
+          authorName = book.authors;
+        }
+      }
+
+      // Call metadata service to auto-match
+      const metadata = await metadataService.autoMatch(
+        book.title,
+        authorName,
+        book.isbn || undefined
+      );
+
+      if (metadata) {
+        // Update book with metadata
+        await updateBook(book.id, {
+          title: metadata.title,
+          authors: metadata.authors,
+          publisher: metadata.publisher,
+          publishDate: metadata.publishDate,
+          description: metadata.description,
+          isbn: metadata.isbn,
+          coverUrl: metadata.coverUrl,
+        });
+
+        // Update metadata source tracking
+        execute(
+          'UPDATE books SET metadata_source = ?, metadata_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+          [metadata.source, metadata.sourceId, book.id]
+        );
+
+        matched++;
+      } else {
+        failed++;
+        errors.push(`Book ${book.id} (${book.title}): No metadata found`);
+      }
     } catch (error) {
       failed++;
       const message = error instanceof Error ? error.message : 'Unknown error';
       errors.push(`Book ${book.id}: ${message}`);
     }
+
+    // Small delay to avoid rate limiting
+    await new Promise(resolve => setTimeout(resolve, 200));
   }
 
   return {
     total,
     matched,
     failed,
+    skipped,
     errors: errors.slice(0, 10), // Limit errors in result
   };
 };

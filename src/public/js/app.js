@@ -64,7 +64,7 @@ const state = {
   // Organization state
   organizePreview: null,
   organizeLibraryId: null,
-  organizeTemplate: '{author}/{title}',
+  organizeTemplate: '{series}/Book {number} - {title} - {author} ({year}) [{isbn}]',
   organizeLoading: false,
   // Komga state
   komgaStatus: null,
@@ -426,7 +426,8 @@ function renderOrganizeModal() {
             <label class="block text-sm text-shelvarr-text-muted mb-1">Naming Template</label>
             <input type="text" class="input w-full" id="organize-template" value="${state.organizeTemplate}">
             <p class="text-xs text-shelvarr-text-muted mt-1">
-              Variables: {author}, {title}, {series}, {series_number}, {year}, {isbn}
+              Variables: {author}, {title}, {series}, {number} (zero-padded), {year}, {isbn}<br>
+              Empty variables and their brackets/parentheses are automatically removed.
             </p>
           </div>
 
@@ -597,6 +598,9 @@ const pages = {
                   </button>
                   <button class="btn-secondary text-sm py-1 px-3" data-organize-library="${lib.id}" title="Organize Files">
                     ${icons.folder} Organize
+                  </button>
+                  <button class="btn-secondary text-sm py-1 px-3" data-fetch-metadata="${lib.id}" title="Fetch Missing Metadata">
+                    ${icons.search} Metadata
                   </button>
                   <button class="btn-secondary text-sm py-1 px-3 text-red-400 hover:text-red-300" data-delete-library="${lib.id}" title="Delete Library">
                     ${icons.trash}
@@ -1349,6 +1353,28 @@ function attachEventListeners() {
     btn.addEventListener('click', async (e) => {
       const libraryId = parseInt(e.currentTarget.dataset.organizeLibrary);
       await previewOrganize(libraryId, state.organizeTemplate);
+    });
+  });
+
+  // Fetch metadata buttons
+  document.querySelectorAll('[data-fetch-metadata]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const libraryId = e.currentTarget.dataset.fetchMetadata;
+      const originalHtml = e.currentTarget.innerHTML;
+      e.currentTarget.innerHTML = `${icons.spinner} Starting...`;
+      e.currentTarget.disabled = true;
+
+      try {
+        const result = await api.fetchLibraryMetadata(libraryId, true);
+        alert(`Metadata fetch task started (Task #${result.taskId}). Check the Tasks page for progress.`);
+        // Navigate to tasks page to show progress
+        navigate('tasks');
+      } catch (error) {
+        alert(`Error starting metadata fetch: ${error.message}`);
+      } finally {
+        e.currentTarget.innerHTML = originalHtml;
+        e.currentTarget.disabled = false;
+      }
     });
   });
 

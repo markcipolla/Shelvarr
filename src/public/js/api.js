@@ -71,6 +71,13 @@ class ApiClient {
     });
   }
 
+  fetchLibraryMetadata(id, unmatchedOnly = true) {
+    return this.request(`/libraries/${id}/fetch-metadata`, {
+      method: 'POST',
+      body: { unmatchedOnly },
+    });
+  }
+
   // Books
   getBooks(params = {}) {
     const query = new URLSearchParams(params).toString();
