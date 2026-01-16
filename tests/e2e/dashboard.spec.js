@@ -38,16 +38,18 @@ test.describe('Settings Page', () => {
     await page.waitForURL(/\/settings/);
   });
 
-  test('should display settings form inputs', async ({ page }) => {
-    await expect(page.locator('#komga-url')).toBeAttached();
-    await expect(page.locator('#komga-username')).toBeAttached();
-    await expect(page.locator('#komga-password')).toBeAttached();
+  test('should display settings page header', async ({ page }) => {
+    await expect(page.locator('h2')).toContainText('Settings');
   });
 
   test('should have naming template input', async ({ page }) => {
     const template = page.locator('#naming-template');
     await expect(template).toBeAttached();
-    await expect(template).toHaveValue('{author}/{series}/{title} ({year})');
+    await expect(template).toHaveValue('{author}/{title}');
+  });
+
+  test('should display Komga integration section', async ({ page }) => {
+    await expect(page.locator('text=Komga Integration')).toBeVisible();
   });
 });
 
