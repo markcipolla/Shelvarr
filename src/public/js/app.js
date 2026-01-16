@@ -1162,12 +1162,15 @@ const pages = {
           ` : ''}
 
           <div class="text-sm text-shelvarr-text-muted">
-            <p class="font-medium mb-2">Environment Variables:</p>
+            <p class="font-medium mb-2">Configuration:</p>
             <code class="block bg-shelvarr-bg p-2 rounded text-xs">
-              KOMGA_URL=http://your-komga-server:25600<br>
-              KOMGA_USERNAME=your-username<br>
-              KOMGA_PASSWORD=your-password
+              KOMGA_URL=${state.settings?._config?.komgaUrl || '<span class="text-red-400">not set</span>'}<br>
+              KOMGA_USERNAME=${state.settings?._config?.komgaUsername || '<span class="text-red-400">not set</span>'}<br>
+              KOMGA_PASSWORD=${state.settings?._config?.komgaConfigured ? '<span class="text-green-400">********</span>' : '<span class="text-red-400">not set</span>'}
             </code>
+            ${!komgaConfigured ? `
+              <p class="mt-2 text-xs">Set these environment variables to enable Komga integration.</p>
+            ` : ''}
           </div>
         </div>
       </div>

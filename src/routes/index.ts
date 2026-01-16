@@ -50,6 +50,8 @@ router.get('/settings', async (_req: Request, res: Response) => {
       libraryRoot: config.libraryRoot,
       supportedExtensions: config.supportedExtensions,
       komgaConfigured: !!(config.komga.url && config.komga.username),
+      komgaUrl: config.komga.url || null,
+      komgaUsername: config.komga.username || null,
     };
     res.json(settings);
   } catch (error) {
