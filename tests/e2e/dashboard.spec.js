@@ -49,7 +49,7 @@ test.describe('Settings Page', () => {
   });
 
   test('should display Komga integration section', async ({ page }) => {
-    await expect(page.locator('text=Komga Integration')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Komga Integration' })).toBeVisible();
   });
 });
 
