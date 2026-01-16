@@ -249,6 +249,25 @@ async function searchSourceByTitleAuthor(
   }
 }
 
+// Timeout helper
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  const timeout = new Promise<T>((resolve) => {
+    setTimeout(() => resolve(fallback), ms);
+  });
+  return Promise.race([promise, timeout]);
+}
+
+// Per-source timeout in milliseconds (fast sources get more time)
+const SOURCE_TIMEOUTS: Record<MetadataSource, number> = {
+  googlebooks: 5000,
+  openlibrary: 5000,
+  hardcover: 8000,
+  bookbrainz: 8000,
+  audnexus: 5000,
+  comicvine: 8000,
+  wikidata: 10000, // SPARQL can be slow
+};
+
 /**
  * Search for books across multiple sources
  */
@@ -260,29 +279,27 @@ export async function searchBooks(
   const maxResults = options.maxResults || 10;
 
   const results: BookMetadata[] = [];
-  const errors: Error[] = [];
 
-  // Search each source in parallel
+  // Search each source in parallel with individual timeouts
   const searches = sources.map(async (source) => {
-    try {
-      if (!isSourceConfigured(source)) {
-        return [];
-      }
-      return await searchSource(source, query, maxResults);
-    } catch (error) {
-      errors.push(error as Error);
+    if (!isSourceConfigured(source)) {
       return [];
+    }
+    const timeout = SOURCE_TIMEOUTS[source] || 5000;
+    try {
+      return await withTimeout(
+        searchSource(source, query, maxResults),
+        timeout,
+        [] // Return empty on timeout
+      );
+    } catch {
+      return []; // Return empty on error
     }
   });
 
   const searchResults = await Promise.all(searches);
   for (const items of searchResults) {
     results.push(...items);
-  }
-
-  // If all sources failed, throw an error
-  if (results.length === 0 && errors.length > 0) {
-    throw new Error(`All metadata sources failed: ${errors.map(e => e.message).join(', ')}`);
   }
 
   return results;
@@ -296,29 +313,27 @@ export async function searchByIsbn(
   options: SearchOptions = {}
 ): Promise<BookMetadata | null> {
   const sources = options.sources || await getEnabledSources();
-  const errors: Error[] = [];
 
-  // Try sources in order until we get a match
-  for (const source of sources) {
-    try {
-      if (!isSourceConfigured(source)) {
-        continue;
-      }
-      const result = await searchSourceByIsbn(source, isbn);
-      if (result) {
-        return result;
-      }
-    } catch (error) {
-      errors.push(error as Error);
+  // Search all sources in parallel with timeouts, return first result
+  const searches = sources.map(async (source) => {
+    if (!isSourceConfigured(source)) {
+      return null;
     }
-  }
+    const timeout = SOURCE_TIMEOUTS[source] || 5000;
+    try {
+      return await withTimeout(
+        searchSourceByIsbn(source, isbn),
+        timeout,
+        null
+      );
+    } catch {
+      return null;
+    }
+  });
 
-  // If all sources failed with errors, throw
-  if (errors.length === sources.length) {
-    throw new Error(`ISBN lookup failed: ${errors.map(e => e.message).join(', ')}`);
-  }
-
-  return null;
+  const results = await Promise.all(searches);
+  // Return first non-null result
+  return results.find(r => r !== null) || null;
 }
 
 /**
@@ -331,17 +346,20 @@ export async function searchByTitleAuthor(
 ): Promise<BookMetadata[]> {
   const sources = options.sources || await getEnabledSources();
   const results: BookMetadata[] = [];
-  const errors: Error[] = [];
 
-  // Search each source in parallel
+  // Search each source in parallel with timeouts
   const searches = sources.map(async (source) => {
+    if (!isSourceConfigured(source)) {
+      return [];
+    }
+    const timeout = SOURCE_TIMEOUTS[source] || 5000;
     try {
-      if (!isSourceConfigured(source)) {
-        return [];
-      }
-      return await searchSourceByTitleAuthor(source, title, author);
-    } catch (error) {
-      errors.push(error as Error);
+      return await withTimeout(
+        searchSourceByTitleAuthor(source, title, author),
+        timeout,
+        []
+      );
+    } catch {
       return [];
     }
   });
@@ -349,10 +367,6 @@ export async function searchByTitleAuthor(
   const searchResults = await Promise.all(searches);
   for (const items of searchResults) {
     results.push(...items);
-  }
-
-  if (results.length === 0 && errors.length > 0) {
-    throw new Error(`Search failed: ${errors.map(e => e.message).join(', ')}`);
   }
 
   return results;
