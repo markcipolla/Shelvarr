@@ -1,0 +1,40 @@
+# Dependencies
+node_modules
+.npm
+
+# Next.js
+.next
+out
+
+# Development
+*.log
+.env*.local
+.DS_Store
+
+# Testing
+coverage
+.playwright
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Data (mounted at runtime)
+data
+
+# Old source (if any)
+dist
+
+# Tests
+tests
+*.test.ts
+*.spec.ts

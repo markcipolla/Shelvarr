@@ -7,8 +7,8 @@ import {
   applyTemplate,
   calculateMetadataSimilarity,
   generateNewPath,
-} from '../../src/services/organizer/index.js';
-import type { Book } from '../../src/types/index.js';
+} from '../../lib/services/organizer/index.js';
+import type { Book } from '../../types/index.js';
 
 describe('Organizer Service - Pure Functions', () => {
   describe('sanitizePathComponent', () => {
@@ -191,6 +191,7 @@ describe('Organizer Service - Pure Functions', () => {
         fileSize: null,
         title: null,
         authors: null,
+        series: null,
         seriesName: null,
         seriesNumber: null,
         isbn: null,

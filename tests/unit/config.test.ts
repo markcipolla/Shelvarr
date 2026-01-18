@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import config from '../../src/config/index.js';
+import config from '../../lib/config/index.js';
 
 describe('Config', () => {
   it('should have default values', () => {
@@ -14,7 +14,7 @@ describe('Config', () => {
   });
 
   it('should have supported extensions', () => {
-    const expected = ['.epub', '.pdf', '.cbz', '.cbr', '.mobi', '.azw', '.azw3'];
+    const expected = ['.epub', '.pdf', '.mobi', '.azw', '.azw3'];
     for (const ext of expected) {
       assert.ok(
         config.supportedExtensions.includes(ext),
@@ -32,8 +32,7 @@ describe('Config', () => {
 
   it('should have rate limits', () => {
     assert.ok(config.rateLimits !== undefined);
-    assert.ok(typeof config.rateLimits.googleBooks === 'number');
-    assert.ok(typeof config.rateLimits.openLibrary === 'number');
+    assert.ok(typeof config.rateLimits.hardcover === 'number');
   });
 
   it('should have a database path', () => {

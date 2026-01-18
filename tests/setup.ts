@@ -3,21 +3,30 @@
  * Provides database initialization and cleanup for tests
  */
 
-import { initDatabase, closeDatabase, getPool } from '../src/db/index.js';
+import { mkdtempSync, rmSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 
-// Set test database URL before any imports that use config
-const TEST_DATABASE_URL = process.env['TEST_DATABASE_URL'] ||
-  'postgresql://shelvarr_test:shelvarr_test@localhost:5433/shelvarr_test';
+let testDir: string | null = null;
 
-// Override the database URL for tests
-process.env['DATABASE_URL'] = TEST_DATABASE_URL;
+/**
+ * Create a temporary test directory and set environment variables
+ */
+export function createTestEnvironment(): string {
+  testDir = mkdtempSync(join(tmpdir(), 'shelvarr-test-'));
+  process.env['DATA_DIR'] = testDir;
+  process.env['DB_PATH'] = join(testDir, 'test.db');
+  return testDir;
+}
 
 /**
  * Initialize the test database
- * Creates all tables fresh for each test run
+ * Must be called AFTER createTestEnvironment and AFTER importing db module
  */
 export async function setupTestDatabase(): Promise<void> {
-  await initDatabase();
+  // Dynamic import to ensure env vars are set first
+  const { initDatabase } = await import('../lib/db/index.js');
+  initDatabase();
 }
 
 /**
@@ -25,21 +34,20 @@ export async function setupTestDatabase(): Promise<void> {
  * Truncates all tables but keeps the schema
  */
 export async function cleanupTestDatabase(): Promise<void> {
-  const pool = getPool();
+  const { getDb } = await import('../lib/db/index.js');
+  const db = getDb();
 
-  // Truncate all tables in reverse dependency order
-  await pool.query(`
-    TRUNCATE TABLE
-      downloads,
-      author_works,
-      authors,
-      book_series,
-      series,
-      tasks,
-      books,
-      libraries,
-      settings
-    RESTART IDENTITY CASCADE
+  // Delete all data in reverse dependency order
+  db.exec(`
+    DELETE FROM downloads;
+    DELETE FROM author_works;
+    DELETE FROM authors;
+    DELETE FROM book_series;
+    DELETE FROM series;
+    DELETE FROM tasks;
+    DELETE FROM books;
+    DELETE FROM libraries;
+    DELETE FROM settings;
   `);
 }
 
@@ -47,11 +55,22 @@ export async function cleanupTestDatabase(): Promise<void> {
  * Close the test database connection
  */
 export async function teardownTestDatabase(): Promise<void> {
-  await closeDatabase();
+  const { closeDatabase } = await import('../lib/db/index.js');
+  closeDatabase();
 }
 
 /**
- * Reset database to clean state (truncate + close)
+ * Clean up test directory
+ */
+export function cleanupTestEnvironment(): void {
+  if (testDir) {
+    rmSync(testDir, { recursive: true, force: true });
+    testDir = null;
+  }
+}
+
+/**
+ * Reset database to clean state (truncate + close + cleanup)
  */
 export async function resetTestDatabase(): Promise<void> {
   try {
@@ -60,4 +79,5 @@ export async function resetTestDatabase(): Promise<void> {
     // Tables might not exist yet
   }
   await teardownTestDatabase();
+  cleanupTestEnvironment();
 }
