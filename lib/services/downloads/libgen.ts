@@ -73,7 +73,7 @@ export function getLibGenDomain(): string {
  */
 export function getLibGenSearchUrl(query: string): string {
   const encoded = encodeURIComponent(query);
-  return `https://${getLibGenDomain()}/search.php?req=${encoded}&lg_topic=libgen&open=0&view=simple&res=25&phrase=1&column=def`;
+  return `https://${getLibGenDomain()}/index.php?req=${encoded}&lg_topic=libgen&open=0&view=simple&res=25&phrase=1&column=def`;
 }
 
 /**
@@ -86,19 +86,12 @@ export async function searchLibGen(
   const results: LibGenResult[] = [];
 
   try {
-    // Use the JSON API if searching by ISBN
-    if (options?.isbn) {
-      const apiResults = await searchLibGenByIsbn(options.isbn);
-      if (apiResults.length > 0) {
-        return apiResults;
-      }
-    }
-
-    // Otherwise use the search API
-    const encoded = encodeURIComponent(query);
+    // If ISBN provided, search by ISBN instead of title
+    const searchQuery = options?.isbn ? options.isbn.replace(/[-\s]/g, '') : query;
+    const encoded = encodeURIComponent(searchQuery);
 
     // Get search results from the HTML search page
-    const searchPageUrl = `https://${getLibGenDomain()}/search.php?req=${encoded}&lg_topic=libgen&open=0&view=simple&res=25&phrase=1&column=def`;
+    const searchPageUrl = `https://${getLibGenDomain()}/index.php?req=${encoded}&lg_topic=libgen&open=0&view=simple&res=25&phrase=1&column=def`;
 
     const response = await fetch(searchPageUrl, {
       headers: {
@@ -184,69 +177,10 @@ export async function searchLibGen(
 }
 
 /**
- * Search LibGen by ISBN using JSON API
- */
-async function searchLibGenByIsbn(isbn: string): Promise<LibGenResult[]> {
-  const results: LibGenResult[] = [];
-
-  try {
-    const cleanIsbn = isbn.replace(/[-\s]/g, '');
-    const apiUrl = `https://${getLibGenDomain()}/json.php?isbn=${cleanIsbn}&fields=*`;
-
-    const response = await fetch(apiUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      return results;
-    }
-
-    const data = await response.json();
-
-    if (Array.isArray(data)) {
-      for (const book of data) {
-        results.push({
-          id: book.id || book.md5,
-          md5: book.md5?.toLowerCase() || '',
-          title: book.title || 'Unknown',
-          author: book.author || 'Unknown',
-          extension: book.extension?.toLowerCase() || 'pdf',
-          size: book.filesize ? formatFileSize(parseInt(book.filesize)) : 'Unknown',
-          year: book.year,
-          language: book.language,
-          pages: book.pages,
-          publisher: book.publisher,
-          isbn: book.identifier,
-          downloadUrl: getLibGenDownloadUrl(book.md5),
-          searchUrl: getLibGenSearchUrl(isbn),
-        });
-      }
-    }
-  } catch (error) {
-    console.error('LibGen ISBN search error:', error);
-  }
-
-  return results;
-}
-
-/**
  * Get download URL for a book
  */
 export function getLibGenDownloadUrl(md5: string): string {
   return `https://${DOWNLOAD_MIRRORS[0]}/main/${md5}`;
-}
-
-/**
- * Format file size from bytes to human readable
- */
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
 export default {
