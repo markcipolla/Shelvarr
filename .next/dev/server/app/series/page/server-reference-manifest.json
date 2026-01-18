@@ -1,0 +1,50 @@
+{
+  "node": {
+    "400523bfc016e202c757d775bd49ae680b447018f9": {
+      "workers": {
+        "app/series/page": {
+          "moduleId": "[project]/.next-internal/server/app/series/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/series.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getSeriesInfo",
+          "filename": "lib/actions/series.ts"
+        }
+      },
+      "layer": {
+        "app/series/page": "rsc"
+      },
+      "exportedName": "getSeriesInfo",
+      "filename": "lib/actions/series.ts"
+    },
+    "402bcb002e424219a72aac2974ec4d71576421c17e": {
+      "workers": {
+        "app/series/page": {
+          "moduleId": "[project]/.next-internal/server/app/series/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/series.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getBooksBySeries",
+          "filename": "lib/actions/series.ts"
+        }
+      },
+      "layer": {
+        "app/series/page": "rsc"
+      },
+      "exportedName": "getBooksBySeries",
+      "filename": "lib/actions/series.ts"
+    },
+    "408efca71aae2ab0b7bb0f4519c67f2f3534a76b17": {
+      "workers": {
+        "app/series/page": {
+          "moduleId": "[project]/.next-internal/server/app/series/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/series.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getSeries",
+          "filename": "lib/actions/series.ts"
+        }
+      },
+      "layer": {
+        "app/series/page": "rsc"
+      },
+      "exportedName": "getSeries",
+      "filename": "lib/actions/series.ts"
+    }
+  },
+  "edge": {}
+}

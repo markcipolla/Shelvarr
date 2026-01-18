@@ -1,0 +1,140 @@
+{
+  "node": {
+    "4007546e5b4f659ed3138a8471b80e3eb545df11b6": {
+      "workers": {
+        "app/authors/page": {
+          "moduleId": "[project]/.next-internal/server/app/authors/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/authors.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getOrCreateAuthor",
+          "filename": "lib/actions/authors.ts"
+        }
+      },
+      "layer": {
+        "app/authors/page": "action-browser"
+      },
+      "exportedName": "getOrCreateAuthor",
+      "filename": "lib/actions/authors.ts"
+    },
+    "4038a13fe5f1311bfe02437b83b2d283aaadbc7389": {
+      "workers": {
+        "app/authors/page": {
+          "moduleId": "[project]/.next-internal/server/app/authors/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/authors.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "toggleWorkWanted",
+          "filename": "lib/actions/authors.ts"
+        }
+      },
+      "layer": {
+        "app/authors/page": "rsc"
+      },
+      "exportedName": "toggleWorkWanted",
+      "filename": "lib/actions/authors.ts"
+    },
+    "405173413693034ab29e7647dd06c98e1d8579c489": {
+      "workers": {
+        "app/authors/page": {
+          "moduleId": "[project]/.next-internal/server/app/authors/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/authors.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getAuthorsFromBooks",
+          "filename": "lib/actions/authors.ts"
+        }
+      },
+      "layer": {
+        "app/authors/page": "rsc"
+      },
+      "exportedName": "getAuthorsFromBooks",
+      "filename": "lib/actions/authors.ts"
+    },
+    "40576a09ceddb019238846935bd9f51f7b0c4e6b58": {
+      "workers": {
+        "app/authors/page": {
+          "moduleId": "[project]/.next-internal/server/app/authors/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/authors.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "refreshAuthorOwnership",
+          "filename": "lib/actions/authors.ts"
+        }
+      },
+      "layer": {
+        "app/authors/page": "rsc"
+      },
+      "exportedName": "refreshAuthorOwnership",
+      "filename": "lib/actions/authors.ts"
+    },
+    "40702c7b484795658a92b15155e1fe46c8a5d98ed6": {
+      "workers": {
+        "app/authors/page": {
+          "moduleId": "[project]/.next-internal/server/app/authors/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/authors.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getAuthor",
+          "filename": "lib/actions/authors.ts"
+        }
+      },
+      "layer": {
+        "app/authors/page": "rsc"
+      },
+      "exportedName": "getAuthor",
+      "filename": "lib/actions/authors.ts"
+    },
+    "40a960b6b496e3d7ccc5520e8d0f9290b73886dd93": {
+      "workers": {
+        "app/authors/page": {
+          "moduleId": "[project]/.next-internal/server/app/authors/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/authors.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getOwnedBooksByAuthor",
+          "filename": "lib/actions/authors.ts"
+        }
+      },
+      "layer": {
+        "app/authors/page": "rsc"
+      },
+      "exportedName": "getOwnedBooksByAuthor",
+      "filename": "lib/actions/authors.ts"
+    },
+    "40b87b0ae7032d43b9956d3e102a0a9814097b28e6": {
+      "workers": {
+        "app/authors/page": {
+          "moduleId": "[project]/.next-internal/server/app/authors/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/authors.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getAuthorByName",
+          "filename": "lib/actions/authors.ts"
+        }
+      },
+      "layer": {
+        "app/authors/page": "rsc"
+      },
+      "exportedName": "getAuthorByName",
+      "filename": "lib/actions/authors.ts"
+    },
+    "40c38bc40e0d51b3fd2dd38968ddc60a98b3cbc0d1": {
+      "workers": {
+        "app/authors/page": {
+          "moduleId": "[project]/.next-internal/server/app/authors/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/authors.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "fetchAuthorMetadata",
+          "filename": "lib/actions/authors.ts"
+        }
+      },
+      "layer": {
+        "app/authors/page": "rsc"
+      },
+      "exportedName": "fetchAuthorMetadata",
+      "filename": "lib/actions/authors.ts"
+    },
+    "40ddc6de0d26573f24176c7ac69cbaadf23c24fb23": {
+      "workers": {
+        "app/authors/page": {
+          "moduleId": "[project]/.next-internal/server/app/authors/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/authors.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getAuthorWorks",
+          "filename": "lib/actions/authors.ts"
+        }
+      },
+      "layer": {
+        "app/authors/page": "rsc"
+      },
+      "exportedName": "getAuthorWorks",
+      "filename": "lib/actions/authors.ts"
+    }
+  },
+  "edge": {}
+}

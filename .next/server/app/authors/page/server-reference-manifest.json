@@ -1,0 +1,140 @@
+{
+  "node": {
+    "400ff575e70386e6addb6a09f3217ca0d5c8d589bf": {
+      "workers": {
+        "app/authors/page": {
+          "moduleId": 66286,
+          "async": false,
+          "exportedName": "getOwnedBooksByAuthor",
+          "filename": "lib/actions/authors.ts"
+        }
+      },
+      "layer": {
+        "app/authors/page": "rsc"
+      },
+      "exportedName": "getOwnedBooksByAuthor",
+      "filename": "lib/actions/authors.ts"
+    },
+    "401996a545acc6a6d477d486d854c6661b930ddf78": {
+      "workers": {
+        "app/authors/page": {
+          "moduleId": 66286,
+          "async": false,
+          "exportedName": "getAuthorsFromBooks",
+          "filename": "lib/actions/authors.ts"
+        }
+      },
+      "layer": {
+        "app/authors/page": "rsc"
+      },
+      "exportedName": "getAuthorsFromBooks",
+      "filename": "lib/actions/authors.ts"
+    },
+    "40460beeb0a726d7ce7607e8913e152b3ced86941a": {
+      "workers": {
+        "app/authors/page": {
+          "moduleId": 66286,
+          "async": false,
+          "exportedName": "getOrCreateAuthor",
+          "filename": "lib/actions/authors.ts"
+        }
+      },
+      "layer": {
+        "app/authors/page": "action-browser"
+      },
+      "exportedName": "getOrCreateAuthor",
+      "filename": "lib/actions/authors.ts"
+    },
+    "40561cf5727686d9b77107a3ffe44309b6b75d78c0": {
+      "workers": {
+        "app/authors/page": {
+          "moduleId": 66286,
+          "async": false,
+          "exportedName": "getAuthorByName",
+          "filename": "lib/actions/authors.ts"
+        }
+      },
+      "layer": {
+        "app/authors/page": "rsc"
+      },
+      "exportedName": "getAuthorByName",
+      "filename": "lib/actions/authors.ts"
+    },
+    "4058a25c7d6b4728c240fdc9458f5a474d6eaf5e6d": {
+      "workers": {
+        "app/authors/page": {
+          "moduleId": 66286,
+          "async": false,
+          "exportedName": "getAuthorWorks",
+          "filename": "lib/actions/authors.ts"
+        }
+      },
+      "layer": {
+        "app/authors/page": "rsc"
+      },
+      "exportedName": "getAuthorWorks",
+      "filename": "lib/actions/authors.ts"
+    },
+    "4058b67463b1e82cc093454a849f4214060ec48a6d": {
+      "workers": {
+        "app/authors/page": {
+          "moduleId": 66286,
+          "async": false,
+          "exportedName": "getAuthor",
+          "filename": "lib/actions/authors.ts"
+        }
+      },
+      "layer": {
+        "app/authors/page": "rsc"
+      },
+      "exportedName": "getAuthor",
+      "filename": "lib/actions/authors.ts"
+    },
+    "40947098276267602fcad4ce1e1da838e279731165": {
+      "workers": {
+        "app/authors/page": {
+          "moduleId": 66286,
+          "async": false,
+          "exportedName": "toggleWorkWanted",
+          "filename": "lib/actions/authors.ts"
+        }
+      },
+      "layer": {
+        "app/authors/page": "rsc"
+      },
+      "exportedName": "toggleWorkWanted",
+      "filename": "lib/actions/authors.ts"
+    },
+    "40d31607dc70873b076f4aef519a26f2aa278cd7cf": {
+      "workers": {
+        "app/authors/page": {
+          "moduleId": 66286,
+          "async": false,
+          "exportedName": "refreshAuthorOwnership",
+          "filename": "lib/actions/authors.ts"
+        }
+      },
+      "layer": {
+        "app/authors/page": "rsc"
+      },
+      "exportedName": "refreshAuthorOwnership",
+      "filename": "lib/actions/authors.ts"
+    },
+    "40deff16169164f804f1cdaa26c505518a12fbed6a": {
+      "workers": {
+        "app/authors/page": {
+          "moduleId": 66286,
+          "async": false,
+          "exportedName": "fetchAuthorMetadata",
+          "filename": "lib/actions/authors.ts"
+        }
+      },
+      "layer": {
+        "app/authors/page": "rsc"
+      },
+      "exportedName": "fetchAuthorMetadata",
+      "filename": "lib/actions/authors.ts"
+    }
+  },
+  "edge": {}
+}

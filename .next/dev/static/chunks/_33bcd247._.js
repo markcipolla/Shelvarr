@@ -1,0 +1,382 @@
+(globalThis.TURBOPACK || (globalThis.TURBOPACK = [])).push([typeof document === "object" ? document.currentScript : undefined,
+"[project]/lib/actions/data:9029b6 [app-client] (ecmascript) <text/javascript>", ((__turbopack_context__) => {
+"use strict";
+
+__turbopack_context__.s([
+    "getOrCreateAuthor",
+    ()=>$$RSC_SERVER_ACTION_1
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$build$2f$webpack$2f$loaders$2f$next$2d$flight$2d$loader$2f$action$2d$client$2d$wrapper$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/node_modules/next/dist/build/webpack/loaders/next-flight-loader/action-client-wrapper.js [app-client] (ecmascript)");
+/* __next_internal_action_entry_do_not_use__ [{"4007546e5b4f659ed3138a8471b80e3eb545df11b6":"getOrCreateAuthor"},"lib/actions/authors.ts",""] */ "use turbopack no side effects";
+;
+const $$RSC_SERVER_ACTION_1 = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$build$2f$webpack$2f$loaders$2f$next$2d$flight$2d$loader$2f$action$2d$client$2d$wrapper$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["createServerReference"])("4007546e5b4f659ed3138a8471b80e3eb545df11b6", __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$build$2f$webpack$2f$loaders$2f$next$2d$flight$2d$loader$2f$action$2d$client$2d$wrapper$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["callServer"], void 0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$build$2f$webpack$2f$loaders$2f$next$2d$flight$2d$loader$2f$action$2d$client$2d$wrapper$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["findSourceMapURL"], "getOrCreateAuthor");
+;
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+ //# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbIi4vYXV0aG9ycy50cyJdLCJzb3VyY2VzQ29udGVudCI6WyIndXNlIHNlcnZlcic7XG5cbmltcG9ydCB7IHF1ZXJ5LCBleGVjdXRlIH0gZnJvbSAnQC9saWIvZGInO1xuaW1wb3J0IHR5cGUgeyBBdXRob3IsIEF1dGhvcldvcmsgfSBmcm9tICdAL3R5cGVzJztcblxuLyoqXG4gKiBOb3JtYWxpemUgYSBuYW1lIGZvciBjb21wYXJpc29uXG4gKiAtIExvd2VyY2FzZVxuICogLSBSZW1vdmUgcHVuY3R1YXRpb25cbiAqIC0gQ29sbGFwc2Ugd2hpdGVzcGFjZVxuICogLSBUcmltXG4gKi9cbmZ1bmN0aW9uIG5vcm1hbGl6ZU5hbWUobmFtZTogc3RyaW5nKTogc3RyaW5nIHtcbiAgcmV0dXJuIG5hbWVcbiAgICAudG9Mb3dlckNhc2UoKVxuICAgIC5yZXBsYWNlKC9bXlxcd1xcc10vZywgJycpXG4gICAgLnJlcGxhY2UoL1xccysvZywgJyAnKVxuICAgIC50cmltKCk7XG59XG5cbi8qKlxuICogQ2hlY2sgaWYgdHdvIGF1dGhvciBuYW1lcyBtYXRjaCAoaGFuZGxlcyB2YXJpYXRpb25zIGxpa2UgXCJKLksuIFJvd2xpbmdcIiB2cyBcIkogSyBSb3dsaW5nXCIpXG4gKi9cbmZ1bmN0aW9uIGF1dGhvck5hbWVzTWF0Y2gobmFtZTE6IHN0cmluZywgbmFtZTI6IHN0cmluZyk6IGJvb2xlYW4ge1xuICBjb25zdCBub3JtMSA9IG5vcm1hbGl6ZU5hbWUobmFtZTEpO1xuICBjb25zdCBub3JtMiA9IG5vcm1hbGl6ZU5hbWUobmFtZTIpO1xuXG4gIC8vIEV4YWN0IG1hdGNoIGFmdGVyIG5vcm1hbGl6YXRpb25cbiAgaWYgKG5vcm0xID09PSBub3JtMikgcmV0dXJuIHRydWU7XG5cbiAgLy8gT25lIGNvbnRhaW5zIHRoZSBvdGhlciAoZm9yIGNhc2VzIGxpa2UgXCJTdGVwaGVuIEtpbmdcIiB2cyBcIlN0ZXBoZW4gRWR3aW4gS2luZ1wiKVxuICBpZiAobm9ybTEuaW5jbHVkZXMobm9ybTIpIHx8IG5vcm0yLmluY2x1ZGVzKG5vcm0xKSkgcmV0dXJuIHRydWU7XG5cbiAgcmV0dXJuIGZhbHNlO1xufVxuXG4vKipcbiAqIE5vcm1hbGl6ZSBhIHRpdGxlIGZvciBjb21wYXJpc29uXG4gKiAtIExvd2VyY2FzZVxuICogLSBSZW1vdmUgcHVuY3R1YXRpb25cbiAqIC0gUmVtb3ZlIGNvbW1vbiBzdWJ0aXRsZXMgYWZ0ZXIgY29sb25zXG4gKiAtIFRyaW0gd2hpdGVzcGFjZVxuICovXG5mdW5jdGlvbiBub3JtYWxpemVUaXRsZSh0aXRsZTogc3RyaW5nKTogc3RyaW5nIHtcbiAgcmV0dXJuIHRpdGxlXG4gICAgLnRvTG93ZXJDYXNlKClcbiAgICAvLyBSZW1vdmUgY29udGVudCBhZnRlciBjb2xvbiAoc3VidGl0bGVzKVxuICAgIC5yZXBsYWNlKC86LiokLywgJycpXG4gICAgLy8gUmVtb3ZlIHB1bmN0dWF0aW9uXG4gICAgLnJlcGxhY2UoL1teXFx3XFxzXS9nLCAnJylcbiAgICAvLyBDb2xsYXBzZSB3aGl0ZXNwYWNlXG4gICAgLnJlcGxhY2UoL1xccysvZywgJyAnKVxuICAgIC50cmltKCk7XG59XG5cbi8qKlxuICogQ2hlY2sgaWYgdHdvIHRpdGxlcyBtYXRjaCB1c2luZyBmdXp6eSBtYXRjaGluZ1xuICovXG5mdW5jdGlvbiB0aXRsZXNNYXRjaCh0aXRsZTE6IHN0cmluZywgdGl0bGUyOiBzdHJpbmcpOiBib29sZWFuIHtcbiAgY29uc3Qgbm9ybTEgPSBub3JtYWxpemVUaXRsZSh0aXRsZTEpO1xuICBjb25zdCBub3JtMiA9IG5vcm1hbGl6ZVRpdGxlKHRpdGxlMik7XG5cbiAgLy8gRXhhY3QgbWF0Y2ggYWZ0ZXIgbm9ybWFsaXphdGlvblxuICBpZiAobm9ybTEgPT09IG5vcm0yKSByZXR1cm4gdHJ1ZTtcblxuICAvLyBPbmUgY29udGFpbnMgdGhlIG90aGVyIChmb3IgY2FzZXMgbGlrZSBcIlRoZSBCb29rXCIgdnMgXCJUaGUgQm9vazogQSBOb3ZlbFwiKVxuICBpZiAobm9ybTEuaW5jbHVkZXMobm9ybTIpIHx8IG5vcm0yLmluY2x1ZGVzKG5vcm0xKSkgcmV0dXJuIHRydWU7XG5cbiAgLy8gQ2hlY2sgd29yZCBvdmVybGFwIChhdCBsZWFzdCA4MCUgb2Ygd29yZHMgbWF0Y2gpXG4gIGNvbnN0IHdvcmRzMSA9IG5ldyBTZXQobm9ybTEuc3BsaXQoJyAnKS5maWx0ZXIodyA9PiB3Lmxlbmd0aCA+IDIpKTtcbiAgY29uc3Qgd29yZHMyID0gbmV3IFNldChub3JtMi5zcGxpdCgnICcpLmZpbHRlcih3ID0+IHcubGVuZ3RoID4gMikpO1xuXG4gIGlmICh3b3JkczEuc2l6ZSA9PT0gMCB8fCB3b3JkczIuc2l6ZSA9PT0gMCkgcmV0dXJuIGZhbHNlO1xuXG4gIGNvbnN0IGludGVyc2VjdGlvbiA9IFsuLi53b3JkczFdLmZpbHRlcih3ID0+IHdvcmRzMi5oYXModykpO1xuICBjb25zdCBtaW5TaXplID0gTWF0aC5taW4od29yZHMxLnNpemUsIHdvcmRzMi5zaXplKTtcblxuICByZXR1cm4gaW50ZXJzZWN0aW9uLmxlbmd0aCAvIG1pblNpemUgPj0gMC44O1xufVxuXG5pbnRlcmZhY2UgT3duZWRCb29rIHtcbiAgaWQ6IG51bWJlcjtcbiAgdGl0bGU6IHN0cmluZztcbiAgaXNibjogc3RyaW5nIHwgbnVsbDtcbn1cblxuLyoqXG4gKiBGaW5kIGJlc3QgbWF0Y2hpbmcgb3duZWQgYm9vayBmb3IgYSBiaWJsaW9ncmFwaHkgd29ya1xuICovXG5mdW5jdGlvbiBmaW5kTWF0Y2hpbmdCb29rKFxuICB3b3JrVGl0bGU6IHN0cmluZyxcbiAgb3duZWRCb29rczogT3duZWRCb29rW11cbik6IE93bmVkQm9vayB8IG51bGwge1xuICAvLyBUcnkgZXhhY3QgbWF0Y2ggZmlyc3QgKGNhc2UtaW5zZW5zaXRpdmUpXG4gIGxldCBtYXRjaCA9IG93bmVkQm9va3MuZmluZChiID0+IGIudGl0bGUudG9Mb3dlckNhc2UoKSA9PT0gd29ya1RpdGxlLnRvTG93ZXJDYXNlKCkpO1xuICBpZiAobWF0Y2gpIHJldHVybiBtYXRjaDtcblxuICAvLyBUcnkgbm9ybWFsaXplZCBtYXRjaFxuICBtYXRjaCA9IG93bmVkQm9va3MuZmluZChiID0+IG5vcm1hbGl6ZVRpdGxlKGIudGl0bGUpID09PSBub3JtYWxpemVUaXRsZSh3b3JrVGl0bGUpKTtcbiAgaWYgKG1hdGNoKSByZXR1cm4gbWF0Y2g7XG5cbiAgLy8gVHJ5IGZ1enp5IG1hdGNoXG4gIG1hdGNoID0gb3duZWRCb29rcy5maW5kKGIgPT4gdGl0bGVzTWF0Y2goYi50aXRsZSwgd29ya1RpdGxlKSk7XG4gIGlmIChtYXRjaCkgcmV0dXJuIG1hdGNoO1xuXG4gIHJldHVybiBudWxsO1xufVxuXG5pbnRlcmZhY2UgQXV0aG9yUm93IHtcbiAgaWQ6IG51bWJlcjtcbiAgbmFtZTogc3RyaW5nO1xuICBvcGVubGlicmFyeV9pZDogc3RyaW5nIHwgbnVsbDtcbiAgZ29vZ2xlX2Jvb2tzX2lkOiBzdHJpbmcgfCBudWxsO1xuICB0b3RhbF93b3JrczogbnVtYmVyIHwgbnVsbDtcbiAgbGFzdF9zeW5jZWQ6IHN0cmluZyB8IG51bGw7XG4gIGNyZWF0ZWRfYXQ6IHN0cmluZztcbn1cblxuaW50ZXJmYWNlIEF1dGhvcldvcmtSb3cge1xuICBpZDogbnVtYmVyO1xuICBhdXRob3JfaWQ6IG51bWJlcjtcbiAgdGl0bGU6IHN0cmluZztcbiAgaXNibjogc3RyaW5nIHwgbnVsbDtcbiAgcHVibGlzaF95ZWFyOiBudW1iZXIgfCBudWxsO1xuICBsYW5ndWFnZTogc3RyaW5nIHwgbnVsbDtcbiAgbWV0YWRhdGFfc291cmNlOiBzdHJpbmcgfCBudWxsO1xuICBtZXRhZGF0YV9pZDogc3RyaW5nIHwgbnVsbDtcbiAgb3duZWQ6IG51bWJlcjtcbiAgYm9va19pZDogbnVtYmVyIHwgbnVsbDtcbiAgd2FudGVkOiBudW1iZXI7XG4gIGNyZWF0ZWRfYXQ6IHN0cmluZztcbn1cblxuXG5mdW5jdGlvbiBtYXBBdXRob3JSb3cocm93OiBBdXRob3JSb3cpOiBBdXRob3Ige1xuICByZXR1cm4ge1xuICAgIGlkOiByb3cuaWQsXG4gICAgbmFtZTogcm93Lm5hbWUsXG4gICAgb3BlbmxpYnJhcnlJZDogcm93Lm9wZW5saWJyYXJ5X2lkLFxuICAgIGdvb2dsZUJvb2tzSWQ6IHJvdy5nb29nbGVfYm9va3NfaWQsXG4gICAgdG90YWxXb3Jrczogcm93LnRvdGFsX3dvcmtzLFxuICAgIGxhc3RTeW5jZWQ6IHJvdy5sYXN0X3N5bmNlZCxcbiAgICBjcmVhdGVkQXQ6IHJvdy5jcmVhdGVkX2F0LFxuICB9O1xufVxuXG5mdW5jdGlvbiBtYXBBdXRob3JXb3JrUm93KHJvdzogQXV0aG9yV29ya1Jvdyk6IEF1dGhvcldvcmsge1xuICByZXR1cm4ge1xuICAgIGlkOiByb3cuaWQsXG4gICAgYXV0aG9ySWQ6IHJvdy5hdXRob3JfaWQsXG4gICAgdGl0bGU6IHJvdy50aXRsZSxcbiAgICBpc2JuOiByb3cuaXNibixcbiAgICBwdWJsaXNoWWVhcjogcm93LnB1Ymxpc2hfeWVhcixcbiAgICBsYW5ndWFnZTogcm93Lmxhbmd1YWdlLFxuICAgIG1ldGFkYXRhU291cmNlOiByb3cubWV0YWRhdGFfc291cmNlLFxuICAgIG1ldGFkYXRhSWQ6IHJvdy5tZXRhZGF0YV9pZCxcbiAgICBvd25lZDogcm93Lm93bmVkID09PSAxLFxuICAgIGJvb2tJZDogcm93LmJvb2tfaWQsXG4gICAgd2FudGVkOiByb3cud2FudGVkID09PSAxLFxuICAgIGNyZWF0ZWRBdDogcm93LmNyZWF0ZWRfYXQsXG4gIH07XG59XG5cbi8qKlxuICogR2V0IGFsbCB1bmlxdWUgYXV0aG9ycyBmcm9tIGJvb2tzIGluIGxpYnJhcmllc1xuICovXG5leHBvcnQgYXN5bmMgZnVuY3Rpb24gZ2V0QXV0aG9yc0Zyb21Cb29rcyhzZWFyY2g/OiBzdHJpbmcpOiBQcm9taXNlPEFycmF5PHtcbiAgbmFtZTogc3RyaW5nO1xuICBib29rQ291bnQ6IG51bWJlcjtcbiAgYXV0aG9ySWQ6IG51bWJlciB8IG51bGw7XG4gIGhhc01ldGFkYXRhOiBib29sZWFuO1xufT4+IHtcbiAgLy8gR2V0IHVuaXF1ZSBhdXRob3JzIGZyb20gYm9va3MgdGFibGVcbiAgY29uc3QgYm9va3MgPSBxdWVyeTx7IGF1dGhvcnM6IHN0cmluZyB9PihgXG4gICAgU0VMRUNUIERJU1RJTkNUIGF1dGhvcnMgRlJPTSBib29rc1xuICAgIFdIRVJFIGF1dGhvcnMgSVMgTk9UIE5VTEwgQU5EIGF1dGhvcnMgIT0gJ1tdJ1xuICBgLCBbXSk7XG5cbiAgLy8gUGFyc2UgYW5kIGNvdW50IGF1dGhvcnNcbiAgY29uc3QgYXV0aG9yQ291bnRzID0gbmV3IE1hcDxzdHJpbmcsIG51bWJlcj4oKTtcbiAgZm9yIChjb25zdCBib29rIG9mIGJvb2tzKSB7XG4gICAgdHJ5IHtcbiAgICAgIGNvbnN0IGF1dGhvcnM6IHN0cmluZ1tdID0gSlNPTi5wYXJzZShib29rLmF1dGhvcnMpO1xuICAgICAgZm9yIChjb25zdCBhdXRob3Igb2YgYXV0aG9ycykge1xuICAgICAgICBjb25zdCBuYW1lID0gYXV0aG9yLnRyaW0oKTtcbiAgICAgICAgaWYgKG5hbWUgJiYgKCFzZWFyY2ggfHwgbmFtZS50b0xvd2VyQ2FzZSgpLmluY2x1ZGVzKHNlYXJjaC50b0xvd2VyQ2FzZSgpKSkpIHtcbiAgICAgICAgICBhdXRob3JDb3VudHMuc2V0KG5hbWUsIChhdXRob3JDb3VudHMuZ2V0KG5hbWUpIHx8IDApICsgMSk7XG4gICAgICAgIH1cbiAgICAgIH1cbiAgICB9IGNhdGNoIHtcbiAgICAgIC8vIFNraXAgaW52YWxpZCBKU09OXG4gICAgfVxuICB9XG5cbiAgLy8gR2V0IGV4aXN0aW5nIGF1dGhvciByZWNvcmRzXG4gIGNvbnN0IGV4aXN0aW5nQXV0aG9ycyA9IHF1ZXJ5PEF1dGhvclJvdz4oYFNFTEVDVCAqIEZST00gYXV0aG9yc2AsIFtdKTtcbiAgY29uc3QgYXV0aG9yTWFwID0gbmV3IE1hcChleGlzdGluZ0F1dGhvcnMubWFwKGEgPT4gW2EubmFtZS50b0xvd2VyQ2FzZSgpLCBhXSkpO1xuXG4gIC8vIEJ1aWxkIHJlc3VsdFxuICBjb25zdCByZXN1bHQgPSBBcnJheS5mcm9tKGF1dGhvckNvdW50cy5lbnRyaWVzKCkpLm1hcCgoW25hbWUsIGJvb2tDb3VudF0pID0+IHtcbiAgICBjb25zdCBleGlzdGluZyA9IGF1dGhvck1hcC5nZXQobmFtZS50b0xvd2VyQ2FzZSgpKTtcbiAgICByZXR1cm4ge1xuICAgICAgbmFtZSxcbiAgICAgIGJvb2tDb3VudCxcbiAgICAgIGF1dGhvcklkOiBleGlzdGluZz8uaWQgfHwgbnVsbCxcbiAgICAgIGhhc01ldGFkYXRhOiBleGlzdGluZz8ubGFzdF9zeW5jZWQgIT09IG51bGwsXG4gICAgfTtcbiAgfSk7XG5cbiAgLy8gU29ydCBieSBib29rIGNvdW50IGRlc2NlbmRpbmdcbiAgcmVzdWx0LnNvcnQoKGEsIGIpID0+IGIuYm9va0NvdW50IC0gYS5ib29rQ291bnQpO1xuXG4gIHJldHVybiByZXN1bHQ7XG59XG5cbi8qKlxuICogR2V0IG9yIGNyZWF0ZSBhbiBhdXRob3IgcmVjb3JkXG4gKi9cbmV4cG9ydCBhc3luYyBmdW5jdGlvbiBnZXRPckNyZWF0ZUF1dGhvcihuYW1lOiBzdHJpbmcpOiBQcm9taXNlPEF1dGhvcj4ge1xuICBjb25zdCBleGlzdGluZyA9IHF1ZXJ5PEF1dGhvclJvdz4oXG4gICAgYFNFTEVDVCAqIEZST00gYXV0aG9ycyBXSEVSRSBMT1dFUihuYW1lKSA9IExPV0VSKD8pYCxcbiAgICBbbmFtZV1cbiAgKTtcblxuICBpZiAoZXhpc3RpbmcubGVuZ3RoID4gMCkge1xuICAgIHJldHVybiBtYXBBdXRob3JSb3coZXhpc3RpbmdbMF0hKTtcbiAgfVxuXG4gIGNvbnN0IHJlc3VsdCA9IGV4ZWN1dGUoXG4gICAgYElOU0VSVCBJTlRPIGF1dGhvcnMgKG5hbWUpIFZBTFVFUyAoPylgLFxuICAgIFtuYW1lXVxuICApO1xuXG4gIHJldHVybiB7XG4gICAgaWQ6IHJlc3VsdC5sYXN0SW5zZXJ0Um93aWQgYXMgbnVtYmVyLFxuICAgIG5hbWUsXG4gICAgb3BlbmxpYnJhcnlJZDogbnVsbCxcbiAgICBnb29nbGVCb29rc0lkOiBudWxsLFxuICAgIHRvdGFsV29ya3M6IG51bGwsXG4gICAgbGFzdFN5bmNlZDogbnVsbCxcbiAgICBjcmVhdGVkQXQ6IG5ldyBEYXRlKCkudG9JU09TdHJpbmcoKSxcbiAgfTtcbn1cblxuLyoqXG4gKiBHZXQgYXV0aG9yIGJ5IElEXG4gKi9cbmV4cG9ydCBhc3luYyBmdW5jdGlvbiBnZXRBdXRob3IoaWQ6IG51bWJlcik6IFByb21pc2U8QXV0aG9yIHwgbnVsbD4ge1xuICBjb25zdCByb3dzID0gcXVlcnk8QXV0aG9yUm93PihgU0VMRUNUICogRlJPTSBhdXRob3JzIFdIRVJFIGlkID0gP2AsIFtpZF0pO1xuICByZXR1cm4gcm93cy5sZW5ndGggPiAwID8gbWFwQXV0aG9yUm93KHJvd3NbMF0hKSA6IG51bGw7XG59XG5cbi8qKlxuICogR2V0IGF1dGhvciBieSBuYW1lXG4gKi9cbmV4cG9ydCBhc3luYyBmdW5jdGlvbiBnZXRBdXRob3JCeU5hbWUobmFtZTogc3RyaW5nKTogUHJvbWlzZTxBdXRob3IgfCBudWxsPiB7XG4gIGNvbnN0IHJvd3MgPSBxdWVyeTxBdXRob3JSb3c+KFxuICAgIGBTRUxFQ1QgKiBGUk9NIGF1dGhvcnMgV0hFUkUgTE9XRVIobmFtZSkgPSBMT1dFUig/KWAsXG4gICAgW25hbWVdXG4gICk7XG4gIHJldHVybiByb3dzLmxlbmd0aCA+IDAgPyBtYXBBdXRob3JSb3cocm93c1swXSEpIDogbnVsbDtcbn1cblxuLyoqXG4gKiBHZXQgYXV0aG9yJ3Mgd29ya3MgKGJpYmxpb2dyYXBoeSlcbiAqL1xuZXhwb3J0IGFzeW5jIGZ1bmN0aW9uIGdldEF1dGhvcldvcmtzKGF1dGhvcklkOiBudW1iZXIpOiBQcm9taXNlPEF1dGhvcldvcmtbXT4ge1xuICBjb25zdCByb3dzID0gcXVlcnk8QXV0aG9yV29ya1Jvdz4oXG4gICAgYFNFTEVDVCAqIEZST00gYXV0aG9yX3dvcmtzIFdIRVJFIGF1dGhvcl9pZCA9ID8gT1JERVIgQlkgcHVibGlzaF95ZWFyIEFTQyBOVUxMUyBMQVNULCB0aXRsZWAsXG4gICAgW2F1dGhvcklkXVxuICApO1xuICByZXR1cm4gcm93cy5tYXAobWFwQXV0aG9yV29ya1Jvdyk7XG59XG5cbi8qKlxuICogR2V0IGJvb2tzIG93bmVkIGJ5IHRoaXMgYXV0aG9yIGZyb20gbGlicmFyaWVzXG4gKi9cbmV4cG9ydCBhc3luYyBmdW5jdGlvbiBnZXRPd25lZEJvb2tzQnlBdXRob3IoYXV0aG9yTmFtZTogc3RyaW5nKTogUHJvbWlzZTxBcnJheTx7XG4gIGlkOiBudW1iZXI7XG4gIHRpdGxlOiBzdHJpbmc7XG4gIGlzYm46IHN0cmluZyB8IG51bGw7XG59Pj4ge1xuICBjb25zdCBib29rcyA9IHF1ZXJ5PHsgaWQ6IG51bWJlcjsgdGl0bGU6IHN0cmluZzsgaXNibjogc3RyaW5nIHwgbnVsbDsgYXV0aG9yczogc3RyaW5nIH0+KGBcbiAgICBTRUxFQ1QgaWQsIHRpdGxlLCBpc2JuLCBhdXRob3JzIEZST00gYm9va3NcbiAgICBXSEVSRSBhdXRob3JzIElTIE5PVCBOVUxMXG4gIGAsIFtdKTtcblxuICBjb25zdCBvd25lZDogQXJyYXk8eyBpZDogbnVtYmVyOyB0aXRsZTogc3RyaW5nOyBpc2JuOiBzdHJpbmcgfCBudWxsIH0+ID0gW107XG5cbiAgZm9yIChjb25zdCBib29rIG9mIGJvb2tzKSB7XG4gICAgdHJ5IHtcbiAgICAgIGNvbnN0IGF1dGhvcnM6IHN0cmluZ1tdID0gSlNPTi5wYXJzZShib29rLmF1dGhvcnMpO1xuICAgICAgLy8gVXNlIGZ1enp5IGF1dGhvciBuYW1lIG1hdGNoaW5nIHRvIGhhbmRsZSB2YXJpYXRpb25zXG4gICAgICBpZiAoYXV0aG9ycy5zb21lKGEgPT4gYXV0aG9yTmFtZXNNYXRjaChhLCBhdXRob3JOYW1lKSkpIHtcbiAgICAgICAgb3duZWQucHVzaCh7XG4gICAgICAgICAgaWQ6IGJvb2suaWQsXG4gICAgICAgICAgdGl0bGU6IGJvb2sudGl0bGUgfHwgJ1Vua25vd24nLFxuICAgICAgICAgIGlzYm46IGJvb2suaXNibixcbiAgICAgICAgfSk7XG4gICAgICB9XG4gICAgfSBjYXRjaCB7XG4gICAgICAvLyBTa2lwIGludmFsaWQgSlNPTlxuICAgIH1cbiAgfVxuXG4gIHJldHVybiBvd25lZDtcbn1cblxuLyoqXG4gKiBGZXRjaCBhdXRob3IgbWV0YWRhdGEgZnJvbSBPcGVuTGlicmFyeVxuICovXG5leHBvcnQgYXN5bmMgZnVuY3Rpb24gZmV0Y2hBdXRob3JNZXRhZGF0YShhdXRob3JJZDogbnVtYmVyKTogUHJvbWlzZTx7IHN1Y2Nlc3M6IGJvb2xlYW47IGVycm9yPzogc3RyaW5nOyB3b3Jrc0ZvdW5kPzogbnVtYmVyIH0+IHtcbiAgY29uc3QgYXV0aG9yID0gYXdhaXQgZ2V0QXV0aG9yKGF1dGhvcklkKTtcbiAgaWYgKCFhdXRob3IpIHtcbiAgICByZXR1cm4geyBzdWNjZXNzOiBmYWxzZSwgZXJyb3I6ICdBdXRob3Igbm90IGZvdW5kJyB9O1xuICB9XG5cbiAgdHJ5IHtcbiAgICAvLyBTZWFyY2ggZm9yIGF1dGhvciBvbiBPcGVuTGlicmFyeVxuICAgIGNvbnN0IHNlYXJjaFVybCA9IGBodHRwczovL29wZW5saWJyYXJ5Lm9yZy9zZWFyY2gvYXV0aG9ycy5qc29uP3E9JHtlbmNvZGVVUklDb21wb25lbnQoYXV0aG9yLm5hbWUpfSZsaW1pdD0xYDtcbiAgICBjb25zdCBzZWFyY2hSZXMgPSBhd2FpdCBmZXRjaChzZWFyY2hVcmwpO1xuICAgIGNvbnN0IHNlYXJjaERhdGEgPSBhd2FpdCBzZWFyY2hSZXMuanNvbigpO1xuXG4gICAgaWYgKCFzZWFyY2hEYXRhLmRvY3MgfHwgc2VhcmNoRGF0YS5kb2NzLmxlbmd0aCA9PT0gMCkge1xuICAgICAgcmV0dXJuIHsgc3VjY2VzczogZmFsc2UsIGVycm9yOiAnQXV0aG9yIG5vdCBmb3VuZCBvbiBPcGVuTGlicmFyeScgfTtcbiAgICB9XG5cbiAgICBjb25zdCBvbEF1dGhvciA9IHNlYXJjaERhdGEuZG9jc1swXTtcbiAgICBjb25zdCBvbEF1dGhvcktleSA9IG9sQXV0aG9yLmtleTsgLy8gZS5nLiwgXCJPTDEyM0FcIlxuXG4gICAgLy8gVXBkYXRlIGF1dGhvciB3aXRoIE9wZW5MaWJyYXJ5IElEXG4gICAgZXhlY3V0ZShcbiAgICAgIGBVUERBVEUgYXV0aG9ycyBTRVQgb3BlbmxpYnJhcnlfaWQgPSA/LCB0b3RhbF93b3JrcyA9ID8gV0hFUkUgaWQgPSA/YCxcbiAgICAgIFtvbEF1dGhvcktleSwgb2xBdXRob3Iud29ya19jb3VudCB8fCAwLCBhdXRob3JJZF1cbiAgICApO1xuXG4gICAgLy8gVXNlIHNlYXJjaCBBUEkgdG8gZ2V0IHdvcmtzIHdpdGggcHVibGljYXRpb24geWVhcnNcbiAgICAvLyBUaGUgd29ya3MgZW5kcG9pbnQgZG9lc24ndCBpbmNsdWRlIGRhdGVzLCBidXQgc2VhcmNoIGRvZXNcbiAgICBjb25zdCB3b3Jrc1NlYXJjaFVybCA9IGBodHRwczovL29wZW5saWJyYXJ5Lm9yZy9zZWFyY2guanNvbj9hdXRob3I9JHtlbmNvZGVVUklDb21wb25lbnQoYXV0aG9yLm5hbWUpfSZsaW1pdD01MDAmZmllbGRzPXRpdGxlLGtleSxmaXJzdF9wdWJsaXNoX3llYXIsbGFuZ3VhZ2VgO1xuICAgIGNvbnN0IHdvcmtzU2VhcmNoUmVzID0gYXdhaXQgZmV0Y2god29ya3NTZWFyY2hVcmwpO1xuICAgIGNvbnN0IHdvcmtzRGF0YSA9IGF3YWl0IHdvcmtzU2VhcmNoUmVzLmpzb24oKTtcblxuICAgIGlmICghd29ya3NEYXRhLmRvY3MgfHwgd29ya3NEYXRhLmRvY3MubGVuZ3RoID09PSAwKSB7XG4gICAgICBleGVjdXRlKGBVUERBVEUgYXV0aG9ycyBTRVQgbGFzdF9zeW5jZWQgPSA/IFdIRVJFIGlkID0gP2AsIFtuZXcgRGF0ZSgpLnRvSVNPU3RyaW5nKCksIGF1dGhvcklkXSk7XG4gICAgICByZXR1cm4geyBzdWNjZXNzOiB0cnVlLCB3b3Jrc0ZvdW5kOiAwIH07XG4gICAgfVxuXG4gICAgLy8gR2V0IG93bmVkIGJvb2tzIGZvciBtYXRjaGluZ1xuICAgIGNvbnN0IG93bmVkQm9va3MgPSBhd2FpdCBnZXRPd25lZEJvb2tzQnlBdXRob3IoYXV0aG9yLm5hbWUpO1xuXG4gICAgLy8gQ2xlYXIgZXhpc3Rpbmcgd29ya3MgZm9yIHRoaXMgYXV0aG9yXG4gICAgZXhlY3V0ZShgREVMRVRFIEZST00gYXV0aG9yX3dvcmtzIFdIRVJFIGF1dGhvcl9pZCA9ID9gLCBbYXV0aG9ySWRdKTtcblxuICAgIC8vIExhbmd1YWdlIGNvZGUgdG8gbmFtZSBtYXBwaW5nXG4gICAgY29uc3QgbGFuZ3VhZ2VOYW1lczogUmVjb3JkPHN0cmluZywgc3RyaW5nPiA9IHtcbiAgICAgIGVuZzogJ0VuZ2xpc2gnLCBlbjogJ0VuZ2xpc2gnLCBmcmU6ICdGcmVuY2gnLCBmcjogJ0ZyZW5jaCcsXG4gICAgICBnZXI6ICdHZXJtYW4nLCBkZTogJ0dlcm1hbicsIHNwYTogJ1NwYW5pc2gnLCBlczogJ1NwYW5pc2gnLFxuICAgICAgaXRhOiAnSXRhbGlhbicsIGl0OiAnSXRhbGlhbicsIHBvcjogJ1BvcnR1Z3Vlc2UnLCBwdDogJ1BvcnR1Z3Vlc2UnLFxuICAgICAgcnVzOiAnUnVzc2lhbicsIHJ1OiAnUnVzc2lhbicsIGpwbjogJ0phcGFuZXNlJywgamE6ICdKYXBhbmVzZScsXG4gICAgICBjaGk6ICdDaGluZXNlJywgemg6ICdDaGluZXNlJywgYXJhOiAnQXJhYmljJywgYXI6ICdBcmFiaWMnLFxuICAgICAgaGluOiAnSGluZGknLCBoaTogJ0hpbmRpJywga29yOiAnS29yZWFuJywga286ICdLb3JlYW4nLFxuICAgICAgZHV0OiAnRHV0Y2gnLCBubDogJ0R1dGNoJywgcG9sOiAnUG9saXNoJywgcGw6ICdQb2xpc2gnLFxuICAgICAgc3dlOiAnU3dlZGlzaCcsIHN2OiAnU3dlZGlzaCcsIGRhbjogJ0RhbmlzaCcsIGRhOiAnRGFuaXNoJyxcbiAgICAgIG5vcjogJ05vcndlZ2lhbicsIG5vOiAnTm9yd2VnaWFuJywgZmluOiAnRmlubmlzaCcsIGZpOiAnRmlubmlzaCcsXG4gICAgICBncmU6ICdHcmVlaycsIGVsOiAnR3JlZWsnLCBoZWI6ICdIZWJyZXcnLCBoZTogJ0hlYnJldycsXG4gICAgICB0dXI6ICdUdXJraXNoJywgdHI6ICdUdXJraXNoJywgY3plOiAnQ3plY2gnLCBjczogJ0N6ZWNoJyxcbiAgICAgIGh1bjogJ0h1bmdhcmlhbicsIGh1OiAnSHVuZ2FyaWFuJywgcnVtOiAnUm9tYW5pYW4nLCBybzogJ1JvbWFuaWFuJyxcbiAgICB9O1xuXG4gICAgLy8gSW5zZXJ0IHdvcmtzXG4gICAgbGV0IHdvcmtzSW5zZXJ0ZWQgPSAwO1xuICAgIGNvbnN0IHNlZW5UaXRsZXMgPSBuZXcgU2V0PHN0cmluZz4oKTtcblxuICAgIGZvciAoY29uc3Qgd29yayBvZiB3b3Jrc0RhdGEuZG9jcykge1xuICAgICAgY29uc3QgdGl0bGUgPSB3b3JrLnRpdGxlIHx8ICdVbmtub3duJztcbiAgICAgIGNvbnN0IG5vcm1hbGl6ZWRUaXRsZSA9IHRpdGxlLnRvTG93ZXJDYXNlKCkudHJpbSgpO1xuXG4gICAgICAvLyBTa2lwIGR1cGxpY2F0ZXMgKHNlYXJjaCBjYW4gcmV0dXJuIG11bHRpcGxlIGVkaXRpb25zKVxuICAgICAgaWYgKHNlZW5UaXRsZXMuaGFzKG5vcm1hbGl6ZWRUaXRsZSkpIGNvbnRpbnVlO1xuICAgICAgc2VlblRpdGxlcy5hZGQobm9ybWFsaXplZFRpdGxlKTtcblxuICAgICAgY29uc3Qgd29ya0tleSA9IHdvcmsua2V5Py5yZXBsYWNlKCcvd29ya3MvJywgJycpIHx8IG51bGw7XG4gICAgICBjb25zdCBwdWJsaXNoWWVhciA9IHdvcmsuZmlyc3RfcHVibGlzaF95ZWFyIHx8IG51bGw7XG5cbiAgICAgIC8vIEdldCBsYW5ndWFnZSAtIHNlYXJjaCBBUEkgcmV0dXJucyBhcnJheSBvZiBsYW5ndWFnZSBjb2Rlc1xuICAgICAgbGV0IGxhbmd1YWdlOiBzdHJpbmcgfCBudWxsID0gbnVsbDtcbiAgICAgIGlmICh3b3JrLmxhbmd1YWdlICYmIEFycmF5LmlzQXJyYXkod29yay5sYW5ndWFnZSkgJiYgd29yay5sYW5ndWFnZS5sZW5ndGggPiAwKSB7XG4gICAgICAgIGNvbnN0IGxhbmdDb2RlID0gd29yay5sYW5ndWFnZVswXTtcbiAgICAgICAgbGFuZ3VhZ2UgPSBsYW5ndWFnZU5hbWVzW2xhbmdDb2RlXSB8fCBsYW5nQ29kZT8udG9VcHBlckNhc2UoKSB8fCBudWxsO1xuICAgICAgfVxuXG4gICAgICAvLyBGaW5kIG1hdGNoaW5nIG93bmVkIGJvb2sgdXNpbmcgZnV6enkgbWF0Y2hpbmdcbiAgICAgIGNvbnN0IG1hdGNoZWRCb29rID0gZmluZE1hdGNoaW5nQm9vayh0aXRsZSwgb3duZWRCb29rcyk7XG4gICAgICBjb25zdCBpc093bmVkID0gISFtYXRjaGVkQm9vaztcblxuICAgICAgZXhlY3V0ZShgXG4gICAgICAgIElOU0VSVCBJTlRPIGF1dGhvcl93b3JrcyAoYXV0aG9yX2lkLCB0aXRsZSwgcHVibGlzaF95ZWFyLCBsYW5ndWFnZSwgbWV0YWRhdGFfc291cmNlLCBtZXRhZGF0YV9pZCwgb3duZWQsIGJvb2tfaWQpXG4gICAgICAgIFZBTFVFUyAoPywgPywgPywgPywgPywgPywgPywgPylcbiAgICAgIGAsIFthdXRob3JJZCwgdGl0bGUsIHB1Ymxpc2hZZWFyLCBsYW5ndWFnZSwgJ29wZW5saWJyYXJ5Jywgd29ya0tleSwgaXNPd25lZCA/IDEgOiAwLCBtYXRjaGVkQm9vaz8uaWQgfHwgbnVsbF0pO1xuXG4gICAgICB3b3Jrc0luc2VydGVkKys7XG4gICAgfVxuXG4gICAgLy8gVXBkYXRlIGxhc3Qgc3luY2VkXG4gICAgZXhlY3V0ZShgVVBEQVRFIGF1dGhvcnMgU0VUIGxhc3Rfc3luY2VkID0gPywgdG90YWxfd29ya3MgPSA/IFdIRVJFIGlkID0gP2AsIFtcbiAgICAgIG5ldyBEYXRlKCkudG9JU09TdHJpbmcoKSxcbiAgICAgIHdvcmtzSW5zZXJ0ZWQsXG4gICAgICBhdXRob3JJZCxcbiAgICBdKTtcblxuICAgIHJldHVybiB7IHN1Y2Nlc3M6IHRydWUsIHdvcmtzRm91bmQ6IHdvcmtzSW5zZXJ0ZWQgfTtcbiAgfSBjYXRjaCAoZXJyb3IpIHtcbiAgICByZXR1cm4geyBzdWNjZXNzOiBmYWxzZSwgZXJyb3I6IGVycm9yIGluc3RhbmNlb2YgRXJyb3IgPyBlcnJvci5tZXNzYWdlIDogJ0ZhaWxlZCB0byBmZXRjaCBtZXRhZGF0YScgfTtcbiAgfVxufVxuXG4vKipcbiAqIFJlZnJlc2ggb3duZXJzaGlwIHN0YXR1cyBmb3IgYXV0aG9yIHdvcmtzXG4gKi9cbmV4cG9ydCBhc3luYyBmdW5jdGlvbiByZWZyZXNoQXV0aG9yT3duZXJzaGlwKGF1dGhvcklkOiBudW1iZXIpOiBQcm9taXNlPHZvaWQ+IHtcbiAgY29uc3QgYXV0aG9yID0gYXdhaXQgZ2V0QXV0aG9yKGF1dGhvcklkKTtcbiAgaWYgKCFhdXRob3IpIHJldHVybjtcblxuICBjb25zdCBvd25lZEJvb2tzID0gYXdhaXQgZ2V0T3duZWRCb29rc0J5QXV0aG9yKGF1dGhvci5uYW1lKTtcbiAgY29uc3Qgd29ya3MgPSBhd2FpdCBnZXRBdXRob3JXb3JrcyhhdXRob3JJZCk7XG5cbiAgZm9yIChjb25zdCB3b3JrIG9mIHdvcmtzKSB7XG4gICAgLy8gVXNlIGZ1enp5IG1hdGNoaW5nIHRvIGZpbmQgbWF0Y2hpbmcgb3duZWQgYm9va1xuICAgIGNvbnN0IG1hdGNoZWRCb29rID0gZmluZE1hdGNoaW5nQm9vayh3b3JrLnRpdGxlLCBvd25lZEJvb2tzKTtcbiAgICBjb25zdCBpc093bmVkID0gISFtYXRjaGVkQm9vaztcblxuICAgIGlmICh3b3JrLm93bmVkICE9PSBpc093bmVkIHx8IHdvcmsuYm9va0lkICE9PSAobWF0Y2hlZEJvb2s/LmlkIHx8IG51bGwpKSB7XG4gICAgICBleGVjdXRlKGBVUERBVEUgYXV0aG9yX3dvcmtzIFNFVCBvd25lZCA9ID8sIGJvb2tfaWQgPSA/IFdIRVJFIGlkID0gP2AsIFtcbiAgICAgICAgaXNPd25lZCA/IDEgOiAwLFxuICAgICAgICBtYXRjaGVkQm9vaz8uaWQgfHwgbnVsbCxcbiAgICAgICAgd29yay5pZCxcbiAgICAgIF0pO1xuICAgIH1cbiAgfVxufVxuXG4vKipcbiAqIFRvZ2dsZSB3YW50ZWQgc3RhdHVzIGZvciBhIHdvcmtcbiAqL1xuZXhwb3J0IGFzeW5jIGZ1bmN0aW9uIHRvZ2dsZVdvcmtXYW50ZWQod29ya0lkOiBudW1iZXIpOiBQcm9taXNlPHsgc3VjY2VzczogYm9vbGVhbiB9PiB7XG4gIGNvbnN0IHJvd3MgPSBxdWVyeTxBdXRob3JXb3JrUm93PihgU0VMRUNUICogRlJPTSBhdXRob3Jfd29ya3MgV0hFUkUgaWQgPSA/YCwgW3dvcmtJZF0pO1xuICBpZiAocm93cy5sZW5ndGggPT09IDApIHtcbiAgICByZXR1cm4geyBzdWNjZXNzOiBmYWxzZSB9O1xuICB9XG5cbiAgY29uc3QgbmV3V2FudGVkID0gcm93c1swXSEud2FudGVkID09PSAxID8gMCA6IDE7XG4gIGV4ZWN1dGUoYFVQREFURSBhdXRob3Jfd29ya3MgU0VUIHdhbnRlZCA9ID8gV0hFUkUgaWQgPSA/YCwgW25ld1dhbnRlZCwgd29ya0lkXSk7XG5cbiAgcmV0dXJuIHsgc3VjY2VzczogdHJ1ZSB9O1xufVxuIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiI0UkEwTnNCLDhMQUFBIn0=
+}),
+"[project]/components/authors/AuthorList.tsx [app-client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+__turbopack_context__.s([
+    "AuthorList",
+    ()=>AuthorList
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/node_modules/next/dist/compiled/react/jsx-dev-runtime.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/node_modules/next/navigation.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/node_modules/next/dist/compiled/react/index.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$actions$2f$data$3a$9029b6__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$text$2f$javascript$3e$__ = __turbopack_context__.i("[project]/lib/actions/data:9029b6 [app-client] (ecmascript) <text/javascript>");
+;
+var _s = __turbopack_context__.k.signature();
+'use client';
+;
+;
+;
+function AuthorList({ authors }) {
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+        className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4",
+        children: authors.map((author)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(AuthorCard, {
+                author: author
+            }, author.name, false, {
+                fileName: "[project]/components/authors/AuthorList.tsx",
+                lineNumber: 22,
+                columnNumber: 9
+            }, this))
+    }, void 0, false, {
+        fileName: "[project]/components/authors/AuthorList.tsx",
+        lineNumber: 20,
+        columnNumber: 5
+    }, this);
+}
+_c = AuthorList;
+function AuthorCard({ author }) {
+    _s();
+    const router = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRouter"])();
+    const [loading, setLoading] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
+    const handleClick = async ()=>{
+        if (author.authorId) {
+            router.push(`/authors/${author.authorId}`);
+        } else {
+            // Create author record first
+            setLoading(true);
+            const created = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$actions$2f$data$3a$9029b6__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$text$2f$javascript$3e$__["getOrCreateAuthor"])(author.name);
+            setLoading(false);
+            router.push(`/authors/${created.id}`);
+        }
+    };
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+        onClick: handleClick,
+        disabled: loading,
+        className: "block w-full text-left bg-shelvarr-surface border border-shelvarr-border rounded-lg p-4 hover:border-shelvarr-primary transition-colors disabled:opacity-50",
+        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+            className: "flex items-center gap-3",
+            children: [
+                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                    className: "w-10 h-10 bg-shelvarr-primary/20 rounded-full flex items-center justify-center text-shelvarr-primary font-semibold",
+                    children: author.name.charAt(0).toUpperCase()
+                }, void 0, false, {
+                    fileName: "[project]/components/authors/AuthorList.tsx",
+                    lineNumber: 51,
+                    columnNumber: 9
+                }, this),
+                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                    className: "flex-1 min-w-0",
+                    children: [
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h3", {
+                            className: "font-medium text-white truncate",
+                            children: author.name
+                        }, void 0, false, {
+                            fileName: "[project]/components/authors/AuthorList.tsx",
+                            lineNumber: 55,
+                            columnNumber: 11
+                        }, this),
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                            className: "flex items-center gap-2 text-sm text-shelvarr-text-muted",
+                            children: [
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                    children: [
+                                        author.bookCount,
+                                        " ",
+                                        author.bookCount === 1 ? 'book' : 'books',
+                                        " in library"
+                                    ]
+                                }, void 0, true, {
+                                    fileName: "[project]/components/authors/AuthorList.tsx",
+                                    lineNumber: 57,
+                                    columnNumber: 13
+                                }, this),
+                                author.hasMetadata && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                    className: "text-green-400",
+                                    children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(CheckIcon, {}, void 0, false, {
+                                        fileName: "[project]/components/authors/AuthorList.tsx",
+                                        lineNumber: 60,
+                                        columnNumber: 17
+                                    }, this)
+                                }, void 0, false, {
+                                    fileName: "[project]/components/authors/AuthorList.tsx",
+                                    lineNumber: 59,
+                                    columnNumber: 15
+                                }, this)
+                            ]
+                        }, void 0, true, {
+                            fileName: "[project]/components/authors/AuthorList.tsx",
+                            lineNumber: 56,
+                            columnNumber: 11
+                        }, this)
+                    ]
+                }, void 0, true, {
+                    fileName: "[project]/components/authors/AuthorList.tsx",
+                    lineNumber: 54,
+                    columnNumber: 9
+                }, this),
+                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(ChevronIcon, {}, void 0, false, {
+                    fileName: "[project]/components/authors/AuthorList.tsx",
+                    lineNumber: 65,
+                    columnNumber: 9
+                }, this)
+            ]
+        }, void 0, true, {
+            fileName: "[project]/components/authors/AuthorList.tsx",
+            lineNumber: 50,
+            columnNumber: 7
+        }, this)
+    }, void 0, false, {
+        fileName: "[project]/components/authors/AuthorList.tsx",
+        lineNumber: 45,
+        columnNumber: 5
+    }, this);
+}
+_s(AuthorCard, "OeGW3YQfIEwiDdtbkZtE38+y0P4=", false, function() {
+    return [
+        __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRouter"]
+    ];
+});
+_c1 = AuthorCard;
+function CheckIcon() {
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("svg", {
+        className: "w-4 h-4",
+        fill: "none",
+        viewBox: "0 0 24 24",
+        stroke: "currentColor",
+        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
+            strokeLinecap: "round",
+            strokeLinejoin: "round",
+            strokeWidth: 2,
+            d: "M5 13l4 4L19 7"
+        }, void 0, false, {
+            fileName: "[project]/components/authors/AuthorList.tsx",
+            lineNumber: 74,
+            columnNumber: 7
+        }, this)
+    }, void 0, false, {
+        fileName: "[project]/components/authors/AuthorList.tsx",
+        lineNumber: 73,
+        columnNumber: 5
+    }, this);
+}
+_c2 = CheckIcon;
+function ChevronIcon() {
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("svg", {
+        className: "w-5 h-5 text-shelvarr-text-muted",
+        fill: "none",
+        viewBox: "0 0 24 24",
+        stroke: "currentColor",
+        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
+            strokeLinecap: "round",
+            strokeLinejoin: "round",
+            strokeWidth: 2,
+            d: "M9 5l7 7-7 7"
+        }, void 0, false, {
+            fileName: "[project]/components/authors/AuthorList.tsx",
+            lineNumber: 82,
+            columnNumber: 7
+        }, this)
+    }, void 0, false, {
+        fileName: "[project]/components/authors/AuthorList.tsx",
+        lineNumber: 81,
+        columnNumber: 5
+    }, this);
+}
+_c3 = ChevronIcon;
+var _c, _c1, _c2, _c3;
+__turbopack_context__.k.register(_c, "AuthorList");
+__turbopack_context__.k.register(_c1, "AuthorCard");
+__turbopack_context__.k.register(_c2, "CheckIcon");
+__turbopack_context__.k.register(_c3, "ChevronIcon");
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
+"[project]/components/authors/AuthorSearch.tsx [app-client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+__turbopack_context__.s([
+    "AuthorSearch",
+    ()=>AuthorSearch
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/node_modules/next/dist/compiled/react/jsx-dev-runtime.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/node_modules/next/navigation.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/node_modules/next/dist/compiled/react/index.js [app-client] (ecmascript)");
+;
+var _s = __turbopack_context__.k.signature();
+'use client';
+;
+;
+function AuthorSearch({ currentSearch }) {
+    _s();
+    const router = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRouter"])();
+    const searchParams = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useSearchParams"])();
+    const [search, setSearch] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(currentSearch);
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "AuthorSearch.useEffect": ()=>{
+            setSearch(currentSearch);
+        }
+    }["AuthorSearch.useEffect"], [
+        currentSearch
+    ]);
+    const handleSubmit = (e)=>{
+        e.preventDefault();
+        const params = new URLSearchParams(searchParams.toString());
+        if (search) {
+            params.set('search', search);
+        } else {
+            params.delete('search');
+        }
+        router.push(`/authors?${params.toString()}`);
+    };
+    const handleClear = ()=>{
+        setSearch('');
+        router.push('/authors');
+    };
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("form", {
+        onSubmit: handleSubmit,
+        className: "flex gap-2",
+        children: [
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "relative flex-1",
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
+                        type: "text",
+                        value: search,
+                        onChange: (e)=>setSearch(e.target.value),
+                        placeholder: "Search authors...",
+                        className: "w-full bg-shelvarr-surface border border-shelvarr-border rounded-lg pl-10 pr-4 py-2 text-white placeholder-shelvarr-text-muted focus:outline-none focus:border-blue-500"
+                    }, void 0, false, {
+                        fileName: "[project]/components/authors/AuthorSearch.tsx",
+                        lineNumber: 38,
+                        columnNumber: 9
+                    }, this),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(SearchIcon, {
+                        className: "absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-shelvarr-text-muted"
+                    }, void 0, false, {
+                        fileName: "[project]/components/authors/AuthorSearch.tsx",
+                        lineNumber: 45,
+                        columnNumber: 9
+                    }, this)
+                ]
+            }, void 0, true, {
+                fileName: "[project]/components/authors/AuthorSearch.tsx",
+                lineNumber: 37,
+                columnNumber: 7
+            }, this),
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                type: "submit",
+                className: "bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors",
+                children: "Search"
+            }, void 0, false, {
+                fileName: "[project]/components/authors/AuthorSearch.tsx",
+                lineNumber: 47,
+                columnNumber: 7
+            }, this),
+            currentSearch && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                type: "button",
+                onClick: handleClear,
+                className: "bg-shelvarr-surface hover:bg-shelvarr-border text-white border border-shelvarr-border px-4 py-2 rounded-lg font-medium transition-colors",
+                children: "Clear"
+            }, void 0, false, {
+                fileName: "[project]/components/authors/AuthorSearch.tsx",
+                lineNumber: 54,
+                columnNumber: 9
+            }, this)
+        ]
+    }, void 0, true, {
+        fileName: "[project]/components/authors/AuthorSearch.tsx",
+        lineNumber: 36,
+        columnNumber: 5
+    }, this);
+}
+_s(AuthorSearch, "/zaX8mCn5lP2SgNvKxgL38YpFac=", false, function() {
+    return [
+        __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRouter"],
+        __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$navigation$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useSearchParams"]
+    ];
+});
+_c = AuthorSearch;
+function SearchIcon({ className }) {
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("svg", {
+        className: className,
+        fill: "none",
+        viewBox: "0 0 24 24",
+        stroke: "currentColor",
+        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("path", {
+            strokeLinecap: "round",
+            strokeLinejoin: "round",
+            strokeWidth: 2,
+            d: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+        }, void 0, false, {
+            fileName: "[project]/components/authors/AuthorSearch.tsx",
+            lineNumber: 69,
+            columnNumber: 7
+        }, this)
+    }, void 0, false, {
+        fileName: "[project]/components/authors/AuthorSearch.tsx",
+        lineNumber: 68,
+        columnNumber: 5
+    }, this);
+}
+_c1 = SearchIcon;
+var _c, _c1;
+__turbopack_context__.k.register(_c, "AuthorSearch");
+__turbopack_context__.k.register(_c1, "SearchIcon");
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
+"[project]/node_modules/next/dist/build/webpack/loaders/next-flight-loader/action-client-wrapper.js [app-client] (ecmascript)", ((__turbopack_context__, module, exports) => {
+"use strict";
+
+// This file must be bundled in the app's client layer, it shouldn't be directly
+// imported by the server.
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+0 && (module.exports = {
+    callServer: null,
+    createServerReference: null,
+    findSourceMapURL: null
+});
+function _export(target, all) {
+    for(var name in all)Object.defineProperty(target, name, {
+        enumerable: true,
+        get: all[name]
+    });
+}
+_export(exports, {
+    callServer: function() {
+        return _appcallserver.callServer;
+    },
+    createServerReference: function() {
+        return _client.createServerReference;
+    },
+    findSourceMapURL: function() {
+        return _appfindsourcemapurl.findSourceMapURL;
+    }
+});
+const _appcallserver = __turbopack_context__.r("[project]/node_modules/next/dist/client/app-call-server.js [app-client] (ecmascript)");
+const _appfindsourcemapurl = __turbopack_context__.r("[project]/node_modules/next/dist/client/app-find-source-map-url.js [app-client] (ecmascript)");
+const _client = __turbopack_context__.r("[project]/node_modules/next/dist/compiled/react-server-dom-turbopack/client.js [app-client] (ecmascript)"); //# sourceMappingURL=action-client-wrapper.js.map
+}),
+]);
+
+//# sourceMappingURL=_33bcd247._.js.map

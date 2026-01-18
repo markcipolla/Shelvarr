@@ -1,0 +1,350 @@
+{
+  "node": {
+    "007159c2563cfc2d0e51d258295ceff878cea1f57d": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "testKomgaConnection",
+          "filename": "lib/actions/settings.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "action-browser"
+      },
+      "exportedName": "testKomgaConnection",
+      "filename": "lib/actions/settings.ts"
+    },
+    "009edf6ce2b93b5479e7df407b3aab86823566187f": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "isHardcoverConfigured",
+          "filename": "lib/actions/settings.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "rsc"
+      },
+      "exportedName": "isHardcoverConfigured",
+      "filename": "lib/actions/settings.ts"
+    },
+    "00ad0ea6b390a84d8a12e570b525d32843aa098b6b": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "getSourcesStatus",
+          "filename": "lib/actions/settings.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "rsc"
+      },
+      "exportedName": "getSourcesStatus",
+      "filename": "lib/actions/settings.ts"
+    },
+    "00ba2ea0be512f4cff8aff4724922c18b9d64a3a97": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "getKomgaSettings",
+          "filename": "lib/actions/settings.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "rsc"
+      },
+      "exportedName": "getKomgaSettings",
+      "filename": "lib/actions/settings.ts"
+    },
+    "00c674a05e6b5f52eeeaacd1ace73ee52a327fcb86": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "getSettings",
+          "filename": "lib/actions/settings.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "rsc"
+      },
+      "exportedName": "getSettings",
+      "filename": "lib/actions/settings.ts"
+    },
+    "401da52513906b7142612b57924f98affaaaba16ac": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "testSourceConnection",
+          "filename": "lib/actions/settings.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "rsc"
+      },
+      "exportedName": "testSourceConnection",
+      "filename": "lib/actions/settings.ts"
+    },
+    "40d8518975add9d83eb98966d7e10ee60466d449a4": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "getApiKey",
+          "filename": "lib/actions/settings.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "rsc"
+      },
+      "exportedName": "getApiKey",
+      "filename": "lib/actions/settings.ts"
+    },
+    "60142546e4b2152870a4fafaf0959d06fb200051bd": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "toggleSource",
+          "filename": "lib/actions/settings.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "action-browser"
+      },
+      "exportedName": "toggleSource",
+      "filename": "lib/actions/settings.ts"
+    },
+    "602ebb19290415f539033890a1547b8a8442c90441": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "setApiKey",
+          "filename": "lib/actions/settings.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "action-browser"
+      },
+      "exportedName": "setApiKey",
+      "filename": "lib/actions/settings.ts"
+    },
+    "70a43d26337d1b21176dba2c461c931be7f1ebb021": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "setKomgaSettings",
+          "filename": "lib/actions/settings.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "action-browser"
+      },
+      "exportedName": "setKomgaSettings",
+      "filename": "lib/actions/settings.ts"
+    },
+    "004ca016fb213a6135d88b1e1c7f47e2706c979aa4": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "getDownloadConfigs",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "rsc"
+      },
+      "exportedName": "getDownloadConfigs",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "00a6c1778e7b16f7ec8189b941a3df98476d46ac6b": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "refreshDownloadSourceStatuses",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "action-browser"
+      },
+      "exportedName": "refreshDownloadSourceStatuses",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "00ec22906749b2a14c989a6b6c63cf66446fc75b56": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "clearZLibraryCredentials",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "action-browser"
+      },
+      "exportedName": "clearZLibraryCredentials",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "4029dbad859cf77cf64c60df4d917581b395b53662": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "getDownloadConfig",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "rsc"
+      },
+      "exportedName": "getDownloadConfig",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "405c57a95b7dfb0a5f1406c3aacd3c62bc6105a9b4": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "getDownloadSourceStatuses",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "rsc"
+      },
+      "exportedName": "getDownloadSourceStatuses",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "408ba9eff1d4943b4dc56d739f12dc18ff5c68ebd4": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "testDownloadSource",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "action-browser"
+      },
+      "exportedName": "testDownloadSource",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "409628d913177c06c9e49545fbb81a3140989c8aa2": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "checkDownloadSourceHealth",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "rsc"
+      },
+      "exportedName": "checkDownloadSourceHealth",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "40f8df4f4c660978bde19054344ea5eb7d4f3f9385": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "getDownloadSearchLinks",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "rsc"
+      },
+      "exportedName": "getDownloadSearchLinks",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "601ef6edb79257e0db72e8aa103593751326500390": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "saveZLibraryCredentials",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "action-browser"
+      },
+      "exportedName": "saveZLibraryCredentials",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "606851ccfd11c860771321df47d8ad3080441f2cc0": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "searchDownloads",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "rsc"
+      },
+      "exportedName": "searchDownloads",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "60dd7d8fbbdf1998ae320b91c4d89da7c5666c3ef9": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "toggleDownloadSource",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "action-browser"
+      },
+      "exportedName": "toggleDownloadSource",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "706d52ad2b0628f6010ece0ad299654aa5289e0947": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "searchDownloadSource",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "rsc"
+      },
+      "exportedName": "searchDownloadSource",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "70ca37ab4851a4b289d0689c601d7f3c499fff6f8f": {
+      "workers": {
+        "app/settings/page": {
+          "moduleId": 5545,
+          "async": false,
+          "exportedName": "updateDownloadConfig",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/settings/page": "rsc"
+      },
+      "exportedName": "updateDownloadConfig",
+      "filename": "lib/actions/downloads.ts"
+    }
+  },
+  "edge": {}
+}

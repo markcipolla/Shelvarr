@@ -1,0 +1,365 @@
+{
+  "node": {
+    "4010ac976674fa10dc7ddcdcc4157584957605b83c": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "addToWanted",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "addToWanted",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "401300fa3f6d6888987674ca7a2af3fc1cf0f9cbda": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "getAuthorBooks",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "getAuthorBooks",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "4023dcda093832c9254bf261faa61c68801be178fe": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "searchHardcoverBooks",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "searchHardcoverBooks",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "40728223bcd9b6d8ffddbf19e10eea60211a4c59a0": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "getWantedBook",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "getWantedBook",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "40a11778d4e65346701eed4ba985306a0453bdbbe4": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "removeFromWanted",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "removeFromWanted",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "40d455fb485ae7e6e6383eaebd2e13fe04afd9feb2": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "getWantedBooks",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "getWantedBooks",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "603e5cacf7d9eaf1b84debbbe5aa6030164ce4a5da": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "updateWantedNotes",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "updateWantedNotes",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "609df2134eaaa581d60f5c883218a53c14cbe1bb32": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "updateWantedPriority",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "updateWantedPriority",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "60cc6d613230534c0a01eb8fdee9658d86c015d1ab": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "updateWantedStatus",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "updateWantedStatus",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "70765b5bfbf8d3fe944b531e7104f5b5a57bc4a059": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "isBookWanted",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "isBookWanted",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "004ca016fb213a6135d88b1e1c7f47e2706c979aa4": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "getDownloadConfigs",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "getDownloadConfigs",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "00a6c1778e7b16f7ec8189b941a3df98476d46ac6b": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "refreshDownloadSourceStatuses",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "refreshDownloadSourceStatuses",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "00ec22906749b2a14c989a6b6c63cf66446fc75b56": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "clearZLibraryCredentials",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "clearZLibraryCredentials",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "4029dbad859cf77cf64c60df4d917581b395b53662": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "getDownloadConfig",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "getDownloadConfig",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "405c57a95b7dfb0a5f1406c3aacd3c62bc6105a9b4": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "getDownloadSourceStatuses",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "getDownloadSourceStatuses",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "408ba9eff1d4943b4dc56d739f12dc18ff5c68ebd4": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "testDownloadSource",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "testDownloadSource",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "409628d913177c06c9e49545fbb81a3140989c8aa2": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "checkDownloadSourceHealth",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "checkDownloadSourceHealth",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "40f8df4f4c660978bde19054344ea5eb7d4f3f9385": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "getDownloadSearchLinks",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "getDownloadSearchLinks",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "601ef6edb79257e0db72e8aa103593751326500390": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "saveZLibraryCredentials",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "saveZLibraryCredentials",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "606851ccfd11c860771321df47d8ad3080441f2cc0": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "searchDownloads",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "searchDownloads",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "60dd7d8fbbdf1998ae320b91c4d89da7c5666c3ef9": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "toggleDownloadSource",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "toggleDownloadSource",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "706d52ad2b0628f6010ece0ad299654aa5289e0947": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "searchDownloadSource",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "searchDownloadSource",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "70ca37ab4851a4b289d0689c601d7f3c499fff6f8f": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "updateDownloadConfig",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "updateDownloadConfig",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "009edf6ce2b93b5479e7df407b3aab86823566187f": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": 38137,
+          "async": false,
+          "exportedName": "isHardcoverConfigured",
+          "filename": "lib/actions/settings.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "isHardcoverConfigured",
+      "filename": "lib/actions/settings.ts"
+    }
+  },
+  "edge": {}
+}

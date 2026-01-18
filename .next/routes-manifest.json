@@ -1,0 +1,149 @@
+{
+  "version": 3,
+  "pages404": true,
+  "appType": "app",
+  "caseSensitive": false,
+  "basePath": "",
+  "redirects": [
+    {
+      "source": "/:path+/",
+      "destination": "/:path+",
+      "internal": true,
+      "priority": true,
+      "statusCode": 308,
+      "regex": "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))/$"
+    }
+  ],
+  "headers": [],
+  "rewrites": {
+    "beforeFiles": [],
+    "afterFiles": [],
+    "fallback": []
+  },
+  "dynamicRoutes": [
+    {
+      "page": "/authors/[id]",
+      "regex": "^/authors/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/authors/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/books/[id]",
+      "regex": "^/books/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/books/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/series/[name]",
+      "regex": "^/series/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPname": "nxtPname"
+      },
+      "namedRegex": "^/series/(?<nxtPname>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/wanted/[id]",
+      "regex": "^/wanted/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/wanted/(?<nxtPid>[^/]+?)(?:/)?$"
+    }
+  ],
+  "staticRoutes": [
+    {
+      "page": "/",
+      "regex": "^/(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/(?:/)?$"
+    },
+    {
+      "page": "/_global-error",
+      "regex": "^/_global\\-error(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_global\\-error(?:/)?$"
+    },
+    {
+      "page": "/_not-found",
+      "regex": "^/_not\\-found(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_not\\-found(?:/)?$"
+    },
+    {
+      "page": "/api/browse",
+      "regex": "^/api/browse(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/browse(?:/)?$"
+    },
+    {
+      "page": "/api/health",
+      "regex": "^/api/health(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/health(?:/)?$"
+    },
+    {
+      "page": "/authors",
+      "regex": "^/authors(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/authors(?:/)?$"
+    },
+    {
+      "page": "/books",
+      "regex": "^/books(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/books(?:/)?$"
+    },
+    {
+      "page": "/libraries",
+      "regex": "^/libraries(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/libraries(?:/)?$"
+    },
+    {
+      "page": "/series",
+      "regex": "^/series(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/series(?:/)?$"
+    },
+    {
+      "page": "/settings",
+      "regex": "^/settings(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/settings(?:/)?$"
+    },
+    {
+      "page": "/tasks",
+      "regex": "^/tasks(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/tasks(?:/)?$"
+    },
+    {
+      "page": "/wanted",
+      "regex": "^/wanted(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/wanted(?:/)?$"
+    }
+  ],
+  "dataRoutes": [],
+  "rsc": {
+    "header": "rsc",
+    "varyHeader": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+    "prefetchHeader": "next-router-prefetch",
+    "didPostponeHeader": "x-nextjs-postponed",
+    "contentTypeHeader": "text/x-component",
+    "suffix": ".rsc",
+    "prefetchSegmentHeader": "next-router-segment-prefetch",
+    "prefetchSegmentSuffix": ".segment.rsc",
+    "prefetchSegmentDirSuffix": ".segments",
+    "clientParamParsing": false,
+    "dynamicRSCPrerender": false
+  },
+  "rewriteHeaders": {
+    "pathHeader": "x-nextjs-rewritten-path",
+    "queryHeader": "x-nextjs-rewritten-query"
+  }
+}

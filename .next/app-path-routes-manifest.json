@@ -1,0 +1,18 @@
+{
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/api/browse/route": "/api/browse",
+  "/api/health/route": "/api/health",
+  "/authors/[id]/page": "/authors/[id]",
+  "/authors/page": "/authors",
+  "/books/[id]/page": "/books/[id]",
+  "/books/page": "/books",
+  "/libraries/page": "/libraries",
+  "/page": "/",
+  "/series/[name]/page": "/series/[name]",
+  "/series/page": "/series",
+  "/settings/page": "/settings",
+  "/tasks/page": "/tasks",
+  "/wanted/[id]/page": "/wanted/[id]",
+  "/wanted/page": "/wanted"
+}

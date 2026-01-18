@@ -1,0 +1,365 @@
+{
+  "node": {
+    "406e9aa8493e8c043d8cee1122402296d5d0f9c8c3": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "removeFromWanted",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "removeFromWanted",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "40816c53bda01a793f9d2b422dc1bdd295d6ec9d25": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getWantedBook",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "getWantedBook",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "409f768f476b4acd642da40f15df6c90ce48fe0b1d": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getAuthorBooks",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "getAuthorBooks",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "40c859b63dce52512b396fd0488e7342c6935f39c7": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getWantedBooks",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "getWantedBooks",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "40d8b25c2a5792d06fb5e8e47b3044fa4716921978": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "addToWanted",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "addToWanted",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "40f905399dd029378f51ed4c09018f2466bf82f8e7": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "searchHardcoverBooks",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "searchHardcoverBooks",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "600f3b37e5875b8b73b3776ba0c8396f7e01a99c96": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "updateWantedPriority",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "updateWantedPriority",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "602256e32c6458989ba98ab5b1c3780b01e714c634": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "updateWantedStatus",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "updateWantedStatus",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "606379aae259df62acdbca901c1b60f06bce61c591": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "updateWantedNotes",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "updateWantedNotes",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "703088ebe4b272f19ad187e9483a1b5d5717d76982": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "isBookWanted",
+          "filename": "lib/actions/wanted.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "isBookWanted",
+      "filename": "lib/actions/wanted.ts"
+    },
+    "0096be936f0aa1be04f028524ccbdedd3fcc88156d": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "clearZLibraryCredentials",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "clearZLibraryCredentials",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "00d6cc61ec97570b4c2d0873e3287dd57d3d2a5594": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getDownloadConfigs",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "getDownloadConfigs",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "00fc3e4dc25e999e70ca49c93b2620d38a91874389": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "refreshDownloadSourceStatuses",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "refreshDownloadSourceStatuses",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "406b6188f674ce2990b3153bb95479c935e3e872ff": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getDownloadConfig",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "getDownloadConfig",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "408f7dd8212a01c500571742795e22a2710dec76b1": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "checkDownloadSourceHealth",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "checkDownloadSourceHealth",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "40a4ca4eb478ffbba2bcbc9d73148492084f925917": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getDownloadSourceStatuses",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "getDownloadSourceStatuses",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "40c4bb0acf99ec4c2659953a5f8bc0925c9f5c2955": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "testDownloadSource",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "testDownloadSource",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "40ecf2568dbeb8e238d3e1388b5524f3b2bff56b7b": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "getDownloadSearchLinks",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "getDownloadSearchLinks",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "6072e9ace546973be026a723e509e415477a590728": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "toggleDownloadSource",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "toggleDownloadSource",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "60898cf24988024e8836d3a3a5d2251bd16f1e576d": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "saveZLibraryCredentials",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "saveZLibraryCredentials",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "60ce704d8648d0791b8d1a15ceb31f82825a82dca4": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "searchDownloads",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "searchDownloads",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "701451440290300d7632d4dfa38b5e4e12c1816f75": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "searchDownloadSource",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "searchDownloadSource",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "70dafb3758d1d3d8e77b1835b0f8eb1796e8d47388": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "updateDownloadConfig",
+          "filename": "lib/actions/downloads.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "rsc"
+      },
+      "exportedName": "updateDownloadConfig",
+      "filename": "lib/actions/downloads.ts"
+    },
+    "00f2bf1342b242da83d8d5a56eb8bf8de583768f35": {
+      "workers": {
+        "app/wanted/page": {
+          "moduleId": "[project]/.next-internal/server/app/wanted/page/actions.js { ACTIONS_MODULE0 => \"[project]/lib/actions/wanted.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/lib/actions/downloads.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/lib/actions/settings.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "isHardcoverConfigured",
+          "filename": "lib/actions/settings.ts"
+        }
+      },
+      "layer": {
+        "app/wanted/page": "action-browser"
+      },
+      "exportedName": "isHardcoverConfigured",
+      "filename": "lib/actions/settings.ts"
+    }
+  },
+  "edge": {}
+}

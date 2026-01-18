@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom base styles */
+@layer base {
+  body {
+    @apply bg-shelvarr-bg text-shelvarr-text;
+  }
+}
+
+/* Component styles */
+@layer components {
+  .sidebar-link {
+    @apply flex items-center gap-3 px-4 py-3 text-shelvarr-text-muted hover:bg-shelvarr-surface-light hover:text-shelvarr-text transition-colors rounded-lg;
+  }
+
+  .sidebar-link.active {
+    @apply bg-shelvarr-primary text-white;
+  }
+
+  .card {
+    @apply bg-shelvarr-surface rounded-lg border border-shelvarr-border p-4;
+  }
+
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-shelvarr-bg inline-flex items-center justify-center;
+  }
+
+  .btn-primary {
+    @apply btn bg-shelvarr-primary text-white hover:bg-shelvarr-primary-hover focus:ring-shelvarr-primary;
+  }
+
+  .btn-secondary {
+    @apply btn bg-shelvarr-surface-light text-shelvarr-text hover:bg-shelvarr-border focus:ring-shelvarr-border;
+  }
+
+  .btn-danger {
+    @apply btn bg-shelvarr-danger text-white hover:bg-red-600 focus:ring-shelvarr-danger;
+  }
+
+  .input {
+    @apply w-full px-3 py-2 bg-shelvarr-surface-light border border-shelvarr-border rounded-lg text-shelvarr-text placeholder-shelvarr-text-muted focus:outline-none focus:ring-2 focus:ring-shelvarr-primary focus:border-transparent;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2 py-1 text-xs font-medium rounded-full;
+  }
+
+  .badge-success {
+    @apply badge bg-green-900 text-green-300;
+  }
+
+  .badge-warning {
+    @apply badge bg-yellow-900 text-yellow-300;
+  }
+
+  .badge-danger {
+    @apply badge bg-red-900 text-red-300;
+  }
+
+  .badge-info {
+    @apply badge bg-blue-900 text-blue-300;
+  }
+
+  .table {
+    @apply w-full text-left;
+  }
+
+  .table th {
+    @apply px-4 py-3 text-shelvarr-text-muted font-medium text-sm uppercase tracking-wider border-b border-shelvarr-border;
+  }
+
+  .table td {
+    @apply px-4 py-3 border-b border-shelvarr-border;
+  }
+
+  .table tr:hover td {
+    @apply bg-shelvarr-surface-light;
+  }
+}
