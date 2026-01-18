@@ -1,6 +1,7 @@
 'use server';
 
-import { query, execute } from '@/lib/db';
+import { revalidatePath } from 'next/cache';
+import { query, execute, addWantedBook, deleteWantedBook, queryOne } from '@/lib/db';
 import type { Author, AuthorWork } from '@/types';
 
 /**
@@ -443,6 +444,7 @@ export async function refreshAuthorOwnership(authorId: number): Promise<void> {
 
 /**
  * Toggle wanted status for a work
+ * Also adds/removes from wanted_books table
  */
 export async function toggleWorkWanted(workId: number): Promise<{ success: boolean }> {
   const rows = query<AuthorWorkRow>(`SELECT * FROM author_works WHERE id = ?`, [workId]);
@@ -450,8 +452,36 @@ export async function toggleWorkWanted(workId: number): Promise<{ success: boole
     return { success: false };
   }
 
-  const newWanted = rows[0]!.wanted === 1 ? 0 : 1;
+  const work = rows[0]!;
+  const newWanted = work.wanted === 1 ? 0 : 1;
+
+  // Update author_works table
   execute(`UPDATE author_works SET wanted = ? WHERE id = ?`, [newWanted, workId]);
+
+  // Get author name for the wanted book
+  const author = queryOne<AuthorRow>(`SELECT * FROM authors WHERE id = ?`, [work.author_id]);
+  const authorName = author?.name || 'Unknown';
+
+  if (newWanted === 1) {
+    // Add to wanted_books table
+    addWantedBook({
+      title: work.title,
+      author: authorName,
+      isbn: work.isbn || undefined,
+    });
+  } else {
+    // Remove from wanted_books table (find by title and author)
+    const wantedBook = queryOne<{ id: number }>(
+      `SELECT id FROM wanted_books WHERE title = ? AND author = ?`,
+      [work.title, authorName]
+    );
+    if (wantedBook) {
+      deleteWantedBook(wantedBook.id);
+    }
+  }
+
+  // Revalidate wanted page
+  revalidatePath('/wanted');
 
   return { success: true };
 }
