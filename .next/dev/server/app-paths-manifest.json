@@ -1,8 +1,0 @@
-{
-  "/authors/[id]/page": "app/authors/[id]/page.js",
-  "/authors/page": "app/authors/page.js",
-  "/libraries/page": "app/libraries/page.js",
-  "/series/[name]/page": "app/series/[name]/page.js",
-  "/series/page": "app/series/page.js",
-  "/wanted/page": "app/wanted/page.js"
-}
