@@ -2,7 +2,10 @@
  * Library Genesis (LibGen) Integration
  *
  * LibGen has a JSON API for searching books.
+ * Uses open-slum.org status to determine working mirrors.
  */
+
+import { getSourceStatusCache } from '@/lib/db';
 
 export interface LibGenResult {
   id: string;
@@ -20,23 +23,47 @@ export interface LibGenResult {
   searchUrl: string;
 }
 
-// LibGen mirrors
-const LIBGEN_MIRRORS = [
-  'libgen.is',
-  'libgen.rs',
-  'libgen.st',
-] as const;
+// LibGen source names from open-slum.org and their domains
+const LIBGEN_SOURCES: Record<string, string> = {
+  libgen: 'libgen.vg',
+  libgen_bz: 'libgen.bz',
+};
+
+// Fallback mirrors if status unavailable
+const LIBGEN_FALLBACK = 'libgen.vg';
 
 const DOWNLOAD_MIRRORS = [
   'library.lol',
-  'libgen.lc',
+  'download.library.lol',
 ] as const;
 
 /**
- * Get the current working LibGen domain
+ * Get the current working LibGen domain based on open-slum.org status
  */
 export function getLibGenDomain(): string {
-  return LIBGEN_MIRRORS[0];
+  try {
+    const statuses = getSourceStatusCache();
+
+    // Find a libgen source that's up
+    for (const [source, domain] of Object.entries(LIBGEN_SOURCES)) {
+      const status = statuses.find(s => s.source === source);
+      if (status?.status === 'up') {
+        return domain;
+      }
+    }
+
+    // If none are up, try degraded
+    for (const [source, domain] of Object.entries(LIBGEN_SOURCES)) {
+      const status = statuses.find(s => s.source === source);
+      if (status?.status === 'degraded') {
+        return domain;
+      }
+    }
+  } catch {
+    // Ignore errors, use fallback
+  }
+
+  return LIBGEN_FALLBACK;
 }
 
 /**

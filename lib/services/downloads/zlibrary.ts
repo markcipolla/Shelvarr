@@ -2,8 +2,11 @@
  * Z-Library Integration
  *
  * Z-Library requires authentication for downloads but search is available.
+ * Uses open-slum.org status to determine working mirrors.
  * Reference: https://github.com/sertraline/zlibrary
  */
+
+import { getSourceStatusCache } from '@/lib/db';
 
 export interface ZLibraryConfig {
   email?: string;
@@ -24,19 +27,45 @@ export interface ZLibraryResult {
   searchUrl: string;
 }
 
-// Z-Library domains (they change frequently)
-const ZLIB_DOMAINS = [
-  'z-lib.gs',
-  'z-lib.gd',
-  'zlibrary-global.se',
-  'singlelogin.re',
-] as const;
+// Z-Library source names from open-slum.org and their domains
+const ZLIB_SOURCES: Record<string, string> = {
+  zlibrary: 'z-library.sk',
+  zlib_gl: 'z-lib.gl',
+};
+
+// Fallback domain if status unavailable
+const ZLIB_FALLBACK = 'z-library.sk';
+
+// Login domain (separate from search)
+const ZLIB_LOGIN_DOMAIN = 'singlelogin.re';
 
 /**
- * Get the current working Z-Library domain
+ * Get the current working Z-Library domain based on open-slum.org status
  */
 export function getZLibraryDomain(): string {
-  return ZLIB_DOMAINS[0];
+  try {
+    const statuses = getSourceStatusCache();
+
+    // Find a zlibrary source that's up
+    for (const [source, domain] of Object.entries(ZLIB_SOURCES)) {
+      const status = statuses.find(s => s.source === source);
+      if (status?.status === 'up') {
+        return domain;
+      }
+    }
+
+    // If none are up, try degraded
+    for (const [source, domain] of Object.entries(ZLIB_SOURCES)) {
+      const status = statuses.find(s => s.source === source);
+      if (status?.status === 'degraded') {
+        return domain;
+      }
+    }
+  } catch {
+    // Ignore errors, use fallback
+  }
+
+  return ZLIB_FALLBACK;
 }
 
 /**
@@ -140,7 +169,7 @@ export async function authenticateZLibrary(
   password: string
 ): Promise<{ remix_userid: string; remix_userkey: string } | null> {
   try {
-    const loginUrl = `https://singlelogin.re/rpc.php`;
+    const loginUrl = `https://${ZLIB_LOGIN_DOMAIN}/rpc.php`;
 
     const response = await fetch(loginUrl, {
       method: 'POST',

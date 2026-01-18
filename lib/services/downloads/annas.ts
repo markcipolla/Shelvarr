@@ -2,8 +2,10 @@
  * Anna's Archive Integration
  *
  * Anna's Archive is a search engine for shadow libraries.
- * They have a public search interface.
+ * Uses open-slum.org status to check availability.
  */
+
+import { getSourceStatusCache } from '@/lib/db';
 
 export interface AnnasResult {
   id: string;
@@ -19,6 +21,19 @@ export interface AnnasResult {
 }
 
 const ANNAS_DOMAIN = 'annas-archive.org';
+
+/**
+ * Check if Anna's Archive is available based on open-slum.org status
+ */
+export function isAnnasAvailable(): boolean {
+  try {
+    const statuses = getSourceStatusCache();
+    const status = statuses.find(s => s.source === 'annas');
+    return status?.status === 'up' || status?.status === 'degraded';
+  } catch {
+    return true; // Assume available if can't check
+  }
+}
 
 /**
  * Generate a search URL for Anna's Archive
