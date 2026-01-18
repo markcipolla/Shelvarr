@@ -11,6 +11,7 @@ import {
 import { scanLibrary as scanLib, getBooks, updateBook } from '@/lib/services/scanner';
 import { createTask, startTask, completeTask, failTask } from '@/lib/services/queue';
 import * as metadataService from '@/lib/services/metadata';
+import { getOrCreateAuthor, fetchAuthorMetadata, getAuthorByName } from '@/lib/actions/authors';
 
 export async function getLibraries() {
   const libraries = await getAllLibraries();
@@ -25,11 +26,11 @@ export async function getLibraries() {
 /**
  * Apply metadata from a search result to a book
  */
-function applyMetadataToBook(bookId: number, metadata: metadataService.BookMetadata) {
+async function applyMetadataToBook(bookId: number, metadata: metadataService.BookMetadata) {
   // Extract primary series (first in the array) for backwards compatibility
   const primarySeries = metadata.series?.[0];
 
-  return updateBook(bookId, {
+  const result = await updateBook(bookId, {
     title: metadata.title,
     authors: JSON.stringify(metadata.authors.split(', ')),
     publisher: metadata.publisher,
@@ -43,6 +44,26 @@ function applyMetadataToBook(bookId: number, metadata: metadataService.BookMetad
     metadataSource: metadata.source,
     metadataId: metadata.sourceId,
   });
+
+  // Process authors - fetch bibliography if not already synced
+  if (result.success && metadata.authors) {
+    processAuthors(metadata.authors).catch(() => {});
+  }
+
+  return result;
+}
+
+/**
+ * Create author records and fetch bibliography for new authors
+ */
+async function processAuthors(authorsString: string): Promise<void> {
+  for (const name of authorsString.split(', ').filter(a => a.trim())) {
+    const existing = await getAuthorByName(name);
+    if (!existing?.lastSynced) {
+      const author = await getOrCreateAuthor(name);
+      fetchAuthorMetadata(author.id).catch(() => {});
+    }
+  }
 }
 
 /**
