@@ -163,6 +163,7 @@ function mapAuthorWorkRow(row: AuthorWorkRow): AuthorWork {
 
 /**
  * Get all unique authors from books in libraries
+ * Only includes authors from books that have metadata fetched
  */
 export async function getAuthorsFromBooks(search?: string): Promise<Array<{
   name: string;
@@ -170,10 +171,11 @@ export async function getAuthorsFromBooks(search?: string): Promise<Array<{
   authorId: number | null;
   hasMetadata: boolean;
 }>> {
-  // Get unique authors from books table
+  // Get unique authors from books that have metadata fetched
   const books = query<{ authors: string }>(`
     SELECT DISTINCT authors FROM books
     WHERE authors IS NOT NULL AND authors != '[]'
+    AND metadata_source IS NOT NULL
   `, []);
 
   // Parse and count authors

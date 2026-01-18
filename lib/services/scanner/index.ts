@@ -292,8 +292,13 @@ export async function getBooks(queryParams: BookQuery = {}): Promise<BookListRes
   const totalPages = Math.ceil(total / pageSize);
 
   // Get paginated results
+  // Sort: books without metadata first, then alphabetically by title
   const rows = query<BookRow>(
-    `SELECT * FROM books ${whereClause} ORDER BY COALESCE(title, file_path) LIMIT ? OFFSET ?`,
+    `SELECT * FROM books ${whereClause}
+     ORDER BY
+       CASE WHEN metadata_source IS NULL THEN 0 ELSE 1 END,
+       COALESCE(title, file_path) COLLATE NOCASE
+     LIMIT ? OFFSET ?`,
     [...params, pageSize, offset]
   );
 
