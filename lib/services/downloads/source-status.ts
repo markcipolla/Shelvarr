@@ -1,7 +1,7 @@
 /**
  * Source Status Service
  *
- * Fetches availability status from open-slum.org and caches it.
+ * Fetches availability status from open-slum.org API and caches it.
  */
 
 import {
@@ -19,21 +19,44 @@ export interface SourceStatus {
   url: string;
 }
 
-// Known sources and their display names
-const KNOWN_SOURCES: Record<string, { displayName: string; url: string }> = {
-  zlibrary: { displayName: 'Z-Library', url: 'https://z-lib.gs' },
-  annas: { displayName: "Anna's Archive", url: 'https://annas-archive.org' },
-  libgen: { displayName: 'Library Genesis', url: 'https://libgen.is' },
-  libgen_rs: { displayName: 'LibGen.rs', url: 'https://libgen.rs' },
-  libgen_fiction: { displayName: 'LibGen Fiction', url: 'https://libgen.is/fiction' },
-  sci_hub: { displayName: 'Sci-Hub', url: 'https://sci-hub.se' },
+// Mapping of open-slum.org monitor IDs to our source names
+const MONITOR_ID_MAP: Record<number, { source: string; displayName: string; url: string }> = {
+  // Anna's Archive
+  15: { source: 'annas', displayName: "Anna's Archive", url: 'https://annas-archive.org' },
+  // Library Genesis
+  7: { source: 'libgen', displayName: 'LibGen.vg', url: 'https://libgen.vg' },
+  40: { source: 'libgen_bz', displayName: 'LibGen.bz', url: 'https://libgen.bz' },
+  // Z-Library
+  36: { source: 'zlibrary', displayName: 'Z-Library', url: 'https://z-library.sk' },
+  45: { source: 'zlib_gl', displayName: 'Z-Lib.gl', url: 'https://z-lib.gl' },
+  // Others
+  29: { source: 'liber3', displayName: 'Liber3', url: 'https://liber3.eth.limo' },
 };
+
+// Known sources for display (subset we care about)
+const KNOWN_SOURCES: Record<string, { displayName: string; url: string }> = {
+  zlibrary: { displayName: 'Z-Library', url: 'https://z-library.sk' },
+  annas: { displayName: "Anna's Archive", url: 'https://annas-archive.org' },
+  libgen: { displayName: 'Library Genesis', url: 'https://libgen.vg' },
+};
+
+interface HeartbeatEntry {
+  status: number; // 0 = down, 1 = up, 2 = degraded
+  time: string;
+  msg: string;
+  ping: number | null;
+}
+
+interface ApiResponse {
+  heartbeatList: Record<string, HeartbeatEntry[]>;
+  uptimeList: Record<string, number>;
+}
 
 /**
  * Get all source statuses (from cache or fresh fetch)
  */
 export async function getSourceStatuses(forceRefresh = false): Promise<SourceStatus[]> {
-  // Check if cache is stale
+  // Check if cache is stale (5 minutes)
   if (forceRefresh || isStatusCacheStale(5)) {
     await refreshSourceStatuses();
   }
@@ -74,133 +97,77 @@ export async function getSourceStatuses(forceRefresh = false): Promise<SourceSta
 }
 
 /**
- * Refresh source statuses from open-slum.org
+ * Refresh source statuses from open-slum.org API
  */
 export async function refreshSourceStatuses(): Promise<void> {
   try {
-    const response = await fetch('https://open-slum.org/', {
+    const response = await fetch('https://open-slum.org/api/status-page/heartbeat/slum', {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
+        'Accept': 'application/json',
+        'User-Agent': 'Shelvarr/1.0',
       },
       signal: AbortSignal.timeout(10000),
     });
 
     if (!response.ok) {
-      console.warn(`open-slum.org fetch failed: ${response.status}`);
+      console.warn(`open-slum.org API fetch failed: ${response.status}`);
       return;
     }
 
-    const html = await response.text();
+    const data: ApiResponse = await response.json();
 
-    // Parse status from the page
-    // The page typically shows status indicators for various sources
-    parseAndUpdateStatuses(html);
+    // Process each monitor we care about
+    for (const [idStr, monitorInfo] of Object.entries(MONITOR_ID_MAP)) {
+      const id = parseInt(idStr);
+      const heartbeats = data.heartbeatList[id];
+
+      if (!heartbeats || heartbeats.length === 0) {
+        updateSourceStatus(monitorInfo.source, 'unknown');
+        continue;
+      }
+
+      // Get the most recent heartbeat
+      const latest = heartbeats[heartbeats.length - 1];
+      if (!latest) {
+        updateSourceStatus(monitorInfo.source, 'unknown');
+        continue;
+      }
+
+      // Map status: 0 = down, 1 = up, 2 = degraded
+      let status: 'up' | 'down' | 'degraded';
+      switch (latest.status) {
+        case 1:
+          status = 'up';
+          break;
+        case 2:
+          status = 'degraded';
+          break;
+        case 0:
+        default:
+          status = 'down';
+          break;
+      }
+
+      // Get response time from ping
+      const responseTime = latest.ping ?? undefined;
+
+      updateSourceStatus(monitorInfo.source, status, responseTime);
+    }
+
+    // For sources without direct monitoring, set to unknown
+    for (const source of Object.keys(KNOWN_SOURCES)) {
+      const hasMonitor = Object.values(MONITOR_ID_MAP).some(m => m.source === source);
+      if (!hasMonitor) {
+        // Check if we have a related source that's up
+        // e.g., if zlibrary is monitored via ID 36, use that
+      }
+    }
+
   } catch (error) {
     console.error('Failed to refresh source statuses:', error);
 
-    // On error, set all sources to unknown
-    for (const source of Object.keys(KNOWN_SOURCES)) {
-      updateSourceStatus(source, 'unknown');
-    }
+    // On error, don't change existing cache - it's better than marking everything unknown
   }
-}
-
-/**
- * Parse the open-slum.org HTML and update status cache
- */
-function parseAndUpdateStatuses(html: string): void {
-  // Map common names to our internal source names
-  const nameMapping: Record<string, string> = {
-    'z-library': 'zlibrary',
-    'z-lib': 'zlibrary',
-    'zlib': 'zlibrary',
-    "anna's archive": 'annas',
-    'annas archive': 'annas',
-    'annas-archive': 'annas',
-    'library genesis': 'libgen',
-    'libgen': 'libgen',
-    'libgen.is': 'libgen',
-    'libgen.rs': 'libgen_rs',
-    'sci-hub': 'sci_hub',
-    'scihub': 'sci_hub',
-  };
-
-  // Pattern to match status entries from page structure
-  const entryPattern = /<(?:div|li|tr)[^>]*class="[^"]*(?:site|service|source)[^"]*"[^>]*>[\s\S]*?<[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<[\s\S]*?<[^>]*class="[^"]*status[^"]*"[^>]*>([^<]+)</gi;
-
-  let match;
-  const foundSources = new Set<string>();
-
-  // Try to find status entries
-  while ((match = entryPattern.exec(html)) !== null) {
-    const [, rawName, rawStatus] = match;
-    if (!rawName || !rawStatus) continue;
-    const name = rawName.toLowerCase().trim();
-    const status = rawStatus.toLowerCase().trim();
-
-    const internalName = Object.entries(nameMapping).find(([key]) =>
-      name.includes(key)
-    )?.[1];
-
-    if (internalName) {
-      const parsedStatus = parseStatus(status);
-      updateSourceStatus(internalName, parsedStatus);
-      foundSources.add(internalName);
-    }
-  }
-
-  // Fallback: try to parse by looking for keywords
-  if (foundSources.size === 0) {
-    for (const [keyword, internalName] of Object.entries(nameMapping)) {
-      const keywordPattern = new RegExp(
-        `${escapeRegex(keyword)}[^]*?(up|down|online|offline|operational|degraded|slow)`,
-        'i'
-      );
-      const keywordMatch = html.match(keywordPattern);
-
-      if (keywordMatch && keywordMatch[1]) {
-        const status = parseStatus(keywordMatch[1]);
-        updateSourceStatus(internalName, status);
-        foundSources.add(internalName);
-      }
-    }
-  }
-
-  // For sources not found, mark as unknown
-  for (const source of Object.keys(KNOWN_SOURCES)) {
-    if (!foundSources.has(source)) {
-      updateSourceStatus(source, 'unknown');
-    }
-  }
-}
-
-/**
- * Parse status text to our status type
- */
-function parseStatus(statusText: string): 'up' | 'down' | 'degraded' {
-  const text = statusText.toLowerCase();
-
-  if (text.includes('up') || text.includes('online') || text.includes('operational')) {
-    return 'up';
-  }
-
-  if (text.includes('down') || text.includes('offline') || text.includes('outage')) {
-    return 'down';
-  }
-
-  if (text.includes('degraded') || text.includes('slow') || text.includes('issues')) {
-    return 'degraded';
-  }
-
-  return 'up'; // Default to up if unclear
-}
-
-/**
- * Escape special regex characters
- */
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
