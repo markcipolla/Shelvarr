@@ -1,41 +1,74 @@
 import Database from 'better-sqlite3';
-import { readFileSync, mkdirSync } from 'fs';
-import { dirname, join } from 'path';
+import { readFileSync, mkdirSync, existsSync } from 'fs';
+import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import config from '@/lib/config';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// Get directory of this file
+let __dbDirname: string;
+try {
+  const __filename = fileURLToPath(import.meta.url);
+  __dbDirname = dirname(__filename);
+} catch {
+  // Fallback for bundled environments
+  __dbDirname = process.cwd();
+}
 
 let db: Database.Database | null = null;
+
+/**
+ * Find the schema.sql file in various possible locations
+ */
+function findSchemaPath(): string {
+  const possiblePaths = [
+    join(__dbDirname, 'schema.sql'),
+    join(process.cwd(), 'lib', 'db', 'schema.sql'),
+    resolve('lib', 'db', 'schema.sql'),
+    join(process.cwd(), '.next', 'standalone', 'lib', 'db', 'schema.sql'),
+  ];
+
+  for (const p of possiblePaths) {
+    if (existsSync(p)) {
+      return p;
+    }
+  }
+
+  throw new Error(`schema.sql not found. Tried: ${possiblePaths.join(', ')}`);
+}
 
 /**
  * Initialize the database connection and run migrations
  */
 export function initDatabase(): Database.Database {
-  // Ensure data directory exists
-  const dbDir = dirname(config.dbPath);
-  mkdirSync(dbDir, { recursive: true });
+  try {
+    // Ensure data directory exists
+    const dbDir = dirname(config.dbPath);
+    mkdirSync(dbDir, { recursive: true });
 
-  console.log(`Opening SQLite database at: ${config.dbPath}`);
+    console.log(`Opening SQLite database at: ${config.dbPath}`);
 
-  // Create database connection
-  db = new Database(config.dbPath);
+    // Create database connection
+    db = new Database(config.dbPath);
 
-  // Enable foreign keys and WAL mode for better performance
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
+    // Enable foreign keys and WAL mode for better performance
+    db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
 
-  // Run schema
-  const schemaPath = join(__dirname, 'schema.sql');
-  const schema = readFileSync(schemaPath, 'utf-8');
-  db.exec(schema);
+    // Run schema
+    const schemaPath = findSchemaPath();
+    console.log(`Loading schema from: ${schemaPath}`);
+    const schema = readFileSync(schemaPath, 'utf-8');
+    db.exec(schema);
 
-  // Run migrations for schema updates
-  runMigrations(db);
+    // Run migrations for schema updates
+    runMigrations(db);
 
-  console.log('Database initialized successfully');
-  return db;
+    console.log('Database initialized successfully');
+    return db;
+  } catch (error) {
+    console.error('Failed to initialize database:', error);
+    throw error;
+  }
 }
 
 /**
