@@ -25,8 +25,10 @@ export interface LibGenResult {
 
 // LibGen source names from open-slum.org and their domains
 const LIBGEN_SOURCES: Record<string, string> = {
-  libgen: 'libgen.vg',
+  libgen_vg: 'libgen.vg',
+  libgen_la: 'libgen.la',
   libgen_bz: 'libgen.bz',
+  libgen_gl: 'libgen.gl',
 };
 
 // Fallback mirrors if status unavailable

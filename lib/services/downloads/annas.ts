@@ -20,7 +20,43 @@ export interface AnnasResult {
   searchUrl: string;
 }
 
-const ANNAS_DOMAIN = 'annas-archive.org';
+// Anna's Archive source names from open-slum.org and their domains
+const ANNAS_SOURCES: Record<string, string> = {
+  annas: 'annas-archive.org',
+  annas_li: 'annas-archive.li',
+};
+
+// Fallback domain
+const ANNAS_FALLBACK = 'annas-archive.li';
+
+/**
+ * Get the current working Anna's Archive domain based on open-slum.org status
+ */
+export function getAnnasDomain(): string {
+  try {
+    const statuses = getSourceStatusCache();
+
+    // Find an Anna's source that's up
+    for (const [source, domain] of Object.entries(ANNAS_SOURCES)) {
+      const status = statuses.find(s => s.source === source);
+      if (status?.status === 'up') {
+        return domain;
+      }
+    }
+
+    // If none are up, try degraded
+    for (const [source, domain] of Object.entries(ANNAS_SOURCES)) {
+      const status = statuses.find(s => s.source === source);
+      if (status?.status === 'degraded') {
+        return domain;
+      }
+    }
+  } catch {
+    // Ignore errors, use fallback
+  }
+
+  return ANNAS_FALLBACK;
+}
 
 /**
  * Check if Anna's Archive is available based on open-slum.org status
@@ -28,8 +64,11 @@ const ANNAS_DOMAIN = 'annas-archive.org';
 export function isAnnasAvailable(): boolean {
   try {
     const statuses = getSourceStatusCache();
-    const status = statuses.find(s => s.source === 'annas');
-    return status?.status === 'up' || status?.status === 'degraded';
+    // Check if any Anna's source is up
+    return Object.keys(ANNAS_SOURCES).some(source => {
+      const status = statuses.find(s => s.source === source);
+      return status?.status === 'up' || status?.status === 'degraded';
+    });
   } catch {
     return true; // Assume available if can't check
   }
@@ -47,7 +86,7 @@ export function getAnnasSearchUrl(query: string, fileType?: string): string {
     params.set('ext', fileType);
   }
 
-  return `https://${ANNAS_DOMAIN}/search?${params.toString()}`;
+  return `https://${getAnnasDomain()}/search?${params.toString()}`;
 }
 
 /**
@@ -72,7 +111,7 @@ export async function searchAnnas(
       params.set('lang', options.language);
     }
 
-    const searchUrl = `https://${ANNAS_DOMAIN}/search?${params.toString()}`;
+    const searchUrl = `https://${getAnnasDomain()}/search?${params.toString()}`;
 
     const response = await fetch(searchUrl, {
       headers: {
@@ -122,7 +161,7 @@ export async function searchAnnas(
         extension,
         size,
         source: 'annas',
-        downloadUrl: `https://${ANNAS_DOMAIN}/md5/${md5}`,
+        downloadUrl: `https://${getAnnasDomain()}/md5/${md5}`,
         searchUrl: getAnnasSearchUrl(query),
       });
 
@@ -144,7 +183,7 @@ export async function searchAnnas(
           extension: 'unknown',
           size: 'Unknown',
           source: 'annas',
-          downloadUrl: `https://${ANNAS_DOMAIN}/md5/${md5}`,
+          downloadUrl: `https://${getAnnasDomain()}/md5/${md5}`,
           searchUrl: getAnnasSearchUrl(query),
         });
         if (results.length >= 15) break;
@@ -164,7 +203,7 @@ export async function getAnnasDownloadLinks(md5: string): Promise<string[]> {
   const links: string[] = [];
 
   try {
-    const detailUrl = `https://${ANNAS_DOMAIN}/md5/${md5}`;
+    const detailUrl = `https://${getAnnasDomain()}/md5/${md5}`;
 
     const response = await fetch(detailUrl, {
       headers: {

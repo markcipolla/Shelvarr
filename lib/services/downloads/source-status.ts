@@ -20,24 +20,30 @@ export interface SourceStatus {
 }
 
 // Mapping of open-slum.org monitor IDs to our source names
+// Check https://open-slum.org/ for current monitor IDs
 const MONITOR_ID_MAP: Record<number, { source: string; displayName: string; url: string }> = {
   // Anna's Archive
+  14: { source: 'annas_li', displayName: "Anna's Archive .li", url: 'https://annas-archive.li' },
   15: { source: 'annas', displayName: "Anna's Archive", url: 'https://annas-archive.org' },
-  // Library Genesis
-  7: { source: 'libgen', displayName: 'LibGen.vg', url: 'https://libgen.vg' },
+  // Library Genesis+
+  7: { source: 'libgen_vg', displayName: 'LibGen.vg', url: 'https://libgen.vg' },
+  39: { source: 'libgen_la', displayName: 'LibGen.la', url: 'https://libgen.la' },
   40: { source: 'libgen_bz', displayName: 'LibGen.bz', url: 'https://libgen.bz' },
+  41: { source: 'libgen_gl', displayName: 'LibGen.gl', url: 'https://libgen.gl' },
   // Z-Library
   36: { source: 'zlibrary', displayName: 'Z-Library', url: 'https://z-library.sk' },
   45: { source: 'zlib_gl', displayName: 'Z-Lib.gl', url: 'https://z-lib.gl' },
   // Others
   29: { source: 'liber3', displayName: 'Liber3', url: 'https://liber3.eth.limo' },
+  38: { source: 'motw', displayName: 'Memory of the World', url: 'https://library.memoryoftheworld.org' },
 };
 
 // Known sources for display (subset we care about)
 const KNOWN_SOURCES: Record<string, { displayName: string; url: string }> = {
   zlibrary: { displayName: 'Z-Library', url: 'https://z-library.sk' },
   annas: { displayName: "Anna's Archive", url: 'https://annas-archive.org' },
-  libgen: { displayName: 'Library Genesis', url: 'https://libgen.vg' },
+  annas_li: { displayName: "Anna's Archive .li", url: 'https://annas-archive.li' },
+  libgen_vg: { displayName: 'Library Genesis', url: 'https://libgen.vg' },
 };
 
 interface HeartbeatEntry {
