@@ -114,6 +114,39 @@ CREATE TABLE IF NOT EXISTS downloads (
   completed_at TEXT
 );
 
+-- Wanted books (standalone, not tied to author_works)
+CREATE TABLE IF NOT EXISTS wanted_books (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  hardcover_id TEXT,
+  title TEXT NOT NULL,
+  author TEXT,
+  isbn TEXT,
+  cover_url TEXT,
+  description TEXT,
+  added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  priority INTEGER DEFAULT 0, -- 0=normal, 1=high
+  notes TEXT,
+  status TEXT DEFAULT 'wanted' -- wanted, searching, found, acquired
+);
+
+-- Download source configuration
+CREATE TABLE IF NOT EXISTS download_source_config (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source TEXT NOT NULL UNIQUE, -- zlibrary, annas, libgen
+  enabled INTEGER DEFAULT 1,
+  credentials TEXT, -- JSON: {email, password} for zlibrary
+  last_checked TEXT
+);
+
+-- Cache for source status from open-slum.org
+CREATE TABLE IF NOT EXISTS source_status_cache (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL, -- up, down, degraded
+  response_time INTEGER, -- ms
+  last_updated TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_books_library ON books(library_id);
 CREATE INDEX IF NOT EXISTS idx_books_title ON books(title);
@@ -125,3 +158,6 @@ CREATE INDEX IF NOT EXISTS idx_author_works_owned ON author_works(owned);
 CREATE INDEX IF NOT EXISTS idx_author_works_wanted ON author_works(wanted);
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_wanted_books_status ON wanted_books(status);
+CREATE INDEX IF NOT EXISTS idx_wanted_books_title ON wanted_books(title);
+CREATE INDEX IF NOT EXISTS idx_source_status_cache_source ON source_status_cache(source);

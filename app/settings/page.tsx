@@ -1,12 +1,15 @@
 import { getSourcesStatus, getKomgaSettings } from '@/lib/actions/settings';
+import { getDownloadConfigs, getDownloadSourceStatuses } from '@/lib/actions/downloads';
 import { SettingsTabs } from '@/components/settings/SettingsTabs';
 
 export const dynamic = 'force-dynamic';
 
 export default async function SettingsPage() {
-  const [sources, komga] = await Promise.all([
+  const [sources, komga, downloadConfigs, downloadStatuses] = await Promise.all([
     getSourcesStatus(),
     getKomgaSettings(),
+    getDownloadConfigs(),
+    getDownloadSourceStatuses(),
   ]);
 
   return (
@@ -18,7 +21,12 @@ export default async function SettingsPage() {
         </p>
       </div>
 
-      <SettingsTabs sources={sources} komga={komga} />
+      <SettingsTabs
+        sources={sources}
+        komga={komga}
+        downloadConfigs={downloadConfigs}
+        downloadStatuses={downloadStatuses}
+      />
     </div>
   );
 }

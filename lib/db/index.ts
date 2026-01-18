@@ -202,6 +202,160 @@ export function getAllSettings(): Record<string, unknown> {
   return settings;
 }
 
+// ============ Wanted Books Functions ============
+
+export interface WantedBook {
+  id: number;
+  hardcover_id: string | null;
+  title: string;
+  author: string | null;
+  isbn: string | null;
+  cover_url: string | null;
+  description: string | null;
+  added_at: string;
+  priority: number;
+  notes: string | null;
+  status: 'wanted' | 'searching' | 'found' | 'acquired';
+}
+
+export function getWantedBooks(status?: string): WantedBook[] {
+  if (status) {
+    return query<WantedBook>('SELECT * FROM wanted_books WHERE status = ? ORDER BY priority DESC, added_at DESC', [status]);
+  }
+  return query<WantedBook>('SELECT * FROM wanted_books ORDER BY priority DESC, added_at DESC');
+}
+
+export function getWantedBookById(id: number): WantedBook | null {
+  return queryOne<WantedBook>('SELECT * FROM wanted_books WHERE id = ?', [id]);
+}
+
+export function addWantedBook(data: {
+  hardcover_id?: string;
+  title: string;
+  author?: string;
+  isbn?: string;
+  cover_url?: string;
+  description?: string;
+  priority?: number;
+  notes?: string;
+}): WantedBook | null {
+  const result = execute(
+    `INSERT INTO wanted_books (hardcover_id, title, author, isbn, cover_url, description, priority, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [data.hardcover_id || null, data.title, data.author || null, data.isbn || null,
+     data.cover_url || null, data.description || null, data.priority || 0, data.notes || null]
+  );
+  return getWantedBookById(result.lastInsertRowid);
+}
+
+export function updateWantedBook(id: number, data: Partial<WantedBook>): boolean {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+
+  if (data.status !== undefined) { fields.push('status = ?'); values.push(data.status); }
+  if (data.priority !== undefined) { fields.push('priority = ?'); values.push(data.priority); }
+  if (data.notes !== undefined) { fields.push('notes = ?'); values.push(data.notes); }
+
+  if (fields.length === 0) return false;
+
+  values.push(id);
+  const result = execute(`UPDATE wanted_books SET ${fields.join(', ')} WHERE id = ?`, values);
+  return result.rowCount > 0;
+}
+
+export function deleteWantedBook(id: number): boolean {
+  const result = execute('DELETE FROM wanted_books WHERE id = ?', [id]);
+  return result.rowCount > 0;
+}
+
+export function isBookWanted(hardcoverId?: string, isbn?: string, title?: string): boolean {
+  if (hardcoverId) {
+    const result = queryOne('SELECT id FROM wanted_books WHERE hardcover_id = ?', [hardcoverId]);
+    if (result) return true;
+  }
+  if (isbn) {
+    const result = queryOne('SELECT id FROM wanted_books WHERE isbn = ?', [isbn]);
+    if (result) return true;
+  }
+  if (title) {
+    const result = queryOne('SELECT id FROM wanted_books WHERE title = ?', [title]);
+    if (result) return true;
+  }
+  return false;
+}
+
+// ============ Download Source Config Functions ============
+
+export interface DownloadSourceConfig {
+  id: number;
+  source: string;
+  enabled: number;
+  credentials: string | null;
+  last_checked: string | null;
+}
+
+export function getDownloadSourceConfigs(): DownloadSourceConfig[] {
+  return query<DownloadSourceConfig>('SELECT * FROM download_source_config');
+}
+
+export function getDownloadSourceConfig(source: string): DownloadSourceConfig | null {
+  return queryOne<DownloadSourceConfig>('SELECT * FROM download_source_config WHERE source = ?', [source]);
+}
+
+export function upsertDownloadSourceConfig(source: string, enabled: boolean, credentials?: object): void {
+  const credentialsJson = credentials ? JSON.stringify(credentials) : null;
+  execute(
+    `INSERT INTO download_source_config (source, enabled, credentials, last_checked)
+     VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT (source) DO UPDATE SET enabled = ?, credentials = ?, last_checked = CURRENT_TIMESTAMP`,
+    [source, enabled ? 1 : 0, credentialsJson, enabled ? 1 : 0, credentialsJson]
+  );
+}
+
+export function isSourceEnabled(source: string): boolean {
+  const config = getDownloadSourceConfig(source);
+  return config ? config.enabled === 1 : true; // Default to enabled if not configured
+}
+
+// ============ Source Status Cache Functions ============
+
+export interface SourceStatusCache {
+  id: number;
+  source: string;
+  status: 'up' | 'down' | 'degraded' | 'unknown';
+  response_time: number | null;
+  last_updated: string;
+}
+
+export function getSourceStatusCache(): SourceStatusCache[] {
+  return query<SourceStatusCache>('SELECT * FROM source_status_cache');
+}
+
+export function getSourceStatus(source: string): SourceStatusCache | null {
+  return queryOne<SourceStatusCache>('SELECT * FROM source_status_cache WHERE source = ?', [source]);
+}
+
+export function updateSourceStatus(source: string, status: 'up' | 'down' | 'degraded' | 'unknown', responseTime?: number): void {
+  execute(
+    `INSERT INTO source_status_cache (source, status, response_time, last_updated)
+     VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT (source) DO UPDATE SET status = ?, response_time = ?, last_updated = CURRENT_TIMESTAMP`,
+    [source, status, responseTime || null, status, responseTime || null]
+  );
+}
+
+export function isStatusCacheStale(maxAgeMinutes: number = 5): boolean {
+  const result = queryOne<{ oldest: string }>(
+    `SELECT MIN(last_updated) as oldest FROM source_status_cache`
+  );
+  if (!result?.oldest) return true;
+
+  const lastUpdate = new Date(result.oldest);
+  const now = new Date();
+  const diffMinutes = (now.getTime() - lastUpdate.getTime()) / (1000 * 60);
+  return diffMinutes > maxAgeMinutes;
+}
+
 // Aliases for compatibility
 export const getPool = getDb;
 export const initDatabaseAsync = initDatabase;
@@ -218,4 +372,21 @@ export default {
   getSetting,
   setSetting,
   getAllSettings,
+  // Wanted books
+  getWantedBooks,
+  getWantedBookById,
+  addWantedBook,
+  updateWantedBook,
+  deleteWantedBook,
+  isBookWanted,
+  // Download source config
+  getDownloadSourceConfigs,
+  getDownloadSourceConfig,
+  upsertDownloadSourceConfig,
+  isSourceEnabled,
+  // Source status cache
+  getSourceStatusCache,
+  getSourceStatus,
+  updateSourceStatus,
+  isStatusCacheStale,
 };
