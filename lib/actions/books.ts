@@ -15,6 +15,7 @@ export interface GetBooksParams {
   pageSize?: number;
   libraryId?: number;
   search?: string;
+  unmatchedOnly?: boolean;
 }
 
 export async function getBooks(params: GetBooksParams = {}) {
@@ -23,6 +24,7 @@ export async function getBooks(params: GetBooksParams = {}) {
     pageSize: params.pageSize || 24,
     libraryId: params.libraryId,
     search: params.search,
+    unmatchedOnly: params.unmatchedOnly,
   });
 }
 

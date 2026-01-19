@@ -3,11 +3,21 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { GlobalSearch } from './GlobalSearch';
+import type { SidebarCounts } from '@/lib/actions/stats';
 
-const navItems = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  countKey?: keyof SidebarCounts;
+  countColor?: 'blue' | 'orange';
+}
+
+const navItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: HomeIcon },
   { href: '/libraries', label: 'Libraries', icon: FolderIcon },
-  { href: '/books', label: 'Books', icon: BookIcon },
+  { href: '/books', label: 'Books', icon: BookIcon, countKey: 'books', countColor: 'blue' },
+  { href: '/unmatched', label: 'Unmatched', icon: UnmatchedIcon, countKey: 'unmatched', countColor: 'orange' },
   { href: '/wanted', label: 'Wanted', icon: WantedIcon },
   { href: '/series', label: 'Series', icon: CollectionIcon },
   { href: '/authors', label: 'Authors', icon: AuthorIcon },
@@ -15,7 +25,11 @@ const navItems = [
   { href: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  counts?: SidebarCounts;
+}
+
+export function Sidebar({ counts }: SidebarProps) {
   const pathname = usePathname();
 
   return (
@@ -34,19 +48,35 @@ export function Sidebar() {
           {navItems.map((item) => {
             const isActive = pathname === item.href ||
               (item.href !== '/' && pathname.startsWith(item.href));
+            const count = item.countKey && counts ? counts[item.countKey] : undefined;
 
             return (
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                  className={`flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
                     isActive
                       ? 'bg-shelvarr-primary text-white'
                       : 'text-shelvarr-text-muted hover:text-shelvarr-text hover:bg-shelvarr-bg'
                   }`}
                 >
-                  <item.icon className="w-5 h-5" />
-                  <span>{item.label}</span>
+                  <div className="flex items-center gap-3">
+                    <item.icon className="w-5 h-5" />
+                    <span>{item.label}</span>
+                  </div>
+                  {count !== undefined && count > 0 && (
+                    <span
+                      className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                        isActive
+                          ? 'bg-white/20 text-white'
+                          : item.countColor === 'orange'
+                            ? 'bg-orange-500/20 text-orange-400'
+                            : 'bg-blue-500/20 text-blue-400'
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  )}
                 </Link>
               </li>
             );
@@ -123,6 +153,14 @@ function WantedIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+    </svg>
+  );
+}
+
+function UnmatchedIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
   );
 }

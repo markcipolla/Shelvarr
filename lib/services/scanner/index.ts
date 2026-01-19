@@ -253,6 +253,7 @@ export interface BookQuery {
   search?: string;
   page?: number;
   pageSize?: number;
+  unmatchedOnly?: boolean;
 }
 
 export interface BookListResult {
@@ -281,6 +282,10 @@ export async function getBooks(queryParams: BookQuery = {}): Promise<BookListRes
     whereClause += ' AND (title LIKE ? OR authors LIKE ? OR file_path LIKE ?)';
     const searchTerm = `%${queryParams.search}%`;
     params.push(searchTerm, searchTerm, searchTerm);
+  }
+
+  if (queryParams.unmatchedOnly) {
+    whereClause += ' AND metadata_source IS NULL';
   }
 
   // Get total count

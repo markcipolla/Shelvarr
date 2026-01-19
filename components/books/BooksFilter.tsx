@@ -12,12 +12,14 @@ interface BooksFilterProps {
   libraries: LibraryWithCount[];
   currentLibrary?: number;
   currentSearch?: string;
+  baseUrl?: string;
 }
 
 export function BooksFilter({
   libraries,
   currentLibrary,
   currentSearch = '',
+  baseUrl = '/books',
 }: BooksFilterProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -39,7 +41,7 @@ export function BooksFilter({
     params.delete('page');
 
     startTransition(() => {
-      router.push(`/books?${params.toString()}`);
+      router.push(`${baseUrl}?${params.toString()}`);
     });
   };
 
