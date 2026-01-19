@@ -135,24 +135,6 @@ export function AddLibraryButton() {
                 )}
               </div>
 
-              <div>
-                <label htmlFor="type" className="block text-sm font-medium text-shelvarr-text-muted mb-1">
-                  Type
-                </label>
-                <select
-                  id="type"
-                  name="type"
-                  defaultValue="book"
-                  className="w-full bg-shelvarr-bg border border-shelvarr-border rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500"
-                >
-                  <option value="book">Books</option>
-                  <option value="comic">Comics</option>
-                </select>
-                <p className="mt-1 text-xs text-shelvarr-text-muted">
-                  Affects which metadata sources are used
-                </p>
-              </div>
-
               {error && (
                 <div className="text-red-400 text-sm">{error}</div>
               )}
