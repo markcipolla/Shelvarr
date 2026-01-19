@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { Task } from '@/lib/services/queue';
 import { TaskList } from './TaskList';
 
@@ -11,8 +11,38 @@ interface TaskTabsProps {
   completedTotal: number;
 }
 
+// Extract retry queue position from error message like "Rate limited - queued for retry (#6)"
+function getRetryQueuePosition(task: Task): number | null {
+  if (!task.error) return null;
+  const match = task.error.match(/queued for retry \(#(\d+)\)/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
 export function TaskTabs({ queuedTasks, completedTasks, queuedTotal, completedTotal }: TaskTabsProps) {
   const [activeTab, setActiveTab] = useState<'queued' | 'completed'>('queued');
+
+  // Sort queued tasks: running first, then by retry queue position, then by created date
+  const sortedQueuedTasks = useMemo(() => {
+    return [...queuedTasks].sort((a, b) => {
+      // Running tasks come first
+      if (a.status === 'running' && b.status !== 'running') return -1;
+      if (b.status === 'running' && a.status !== 'running') return 1;
+
+      // Then sort by retry queue position (lower number = higher priority)
+      const posA = getRetryQueuePosition(a);
+      const posB = getRetryQueuePosition(b);
+
+      if (posA !== null && posB !== null) {
+        return posA - posB;
+      }
+      // Tasks with queue position come before those without
+      if (posA !== null) return -1;
+      if (posB !== null) return 1;
+
+      // Finally sort by created date (newest first for non-retry tasks)
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [queuedTasks]);
 
   return (
     <div>
@@ -57,7 +87,7 @@ export function TaskTabs({ queuedTasks, completedTasks, queuedTotal, completedTo
 
       {activeTab === 'queued' && (
         <>
-          {queuedTasks.length === 0 ? (
+          {sortedQueuedTasks.length === 0 ? (
             <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-8 text-center">
               <p className="text-shelvarr-text-muted">
                 No tasks in queue
@@ -66,9 +96,9 @@ export function TaskTabs({ queuedTasks, completedTasks, queuedTotal, completedTo
           ) : (
             <>
               <div className="text-sm text-shelvarr-text-muted mb-3">
-                {queuedTasks.length} task{queuedTasks.length !== 1 ? 's' : ''} in queue
+                {sortedQueuedTasks.length} task{sortedQueuedTasks.length !== 1 ? 's' : ''} in queue
               </div>
-              <TaskList tasks={queuedTasks} />
+              <TaskList tasks={sortedQueuedTasks} />
             </>
           )}
         </>
