@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { ReactReader } from 'react-reader';
 import type { Book } from '@/types';
 
@@ -11,12 +11,34 @@ interface EpubReaderProps {
 
 export function EpubReader({ book, onClose }: EpubReaderProps) {
   const [location, setLocation] = useState<string | number>(0);
+  const [epubData, setEpubData] = useState<ArrayBuffer | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch epub as ArrayBuffer
+  useEffect(() => {
+    const fetchEpub = async () => {
+      try {
+        const response = await fetch(`/api/books/${book.id}/file`);
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || 'Failed to load book');
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        setEpubData(arrayBuffer);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load book');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEpub();
+  }, [book.id]);
 
   const locationChanged = useCallback((epubcfi: string) => {
     setLocation(epubcfi);
   }, []);
-
-  const epubUrl = `/api/books/${book.id}/file`;
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
@@ -45,16 +67,42 @@ export function EpubReader({ book, onClose }: EpubReaderProps) {
 
       {/* Reader */}
       <div className="flex-1 bg-white">
-        <ReactReader
-          url={epubUrl}
-          location={location}
-          locationChanged={locationChanged}
-          showToc={true}
-          epubOptions={{
-            flow: 'scrolled',
-            manager: 'continuous',
-          }}
-        />
+        {loading && (
+          <div className="h-full flex items-center justify-center">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="mt-4 text-gray-600">Loading book...</p>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="h-full flex items-center justify-center">
+            <div className="text-center text-red-600">
+              <p className="text-lg font-medium">Failed to load book</p>
+              <p className="mt-2">{error}</p>
+              <button
+                onClick={onClose}
+                className="mt-4 px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+
+        {epubData && (
+          <ReactReader
+            url={epubData}
+            location={location}
+            locationChanged={locationChanged}
+            showToc={true}
+            epubOptions={{
+              flow: 'scrolled',
+              manager: 'continuous',
+            }}
+          />
+        )}
       </div>
     </div>
   );
