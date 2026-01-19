@@ -265,7 +265,8 @@ export interface BookListResult {
 
 export async function getBooks(queryParams: BookQuery = {}): Promise<BookListResult> {
   const page = Math.max(1, queryParams.page || 1);
-  const pageSize = Math.min(100, Math.max(1, queryParams.pageSize || 20));
+  // Allow up to 10000 for internal operations (e.g., metadata fetch), default 20 for UI
+  const pageSize = Math.min(10000, Math.max(1, queryParams.pageSize || 20));
   const offset = (page - 1) * pageSize;
 
   let whereClause = 'WHERE 1=1';
