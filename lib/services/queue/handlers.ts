@@ -4,10 +4,13 @@
  */
 
 import { registerTaskHandler, enqueueTask, type TaskHandler } from './index';
-import { scanLibrary, updateBook } from '../scanner/index.js';
+import { scanLibrary, updateBook, addBook } from '../scanner/index.js';
 import { getLibraryById } from '../library/index.js';
 import { query, queryOne, execute } from '@/lib/db';
 import * as metadataService from '../metadata/index.js';
+import { downloadFile as downloadFromLibgen } from '../downloads/libgen';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * Scan library task handler
@@ -197,6 +200,138 @@ const metadataHandler: TaskHandler = async (taskId, onProgress, signal) => {
 };
 
 /**
+ * Sanitize filename for filesystem
+ */
+function sanitizeFilename(name: string): string {
+  return name
+    .replace(/[<>:"/\\|?*]/g, '') // Remove invalid chars
+    .replace(/\s+/g, ' ')          // Normalize whitespace
+    .trim()
+    .substring(0, 200);            // Limit length
+}
+
+/**
+ * Download task handler
+ * Downloads a file from a source and saves it to a library
+ */
+const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
+  const taskRow = queryOne<{ result: string | null }>(
+    'SELECT result FROM tasks WHERE id = ?',
+    [taskId]
+  );
+
+  if (!taskRow?.result) {
+    throw new Error('Task missing download configuration');
+  }
+
+  const data = JSON.parse(taskRow.result) as {
+    source: 'libgen' | 'annas' | 'zlibrary';
+    md5: string;
+    title: string;
+    author: string;
+    extension: string;
+    libraryId: number;
+    wantedBookId?: number;
+  };
+
+  if (!data.source || !data.md5 || !data.libraryId) {
+    throw new Error('Invalid download task configuration');
+  }
+
+  onProgress(0, 4); // 4 steps: fetch URL, download, save, add to db
+
+  // Step 1: Get the library
+  const library = await getLibraryById(data.libraryId);
+  if (!library) {
+    throw new Error(`Library ${data.libraryId} not found`);
+  }
+
+  if (signal.aborted) throw new Error('Task cancelled');
+  onProgress(1, 4);
+
+  // Step 2: Download the file
+  let fileData: { buffer: Buffer; filename: string; contentType: string } | null = null;
+
+  if (data.source === 'libgen') {
+    fileData = await downloadFromLibgen(data.md5);
+  } else {
+    // TODO: Add support for other sources
+    throw new Error(`Download from ${data.source} not yet supported`);
+  }
+
+  if (!fileData) {
+    throw new Error('Failed to download file');
+  }
+
+  if (signal.aborted) throw new Error('Task cancelled');
+  onProgress(2, 4);
+
+  // Step 3: Generate filename and save
+  const ext = data.extension || path.extname(fileData.filename).replace('.', '') || 'epub';
+  const authorPart = data.author && data.author !== 'Unknown' ? `${sanitizeFilename(data.author)} - ` : '';
+  const titlePart = sanitizeFilename(data.title || 'Unknown');
+  const newFilename = `${authorPart}${titlePart}.${ext}`;
+
+  const targetPath = path.join(library.path, newFilename);
+
+  // Check if file already exists
+  if (fs.existsSync(targetPath)) {
+    // Add a number suffix
+    let counter = 1;
+    let altPath = targetPath;
+    while (fs.existsSync(altPath)) {
+      altPath = path.join(library.path, `${authorPart}${titlePart} (${counter}).${ext}`);
+      counter++;
+    }
+  }
+
+  // Ensure library directory exists
+  if (!fs.existsSync(library.path)) {
+    fs.mkdirSync(library.path, { recursive: true });
+  }
+
+  // Write file
+  fs.writeFileSync(targetPath, fileData.buffer);
+
+  if (signal.aborted) {
+    // Clean up if cancelled
+    try { fs.unlinkSync(targetPath); } catch { /* ignore */ }
+    throw new Error('Task cancelled');
+  }
+  onProgress(3, 4);
+
+  // Step 4: Add book to database
+  const bookId = await addBook({
+    libraryId: data.libraryId,
+    filePath: targetPath,
+    title: data.title,
+    authors: data.author ? JSON.stringify([data.author]) : null,
+    extension: ext,
+    fileSize: fileData.buffer.length,
+  });
+
+  // Update wanted book status if this was from wanted list
+  if (data.wantedBookId) {
+    execute(
+      "UPDATE wanted_books SET status = 'acquired' WHERE id = ?",
+      [data.wantedBookId]
+    );
+  }
+
+  onProgress(4, 4);
+
+  return {
+    success: true,
+    bookId,
+    filePath: targetPath,
+    filename: newFilename,
+    fileSize: fileData.buffer.length,
+    source: data.source,
+    wantedBookId: data.wantedBookId,
+  };
+};
+
+/**
  * Register all task handlers
  */
 export function registerAllHandlers(): void {
@@ -209,10 +344,7 @@ export function registerAllHandlers(): void {
     return { message: 'Organize handler not yet implemented' };
   });
 
-  registerTaskHandler('download', async (_taskId, onProgress) => {
-    onProgress(1, 1);
-    return { message: 'Download handler not yet implemented' };
-  });
+  registerTaskHandler('download', downloadHandler);
 
   registerTaskHandler('author_sync', async (_taskId, onProgress) => {
     onProgress(1, 1);

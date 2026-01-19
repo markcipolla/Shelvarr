@@ -412,3 +412,30 @@ export async function deleteBook(id: number): Promise<{ success: boolean; error?
     return { success: false, error: message };
   }
 }
+
+/**
+ * Add a new book to the database (for downloaded files)
+ */
+export async function addBook(data: {
+  libraryId: number;
+  filePath: string;
+  title?: string;
+  authors?: string | null;
+  extension?: string;
+  fileSize?: number;
+}): Promise<number> {
+  const result = await execute(
+    `INSERT INTO books (library_id, file_path, title, authors, extension, file_size, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+    [
+      data.libraryId,
+      data.filePath,
+      data.title || null,
+      data.authors || null,
+      data.extension || null,
+      data.fileSize || null,
+    ]
+  );
+
+  return result.lastInsertRowid as number;
+}

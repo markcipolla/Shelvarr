@@ -19,6 +19,7 @@ import {
   type DownloadSourceConfig,
 } from '@/lib/db';
 import { authenticateZLibrary } from '@/lib/services/downloads/zlibrary';
+import { enqueueTask } from '@/lib/services/queue';
 
 // Types are re-exported from the service layer for consumers
 // Import types directly from '@/lib/services/downloads' or '@/lib/db' instead
@@ -223,5 +224,42 @@ export async function clearZLibraryCredentials(): Promise<{ success: boolean }> 
   } catch (error) {
     console.error('Error clearing Z-Library credentials:', error);
     return { success: false };
+  }
+}
+
+/**
+ * Queue a download task
+ */
+export async function queueDownload(data: {
+  source: 'libgen' | 'annas' | 'zlibrary';
+  md5: string;
+  title: string;
+  author: string;
+  extension: string;
+  libraryId: number;
+  wantedBookId?: number;
+}): Promise<{ success: boolean; taskId?: number; error?: string }> {
+  try {
+    if (!data.source || !data.md5 || !data.libraryId) {
+      return { success: false, error: 'Missing required fields' };
+    }
+
+    const task = enqueueTask('download', {
+      source: data.source,
+      md5: data.md5,
+      title: data.title,
+      author: data.author,
+      extension: data.extension,
+      libraryId: data.libraryId,
+      wantedBookId: data.wantedBookId,
+    });
+
+    revalidatePath('/tasks');
+    revalidatePath('/wanted');
+
+    return { success: true, taskId: task.id };
+  } catch (error) {
+    console.error('Error queuing download:', error);
+    return { success: false, error: 'Failed to queue download' };
   }
 }

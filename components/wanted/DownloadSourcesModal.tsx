@@ -6,9 +6,17 @@ import {
   searchDownloads,
   getDownloadSearchLinks,
   getDownloadSourceStatuses,
+  queueDownload,
 } from '@/lib/actions/downloads';
+import { getLibraries } from '@/lib/actions/libraries';
 import type { DownloadResult, SourceStatus } from '@/lib/services/downloads';
 import { SourceStatusBadge } from './SourceStatusBadge';
+
+interface Library {
+  id: number;
+  name: string;
+  path: string;
+}
 
 interface DownloadSourcesModalProps {
   book: WantedBook;
@@ -28,6 +36,9 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
     libgen: string;
   } | null>(null);
   const [statuses, setStatuses] = useState<SourceStatus[]>([]);
+  const [libraries, setLibraries] = useState<Library[]>([]);
+  const [selectedLibraryId, setSelectedLibraryId] = useState<number | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -35,6 +46,13 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
       setError(null);
 
       try {
+        // Get libraries for download target selection
+        const libs = await getLibraries();
+        setLibraries(libs);
+        if (libs.length > 0 && !selectedLibraryId) {
+          setSelectedLibraryId(libs[0]!.id);
+        }
+
         // Get search links immediately
         const links = await getDownloadSearchLinks(
           `${book.title} ${book.author || ''}`.trim()
@@ -62,7 +80,7 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
     };
 
     loadData();
-  }, [book]);
+  }, [book, selectedLibraryId]);
 
   const filteredResults =
     activeTab === 'all'
@@ -71,6 +89,45 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
 
   const getStatusForSource = (source: string) => {
     return statuses.find((s) => s.name === source)?.status || 'unknown';
+  };
+
+  const handleDownload = async (result: DownloadResult) => {
+    if (!selectedLibraryId) {
+      alert('Please select a library to download to');
+      return;
+    }
+
+    // Only libgen supported for now
+    if (result.source !== 'libgen') {
+      // Open in browser for other sources
+      window.open(result.downloadUrl || result.searchUrl, '_blank');
+      return;
+    }
+
+    setDownloadingId(result.id);
+
+    try {
+      const response = await queueDownload({
+        source: result.source,
+        md5: result.id,
+        title: result.title,
+        author: result.author,
+        extension: result.extension,
+        libraryId: selectedLibraryId,
+        wantedBookId: book.id,
+      });
+
+      if (response.success) {
+        alert(`Download queued! Check the Tasks page for progress.`);
+        onClose();
+      } else {
+        alert(`Failed to queue download: ${response.error}`);
+      }
+    } catch {
+      alert('Failed to queue download');
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   const tabs: { id: TabType; label: string }[] = [
@@ -94,6 +151,24 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
             )}
           </p>
         </div>
+
+        {/* Library Selector */}
+        {libraries.length > 0 && (
+          <div className="p-4 border-b border-shelvarr-border bg-shelvarr-bg/50">
+            <label className="text-sm text-shelvarr-text-muted mb-2 block">Download to library:</label>
+            <select
+              value={selectedLibraryId || ''}
+              onChange={(e) => setSelectedLibraryId(Number(e.target.value))}
+              className="bg-shelvarr-surface border border-shelvarr-border rounded px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500"
+            >
+              {libraries.map((lib) => (
+                <option key={lib.id} value={lib.id}>
+                  {lib.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Quick Links */}
         {searchLinks && (
@@ -177,7 +252,12 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
           {!loading && filteredResults.length > 0 && (
             <div className="divide-y divide-shelvarr-border">
               {filteredResults.map((result, index) => (
-                <DownloadResultItem key={`${result.source}-${result.id}-${index}`} result={result} />
+                <DownloadResultItem
+                  key={`${result.source}-${result.id}-${index}`}
+                  result={result}
+                  onDownload={handleDownload}
+                  isDownloading={downloadingId === result.id}
+                />
               ))}
             </div>
           )}
@@ -196,12 +276,23 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
   );
 }
 
-function DownloadResultItem({ result }: { result: DownloadResult }) {
+function DownloadResultItem({
+  result,
+  onDownload,
+  isDownloading,
+}: {
+  result: DownloadResult;
+  onDownload: (result: DownloadResult) => void;
+  isDownloading: boolean;
+}) {
   const sourceLabels: Record<string, string> = {
     zlibrary: 'Z-Library',
     annas: "Anna's Archive",
     libgen: 'LibGen',
   };
+
+  // LibGen downloads can be queued, others open in browser
+  const canQueueDownload = result.source === 'libgen';
 
   return (
     <div className="p-4 flex items-start gap-4">
@@ -225,7 +316,25 @@ function DownloadResultItem({ result }: { result: DownloadResult }) {
       </div>
 
       <div className="flex-shrink-0 flex items-center gap-2">
-        {result.downloadUrl && (
+        {canQueueDownload ? (
+          <button
+            onClick={() => onDownload(result)}
+            disabled={isDownloading}
+            className="bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded text-sm font-medium transition-colors inline-flex items-center gap-1"
+          >
+            {isDownloading ? (
+              <>
+                <LoadingSpinner />
+                Queuing...
+              </>
+            ) : (
+              <>
+                <DownloadIcon />
+                Download
+              </>
+            )}
+          </button>
+        ) : result.downloadUrl ? (
           <a
             href={result.downloadUrl}
             target="_blank"
@@ -235,7 +344,7 @@ function DownloadResultItem({ result }: { result: DownloadResult }) {
             Download
             <ExternalLinkIcon />
           </a>
-        )}
+        ) : null}
         <a
           href={result.searchUrl}
           target="_blank"
@@ -247,6 +356,39 @@ function DownloadResultItem({ result }: { result: DownloadResult }) {
         </a>
       </div>
     </div>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+      />
+    </svg>
+  );
+}
+
+function LoadingSpinner() {
+  return (
+    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      />
+    </svg>
   );
 }
 

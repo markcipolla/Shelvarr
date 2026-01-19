@@ -174,9 +174,106 @@ export function getLibGenDownloadUrl(md5: string): string {
   return `https://${getLibGenDomain()}/ads.php?md5=${md5}`;
 }
 
+/**
+ * Get the actual direct download URL by scraping the ads.php page
+ * Returns the get.php URL with the required key parameter
+ */
+export async function getActualDownloadUrl(md5: string): Promise<string | null> {
+  try {
+    const adsUrl = `https://${getLibGenDomain()}/ads.php?md5=${md5}`;
+
+    const response = await fetch(adsUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
+      },
+    });
+
+    if (!response.ok) {
+      console.warn(`LibGen ads page fetch failed: ${response.status}`);
+      return null;
+    }
+
+    const html = await response.text();
+
+    // Look for the GET link: href="get.php?md5=XXX&key=YYY"
+    const getPattern = /href="(get\.php\?md5=[a-f0-9]+&key=[^"]+)"/i;
+    const match = html.match(getPattern);
+
+    if (match?.[1]) {
+      return `https://${getLibGenDomain()}/${match[1]}`;
+    }
+
+    // Fallback: look for any direct download link
+    const directPattern = /href="(https?:\/\/[^"]+\/get[^"]+)"/i;
+    const directMatch = html.match(directPattern);
+
+    if (directMatch?.[1]) {
+      return directMatch[1];
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error getting actual download URL:', error);
+    return null;
+  }
+}
+
+/**
+ * Download a file from LibGen and return the buffer and filename
+ */
+export async function downloadFile(md5: string): Promise<{
+  buffer: Buffer;
+  filename: string;
+  contentType: string;
+} | null> {
+  try {
+    const downloadUrl = await getActualDownloadUrl(md5);
+    if (!downloadUrl) {
+      console.error('Could not get download URL for', md5);
+      return null;
+    }
+
+    const response = await fetch(downloadUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': '*/*',
+      },
+      redirect: 'follow',
+    });
+
+    if (!response.ok) {
+      console.warn(`LibGen download failed: ${response.status}`);
+      return null;
+    }
+
+    // Get filename from Content-Disposition header or URL
+    const contentDisposition = response.headers.get('content-disposition');
+    let filename = `${md5}.epub`; // Default
+
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      if (filenameMatch?.[1]) {
+        filename = filenameMatch[1].replace(/['"]/g, '');
+      }
+    }
+
+    const contentType = response.headers.get('content-type') || 'application/octet-stream';
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    return { buffer, filename, contentType };
+  } catch (error) {
+    console.error('Error downloading file:', error);
+    return null;
+  }
+}
+
 export default {
   searchLibGen,
   getLibGenSearchUrl,
   getLibGenDownloadUrl,
+  getActualDownloadUrl,
+  downloadFile,
   getLibGenDomain,
 };
