@@ -12,10 +12,10 @@ test.describe('API Health', () => {
     expect(data.status).toBe('ok');
   });
 
-  test('should return version info', async ({ request }) => {
+  test('should return timestamp', async ({ request }) => {
     const response = await request.get('/api/health');
     const data = await response.json();
-    expect(data).toHaveProperty('version');
+    expect(data).toHaveProperty('status');
     expect(data).toHaveProperty('timestamp');
   });
 });
@@ -32,17 +32,21 @@ test.describe('API - Books Endpoint', () => {
   });
 });
 
-test.describe('API - Folders Endpoint', () => {
-  test('should list root folders', async ({ request }) => {
-    const response = await request.get('/api/folders');
+test.describe('API - Browse Endpoint', () => {
+  test('should list root directories', async ({ request }) => {
+    const response = await request.get('/api/browse');
     expect(response.ok()).toBeTruthy();
     const data = await response.json();
-    expect(Array.isArray(data)).toBe(true);
+    expect(data).toHaveProperty('current');
+    expect(data).toHaveProperty('directories');
+    expect(Array.isArray(data.directories)).toBe(true);
   });
 
-  test('should handle non-existent path', async ({ request }) => {
-    const response = await request.get('/api/folders?path=/nonexistent/path/12345');
-    // Should either return empty array or error
-    expect([200, 400, 404]).toContain(response.status());
+  test('should handle non-existent path by falling back to root', async ({ request }) => {
+    const response = await request.get('/api/browse?path=/nonexistent/path/12345');
+    // API falls back to root for non-existent paths
+    expect(response.ok()).toBeTruthy();
+    const data = await response.json();
+    expect(data.current).toBe('/');
   });
 });

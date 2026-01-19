@@ -1,31 +1,13 @@
 /**
  * Database Operations Unit Tests
- *
- * Note: These tests require better-sqlite3 native module.
- * They will be skipped in environments where native modules aren't available.
  */
 
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert';
 
-// Check if native modules are available
-let dbAvailable = false;
-let db: typeof import('../../lib/db/index.js') | null = null;
-
-try {
-  // Try to load better-sqlite3 to check if native modules work
-  require('better-sqlite3');
-  dbAvailable = true;
-} catch {
-  console.log('# ⚠️  Skipping Database tests: better-sqlite3 native module not available');
-}
+let db: typeof import('../../lib/db/index.js');
 
 describe('Database Operations', () => {
-  if (!dbAvailable) {
-    it('skipped - native modules not available', { skip: true }, () => {});
-    return;
-  }
-
   before(async () => {
     // Set up test environment
     process.env['DATA_DIR'] = '/tmp/shelvarr-test-' + Date.now();
@@ -95,7 +77,7 @@ describe('Database Operations', () => {
         ['Test Library', '/test/path']
       );
       assert.strictEqual(result.rowCount, 1);
-      assert.ok(result.lastId > 0);
+      assert.ok(result.lastInsertRowid > 0);
     });
 
     it('should execute insertReturning and return inserted row', async () => {

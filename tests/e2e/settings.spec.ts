@@ -14,28 +14,37 @@ test.describe('Settings Page', () => {
   });
 
   test('should have tabs for different settings sections', async ({ page }) => {
-    // Check for settings tabs/sections
-    await expect(page.getByText(/Metadata/i)).toBeVisible();
+    // Check for settings tabs - actual tab labels
+    await expect(page.getByRole('button', { name: /Metadata Sources/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Download Sources/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Komga/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /About/i })).toBeVisible();
   });
 
-  test('should have Hardcover API key input', async ({ page }) => {
-    // Look for API key input field
-    const apiKeyInput = page.getByPlaceholder(/API/i).or(page.getByLabel(/API/i));
-    if (await apiKeyInput.count() > 0) {
-      await expect(apiKeyInput.first()).toBeVisible();
-    }
+  test('should have Hardcover configuration', async ({ page }) => {
+    // Hardcover is shown as a metadata source
+    await expect(page.getByText(/Hardcover/i)).toBeVisible();
   });
 
-  test('should have Save button for settings', async ({ page }) => {
-    await expect(page.getByRole('button', { name: /Save/i })).toBeVisible();
+  test('should show API key status', async ({ page }) => {
+    // Should show either "API key configured" or "API key required"
+    await expect(
+      page.getByText(/API key configured|API key required/i)
+    ).toBeVisible();
   });
 
   test('should have Komga section', async ({ page }) => {
-    // Look for Komga configuration
-    await expect(page.getByText(/Komga/i)).toBeVisible();
+    // Click Komga tab
+    await page.getByRole('button', { name: /Komga/i }).click();
+
+    // Look for Komga URL input label specifically
+    await expect(page.getByText('Komga URL')).toBeVisible();
   });
 
   test('should have Test Connection button for Komga', async ({ page }) => {
+    // Click Komga tab first
+    await page.getByRole('button', { name: /Komga/i }).click();
+
     const testButton = page.getByRole('button', { name: /Test/i });
     if (await testButton.count() > 0) {
       await expect(testButton.first()).toBeVisible();
@@ -50,15 +59,20 @@ test.describe('Settings - Metadata Sources', () => {
     await expect(page.getByText(/Hardcover/i)).toBeVisible();
   });
 
-  test('should allow entering Hardcover API key', async ({ page }) => {
+  test('should allow configuring Hardcover API key', async ({ page }) => {
     await page.goto('/settings');
 
-    // Find the API key input and enter a test value
-    const apiKeyInput = page.locator('input[type="password"]').or(page.locator('input[placeholder*="API"]')).first();
+    // Click "Add API Key" or "Update API Key" button
+    const apiKeyButton = page.getByRole('button', { name: /API Key/i });
+    if (await apiKeyButton.isVisible()) {
+      await apiKeyButton.click();
 
-    if (await apiKeyInput.isVisible()) {
-      await apiKeyInput.fill('test-api-key-12345');
-      await expect(apiKeyInput).toHaveValue('test-api-key-12345');
+      // Now the input and Save button should be visible
+      const apiKeyInput = page.locator('input[type="password"]');
+      await expect(apiKeyInput).toBeVisible();
+
+      // Save button appears after clicking API Key button
+      await expect(page.getByRole('button', { name: /Save/i })).toBeVisible();
     }
   });
 });

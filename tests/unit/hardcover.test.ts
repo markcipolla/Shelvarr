@@ -6,18 +6,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-// Check if native modules are available (hardcover imports db which needs better-sqlite3)
-let nativeModulesAvailable = false;
-try {
-  require('better-sqlite3');
-  nativeModulesAvailable = true;
-} catch {
-  console.log('# ⚠️  Skipping Hardcover isConfigured test: requires native modules');
-}
-
 describe('Hardcover API Service', () => {
   describe('isConfigured', () => {
-    it('should return false when no API key is set', { skip: !nativeModulesAvailable }, async () => {
+    it('should return false when no API key is set', async () => {
       // Clear any existing config
       delete process.env['HARDCOVER_TOKEN'];
 

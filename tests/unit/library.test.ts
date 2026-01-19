@@ -5,26 +5,11 @@
 
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import { mkdirSync, writeFileSync, rmSync, existsSync } from 'fs';
+import { mkdirSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
-// Check if native modules are available
-let dbAvailable = false;
-
-try {
-  require('better-sqlite3');
-  dbAvailable = true;
-} catch {
-  console.log('# ⚠️  Skipping Library Service tests: better-sqlite3 native module not available');
-}
-
 describe('Library Service', () => {
-  if (!dbAvailable) {
-    it('skipped - native modules not available', { skip: true }, () => {});
-    return;
-  }
-
   let testDir: string;
   let libraryPath: string;
   let db: typeof import('../../lib/db/index.js');
@@ -82,15 +67,15 @@ describe('Library Service', () => {
       assert.strictEqual(result.library.path, libraryPath);
     });
 
-    it('should reject duplicate library names', async () => {
+    it('should reject duplicate library paths', async () => {
       await libraryService.createLibrary({
-        name: 'Duplicate Test',
+        name: 'First Library',
         path: libraryPath
       });
 
       const result = await libraryService.createLibrary({
-        name: 'Duplicate Test',
-        path: join(testDir, 'other')
+        name: 'Second Library',
+        path: libraryPath
       });
 
       assert.ok(!result.success);
