@@ -9,6 +9,7 @@ import {
 } from '@/lib/services/scanner';
 import * as metadataService from '@/lib/services/metadata';
 import { getOrCreateAuthor, fetchAuthorMetadata, getAuthorByName } from '@/lib/actions/authors';
+import { enqueueTask } from '@/lib/services/queue';
 
 export interface GetBooksParams {
   page?: number;
@@ -90,6 +91,12 @@ async function applyMetadataToBook(bookId: number, metadata: metadataService.Boo
 
     // Process authors in background
     processAuthors(metadata.authors).catch(() => {});
+
+    // Organize file (rename/move based on new metadata)
+    enqueueTask('organize', {
+      bookId,
+      bookTitle: metadata.title,
+    });
   }
 
   return result;
