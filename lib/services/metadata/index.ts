@@ -150,7 +150,7 @@ export function scoreResult(
 
 /**
  * Auto-match a book - search and return the best match
- * Fetches multiple results and picks the highest-scored one
+ * Trusts Hardcover's relevance ranking and returns the first result
  */
 export async function autoMatch(
   title: string,
@@ -159,20 +159,19 @@ export async function autoMatch(
 ): Promise<BookMetadata | null> {
   if (!hardcover.isConfigured()) return null;
 
-  // Build search query - title + author works best
+  // Try ISBN search first if available (most accurate)
+  if (isbn) {
+    const isbnResult = await hardcover.searchByIsbn(isbn);
+    if (isbnResult) return isbnResult;
+  }
+
+  // Build search query - title + author works best for Hardcover's search
   const query = [title, author].filter(Boolean).join(' ').trim();
   if (!query) return null;
 
-  // Fetch multiple results to pick the best one
-  const results = await hardcover.searchBooks(query, 10);
-  if (results.length === 0) return null;
-
-  // Score and sort results
-  const scored = results
-    .map(r => ({ result: r, score: scoreResult(r, title, author, isbn) }))
-    .sort((a, b) => b.score - a.score);
-
-  return scored[0]?.result || null;
+  // Hardcover's API returns results in relevance order - trust it
+  const results = await hardcover.searchBooks(query, 1);
+  return results[0] || null;
 }
 
 export { hardcover };
