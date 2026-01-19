@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Task } from '@/lib/services/queue';
-import { cancelTask } from '@/lib/actions/tasks';
+import { cancelTask, retryTask } from '@/lib/actions/tasks';
 
 interface TaskListProps {
   tasks: Task[];
@@ -22,12 +22,20 @@ export function TaskList({ tasks }: TaskListProps) {
 function TaskRow({ task }: { task: Task }) {
   const router = useRouter();
   const [cancelling, setCancelling] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   const handleCancel = async () => {
     setCancelling(true);
     await cancelTask(task.id);
     router.refresh();
     setCancelling(false);
+  };
+
+  const handleRetry = async () => {
+    setRetrying(true);
+    await retryTask(task.id);
+    router.refresh();
+    setRetrying(false);
   };
 
   const statusColor = {
@@ -96,6 +104,16 @@ function TaskRow({ task }: { task: Task }) {
             className="text-red-400 hover:text-red-300 text-sm transition-colors disabled:opacity-50"
           >
             {cancelling ? 'Cancelling...' : 'Cancel'}
+          </button>
+        )}
+
+        {(task.status === 'failed' || task.status === 'cancelled') && (
+          <button
+            onClick={handleRetry}
+            disabled={retrying}
+            className="text-blue-400 hover:text-blue-300 text-sm transition-colors disabled:opacity-50"
+          >
+            {retrying ? 'Retrying...' : 'Retry'}
           </button>
         )}
 

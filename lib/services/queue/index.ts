@@ -312,6 +312,26 @@ export function enqueueTask(type: TaskType, initialData?: Record<string, unknown
 }
 
 /**
+ * Retry a failed task - creates a new task with the same type and data
+ */
+export function retryTask(taskId: number): Task | null {
+  const originalTask = getTask(taskId);
+  if (!originalTask) {
+    throw new Error(`Task ${taskId} not found`);
+  }
+
+  if (originalTask.status !== 'failed' && originalTask.status !== 'cancelled') {
+    throw new Error(`Task ${taskId} is not failed or cancelled (status: ${originalTask.status})`);
+  }
+
+  // Get the original task data
+  const taskData = originalTask.data || {};
+
+  // Create and run a new task with the same type and data
+  return enqueueTask(originalTask.type, taskData);
+}
+
+/**
  * Get task statistics
  */
 export function getTaskStats(): {

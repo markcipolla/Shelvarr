@@ -6,6 +6,7 @@ import {
   getTask,
   cancelTask as cancelTaskInDb,
   cleanupOldTasks,
+  retryTask as retryTaskInQueue,
 } from '@/lib/services/queue';
 
 export async function getTasks(options: {
@@ -31,4 +32,14 @@ export async function cleanupTasks(olderThanDays: number = 7) {
   const deleted = cleanupOldTasks(olderThanDays);
   revalidatePath('/tasks');
   return { success: true, deleted };
+}
+
+export async function retryTask(id: number) {
+  try {
+    const newTask = retryTaskInQueue(id);
+    revalidatePath('/tasks');
+    return { success: true, taskId: newTask?.id };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to retry task' };
+  }
 }
