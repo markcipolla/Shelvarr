@@ -67,7 +67,7 @@ const runningTasks = new Map<number, { cancel: () => void }>();
 // Rate limit retry queue - processes one task at a time with delays
 const retryQueue: number[] = [];
 let retryProcessorRunning = false;
-const RETRY_DELAY_MS = 60000; // 1 minute between retries
+const RETRY_DELAY_MS = 10000; // 10 seconds between retries
 
 async function processRetryQueue(): Promise<void> {
   if (retryProcessorRunning) return;
