@@ -8,15 +8,15 @@ export interface SidebarCounts {
 }
 
 export async function getSidebarCounts(): Promise<SidebarCounts> {
-  const counts = queryOne<{ total: number; unmatched: number }>(`
+  const counts = queryOne<{ matched: number; unmatched: number }>(`
     SELECT
-      COUNT(*) as total,
+      SUM(CASE WHEN metadata_source IS NOT NULL THEN 1 ELSE 0 END) as matched,
       SUM(CASE WHEN metadata_source IS NULL THEN 1 ELSE 0 END) as unmatched
     FROM books
   `, []);
 
   return {
-    books: counts?.total || 0,
+    books: counts?.matched || 0,
     unmatched: counts?.unmatched || 0,
   };
 }

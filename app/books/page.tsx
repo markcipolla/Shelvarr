@@ -21,7 +21,7 @@ export default async function BooksPage({ searchParams }: PageProps) {
   const search = params.search || '';
 
   const [booksResult, libraries] = await Promise.all([
-    getBooks({ page, pageSize: 24, libraryId, search }),
+    getBooks({ page, pageSize: 24, libraryId, search, matchedOnly: true }),
     getLibraries(),
   ]);
 

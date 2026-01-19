@@ -254,6 +254,7 @@ export interface BookQuery {
   page?: number;
   pageSize?: number;
   unmatchedOnly?: boolean;
+  matchedOnly?: boolean;
 }
 
 export interface BookListResult {
@@ -286,6 +287,10 @@ export async function getBooks(queryParams: BookQuery = {}): Promise<BookListRes
 
   if (queryParams.unmatchedOnly) {
     whereClause += ' AND metadata_source IS NULL';
+  }
+
+  if (queryParams.matchedOnly) {
+    whereClause += ' AND metadata_source IS NOT NULL';
   }
 
   // Get total count

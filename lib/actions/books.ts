@@ -16,6 +16,7 @@ export interface GetBooksParams {
   libraryId?: number;
   search?: string;
   unmatchedOnly?: boolean;
+  matchedOnly?: boolean;
 }
 
 export async function getBooks(params: GetBooksParams = {}) {
@@ -25,6 +26,7 @@ export async function getBooks(params: GetBooksParams = {}) {
     libraryId: params.libraryId,
     search: params.search,
     unmatchedOnly: params.unmatchedOnly,
+    matchedOnly: params.matchedOnly,
   });
 }
 
