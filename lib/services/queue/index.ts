@@ -64,6 +64,61 @@ function rowToTask(row: TaskRow): Task {
 // In-memory queue for running tasks
 const runningTasks = new Map<number, { cancel: () => void }>();
 
+// Rate limit retry queue - processes one task at a time with delays
+const retryQueue: number[] = [];
+let retryProcessorRunning = false;
+const RETRY_DELAY_MS = 60000; // 1 minute between retries
+
+async function processRetryQueue(): Promise<void> {
+  if (retryProcessorRunning) return;
+  retryProcessorRunning = true;
+
+  while (retryQueue.length > 0) {
+    const taskId = retryQueue.shift();
+    if (!taskId) continue;
+
+    // Check if task still exists and is pending
+    const task = getTask(taskId);
+    if (!task || task.status !== 'pending') {
+      log.info('Skipping retry - task no longer pending', { taskId, status: task?.status });
+      continue;
+    }
+
+    log.info('Retrying rate-limited task', { taskId, queueLength: retryQueue.length });
+
+    try {
+      await runTask(taskId);
+    } catch (err) {
+      log.error('Retry failed', { taskId, error: err });
+    }
+
+    // Wait before processing next task (even if successful, to avoid rate limits)
+    if (retryQueue.length > 0) {
+      log.info('Waiting before next retry', { delayMs: RETRY_DELAY_MS, remaining: retryQueue.length });
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+    }
+  }
+
+  retryProcessorRunning = false;
+}
+
+function scheduleRetry(taskId: number): void {
+  if (!retryQueue.includes(taskId)) {
+    retryQueue.push(taskId);
+    log.info('Task added to retry queue', { taskId, queueLength: retryQueue.length });
+  }
+
+  // Start processor after initial delay if not running
+  if (!retryProcessorRunning) {
+    setTimeout(() => {
+      processRetryQueue().catch(err => {
+        log.error('Retry processor error', { error: err });
+        retryProcessorRunning = false;
+      });
+    }, RETRY_DELAY_MS);
+  }
+}
+
 export interface TaskHandler {
   (
     taskId: number,
@@ -291,8 +346,25 @@ export async function runTask(taskId: number): Promise<void> {
       );
     } else {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      log.error('Task failed', { taskId, type: task.type, error: message });
-      failTask(taskId, message);
+
+      // Check if it's a rate limit error - add to retry queue
+      if (message.includes('429')) {
+        log.info('Rate limited, adding to retry queue', { taskId, type: task.type });
+
+        // Update task to pending with a note about queue position
+        const queuePosition = retryQueue.length + 1;
+        execute(
+          "UPDATE tasks SET status = 'pending', error = ? WHERE id = ?",
+          [`Rate limited - queued for retry (#${queuePosition})`, taskId]
+        );
+        runningTasks.delete(taskId);
+
+        // Add to serial retry queue
+        scheduleRetry(taskId);
+      } else {
+        log.error('Task failed', { taskId, type: task.type, error: message });
+        failTask(taskId, message);
+      }
     }
   }
 }
