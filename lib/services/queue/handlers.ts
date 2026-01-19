@@ -176,16 +176,34 @@ const metadataHandler: TaskHandler = async (taskId, onProgress, signal) => {
       );
 
       if (metadata) {
+        // Convert authors from comma-separated string to JSON array
+        let authorsJson: string | null = null;
+        if (metadata.authors && metadata.authors !== 'Unknown') {
+          const authorsList = metadata.authors.split(',').map(a => a.trim()).filter(Boolean);
+          authorsJson = JSON.stringify(authorsList);
+        }
+
         // Update book with metadata
         await updateBook(book.id, {
           title: metadata.title,
-          authors: metadata.authors,
+          authors: authorsJson || undefined,
           publisher: metadata.publisher,
           publishDate: metadata.publishDate,
           description: metadata.description,
           isbn: metadata.isbn,
           coverUrl: metadata.coverUrl,
         });
+
+        // Handle series if present
+        if (metadata.series && metadata.series.length > 0) {
+          const primarySeries = metadata.series[0];
+          if (primarySeries) {
+            execute(
+              'UPDATE books SET series = ?, series_name = ?, series_number = ? WHERE id = ?',
+              [JSON.stringify(metadata.series), primarySeries[0], primarySeries[1], book.id]
+            );
+          }
+        }
 
         // Update metadata source tracking
         execute(
@@ -752,16 +770,34 @@ const bookMetadataHandler: TaskHandler = async (taskId, onProgress) => {
     return { status: 'not_found', bookId: book.id, title: book.title };
   }
 
+  // Convert authors from comma-separated string to JSON array
+  let authorsJson: string | null = null;
+  if (metadata.authors && metadata.authors !== 'Unknown') {
+    const authorsList = metadata.authors.split(',').map(a => a.trim()).filter(Boolean);
+    authorsJson = JSON.stringify(authorsList);
+  }
+
   // Update book with metadata
   await updateBook(book.id, {
     title: metadata.title,
-    authors: metadata.authors,
+    authors: authorsJson || undefined,
     publisher: metadata.publisher,
     publishDate: metadata.publishDate,
     description: metadata.description,
     isbn: metadata.isbn,
     coverUrl: metadata.coverUrl,
   });
+
+  // Handle series if present
+  if (metadata.series && metadata.series.length > 0) {
+    const primarySeries = metadata.series[0];
+    if (primarySeries) {
+      execute(
+        'UPDATE books SET series = ?, series_name = ?, series_number = ? WHERE id = ?',
+        [JSON.stringify(metadata.series), primarySeries[0], primarySeries[1], book.id]
+      );
+    }
+  }
 
   // Update metadata source tracking
   execute(
