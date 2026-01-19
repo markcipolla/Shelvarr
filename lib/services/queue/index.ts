@@ -8,7 +8,7 @@ import { createLogger } from '@/lib/utils/logger';
 
 const log = createLogger('queue');
 
-export type TaskType = 'scan' | 'metadata' | 'organize' | 'download' | 'author_sync';
+export type TaskType = 'scan' | 'metadata' | 'book_metadata' | 'organize' | 'download' | 'author_sync';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface Task {
@@ -113,6 +113,7 @@ export function getTask(id: number): Task | null {
 export function getTasks(options: {
   type?: TaskType;
   status?: TaskStatus;
+  statuses?: TaskStatus[];
   limit?: number;
   offset?: number;
 } = {}): { tasks: Task[]; total: number } {
@@ -124,7 +125,11 @@ export function getTasks(options: {
     params.push(options.type);
   }
 
-  if (options.status) {
+  if (options.statuses && options.statuses.length > 0) {
+    const placeholders = options.statuses.map(() => '?').join(',');
+    whereClause += ` AND status IN (${placeholders})`;
+    params.push(...options.statuses);
+  } else if (options.status) {
     whereClause += ' AND status = ?';
     params.push(options.status);
   }
@@ -335,6 +340,28 @@ export function getTaskStats(): {
   return stats || { total: 0, pending: 0, running: 0, completed: 0, failed: 0 };
 }
 
+// Ensure handlers are registered on module load
+let handlersRegistered = false;
+
+export function ensureHandlersRegistered(): void {
+  if (handlersRegistered) return;
+  handlersRegistered = true;
+
+  // Import and register handlers synchronously
+  // Using require to avoid async import issues
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { registerAllHandlers } = require('./handlers');
+    registerAllHandlers();
+    log.info('Task handlers registered');
+  } catch (err) {
+    log.error('Failed to register task handlers', { error: err });
+  }
+}
+
+// Auto-register handlers when module is imported
+ensureHandlersRegistered();
+
 export default {
   registerTaskHandler,
   createTask,
@@ -351,4 +378,5 @@ export default {
   runTask,
   enqueueTask,
   getTaskStats,
+  ensureHandlersRegistered,
 };

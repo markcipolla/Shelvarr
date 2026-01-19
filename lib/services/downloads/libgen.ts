@@ -102,63 +102,105 @@ export async function searchLibGen(
 
     const html = await response.text();
 
-    // LibGen+ uses a table with id="tablelibgen"
-    // Each row: Title/Series | Author | Publisher | Year | Language | Pages | Size | Ext | Mirrors
-    // Parse each table row
-    const rowPattern = /<tr>\s*<td><b>([^<]+)<[\s\S]*?<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td[^>]*>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td[^>]*><[^>]*>([^<]*)<[\s\S]*?<\/td>\s*<td>([^<]*)<\/td>\s*<td>[\s\S]*?md5=([a-f0-9]{32})/gi;
+    // LibGen+ table structure:
+    // <tr>
+    //   <td><b>Title</b>...</td>      -- Title (in bold)
+    //   <td>Author</td>               -- Author
+    //   <td>Publisher</td>            -- Publisher
+    //   <td><nobr>Year</nobr></td>    -- Year (may have nobr)
+    //   <td>Language</td>             -- Language
+    //   <td>Pages</td>                -- Pages
+    //   <td><nobr><a>Size</a></nobr></td>  -- Size (link)
+    //   <td>ext</td>                  -- Extension
+    //   <td>...md5=XXX...</td>        -- Mirrors with MD5
+    // </tr>
 
-    let match;
-    while ((match = rowPattern.exec(html)) !== null) {
-      const [, titleRaw, authorRaw, publisherRaw, yearRaw, langRaw, pagesRaw, sizeRaw, extRaw, md5Raw] = match;
-      const md5 = md5Raw ?? '';
-      if (!md5) continue;
+    // Find all table rows that contain book data (have md5 links)
+    const rowPattern = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let rowMatch;
 
-      // Clean up the title (remove series number prefix like "Children of Time 2")
-      let title = titleRaw?.trim() || 'Unknown';
-      // Remove trailing series indicators
-      title = title.replace(/\s+\d+\s*$/, '').trim();
+    while ((rowMatch = rowPattern.exec(html)) !== null) {
+      const rowHtml = rowMatch[1] || '';
+
+      // Must have MD5 to be a valid result row
+      const md5Match = rowHtml.match(/md5=([a-f0-9]{32})/i);
+      if (!md5Match) continue;
+
+      const md5 = md5Match[1]!.toLowerCase();
+
+      // Extract all <td> contents
+      const tdPattern = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+      const cells: string[] = [];
+      let tdMatch;
+
+      while ((tdMatch = tdPattern.exec(rowHtml)) !== null) {
+        cells.push(tdMatch[1] || '');
+      }
+
+      // Need at least 8 cells for a valid row
+      if (cells.length < 8) continue;
+
+      // Extract title from first cell - get text from first <b> tag only
+      let title = 'Unknown';
+      const firstCell = cells[0] || '';
+      const boldMatch = firstCell.match(/<b>([^<]+)/i);
+      if (boldMatch) {
+        // Get just the text before any child tags
+        title = boldMatch[1]!.trim();
+        // Remove trailing series numbers like "Children of Time 2" -> "Children of Time"
+        title = title.replace(/\s+\d+\s*$/, '').trim();
+      }
+
+      // Helper to strip HTML and clean text
+      const stripHtml = (html: string) => {
+        return html
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
+
+      // Extract size from cell that contains MB/KB
+      let size = 'Unknown';
+      const sizeCell = cells.find(c => /\d+\s*(MB|KB|GB)/i.test(c));
+      if (sizeCell) {
+        const sizeMatch = sizeCell.match(/(\d+\s*(MB|KB|GB))/i);
+        if (sizeMatch) size = sizeMatch[1]!;
+      }
+
+      // Extension is typically the cell before md5 cell, or look for common extensions
+      let extension = 'pdf';
+      const extCell = cells.find(c => /^(epub|pdf|mobi|azw3?|djvu|fb2|txt|doc|rtf)$/i.test(stripHtml(c)));
+      if (extCell) extension = stripHtml(extCell).toLowerCase();
+
+      // Clean author, publisher, etc. using stripHtml
+      const author = stripHtml(cells[1] || '') || 'Unknown';
+      const publisher = stripHtml(cells[2] || '');
+      const yearRaw = stripHtml(cells[3] || '');
+      const year = yearRaw.replace(/\D/g, '');
+      const language = stripHtml(cells[4] || '');
+      const pages = stripHtml(cells[5] || '');
 
       results.push({
         id: md5,
-        md5: md5.toLowerCase(),
+        md5,
         title,
-        author: authorRaw?.trim() || 'Unknown',
-        publisher: publisherRaw?.trim(),
-        year: yearRaw?.trim(),
-        language: langRaw?.trim(),
-        pages: pagesRaw?.trim(),
-        extension: extRaw?.trim()?.toLowerCase() || 'pdf',
-        size: sizeRaw?.trim() || 'Unknown',
+        author,
+        publisher: publisher || undefined,
+        year: year || undefined,
+        language: language || undefined,
+        pages: pages || undefined,
+        size,
+        extension,
         downloadUrl: getLibGenDownloadUrl(md5),
         searchUrl: getLibGenSearchUrl(query),
       });
 
       if (results.length >= 15) break;
-    }
-
-    // Fallback: simpler pattern if table parsing fails
-    if (results.length === 0) {
-      // Extract MD5 and nearby title from mirror links
-      const fallbackPattern = /<td><b>([^<]+)<[\s\S]*?md5=([a-f0-9]{32})/gi;
-      while ((match = fallbackPattern.exec(html)) !== null) {
-        const [, titleRaw, md5Raw] = match;
-        const md5 = md5Raw ?? '';
-        const title = titleRaw?.trim() || '';
-        if (!md5 || !title) continue;
-        if (!results.find(r => r.md5 === md5.toLowerCase())) {
-          results.push({
-            id: md5,
-            md5: md5.toLowerCase(),
-            title,
-            author: 'Unknown',
-            extension: 'unknown',
-            size: 'Unknown',
-            downloadUrl: getLibGenDownloadUrl(md5),
-            searchUrl: getLibGenSearchUrl(query),
-          });
-          if (results.length >= 15) break;
-        }
-      }
     }
   } catch (error) {
     console.error('LibGen search error:', error);

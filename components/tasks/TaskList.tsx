@@ -41,6 +41,7 @@ function TaskRow({ task }: { task: Task }) {
   const typeLabel = {
     scan: 'Library Scan',
     metadata: 'Metadata Fetch',
+    book_metadata: 'Book Metadata',
     organize: 'File Organization',
     download: 'Download',
     author_sync: 'Author Sync',

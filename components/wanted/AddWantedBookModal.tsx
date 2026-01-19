@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { searchHardcoverBooks, addToWanted, isBookWanted } from '@/lib/actions/wanted';
 import { isHardcoverConfigured } from '@/lib/actions/settings';
+import { useToast } from '@/components/ui/Toast';
 
 interface AddWantedBookModalProps {
   onClose: () => void;
@@ -23,6 +24,7 @@ interface SearchResult {
 
 export function AddWantedBookModal({ onClose }: AddWantedBookModalProps) {
   const router = useRouter();
+  const toast = useToast();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -94,9 +96,10 @@ export function AddWantedBookModal({ onClose }: AddWantedBookModalProps) {
       setResults((prev) =>
         prev.map((r) => (r.id === result.id ? { ...r, isWanted: true } : r))
       );
+      toast.success(`Added "${result.title}" to wanted list`);
       router.refresh();
     } else {
-      alert(response.error || 'Failed to add book');
+      toast.error(response.error || 'Failed to add book');
     }
 
     setAdding(null);

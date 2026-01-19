@@ -24,6 +24,7 @@ export interface DownloadResult {
   downloadUrl?: string;
   searchUrl: string;
   sourceStatus?: 'up' | 'down' | 'degraded' | 'unknown';
+  md5?: string; // LibGen uses MD5 for downloads
 }
 
 export interface SearchLinks {
@@ -132,6 +133,7 @@ export async function searchAllSources(
               downloadUrl: r.downloadUrl,
               searchUrl: r.searchUrl,
               sourceStatus: statusMap.get('libgen') as DownloadResult['sourceStatus'],
+              md5: r.md5, // Keep raw MD5 for downloads
             });
           }
         })

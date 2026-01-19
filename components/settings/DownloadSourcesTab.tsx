@@ -12,6 +12,7 @@ import {
 import type { DownloadSourceConfig } from '@/lib/db';
 import type { SourceStatus } from '@/lib/services/downloads';
 import { SourceStatusBadge } from '@/components/wanted/SourceStatusBadge';
+import { useToast } from '@/components/ui/Toast';
 
 interface DownloadSourcesTabProps {
   configs: DownloadSourceConfig[];
@@ -107,6 +108,7 @@ function SourceCard({
   status?: SourceStatus;
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -145,8 +147,9 @@ function SourceCard({
       setEmail('');
       setPassword('');
       setExpanded(false);
+      toast.success('Credentials saved');
     } else {
-      alert(result.error || 'Failed to save credentials');
+      toast.error(result.error || 'Failed to save credentials');
     }
     router.refresh();
     setLoading(false);

@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Library } from '@/types';
-import { deleteLibrary, scanLibrary, fetchLibraryMetadata } from '@/lib/actions/libraries';
+import { deleteLibrary, scanLibrary, fetchLibraryMetadata, organizeLibrary } from '@/lib/actions/libraries';
+import { useToast } from '@/components/ui/Toast';
 
 interface LibraryWithCount extends Library {
   bookCount: number;
@@ -11,6 +12,7 @@ interface LibraryWithCount extends Library {
 
 export function LibraryList({ libraries }: { libraries: LibraryWithCount[] }) {
   const router = useRouter();
+  const toast = useToast();
   const [loading, setLoading] = useState<Record<number, string>>({});
 
   const handleScan = async (id: number) => {
@@ -22,9 +24,9 @@ export function LibraryList({ libraries }: { libraries: LibraryWithCount[] }) {
       return next;
     });
     if (result.error) {
-      alert(result.error);
+      toast.error(result.error);
     } else {
-      alert(`Scan started (Task #${result.taskId}). Check Tasks page for progress.`);
+      toast.success(`Scan started (Task #${result.taskId})`);
       router.refresh();
     }
   };
@@ -39,9 +41,11 @@ export function LibraryList({ libraries }: { libraries: LibraryWithCount[] }) {
         return next;
       });
       if (result.error) {
-        alert(result.error);
+        toast.error(result.error);
+      } else if (result.tasksQueued === 0) {
+        toast.info('No books need metadata');
       } else {
-        alert(`Metadata fetch started (Task #${result.taskId}). Check Tasks page for progress.`);
+        toast.success(`Queued ${result.tasksQueued} metadata tasks`);
         router.refresh();
       }
     } catch {
@@ -50,7 +54,32 @@ export function LibraryList({ libraries }: { libraries: LibraryWithCount[] }) {
         delete next[id];
         return next;
       });
-      alert('Failed to start metadata fetch');
+      toast.error('Failed to start metadata fetch');
+    }
+  };
+
+  const handleOrganize = async (id: number) => {
+    setLoading((prev) => ({ ...prev, [id]: 'organizing' }));
+    try {
+      const result = await organizeLibrary(id);
+      setLoading((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        toast.success(`File organization started (Task #${result.taskId})`);
+        router.refresh();
+      }
+    } catch {
+      setLoading((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      toast.error('Failed to start organization');
     }
   };
 
@@ -61,12 +90,14 @@ export function LibraryList({ libraries }: { libraries: LibraryWithCount[] }) {
     setLoading((prev) => ({ ...prev, [id]: 'deleting' }));
     const result = await deleteLibrary(id);
     if (result.error) {
-      alert(result.error);
+      toast.error(result.error);
       setLoading((prev) => {
         const next = { ...prev };
         delete next[id];
         return next;
       });
+    } else {
+      toast.success(`Library "${name}" deleted`);
     }
   };
 
@@ -109,6 +140,14 @@ export function LibraryList({ libraries }: { libraries: LibraryWithCount[] }) {
                 onFindMissing={() => handleMetadata(lib.id, true)}
                 onRefreshAll={() => handleMetadata(lib.id, false)}
               />
+
+              <button
+                onClick={() => handleOrganize(lib.id)}
+                disabled={!!loading[lib.id]}
+                className="bg-shelvarr-bg hover:bg-shelvarr-border text-shelvarr-text border border-shelvarr-border px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {loading[lib.id] === 'organizing' ? 'Organizing...' : 'Organize'}
+              </button>
 
               <button
                 onClick={() => handleDelete(lib.id, lib.name)}

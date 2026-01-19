@@ -80,17 +80,17 @@ export function BookDetails({ book, library }: BookDetailsProps) {
           File Information
         </h2>
         <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
+          <div>
             <span className="text-shelvarr-text-muted">Filename</span>
-            <span className="text-white font-mono text-right max-w-[60%] truncate">
+            <p className="text-white font-mono break-all mt-0.5">
               {filename}
-            </span>
+            </p>
           </div>
-          <div className="flex justify-between">
+          <div>
             <span className="text-shelvarr-text-muted">Path</span>
-            <span className="text-white font-mono text-right max-w-[60%] truncate" title={book.filePath}>
+            <p className="text-white font-mono break-all mt-0.5">
               {book.filePath}
-            </span>
+            </p>
           </div>
           {book.fileSize && (
             <div className="flex justify-between">

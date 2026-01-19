@@ -7,6 +7,7 @@ import type { Book } from '@/types';
 import { searchMetadata, applyMetadata } from '@/lib/actions/books';
 import { isHardcoverConfigured } from '@/lib/actions/settings';
 import type { BookMetadata } from '@/lib/services/metadata';
+import { useToast } from '@/components/ui/Toast';
 
 interface MetadataSearchModalProps {
   book: Book;
@@ -20,6 +21,7 @@ export function MetadataSearchModal({
   onClose,
 }: MetadataSearchModalProps) {
   const router = useRouter();
+  const toast = useToast();
   const authors = book.authors ? JSON.parse(book.authors).join(' ') : '';
   const defaultQuery = book.title ? `${book.title} ${authors}`.trim() : '';
 
@@ -75,8 +77,9 @@ export function MetadataSearchModal({
     setApplying(null);
 
     if (result.error) {
-      alert(result.error);
+      toast.error(result.error);
     } else {
+      toast.success('Metadata applied');
       router.refresh();
       onClose();
     }

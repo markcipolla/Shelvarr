@@ -11,6 +11,7 @@ import {
 import { getLibraries } from '@/lib/actions/libraries';
 import type { DownloadResult, SourceStatus } from '@/lib/services/downloads';
 import { SourceStatusBadge } from './SourceStatusBadge';
+import { useToast } from '@/components/ui/Toast';
 
 interface Library {
   id: number;
@@ -26,6 +27,7 @@ interface DownloadSourcesModalProps {
 type TabType = 'all' | 'zlibrary' | 'annas' | 'libgen';
 
 export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProps) {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [results, setResults] = useState<DownloadResult[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,7 +95,7 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
 
   const handleDownload = async (result: DownloadResult) => {
     if (!selectedLibraryId) {
-      alert('Please select a library to download to');
+      toast.error('Please select a library to download to');
       return;
     }
 
@@ -109,7 +111,7 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
     try {
       const response = await queueDownload({
         source: result.source,
-        md5: result.id,
+        md5: result.md5 || result.id, // Use md5 for libgen, fallback to id
         title: result.title,
         author: result.author,
         extension: result.extension,
@@ -118,13 +120,13 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
       });
 
       if (response.success) {
-        alert(`Download queued! Check the Tasks page for progress.`);
+        toast.success('Download queued!');
         onClose();
       } else {
-        alert(`Failed to queue download: ${response.error}`);
+        toast.error(`Failed to queue download: ${response.error}`);
       }
     } catch {
-      alert('Failed to queue download');
+      toast.error('Failed to queue download');
     } finally {
       setDownloadingId(null);
     }

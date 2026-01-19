@@ -45,8 +45,8 @@ export function WantedBookCard({ book, onFindDownloads }: WantedBookCardProps) {
   };
 
   return (
-    <div className="group bg-shelvarr-surface border border-shelvarr-border rounded-lg overflow-hidden hover:border-shelvarr-primary transition-colors">
-      <div className="aspect-[2/3] bg-shelvarr-bg relative">
+    <div className="group bg-shelvarr-surface border border-shelvarr-border rounded-lg hover:border-shelvarr-primary transition-colors">
+      <div className="aspect-[2/3] bg-shelvarr-bg relative overflow-hidden rounded-t-lg">
         {book.cover_url ? (
           <img
             src={book.cover_url}
@@ -88,7 +88,7 @@ export function WantedBookCard({ book, onFindDownloads }: WantedBookCardProps) {
               <MoreIcon />
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-shelvarr-surface border border-shelvarr-border rounded-lg shadow-lg py-1 min-w-[140px] z-10">
+              <div className="absolute right-0 bottom-full mb-1 bg-shelvarr-surface border border-shelvarr-border rounded-lg shadow-lg py-1 min-w-[140px] z-50">
                 <button
                   onClick={handleTogglePriority}
                   className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-shelvarr-border"

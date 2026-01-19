@@ -4,6 +4,7 @@ import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import config from '@/lib/config';
 
+
 // Get directory of this file
 let __dbDirname: string;
 try {
@@ -64,6 +65,7 @@ export function initDatabase(): Database.Database {
     runMigrations(db);
 
     console.log('Database initialized successfully');
+
     return db;
   } catch (error) {
     console.error('Failed to initialize database:', error);
@@ -91,6 +93,14 @@ function runMigrations(database: Database.Database): void {
   if (!hasSeriesColumn) {
     console.log('Running migration: adding series column to books');
     database.exec("ALTER TABLE books ADD COLUMN series TEXT");
+  }
+
+  // Check if books table has 'extension' column
+  const hasExtensionColumn = booksInfo.some(col => col.name === 'extension');
+
+  if (!hasExtensionColumn) {
+    console.log('Running migration: adding extension column to books');
+    database.exec("ALTER TABLE books ADD COLUMN extension TEXT");
   }
 
   // Check if author_works table has 'language' column

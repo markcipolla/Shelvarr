@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { GlobalSearch } from './GlobalSearch';
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: HomeIcon },
@@ -24,7 +25,11 @@ export function Sidebar() {
         <p className="text-xs text-shelvarr-text-muted mt-1">Book & Comic Manager</p>
       </div>
 
-      <nav className="flex-1 p-4">
+      <div className="p-4 border-b border-shelvarr-border">
+        <GlobalSearch />
+      </div>
+
+      <nav className="flex-1 p-4 overflow-y-auto">
         <ul className="space-y-1">
           {navItems.map((item) => {
             const isActive = pathname === item.href ||

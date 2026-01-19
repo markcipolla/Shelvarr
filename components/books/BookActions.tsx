@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { Book } from '@/types';
 import { deleteBook } from '@/lib/actions/books';
 import { MetadataSearchModal } from '@/components/books/MetadataSearchModal';
+import { useToast } from '@/components/ui/Toast';
 
 interface BookActionsProps {
   book: Book;
@@ -18,6 +19,7 @@ function getFilenameFromPath(filePath: string): string {
 
 export function BookActions({ book }: BookActionsProps) {
   const router = useRouter();
+  const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [showMetadataSearch, setShowMetadataSearch] = useState(false);
 
@@ -33,8 +35,9 @@ export function BookActions({ book }: BookActionsProps) {
     setLoading(false);
 
     if (result.error) {
-      alert(result.error);
+      toast.error(result.error);
     } else {
+      toast.success('Book deleted');
       router.push('/books');
     }
   };

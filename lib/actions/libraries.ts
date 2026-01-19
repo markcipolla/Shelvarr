@@ -8,10 +8,8 @@ import {
   deleteLibrary as deleteLib,
   getLibraryBookCount,
 } from '@/lib/services/library';
-import { scanLibrary as scanLib, getBooks, updateBook } from '@/lib/services/scanner';
-import { createTask, startTask, completeTask, failTask } from '@/lib/services/queue';
-import * as metadataService from '@/lib/services/metadata';
-import { getOrCreateAuthor, fetchAuthorMetadata, getAuthorByName } from '@/lib/actions/authors';
+import { scanLibrary as scanLib, getBooks } from '@/lib/services/scanner';
+import { createTask, startTask, completeTask, failTask, enqueueTask } from '@/lib/services/queue';
 
 export async function getLibraries() {
   const libraries = await getAllLibraries();
@@ -21,87 +19,6 @@ export async function getLibraries() {
       bookCount: await getLibraryBookCount(lib.id),
     }))
   );
-}
-
-/**
- * Apply metadata from a search result to a book
- */
-async function applyMetadataToBook(bookId: number, metadata: metadataService.BookMetadata) {
-  // Extract primary series (first in the array) for backwards compatibility
-  const primarySeries = metadata.series?.[0];
-
-  const result = await updateBook(bookId, {
-    title: metadata.title,
-    authors: JSON.stringify(metadata.authors.split(', ')),
-    publisher: metadata.publisher,
-    publishDate: metadata.publishDate,
-    description: metadata.description,
-    isbn: metadata.isbn,
-    coverUrl: metadata.coverUrl,
-    series: metadata.series ? JSON.stringify(metadata.series) : null,
-    seriesName: primarySeries?.[0] ?? null,
-    seriesNumber: primarySeries?.[1] ?? null,
-    metadataSource: metadata.source,
-    metadataId: metadata.sourceId,
-  });
-
-  // Process authors - fetch bibliography if not already synced
-  if (result.success && metadata.authors) {
-    processAuthors(metadata.authors).catch(() => {});
-  }
-
-  return result;
-}
-
-/**
- * Create author records and fetch bibliography for new authors
- */
-async function processAuthors(authorsString: string): Promise<void> {
-  for (const name of authorsString.split(', ').filter(a => a.trim())) {
-    const existing = await getAuthorByName(name);
-    if (!existing?.lastSynced) {
-      const author = await getOrCreateAuthor(name);
-      fetchAuthorMetadata(author.id).catch(() => {});
-    }
-  }
-}
-
-/**
- * Fetch and apply metadata for books in a library
- */
-async function fetchMetadataForLibrary(
-  libraryId: number,
-  unmatchedOnly: boolean,
-  taskId: number
-): Promise<{ processed: number; matched: number }> {
-  await startTask(taskId);
-
-  const { books } = await getBooks({ libraryId, pageSize: 10000 });
-  let processed = 0;
-  let matched = 0;
-
-  for (const book of books) {
-    // Skip if already matched (when unmatchedOnly)
-    if (unmatchedOnly && book.metadataSource) continue;
-    // Skip books without a title
-    if (!book.title) continue;
-
-    try {
-      const author = book.authors ? JSON.parse(book.authors)[0] : undefined;
-      const metadata = await metadataService.autoMatch(book.title, author, book.isbn || undefined);
-
-      if (metadata) {
-        await applyMetadataToBook(book.id, metadata);
-        matched++;
-      }
-    } catch {
-      // Continue on individual failures
-    }
-    processed++;
-  }
-
-  await completeTask(taskId, { processed, matched });
-  return { processed, matched };
 }
 
 export async function createLibrary(formData: FormData) {
@@ -121,7 +38,7 @@ export async function createLibrary(formData: FormData) {
     if (result.library) {
       const libraryId = result.library.id;
 
-      // Run scan + metadata fetch in background
+      // Run scan in background, then queue individual metadata tasks
       (async () => {
         const scanTask = await createTask('scan', { libraryId, libraryName: name });
         try {
@@ -129,9 +46,17 @@ export async function createLibrary(formData: FormData) {
           await scanLib(libraryId);
           await completeTask(scanTask.id, { booksScanned: true });
 
-          // After scan, fetch metadata for all books
-          const metaTask = await createTask('metadata', { libraryId, libraryName: name, unmatchedOnly: true });
-          await fetchMetadataForLibrary(libraryId, true, metaTask.id);
+          // After scan, queue individual metadata tasks for each book
+          const { books } = await getBooks({ libraryId, pageSize: 10000 });
+          for (const book of books) {
+            if (book.title) {
+              enqueueTask('book_metadata', {
+                bookId: book.id,
+                bookTitle: book.title,
+                libraryName: name,
+              });
+            }
+          }
         } catch (error) {
           await failTask(scanTask.id, error instanceof Error ? error.message : 'Failed');
         }
@@ -186,15 +111,43 @@ export async function fetchLibraryMetadata(id: number, unmatchedOnly = true) {
     return { error: 'Library not found' };
   }
 
-  const task = await createTask('metadata', { libraryId: id, libraryName: library.name, unmatchedOnly });
+  // Get all books in the library
+  const { books } = await getBooks({ libraryId: id, pageSize: 10000 });
 
-  (async () => {
-    try {
-      await fetchMetadataForLibrary(id, unmatchedOnly, task.id);
-    } catch (error) {
-      await failTask(task.id, error instanceof Error ? error.message : 'Metadata fetch failed');
-    }
-  })();
+  // Filter books based on unmatchedOnly
+  const booksToProcess = books.filter(book => {
+    if (!book.title) return false;
+    if (unmatchedOnly && book.metadataSource) return false;
+    return true;
+  });
+
+  if (booksToProcess.length === 0) {
+    return { success: true, tasksQueued: 0 };
+  }
+
+  // Queue individual tasks for each book
+  for (const book of booksToProcess) {
+    enqueueTask('book_metadata', {
+      bookId: book.id,
+      bookTitle: book.title,
+      libraryName: library.name,
+    });
+  }
+
+  revalidatePath('/libraries');
+  revalidatePath('/books');
+  revalidatePath('/tasks');
+  return { success: true, tasksQueued: booksToProcess.length };
+}
+
+export async function organizeLibrary(id: number) {
+  const library = await getLibraryById(id);
+  if (!library) {
+    return { error: 'Library not found' };
+  }
+
+  // Use enqueueTask to both create AND run the task
+  const task = enqueueTask('organize', { libraryId: id, libraryName: library.name });
 
   revalidatePath('/libraries');
   revalidatePath('/books');

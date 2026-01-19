@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Author } from '@/types';
 import { fetchAuthorMetadata, refreshAuthorOwnership } from '@/lib/actions/authors';
+import { useToast } from '@/components/ui/Toast';
 
 interface AuthorActionsProps {
   author: Author;
@@ -11,6 +12,7 @@ interface AuthorActionsProps {
 
 export function AuthorActions({ author }: AuthorActionsProps) {
   const router = useRouter();
+  const toast = useToast();
   const [loading, setLoading] = useState<string | null>(null);
 
   const handleFetchBibliography = async () => {
@@ -19,9 +21,9 @@ export function AuthorActions({ author }: AuthorActionsProps) {
     setLoading(null);
 
     if (result.error) {
-      alert(result.error);
+      toast.error(result.error);
     } else {
-      alert(`Found ${result.worksFound} works`);
+      toast.success(`Found ${result.worksFound} works`);
       router.refresh();
     }
   };

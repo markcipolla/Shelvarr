@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS books (
   file_path TEXT NOT NULL UNIQUE,
   file_hash TEXT,
   file_size INTEGER,
+  extension TEXT,  -- File extension (epub, pdf, mobi, etc.)
   title TEXT,
   authors TEXT,  -- JSON array
   series TEXT,   -- JSON array of [seriesName, position] tuples

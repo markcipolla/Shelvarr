@@ -1,11 +1,15 @@
 import { getTasks } from '@/lib/actions/tasks';
-import { TaskList } from '@/components/tasks/TaskList';
+import { TaskTabs } from '@/components/tasks/TaskTabs';
 import { CleanupButton } from '@/components/tasks/CleanupButton';
 
 export const dynamic = 'force-dynamic';
 
 export default async function TasksPage() {
-  const { tasks, total } = await getTasks({ limit: 50 });
+  // Fetch queued (pending/running) and completed tasks separately
+  const [queuedResult, completedResult] = await Promise.all([
+    getTasks({ statuses: ['pending', 'running'], limit: 100 }),
+    getTasks({ statuses: ['completed', 'failed', 'cancelled'], limit: 100 }),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -19,19 +23,12 @@ export default async function TasksPage() {
         <CleanupButton />
       </div>
 
-      <div className="text-sm text-shelvarr-text-muted">
-        Showing {tasks.length} of {total} tasks
-      </div>
-
-      {tasks.length === 0 ? (
-        <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-8 text-center">
-          <p className="text-shelvarr-text-muted">
-            No tasks yet. Tasks are created when you scan libraries or fetch metadata.
-          </p>
-        </div>
-      ) : (
-        <TaskList tasks={tasks} />
-      )}
+      <TaskTabs
+        queuedTasks={queuedResult.tasks}
+        completedTasks={completedResult.tasks}
+        queuedTotal={queuedResult.total}
+        completedTotal={completedResult.total}
+      />
     </div>
   );
 }

@@ -3,9 +3,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { cleanupTasks } from '@/lib/actions/tasks';
+import { useToast } from '@/components/ui/Toast';
 
 export function CleanupButton() {
   const router = useRouter();
+  const toast = useToast();
   const [loading, setLoading] = useState(false);
 
   const handleCleanup = async () => {
@@ -18,7 +20,7 @@ export function CleanupButton() {
     setLoading(false);
 
     if (result.success) {
-      alert(`Cleaned up ${result.deleted} old tasks`);
+      toast.success(`Cleaned up ${result.deleted} old tasks`);
       router.refresh();
     }
   };

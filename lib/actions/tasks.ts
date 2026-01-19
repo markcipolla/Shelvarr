@@ -10,6 +10,7 @@ import {
 
 export async function getTasks(options: {
   status?: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  statuses?: Array<'pending' | 'running' | 'completed' | 'failed' | 'cancelled'>;
   limit?: number;
   offset?: number;
 } = {}) {
