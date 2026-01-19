@@ -48,23 +48,20 @@ export function MetadataSearchModal({
     setLoading(true);
     setError(null);
 
-    try {
-      const searchResults = await searchMetadata(query);
+    const response = await searchMetadata(query);
 
-      // Only update if this is still the latest request
-      if (currentRequestId === requestIdRef.current) {
-        setResults(searchResults);
-        if (searchResults.length === 0) {
+    // Only update if this is still the latest request
+    if (currentRequestId === requestIdRef.current) {
+      setLoading(false);
+
+      if (response.error) {
+        setError(response.error);
+        setResults([]);
+      } else if (response.results) {
+        setResults(response.results);
+        if (response.results.length === 0) {
           setError('No results found');
         }
-      }
-    } catch {
-      if (currentRequestId === requestIdRef.current) {
-        setError('Search failed. Please try again.');
-      }
-    } finally {
-      if (currentRequestId === requestIdRef.current) {
-        setLoading(false);
       }
     }
   };

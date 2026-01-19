@@ -142,14 +142,30 @@ function scoreResult(result: metadataService.BookMetadata, query: string): numbe
 /**
  * Search for metadata - returns results sorted by relevance
  */
-export async function searchMetadata(query: string) {
-  const results = await metadataService.searchBooks(query, { maxResults: 15 });
+export async function searchMetadata(query: string): Promise<{
+  results?: Awaited<ReturnType<typeof metadataService.searchBooks>>;
+  error?: string
+}> {
+  try {
+    const results = await metadataService.searchBooks(query, { maxResults: 15 });
 
-  // Sort by relevance
-  return results
-    .map(r => ({ result: r, score: scoreResult(r, query) }))
-    .sort((a, b) => b.score - a.score)
-    .map(sr => sr.result);
+    // Sort by relevance
+    const sorted = results
+      .map(r => ({ result: r, score: scoreResult(r, query) }))
+      .sort((a, b) => b.score - a.score)
+      .map(sr => sr.result);
+
+    return { results: sorted };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Search failed';
+
+    // Handle rate limiting gracefully
+    if (message.includes('429')) {
+      return { error: 'Rate limited by Hardcover API. Please wait a moment and try again.' };
+    }
+
+    return { error: message };
+  }
 }
 
 /**
