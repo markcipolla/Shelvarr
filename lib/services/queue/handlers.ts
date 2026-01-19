@@ -447,15 +447,30 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
       fs.mkdirSync(authorDir, { recursive: true });
     }
 
-    // New organized path: Library/Author/Title.ext
-    const organizedFilename = `${cleanTitle}.${ext}`;
-    let organizedPath = path.join(authorDir, organizedFilename);
+    // Build filename: "Title - Series Book N" or just "Title" if no series
+    // Get series info from the book record we just updated
+    const bookRecord = queryOne<{ series_name: string | null; series_number: number | null }>(
+      'SELECT series_name, series_number FROM books WHERE id = ?',
+      [bookId]
+    );
+
+    let organizedFilename = cleanTitle;
+    if (bookRecord?.series_name) {
+      const cleanSeries = sanitizeFilename(bookRecord.series_name);
+      if (bookRecord.series_number) {
+        organizedFilename = `${cleanTitle} - ${cleanSeries} Book ${bookRecord.series_number}`;
+      } else {
+        organizedFilename = `${cleanTitle} - ${cleanSeries}`;
+      }
+    }
+
+    let organizedPath = path.join(authorDir, `${organizedFilename}.${ext}`);
 
     // Handle duplicates
     if (fs.existsSync(organizedPath) && organizedPath !== targetPath) {
       let counter = 1;
       while (fs.existsSync(organizedPath)) {
-        organizedPath = path.join(authorDir, `${cleanTitle} (${counter}).${ext}`);
+        organizedPath = path.join(authorDir, `${organizedFilename} (${counter}).${ext}`);
         counter++;
       }
     }
@@ -597,24 +612,23 @@ const organizeHandler: TaskHandler = async (taskId, onProgress, signal) => {
       // Determine extension
       const ext = book.extension || path.extname(book.file_path).replace('.', '') || 'epub';
 
-      // Build target path: Library/Author/Title/Title - Series Position.ext
+      // Build target path: Library/Author/Title - Series Book Position.ext
       const cleanAuthor = sanitizeFilename(authorName);
       const cleanTitle = sanitizeFilename(book.title);
 
-      // Build filename with optional series info
+      // Build filename: "Title - Series Book N" or just "Title" if no series
       let filename = cleanTitle;
       if (book.series_name) {
         const cleanSeries = sanitizeFilename(book.series_name);
         if (book.series_number) {
-          filename = `${cleanTitle} - ${cleanSeries} ${book.series_number}`;
+          filename = `${cleanTitle} - ${cleanSeries} Book ${book.series_number}`;
         } else {
           filename = `${cleanTitle} - ${cleanSeries}`;
         }
       }
 
       const authorDir = path.join(libPath, cleanAuthor);
-      const titleDir = path.join(authorDir, cleanTitle);
-      let targetPath = path.join(titleDir, `${filename}.${ext}`);
+      let targetPath = path.join(authorDir, `${filename}.${ext}`);
 
       // Skip if already in the correct location
       if (book.file_path === targetPath) {
@@ -629,16 +643,16 @@ const organizeHandler: TaskHandler = async (taskId, onProgress, signal) => {
         continue;
       }
 
-      // Create title directory (recursive creates author dir too)
-      if (!fs.existsSync(titleDir)) {
-        fs.mkdirSync(titleDir, { recursive: true });
+      // Create author directory
+      if (!fs.existsSync(authorDir)) {
+        fs.mkdirSync(authorDir, { recursive: true });
       }
 
       // Handle duplicates
       if (fs.existsSync(targetPath)) {
         let counter = 1;
         while (fs.existsSync(targetPath)) {
-          targetPath = path.join(titleDir, `${filename} (${counter}).${ext}`);
+          targetPath = path.join(authorDir, `${filename} (${counter}).${ext}`);
           counter++;
         }
       }
