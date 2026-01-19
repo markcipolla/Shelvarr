@@ -41,7 +41,7 @@ export function EpubReader({ book, onClose }: EpubReaderProps) {
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
+    <div className="fixed inset-0 !-mt-0 z-50 bg-black flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-shelvarr-surface border-b border-shelvarr-border">
         <div className="flex items-center gap-3">
