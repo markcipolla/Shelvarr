@@ -34,11 +34,6 @@ const LIBGEN_SOURCES: Record<string, string> = {
 // Fallback mirrors if status unavailable
 const LIBGEN_FALLBACK = 'libgen.vg';
 
-const DOWNLOAD_MIRRORS = [
-  'library.lol',
-  'download.library.lol',
-] as const;
-
 /**
  * Get the current working LibGen domain based on open-slum.org status
  */
@@ -107,38 +102,33 @@ export async function searchLibGen(
 
     const html = await response.text();
 
-    // Parse book IDs from the search results page
-    const idPattern = /href=['"]book\/index\.php\?md5=([a-f0-9]{32})['"]|md5=([a-f0-9]{32})/gi;
-    const md5s: string[] = [];
+    // LibGen+ uses a table with id="tablelibgen"
+    // Each row: Title/Series | Author | Publisher | Year | Language | Pages | Size | Ext | Mirrors
+    // Parse each table row
+    const rowPattern = /<tr>\s*<td><b>([^<]+)<[\s\S]*?<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td[^>]*>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<td[^>]*><[^>]*>([^<]*)<[\s\S]*?<\/td>\s*<td>([^<]*)<\/td>\s*<td>[\s\S]*?md5=([a-f0-9]{32})/gi;
 
     let match;
-    while ((match = idPattern.exec(html)) !== null) {
-      const md5 = match[1] || match[2];
-      if (md5 && !md5s.includes(md5.toLowerCase())) {
-        md5s.push(md5.toLowerCase());
-      }
-      if (md5s.length >= 15) break;
-    }
-
-    // For each MD5, create a result
-    // Full details would require additional API calls
-    // For now, parse from HTML table
-    const rowPattern = /<tr[^>]*>[\s\S]*?<td[^>]*>(\d+)<\/td>[\s\S]*?<a[^>]*>([^<]+)<\/a>[\s\S]*?<a[^>]*>([^<]*)<\/a>[\s\S]*?<td[^>]*>([^<]*)<\/td>[\s\S]*?<td[^>]*>([^<]*)<\/td>[\s\S]*?<td[^>]*>([^<]*)<\/td>[\s\S]*?<td[^>]*>([^<]*)<\/td>[\s\S]*?md5=([a-f0-9]{32})/gi;
-
     while ((match = rowPattern.exec(html)) !== null) {
-      const [, , authorRaw, titleRaw, publisherRaw, yearRaw, , extensionRaw, md5Raw] = match;
+      const [, titleRaw, authorRaw, publisherRaw, yearRaw, langRaw, pagesRaw, sizeRaw, extRaw, md5Raw] = match;
       const md5 = md5Raw ?? '';
       if (!md5) continue;
+
+      // Clean up the title (remove series number prefix like "Children of Time 2")
+      let title = titleRaw?.trim() || 'Unknown';
+      // Remove trailing series indicators
+      title = title.replace(/\s+\d+\s*$/, '').trim();
 
       results.push({
         id: md5,
         md5: md5.toLowerCase(),
-        title: titleRaw?.trim() || 'Unknown',
+        title,
         author: authorRaw?.trim() || 'Unknown',
         publisher: publisherRaw?.trim(),
         year: yearRaw?.trim(),
-        extension: extensionRaw?.trim()?.toLowerCase() || 'pdf',
-        size: 'Unknown',
+        language: langRaw?.trim(),
+        pages: pagesRaw?.trim(),
+        extension: extRaw?.trim()?.toLowerCase() || 'pdf',
+        size: sizeRaw?.trim() || 'Unknown',
         downloadUrl: getLibGenDownloadUrl(md5),
         searchUrl: getLibGenSearchUrl(query),
       });
@@ -146,21 +136,22 @@ export async function searchLibGen(
       if (results.length >= 15) break;
     }
 
-    // Simpler fallback pattern
+    // Fallback: simpler pattern if table parsing fails
     if (results.length === 0) {
-      const simplePattern = /md5=([a-f0-9]{32})[^>]*>([^<]+)/gi;
-      while ((match = simplePattern.exec(html)) !== null) {
-        const [, md5Raw, titleRaw] = match;
+      // Extract MD5 and nearby title from mirror links
+      const fallbackPattern = /<td><b>([^<]+)<[\s\S]*?md5=([a-f0-9]{32})/gi;
+      while ((match = fallbackPattern.exec(html)) !== null) {
+        const [, titleRaw, md5Raw] = match;
         const md5 = md5Raw ?? '';
-        const title = titleRaw ?? '';
-        if (!md5) continue;
-        if (title.length > 3 && !results.find(r => r.md5 === md5.toLowerCase())) {
+        const title = titleRaw?.trim() || '';
+        if (!md5 || !title) continue;
+        if (!results.find(r => r.md5 === md5.toLowerCase())) {
           results.push({
             id: md5,
             md5: md5.toLowerCase(),
-            title: title.trim(),
+            title,
             author: 'Unknown',
-            extension: 'pdf',
+            extension: 'unknown',
             size: 'Unknown',
             downloadUrl: getLibGenDownloadUrl(md5),
             searchUrl: getLibGenSearchUrl(query),
@@ -177,10 +168,10 @@ export async function searchLibGen(
 }
 
 /**
- * Get download URL for a book
+ * Get download page URL for a book (user clicks through to get actual download)
  */
 export function getLibGenDownloadUrl(md5: string): string {
-  return `https://${DOWNLOAD_MIRRORS[0]}/main/${md5}`;
+  return `https://${getLibGenDomain()}/ads.php?md5=${md5}`;
 }
 
 export default {
