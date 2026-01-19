@@ -1,6 +1,7 @@
 import { getTasks } from '@/lib/actions/tasks';
 import { TaskTabs } from '@/components/tasks/TaskTabs';
 import { CleanupButton } from '@/components/tasks/CleanupButton';
+import { CancelAllButton } from '@/components/tasks/CancelAllButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,10 @@ export default async function TasksPage() {
             Background jobs and their status
           </p>
         </div>
-        <CleanupButton />
+        <div className="flex items-center gap-3">
+          <CancelAllButton queuedCount={queuedResult.total} />
+          <CleanupButton />
+        </div>
       </div>
 
       <TaskTabs

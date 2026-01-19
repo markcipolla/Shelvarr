@@ -43,3 +43,16 @@ export async function retryTask(id: number) {
     return { success: false, error: error instanceof Error ? error.message : 'Failed to retry task' };
   }
 }
+
+export async function cancelAllQueuedTasks() {
+  const { tasks } = getTasksFromDb({ statuses: ['pending', 'running'], limit: 1000 });
+  let cancelled = 0;
+
+  for (const task of tasks) {
+    cancelTaskInDb(task.id);
+    cancelled++;
+  }
+
+  revalidatePath('/tasks');
+  return { success: true, cancelled };
+}
