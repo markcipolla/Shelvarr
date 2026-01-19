@@ -15,7 +15,7 @@ interface TaskTabsProps {
 function getRetryQueuePosition(task: Task): number | null {
   if (!task.error) return null;
   const match = task.error.match(/queued for retry \(#(\d+)\)/);
-  return match ? parseInt(match[1], 10) : null;
+  return match?.[1] ? parseInt(match[1], 10) : null;
 }
 
 export function TaskTabs({ queuedTasks, completedTasks, queuedTotal, completedTotal }: TaskTabsProps) {

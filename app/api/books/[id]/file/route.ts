@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from 'fs';
 import { getBook } from '@/lib/actions/books';
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
