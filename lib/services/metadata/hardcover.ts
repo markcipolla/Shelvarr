@@ -76,32 +76,32 @@ async function graphqlFetch<T>(query: string, variables: Record<string, unknown>
     return null;
   }
 
-  try {
-    const response = await fetch(API_BASE, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({ query, variables }),
-    });
+  const response = await fetch(API_BASE, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({ query, variables }),
+  });
 
-    if (!response.ok) {
-      console.error(`Hardcover API error: ${response.status}`);
-      return null;
+  if (!response.ok) {
+    const errorMsg = `Hardcover API error: ${response.status}`;
+    console.error(errorMsg);
+    // Throw on rate limits and server errors so tasks fail properly
+    if (response.status === 429 || response.status >= 500) {
+      throw new Error(errorMsg);
     }
-
-    const data = await response.json() as { data?: T; errors?: Array<{ message: string }> };
-    if (data.errors?.length) {
-      console.error(`Hardcover error: ${data.errors[0]?.message}`);
-      return null;
-    }
-
-    return data.data || null;
-  } catch (error) {
-    console.error('Hardcover fetch error:', error);
     return null;
   }
+
+  const data = await response.json() as { data?: T; errors?: Array<{ message: string }> };
+  if (data.errors?.length) {
+    console.error(`Hardcover error: ${data.errors[0]?.message}`);
+    return null;
+  }
+
+  return data.data || null;
 }
 
 function safeParseField<T>(field: unknown): T | null {
