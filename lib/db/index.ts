@@ -332,6 +332,53 @@ export function isBookWanted(hardcoverId?: string, isbn?: string, title?: string
   return false;
 }
 
+/**
+ * Find a matching wanted book and mark it as acquired
+ * Returns the wanted book if found and updated, null otherwise
+ */
+export function markWantedBookAsAcquired(
+  hardcoverId?: string,
+  isbn?: string,
+  title?: string
+): WantedBook | null {
+  let wantedBook: WantedBook | null = null;
+
+  // Try to find by hardcover_id first (most reliable)
+  if (hardcoverId) {
+    wantedBook = queryOne<WantedBook>(
+      'SELECT * FROM wanted_books WHERE hardcover_id = ? AND status IN (?, ?)',
+      [hardcoverId, 'wanted', 'searching']
+    );
+  }
+
+  // Try ISBN if no match yet
+  if (!wantedBook && isbn) {
+    wantedBook = queryOne<WantedBook>(
+      'SELECT * FROM wanted_books WHERE isbn = ? AND status IN (?, ?)',
+      [isbn, 'wanted', 'searching']
+    );
+  }
+
+  // Try title as last resort (less reliable)
+  if (!wantedBook && title) {
+    wantedBook = queryOne<WantedBook>(
+      'SELECT * FROM wanted_books WHERE LOWER(title) = LOWER(?) AND status IN (?, ?)',
+      [title, 'wanted', 'searching']
+    );
+  }
+
+  // If found, mark as acquired
+  if (wantedBook) {
+    execute(
+      "UPDATE wanted_books SET status = 'acquired' WHERE id = ?",
+      [wantedBook.id]
+    );
+    return { ...wantedBook, status: 'acquired' };
+  }
+
+  return null;
+}
+
 // ============ Download Source Config Functions ============
 
 export interface DownloadSourceConfig {

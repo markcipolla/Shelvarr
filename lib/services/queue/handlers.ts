@@ -6,7 +6,7 @@
 import { registerTaskHandler, enqueueTask, type TaskHandler } from './index';
 import { scanLibrary, updateBook, addBook } from '../scanner';
 import { getLibraryById } from '../library';
-import { query, queryOne, execute } from '@/lib/db';
+import { query, queryOne, execute, markWantedBookAsAcquired } from '@/lib/db';
 import * as metadataService from '../metadata';
 import { downloadFile as downloadFromLibgen } from '../downloads/libgen';
 import { komgaClient } from '../komga';
@@ -225,6 +225,18 @@ const metadataHandler: TaskHandler = async (taskId, onProgress, signal) => {
           'UPDATE books SET metadata_source = ?, metadata_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
           [metadata.source, metadata.sourceId, book.id]
         );
+
+        // Check if this book was on the wanted list and mark it as acquired
+        const hardcoverId = metadata.source === 'hardcover' ? metadata.sourceId : undefined;
+        const wantedBook = markWantedBookAsAcquired(
+          hardcoverId,
+          metadata.isbn,
+          metadata.title
+        );
+
+        if (wantedBook) {
+          console.log(`📚 Wanted book acquired: "${wantedBook.title}" (ID: ${wantedBook.id})`);
+        }
 
         // Process authors - create author records if they don't exist
         if (metadata.authors && metadata.authors !== 'Unknown') {

@@ -32,7 +32,7 @@ export default async function DebugAuthorsPage() {
           return { name, id: author?.id || null };
         })
       );
-    } catch (e) {
+    } catch {
       sampleBookAuthors = null;
     }
   }
@@ -79,7 +79,7 @@ export default async function DebugAuthorsPage() {
             <div className="mt-3">
               <p className="text-white mb-2"><strong>Authors with IDs:</strong></p>
               <ul className="space-y-1">
-                {authorsWithIds.map((a: any, i: number) => (
+                {authorsWithIds.map((a: { name: string; id: number | null }, i: number) => (
                   <li key={i} className="text-shelvarr-text-muted">
                     {a.name}: {a.id ? `ID ${a.id} ✓` : 'Not in database ✗'}
                   </li>

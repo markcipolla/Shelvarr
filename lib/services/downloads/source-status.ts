@@ -103,25 +103,49 @@ export async function getSourceStatuses(forceRefresh = false): Promise<SourceSta
 }
 
 /**
- * Refresh source statuses from open-slum.org API
+ * Refresh source statuses from open-slum API (tries .org then .pages.dev as fallback)
  */
 export async function refreshSourceStatuses(): Promise<void> {
-  try {
-    const response = await fetch('https://open-slum.org/api/status-page/heartbeat/slum', {
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'Shelvarr/1.0',
-      },
-      signal: AbortSignal.timeout(10000),
-    });
+  // Try both domains (primary and fallback)
+  const apiUrls = [
+    'https://open-slum.org/api/status-page/heartbeat/slum',
+    'https://open-slum.pages.dev/api/status-page/heartbeat/slum',
+  ];
 
-    if (!response.ok) {
-      console.warn(`open-slum.org API fetch failed: ${response.status}`);
-      return;
+  let data: ApiResponse | null = null;
+  let lastError: Error | null = null;
+
+  for (const url of apiUrls) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Shelvarr/1.0',
+        },
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (!response.ok) {
+        console.warn(`API fetch from ${url} failed: ${response.status}`);
+        continue;
+      }
+
+      data = await response.json();
+      console.log(`Successfully fetched source statuses from ${url}`);
+      break; // Success, exit loop
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.warn(`Failed to fetch from ${url}:`, error);
+      // Continue to next URL
     }
+  }
 
-    const data: ApiResponse = await response.json();
+  if (!data) {
+    console.error('Failed to refresh source statuses from all endpoints:', lastError);
+    return;
+  }
 
+  try {
     // Process each monitor we care about
     for (const [idStr, monitorInfo] of Object.entries(MONITOR_ID_MAP)) {
       const id = parseInt(idStr);
@@ -170,8 +194,7 @@ export async function refreshSourceStatuses(): Promise<void> {
     }
 
   } catch (error) {
-    console.error('Failed to refresh source statuses:', error);
-
+    console.error('Failed to process source statuses:', error);
     // On error, don't change existing cache - it's better than marking everything unknown
   }
 }
