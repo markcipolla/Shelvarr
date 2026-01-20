@@ -43,6 +43,7 @@ const KNOWN_SOURCES: Record<string, { displayName: string; url: string }> = {
   zlibrary: { displayName: 'Z-Library', url: 'https://z-library.sk' },
   annas: { displayName: "Anna's Archive", url: 'https://annas-archive.org' },
   annas_li: { displayName: "Anna's Archive .li", url: 'https://annas-archive.li' },
+  libgen: { displayName: 'Library Genesis', url: 'https://libgen.vg' },
   libgen_vg: { displayName: 'Library Genesis', url: 'https://libgen.vg' },
 };
 
