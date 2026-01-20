@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getCompleteSeriesInfo } from '@/lib/actions/series';
+import { getAuthorByName } from '@/lib/actions/authors';
 import { SeriesBookCard } from '@/components/series/SeriesBookCard';
 
 export const dynamic = 'force-dynamic';
@@ -23,6 +24,15 @@ export default async function SeriesDetailPage({ params }: PageProps) {
     ? Math.round((seriesInfo.ownedBooks / seriesInfo.totalBooks) * 100)
     : 0;
 
+  // Parse authors and fetch IDs for linking
+  const authorNames = seriesInfo.authors.split(',').map(a => a.trim()).filter(Boolean);
+  const authorsWithIds = await Promise.all(
+    authorNames.map(async (name) => {
+      const author = await getAuthorByName(name);
+      return { name, id: author?.id || null };
+    })
+  );
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -35,7 +45,24 @@ export default async function SeriesDetailPage({ params }: PageProps) {
         </Link>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-white">{seriesInfo.seriesName}</h1>
-          <p className="text-shelvarr-text-muted mt-1">by {seriesInfo.authors}</p>
+          <div className="text-shelvarr-text-muted mt-1 flex flex-wrap gap-1">
+            <span>by </span>
+            {authorsWithIds.map((author, index) => (
+              <span key={index}>
+                {author.id ? (
+                  <Link
+                    href={`/authors/${author.id}`}
+                    className="text-shelvarr-primary hover:text-shelvarr-primary/80 transition-colors"
+                  >
+                    {author.name}
+                  </Link>
+                ) : (
+                  <span>{author.name}</span>
+                )}
+                {index < authorsWithIds.length - 1 && <span>, </span>}
+              </span>
+            ))}
+          </div>
         </div>
         <div className="text-right">
           <div className="text-2xl font-bold text-white">
