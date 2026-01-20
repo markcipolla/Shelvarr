@@ -58,8 +58,8 @@ export interface Task {
   completedAt: string | null;
 }
 
-export type TaskType = 'scan' | 'metadata' | 'organize' | 'download';
-export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type TaskType = 'scan' | 'metadata' | 'book_metadata' | 'organize' | 'download' | 'author_sync' | 'komga_sync';
+export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface Author {
   id: number;

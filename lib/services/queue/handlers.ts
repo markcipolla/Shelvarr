@@ -9,6 +9,7 @@ import { getLibraryById } from '../library';
 import { query, queryOne, execute } from '@/lib/db';
 import * as metadataService from '../metadata';
 import { downloadFile as downloadFromLibgen } from '../downloads/libgen';
+import { komgaClient } from '../komga';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -492,6 +493,14 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
 
   onProgress(6, 6);
 
+  // Queue Komga sync if configured
+  if (komgaClient.isConfigured()) {
+    enqueueTask('komga_sync', {
+      bookId,
+      libraryPath: library.path,
+    });
+  }
+
   return {
     success: true,
     bookId,
@@ -630,8 +639,15 @@ const organizeHandler: TaskHandler = async (taskId, onProgress, signal) => {
       const authorDir = path.join(libPath, cleanAuthor);
       let targetPath = path.join(authorDir, `${filename}.${ext}`);
 
-      // Skip if already in the correct location
+      // If already in the correct location, still sync to Komga but skip file move
       if (book.file_path === targetPath) {
+        // Queue Komga sync for books with metadata even if no file move needed
+        if (komgaClient.isConfigured() && book.title) {
+          enqueueTask('komga_sync', {
+            bookId: book.id,
+            libraryPath: libPath,
+          });
+        }
         skipped++;
         continue;
       }
@@ -662,6 +678,14 @@ const organizeHandler: TaskHandler = async (taskId, onProgress, signal) => {
 
       // Update database
       execute('UPDATE books SET file_path = ? WHERE id = ?', [targetPath, book.id]);
+
+      // Queue Komga sync if Komga is configured
+      if (komgaClient.isConfigured()) {
+        enqueueTask('komga_sync', {
+          bookId: book.id,
+          libraryPath: libPath,
+        });
+      }
 
       // Clean up old directory - remove metadata files and empty dirs
       try {
@@ -824,6 +848,107 @@ const bookMetadataHandler: TaskHandler = async (taskId, onProgress) => {
 };
 
 /**
+ * Komga sync task handler
+ * Syncs a book's metadata and cover to Komga after organizing
+ */
+const komgaSyncHandler: TaskHandler = async (taskId, onProgress) => {
+  const taskRow = queryOne<{ result: string | null }>(
+    'SELECT result FROM tasks WHERE id = ?',
+    [taskId]
+  );
+
+  if (!taskRow?.result) {
+    throw new Error('Task missing configuration');
+  }
+
+  const data = JSON.parse(taskRow.result) as {
+    bookId: number;
+    libraryPath?: string;
+  };
+
+  onProgress(0, 3);
+
+  // Check if Komga is configured
+  if (!komgaClient.isConfigured()) {
+    return { status: 'skipped', reason: 'Komga not configured' };
+  }
+
+  // Step 1: Get book details from database
+  const book = queryOne<{
+    id: number;
+    file_path: string;
+    title: string | null;
+    authors: string | null;
+    description: string | null;
+    isbn: string | null;
+    publish_date: string | null;
+    cover_url: string | null;
+    series_number: number | null;
+  }>(
+    'SELECT id, file_path, title, authors, description, isbn, publish_date, cover_url, series_number FROM books WHERE id = ?',
+    [data.bookId]
+  );
+
+  if (!book) {
+    throw new Error(`Book ${data.bookId} not found`);
+  }
+
+  if (!book.file_path) {
+    return { status: 'skipped', reason: 'Book has no file path' };
+  }
+
+  onProgress(1, 3);
+
+  // Step 2: Parse authors from JSON
+  let authors: string[] = [];
+  if (book.authors) {
+    try {
+      const parsed = JSON.parse(book.authors);
+      if (Array.isArray(parsed)) {
+        authors = parsed.filter(a => a && typeof a === 'string');
+      }
+    } catch {
+      authors = [book.authors];
+    }
+  }
+
+  // Step 3: Sync to Komga
+  const filename = path.basename(book.file_path);
+  const result = await komgaClient.syncBookToKomga(
+    filename,
+    {
+      title: book.title || undefined,
+      description: book.description || undefined,
+      authors: authors.length > 0 ? authors : undefined,
+      isbn: book.isbn || undefined,
+      publishDate: book.publish_date || undefined,
+      coverUrl: book.cover_url || undefined,
+      seriesNumber: book.series_number || undefined,
+    },
+    data.libraryPath
+  );
+
+  onProgress(3, 3);
+
+  if (result.success) {
+    return {
+      status: 'synced',
+      bookId: book.id,
+      komgaBookId: result.komgaBookId,
+      filename,
+    };
+  } else {
+    // Don't throw - just report the error in result
+    return {
+      status: 'failed',
+      bookId: book.id,
+      error: result.error,
+      filename,
+    };
+  }
+};
+
+/**
  * Register all task handlers
  */
 export function registerAllHandlers(): void {
@@ -840,6 +965,9 @@ export function registerAllHandlers(): void {
     onProgress(1, 1);
     return { message: 'Author sync handler not yet implemented' };
   });
+
+  // Komga sync handler - syncs book metadata and cover to Komga
+  registerTaskHandler('komga_sync', komgaSyncHandler);
 }
 
 export default { registerAllHandlers };
