@@ -10,6 +10,7 @@ import { query, queryOne, execute } from '@/lib/db';
 import * as metadataService from '../metadata';
 import { downloadFile as downloadFromLibgen } from '../downloads/libgen';
 import { komgaClient } from '../komga';
+import { getOrCreateAuthor, fetchAuthorMetadata, getAuthorByName } from '@/lib/actions/authors';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -224,6 +225,23 @@ const metadataHandler: TaskHandler = async (taskId, onProgress, signal) => {
           'UPDATE books SET metadata_source = ?, metadata_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
           [metadata.source, metadata.sourceId, book.id]
         );
+
+        // Process authors - create author records if they don't exist
+        if (metadata.authors && metadata.authors !== 'Unknown') {
+          for (const name of metadata.authors.split(',').map(a => a.trim()).filter(Boolean)) {
+            try {
+              const existing = await getAuthorByName(name);
+              if (!existing?.lastSynced) {
+                const author = await getOrCreateAuthor(name);
+                // Fetch author metadata in background (don't wait)
+                fetchAuthorMetadata(author.id).catch(() => {});
+              }
+            } catch (error) {
+              // Don't fail the whole task if author creation fails
+              console.warn(`Failed to process author ${name}:`, error);
+            }
+          }
+        }
 
         return { status: 'matched' as const, bookId: book.id, title: metadata.title };
       })
@@ -869,6 +887,23 @@ const bookMetadataHandler: TaskHandler = async (taskId, onProgress) => {
     'UPDATE books SET metadata_source = ?, metadata_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
     [metadata.source, metadata.sourceId, book.id]
   );
+
+  // Process authors - create author records if they don't exist
+  if (metadata.authors && metadata.authors !== 'Unknown') {
+    for (const name of metadata.authors.split(',').map(a => a.trim()).filter(Boolean)) {
+      try {
+        const existing = await getAuthorByName(name);
+        if (!existing?.lastSynced) {
+          const author = await getOrCreateAuthor(name);
+          // Fetch author metadata in background (don't wait)
+          fetchAuthorMetadata(author.id).catch(() => {});
+        }
+      } catch (error) {
+        // Don't fail the whole task if author creation fails
+        console.warn(`Failed to process author ${name}:`, error);
+      }
+    }
+  }
 
   onProgress(1, 1);
   return { status: 'matched', bookId: book.id, title: metadata.title, source: metadata.source };
