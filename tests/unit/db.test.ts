@@ -39,6 +39,7 @@ describe('Database Operations', () => {
       DELETE FROM books;
       DELETE FROM libraries;
       DELETE FROM settings;
+      DELETE FROM wanted_books;
     `);
   });
 
@@ -127,6 +128,223 @@ describe('Database Operations', () => {
       const settings = db.getAllSettings();
       assert.strictEqual(settings['key1'], 'value1');
       assert.strictEqual(settings['key2'], 'value2');
+    });
+  });
+
+  describe('wanted books', () => {
+    it('should add a wanted book', async () => {
+      if (!db) return;
+
+      const book = db.addWantedBook({
+        title: 'Children of Time',
+        author: 'Adrian Tchaikovsky',
+        hardcover_id: 'hc123',
+        isbn: '9781447273288',
+      });
+
+      assert.ok(book);
+      assert.strictEqual(book.title, 'Children of Time');
+      assert.strictEqual(book.author, 'Adrian Tchaikovsky');
+      assert.strictEqual(book.status, 'wanted');
+    });
+
+    it('should get wanted books', async () => {
+      if (!db) return;
+
+      db.addWantedBook({ title: 'Book 1', author: 'Author 1' });
+      db.addWantedBook({ title: 'Book 2', author: 'Author 2' });
+
+      const books = db.getWantedBooks();
+      assert.strictEqual(books.length, 2);
+    });
+
+    it('should filter wanted books by status', async () => {
+      if (!db) return;
+
+      const book1 = db.addWantedBook({ title: 'Book 1', author: 'Author 1' });
+      db.addWantedBook({ title: 'Book 2', author: 'Author 2' });
+
+      // Update status of first book
+      db.updateWantedBook(book1!.id, { status: 'acquired' });
+
+      const wantedBooks = db.getWantedBooks('wanted');
+      const acquiredBooks = db.getWantedBooks('acquired');
+
+      assert.strictEqual(wantedBooks.length, 1);
+      assert.strictEqual(acquiredBooks.length, 1);
+    });
+
+    it('should update wanted book', async () => {
+      if (!db) return;
+
+      const book = db.addWantedBook({ title: 'Book 1', author: 'Author 1' });
+      assert.ok(book);
+
+      const updated = db.updateWantedBook(book.id, {
+        status: 'searching',
+        priority: 1,
+        notes: 'Test note',
+      });
+
+      assert.ok(updated);
+
+      const retrieved = db.getWantedBookById(book.id);
+      assert.strictEqual(retrieved?.status, 'searching');
+      assert.strictEqual(retrieved?.priority, 1);
+      assert.strictEqual(retrieved?.notes, 'Test note');
+    });
+
+    it('should delete wanted book', async () => {
+      if (!db) return;
+
+      const book = db.addWantedBook({ title: 'Book 1', author: 'Author 1' });
+      assert.ok(book);
+
+      const deleted = db.deleteWantedBook(book.id);
+      assert.ok(deleted);
+
+      const retrieved = db.getWantedBookById(book.id);
+      assert.strictEqual(retrieved, null);
+    });
+
+    describe('markWantedBookAsAcquired', () => {
+      it('should mark wanted book as acquired by hardcover ID', async () => {
+        if (!db) return;
+
+        const book = db.addWantedBook({
+          title: 'Children of Time',
+          author: 'Adrian Tchaikovsky',
+          hardcover_id: 'hc123',
+        });
+
+        assert.ok(book);
+        assert.strictEqual(book.status, 'wanted');
+
+        const acquired = db.markWantedBookAsAcquired('hc123', undefined, undefined);
+        assert.ok(acquired);
+        assert.strictEqual(acquired.id, book.id);
+        assert.strictEqual(acquired.status, 'acquired');
+
+        const retrieved = db.getWantedBookById(book.id);
+        assert.strictEqual(retrieved?.status, 'acquired');
+      });
+
+      it('should mark wanted book as acquired by ISBN', async () => {
+        if (!db) return;
+
+        const book = db.addWantedBook({
+          title: 'Children of Time',
+          author: 'Adrian Tchaikovsky',
+          isbn: '9781447273288',
+        });
+
+        assert.ok(book);
+
+        const acquired = db.markWantedBookAsAcquired(undefined, '9781447273288', undefined);
+        assert.ok(acquired);
+        assert.strictEqual(acquired.id, book.id);
+        assert.strictEqual(acquired.status, 'acquired');
+      });
+
+      it('should mark wanted book as acquired by title', async () => {
+        if (!db) return;
+
+        const book = db.addWantedBook({
+          title: 'Children of Time',
+          author: 'Adrian Tchaikovsky',
+        });
+
+        assert.ok(book);
+
+        const acquired = db.markWantedBookAsAcquired(undefined, undefined, 'Children of Time');
+        assert.ok(acquired);
+        assert.strictEqual(acquired.id, book.id);
+        assert.strictEqual(acquired.status, 'acquired');
+      });
+
+      it('should be case-insensitive for title matching', async () => {
+        if (!db) return;
+
+        const book = db.addWantedBook({
+          title: 'Children of Time',
+          author: 'Adrian Tchaikovsky',
+        });
+
+        assert.ok(book);
+
+        const acquired = db.markWantedBookAsAcquired(undefined, undefined, 'children of time');
+        assert.ok(acquired);
+        assert.strictEqual(acquired.id, book.id);
+      });
+
+      it('should only mark books with wanted or searching status', async () => {
+        if (!db) return;
+
+        const book = db.addWantedBook({
+          title: 'Test Book',
+          author: 'Test Author',
+          hardcover_id: 'hc456',
+        });
+
+        assert.ok(book);
+
+        // Update to acquired
+        db.updateWantedBook(book.id, { status: 'acquired' });
+
+        // Try to mark as acquired again
+        const result = db.markWantedBookAsAcquired('hc456', undefined, undefined);
+        assert.strictEqual(result, null);
+      });
+
+      it('should return null when no match found', async () => {
+        if (!db) return;
+
+        const result = db.markWantedBookAsAcquired('nonexistent', undefined, undefined);
+        assert.strictEqual(result, null);
+      });
+
+      it('should prioritize hardcover ID over ISBN', async () => {
+        if (!db) return;
+
+        const book1 = db.addWantedBook({
+          title: 'Book 1',
+          hardcover_id: 'hc123',
+        });
+
+        const book2 = db.addWantedBook({
+          title: 'Book 2',
+          isbn: '1234567890',
+        });
+
+        assert.ok(book1);
+        assert.ok(book2);
+
+        // Should match book1 by hardcover_id, not book2 by ISBN
+        const acquired = db.markWantedBookAsAcquired('hc123', '1234567890', undefined);
+        assert.ok(acquired);
+        assert.strictEqual(acquired.id, book1.id);
+      });
+
+      it('should prioritize ISBN over title', async () => {
+        if (!db) return;
+
+        const book1 = db.addWantedBook({
+          title: 'Test Book',
+        });
+
+        const book2 = db.addWantedBook({
+          title: 'Another Book',
+          isbn: '1234567890',
+        });
+
+        assert.ok(book1);
+        assert.ok(book2);
+
+        // Should match book2 by ISBN, not book1 by title
+        const acquired = db.markWantedBookAsAcquired(undefined, '1234567890', 'Test Book');
+        assert.ok(acquired);
+        assert.strictEqual(acquired.id, book2.id);
+      });
     });
   });
 });
