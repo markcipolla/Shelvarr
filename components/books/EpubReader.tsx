@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { ReactReader } from 'react-reader';
 import type { Book } from '@/types';
+import { formatAuthors } from '@/lib/utils/authors';
 
 interface EpubReaderProps {
   book: Book;
@@ -58,7 +59,7 @@ export function EpubReader({ book, onClose }: EpubReaderProps) {
             <h1 className="text-white font-medium line-clamp-1">{book.title || 'Unknown Title'}</h1>
             {book.authors && (
               <p className="text-sm text-shelvarr-text-muted line-clamp-1">
-                {JSON.parse(book.authors).join(', ')}
+                {formatAuthors(book.authors)}
               </p>
             )}
           </div>

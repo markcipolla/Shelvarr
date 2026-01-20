@@ -5,6 +5,7 @@ import { getLibraryById } from '@/lib/services/library';
 import { getAuthorByName } from '@/lib/actions/authors';
 import { BookDetails } from '@/components/books/BookDetails';
 import { BookActions } from '@/components/books/BookActions';
+import { parseAuthors } from '@/lib/utils/authors';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +30,7 @@ export default async function BookDetailPage({ params }: PageProps) {
   const library = book.libraryId ? await getLibraryById(book.libraryId) : null;
 
   // Fetch author IDs for linking
-  const authorNames = book.authors ? JSON.parse(book.authors) : [];
+  const authorNames = parseAuthors(book.authors);
   const authorsWithIds = await Promise.all(
     authorNames.map(async (name: string) => {
       const author = await getAuthorByName(name);

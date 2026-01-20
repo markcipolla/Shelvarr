@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { Book } from '@/types';
+import { formatAuthors } from '@/lib/utils/authors';
 
 interface BookGridProps {
   books: Book[];
@@ -21,7 +22,7 @@ interface BookCardProps {
 }
 
 export function BookCard({ book, showSeriesNumber }: BookCardProps) {
-  const authors = book.authors ? JSON.parse(book.authors).join(', ') : null;
+  const authors = formatAuthors(book.authors);
   const title = book.title || getFilenameFromPath(book.filePath);
 
   return (

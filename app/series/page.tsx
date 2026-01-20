@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getSeries } from '@/lib/actions/series';
 import { SeriesSearch } from '@/components/series/SeriesSearch';
+import { formatAuthors } from '@/lib/utils/authors';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,9 +53,7 @@ function SeriesCard({
 }: {
   series: { seriesName: string; bookCount: number; authors: string | null };
 }) {
-  const authors = series.authors
-    ? JSON.parse(series.authors).join(', ')
-    : null;
+  const authors = formatAuthors(series.authors);
 
   return (
     <Link
