@@ -8,11 +8,11 @@ import { sanitizeHtml } from '@/lib/utils/sanitize';
 interface BookDetailsProps {
   book: Book;
   library: Library | null;
+  authorsWithIds?: Array<{ name: string; id: number | null }>;
 }
 
-export function BookDetails({ book, library }: BookDetailsProps) {
+export function BookDetails({ book, library, authorsWithIds }: BookDetailsProps) {
   const [showRawData, setShowRawData] = useState(false);
-  const authors = book.authors ? JSON.parse(book.authors).join(', ') : null;
   const filename = book.filePath.split(/[/\\]/).pop() || book.filePath;
 
   // Parse all series from JSON
@@ -28,8 +28,26 @@ export function BookDetails({ book, library }: BookDetailsProps) {
         <h1 className="text-2xl font-bold text-white">
           {book.title || filename.replace(/\.[^.]+$/, '')}
         </h1>
-        {authors && (
-          <p className="text-lg text-shelvarr-text-muted mt-1">{authors}</p>
+        {authorsWithIds && authorsWithIds.length > 0 && (
+          <div className="text-lg mt-1 flex flex-wrap gap-1">
+            {authorsWithIds.map((author, index) => (
+              <span key={index}>
+                {author.id ? (
+                  <Link
+                    href={`/authors/${author.id}`}
+                    className="text-shelvarr-primary hover:text-shelvarr-primary/80 transition-colors"
+                  >
+                    {author.name}
+                  </Link>
+                ) : (
+                  <span className="text-shelvarr-text-muted">{author.name}</span>
+                )}
+                {index < authorsWithIds.length - 1 && (
+                  <span className="text-shelvarr-text-muted">, </span>
+                )}
+              </span>
+            ))}
+          </div>
         )}
       </div>
 

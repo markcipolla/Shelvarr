@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getBook } from '@/lib/actions/books';
 import { getLibraryById } from '@/lib/services/library';
+import { getAuthorByName } from '@/lib/actions/authors';
 import { BookDetails } from '@/components/books/BookDetails';
 import { BookActions } from '@/components/books/BookActions';
 
@@ -26,6 +27,15 @@ export default async function BookDetailPage({ params }: PageProps) {
   }
 
   const library = book.libraryId ? await getLibraryById(book.libraryId) : null;
+
+  // Fetch author IDs for linking
+  const authorNames = book.authors ? JSON.parse(book.authors) : [];
+  const authorsWithIds = await Promise.all(
+    authorNames.map(async (name: string) => {
+      const author = await getAuthorByName(name);
+      return { name, id: author?.id || null };
+    })
+  );
 
   return (
     <div className="space-y-6">
@@ -58,7 +68,7 @@ export default async function BookDetailPage({ params }: PageProps) {
           <BookActions book={book} />
         </div>
 
-        <BookDetails book={book} library={library} />
+        <BookDetails book={book} library={library} authorsWithIds={authorsWithIds} />
       </div>
     </div>
   );
