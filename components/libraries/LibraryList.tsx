@@ -42,10 +42,8 @@ export function LibraryList({ libraries }: { libraries: LibraryWithCount[] }) {
       });
       if (result.error) {
         toast.error(result.error);
-      } else if (result.tasksQueued === 0) {
-        toast.info('No books need metadata');
       } else {
-        toast.success(`Queued ${result.tasksQueued} metadata tasks`);
+        toast.success(`Metadata fetch started (Task #${result.taskId})`);
         router.refresh();
       }
     } catch {

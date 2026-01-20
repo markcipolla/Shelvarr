@@ -8,7 +8,7 @@ import {
   deleteLibrary as deleteLib,
   getLibraryBookCount,
 } from '@/lib/services/library';
-import { scanLibrary as scanLib, getBooks } from '@/lib/services/scanner';
+import { scanLibrary as scanLib } from '@/lib/services/scanner';
 import { createTask, startTask, completeTask, failTask, enqueueTask } from '@/lib/services/queue';
 
 export async function getLibraries() {
@@ -38,7 +38,7 @@ export async function createLibrary(formData: FormData) {
     if (result.library) {
       const libraryId = result.library.id;
 
-      // Run scan in background, then queue individual metadata tasks
+      // Run scan in background, then queue batch metadata task
       (async () => {
         const scanTask = await createTask('scan', { libraryId, libraryName: name });
         try {
@@ -46,17 +46,12 @@ export async function createLibrary(formData: FormData) {
           await scanLib(libraryId);
           await completeTask(scanTask.id, { booksScanned: true });
 
-          // After scan, queue individual metadata tasks for each book
-          const { books } = await getBooks({ libraryId, pageSize: 10000 });
-          for (const book of books) {
-            if (book.title) {
-              enqueueTask('book_metadata', {
-                bookId: book.id,
-                bookTitle: book.title,
-                libraryName: name,
-              });
-            }
-          }
+          // After scan, queue a single batch metadata task
+          // This will process books in parallel batches of 20
+          enqueueTask('metadata', {
+            libraryId,
+            unmatchedOnly: true,
+          });
         } catch (error) {
           await failTask(scanTask.id, error instanceof Error ? error.message : 'Failed');
         }
@@ -111,33 +106,17 @@ export async function fetchLibraryMetadata(id: number, unmatchedOnly = true) {
     return { error: 'Library not found' };
   }
 
-  // Get all books in the library
-  const { books } = await getBooks({ libraryId: id, pageSize: 10000 });
-
-  // Filter books based on unmatchedOnly
-  const booksToProcess = books.filter(book => {
-    if (!book.title) return false;
-    if (unmatchedOnly && book.metadataSource) return false;
-    return true;
+  // Queue a single batch metadata task for the library
+  // This will process books in parallel batches of 20
+  const task = enqueueTask('metadata', {
+    libraryId: id,
+    unmatchedOnly,
   });
-
-  if (booksToProcess.length === 0) {
-    return { success: true, tasksQueued: 0 };
-  }
-
-  // Queue individual tasks for each book
-  for (const book of booksToProcess) {
-    enqueueTask('book_metadata', {
-      bookId: book.id,
-      bookTitle: book.title,
-      libraryName: library.name,
-    });
-  }
 
   revalidatePath('/libraries');
   revalidatePath('/books');
   revalidatePath('/tasks');
-  return { success: true, tasksQueued: booksToProcess.length };
+  return { success: true, taskId: task.id };
 }
 
 export async function organizeLibrary(id: number) {
