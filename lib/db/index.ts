@@ -50,19 +50,24 @@ export function initDatabase(): Database.Database {
 
     // Create database connection
     db = new Database(config.dbPath);
+    console.log('Database connection created');
 
     // Enable foreign keys and WAL mode for better performance
     db.pragma('journal_mode = WAL');
+    console.log('WAL mode enabled');
     db.pragma('foreign_keys = ON');
+    console.log('Foreign keys enabled');
 
     // Run schema
     const schemaPath = findSchemaPath();
     console.log(`Loading schema from: ${schemaPath}`);
     const schema = readFileSync(schemaPath, 'utf-8');
     db.exec(schema);
+    console.log('Schema loaded');
 
     // Run migrations for schema updates
     runMigrations(db);
+    console.log('Migrations complete');
 
     console.log('Database initialized successfully');
 

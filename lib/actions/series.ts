@@ -2,6 +2,7 @@
 
 import { query } from '@/lib/db';
 import type { Book } from '@/types';
+import * as hardcover from '@/lib/services/metadata/hardcover';
 
 interface SeriesInfo {
   seriesName: string;
@@ -201,5 +202,147 @@ export async function getSeriesInfo(seriesName: string): Promise<SeriesInfo | nu
     seriesName,
     bookCount: countRow[0].book_count,
     authors: authorRow[0]?.authors ?? null,
+  };
+}
+
+/**
+ * Combined series info with books from library and Hardcover
+ * Note: Only include serializable data for client components
+ */
+export interface CombinedSeriesBook {
+  // Book exists in library
+  inLibrary: boolean;
+  // Only include what's needed for the UI (not full Book object)
+  libraryBookId?: number;
+  libraryBookCoverUrl?: string | null;
+  // Hardcover info (always present for complete series view)
+  hardcoverId?: string;
+  title: string;
+  authors: string;
+  position: number | null;
+  coverUrl?: string;
+  publishDate?: string;
+  description?: string;
+}
+
+export interface CombinedSeriesInfo {
+  seriesName: string;
+  hardcoverSeriesId?: string;
+  totalBooks: number;
+  ownedBooks: number;
+  books: CombinedSeriesBook[];
+  authors: string;
+}
+
+/**
+ * Get complete series info: local books + missing books from Hardcover
+ * This shows the full series with placeholders for books not in library
+ */
+export async function getCompleteSeriesInfo(seriesName: string): Promise<CombinedSeriesInfo | null> {
+  // Get local books first
+  const localBooks = await getBooksBySeries(seriesName);
+
+  // Try to get full series from Hardcover
+  let hardcoverSeries: hardcover.SeriesInfo | null = null;
+  if (hardcover.isConfigured()) {
+    try {
+      hardcoverSeries = await hardcover.searchSeries(seriesName);
+    } catch (error) {
+      console.warn('Failed to fetch series from Hardcover:', error);
+    }
+  }
+
+  // If we have Hardcover data, merge it with local books
+  if (hardcoverSeries) {
+    // Create a map of local books by title (normalized for comparison)
+    const localByTitle = new Map<string, Book>();
+    const localByHardcoverId = new Map<string, Book>();
+
+    for (const book of localBooks) {
+      if (book.title) {
+        localByTitle.set(book.title.toLowerCase().trim(), book);
+      }
+      if (book.metadataId && book.metadataSource === 'hardcover') {
+        localByHardcoverId.set(book.metadataId, book);
+      }
+    }
+
+    // Build combined list
+    const combinedBooks: CombinedSeriesBook[] = hardcoverSeries.books.map(hcBook => {
+      // Check if we have this book locally (by Hardcover ID or title match)
+      const localByIdMatch = localByHardcoverId.get(hcBook.id);
+      const localByTitleMatch = localByTitle.get(hcBook.title.toLowerCase().trim());
+      const localBook = localByIdMatch || localByTitleMatch;
+
+      return {
+        inLibrary: !!localBook,
+        libraryBookId: localBook?.id,
+        libraryBookCoverUrl: localBook?.coverUrl,
+        hardcoverId: hcBook.id,
+        title: hcBook.title,
+        authors: hcBook.authors,
+        position: hcBook.position,
+        coverUrl: localBook?.coverUrl || hcBook.coverUrl,
+        publishDate: hcBook.publishDate,
+        description: hcBook.description,
+      };
+    });
+
+    // Sort by position (nulls last)
+    combinedBooks.sort((a, b) => {
+      if (a.position !== null && b.position !== null) return a.position - b.position;
+      if (a.position !== null) return -1;
+      if (b.position !== null) return 1;
+      return a.title.localeCompare(b.title);
+    });
+
+    // Get primary author
+    const authors = hardcoverSeries.books[0]?.authors || 'Unknown';
+
+    return {
+      seriesName: hardcoverSeries.name,
+      hardcoverSeriesId: hardcoverSeries.id,
+      totalBooks: hardcoverSeries.books.length,
+      ownedBooks: combinedBooks.filter(b => b.inLibrary).length,
+      books: combinedBooks,
+      authors,
+    };
+  }
+
+  // No Hardcover data - just return local books
+  if (localBooks.length === 0) {
+    return null;
+  }
+
+  // Get author from first book
+  let authors = 'Unknown';
+  const firstBook = localBooks[0];
+  if (firstBook?.authors) {
+    try {
+      const parsed = JSON.parse(firstBook.authors);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        authors = parsed.join(', ');
+      }
+    } catch {
+      authors = firstBook.authors;
+    }
+  }
+
+  return {
+    seriesName,
+    totalBooks: localBooks.length,
+    ownedBooks: localBooks.length,
+    books: localBooks.map(book => ({
+      inLibrary: true,
+      libraryBookId: book.id,
+      libraryBookCoverUrl: book.coverUrl,
+      title: book.title || 'Unknown',
+      authors,
+      position: book.seriesNumber,
+      coverUrl: book.coverUrl || undefined,
+      publishDate: book.publishDate || undefined,
+      description: book.description || undefined,
+    })),
+    authors,
   };
 }

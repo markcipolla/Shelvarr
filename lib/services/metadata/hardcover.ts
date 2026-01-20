@@ -318,3 +318,104 @@ export async function searchByIsbn(isbn: string): Promise<BookMetadata | null> {
 export function isConfigured(): boolean {
   return !!getApiToken();
 }
+
+/**
+ * Series book info from Hardcover
+ */
+export interface SeriesBook {
+  id: string;
+  title: string;
+  authors: string;
+  position: number | null;
+  coverUrl?: string;
+  publishDate?: string;
+  description?: string;
+}
+
+/**
+ * Full series info from Hardcover
+ */
+export interface SeriesInfo {
+  id: string;
+  name: string;
+  books: SeriesBook[];
+}
+
+/**
+ * Search for a series by name and return all books in it
+ * Uses book search since direct series query may not be available
+ */
+export async function searchSeries(seriesName: string): Promise<SeriesInfo | null> {
+  if (!seriesName.trim()) return null;
+
+  // Search for books in the series by searching the series name
+  // This works because Hardcover's search includes series data
+  const searchResults = await searchBooks(`"${seriesName}"`, 30);
+
+  if (!searchResults.length) {
+    return null;
+  }
+
+  // Filter to books that are actually in this series
+  const normalizedSearch = seriesName.toLowerCase().trim();
+  const seriesBooks: SeriesBook[] = [];
+  let foundSeriesId: string | undefined;
+  let foundSeriesName = seriesName;
+
+  for (const book of searchResults) {
+    if (!book.series) continue;
+
+    // Check if this book is in the series we're looking for
+    for (const [name, position] of book.series) {
+      if (name.toLowerCase().trim() === normalizedSearch ||
+          name.toLowerCase().includes(normalizedSearch) ||
+          normalizedSearch.includes(name.toLowerCase())) {
+        foundSeriesName = name; // Use the actual series name from the data
+        seriesBooks.push({
+          id: book.sourceId,
+          title: book.title,
+          authors: book.authors,
+          position: position,
+          coverUrl: book.coverUrl,
+          publishDate: book.publishDate,
+          description: book.description,
+        });
+        break;
+      }
+    }
+  }
+
+  if (seriesBooks.length === 0) {
+    return null;
+  }
+
+  // Sort by position
+  seriesBooks.sort((a, b) => {
+    if (a.position !== null && b.position !== null) return a.position - b.position;
+    if (a.position !== null) return -1;
+    if (b.position !== null) return 1;
+    return a.title.localeCompare(b.title);
+  });
+
+  // Remove duplicates (same book ID)
+  const uniqueBooks = seriesBooks.filter((book, index, self) =>
+    index === self.findIndex(b => b.id === book.id)
+  );
+
+  return {
+    id: foundSeriesId || `search-${encodeURIComponent(seriesName)}`,
+    name: foundSeriesName,
+    books: uniqueBooks,
+  };
+}
+
+/**
+ * Get series by Hardcover series ID
+ * Note: Direct series queries may not be available, falls back to search
+ */
+export async function getSeriesById(seriesId: string): Promise<SeriesInfo | null> {
+  // Direct series queries may not be available in the API
+  // Fall back to null - caller should use searchSeries instead
+  console.log(`getSeriesById called with ${seriesId} - use searchSeries instead`);
+  return null;
+}

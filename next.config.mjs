@@ -3,6 +3,11 @@ const nextConfig = {
   // Use standalone output for Docker
   output: 'standalone',
 
+  // Enable instrumentation for error tracking
+  experimental: {
+    instrumentationHook: true,
+  },
+
   // External packages that shouldn't be bundled
   serverExternalPackages: ['better-sqlite3'],
 
@@ -20,6 +25,10 @@ const nextConfig = {
       {
         protocol: 'https',
         hostname: 'hardcover.app',
+      },
+      {
+        protocol: 'https',
+        hostname: 'assets.hardcover.app',
       },
       {
         protocol: 'https',
