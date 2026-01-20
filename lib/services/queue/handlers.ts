@@ -140,43 +140,56 @@ const metadataHandler: TaskHandler = async (taskId, onProgress, signal) => {
   let skipped = 0;
   const errors: string[] = [];
 
-  for (let i = 0; i < books.length; i++) {
+  // Process books in batches of 20
+  const BATCH_SIZE = 20;
+  const batches: typeof books[] = [];
+
+  for (let i = 0; i < books.length; i += BATCH_SIZE) {
+    batches.push(books.slice(i, i + BATCH_SIZE));
+  }
+
+  let processedCount = 0;
+
+  for (const batch of batches) {
     if (signal.aborted) {
       throw new Error('Task cancelled');
     }
 
-    const book = books[i];
-    if (!book) continue;
-
-    onProgress(i + 1, total);
-
-    try {
-      if (!book.title) {
-        skipped++;
-        continue;
-      }
-
-      // Parse authors from JSON if present
-      let authorName: string | undefined;
-      if (book.authors) {
-        try {
-          const authorsArr = JSON.parse(book.authors);
-          if (Array.isArray(authorsArr) && authorsArr.length > 0) {
-            authorName = authorsArr[0];
-          }
-        } catch {
-          authorName = book.authors;
+    // Process all books in the batch in parallel
+    const batchResults = await Promise.allSettled(
+      batch.map(async (book) => {
+        if (!book.title) {
+          return { status: 'skipped' as const, bookId: book.id };
         }
-      }
 
-      // Call metadata service to auto-match
-      const metadata = await metadataService.autoMatch(
-        book.title,
-        authorName,
-        book.isbn || undefined
-      );
+        // Parse authors from JSON if present
+        let authorName: string | undefined;
+        if (book.authors) {
+          try {
+            const authorsArr = JSON.parse(book.authors);
+            if (Array.isArray(authorsArr) && authorsArr.length > 0) {
+              authorName = authorsArr[0];
+            }
+          } catch {
+            authorName = book.authors;
+          }
+        }
 
-      if (metadata) {
+        // Call metadata service to auto-match
+        const metadata = await metadataService.autoMatch(
+          book.title,
+          authorName,
+          book.isbn || undefined
+        );
+
+        if (!metadata) {
+          return {
+            status: 'failed' as const,
+            bookId: book.id,
+            error: `No metadata found for ${book.title}`
+          };
+        }
+
         // Convert authors from comma-separated string to JSON array
         let authorsJson: string | null = null;
         if (metadata.authors && metadata.authors !== 'Unknown') {
@@ -212,19 +225,33 @@ const metadataHandler: TaskHandler = async (taskId, onProgress, signal) => {
           [metadata.source, metadata.sourceId, book.id]
         );
 
-        matched++;
+        return { status: 'matched' as const, bookId: book.id, title: metadata.title };
+      })
+    );
+
+    // Process batch results
+    for (const result of batchResults) {
+      if (result.status === 'fulfilled') {
+        const value = result.value;
+        if (value.status === 'matched') {
+          matched++;
+        } else if (value.status === 'failed') {
+          failed++;
+          errors.push(`Book ${value.bookId}: ${value.error}`);
+        } else if (value.status === 'skipped') {
+          skipped++;
+        }
       } else {
+        // Promise rejected
         failed++;
-        errors.push(`Book ${book.id} (${book.title}): No metadata found`);
+        const error = result.reason;
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        errors.push(`Batch processing error: ${message}`);
       }
-    } catch (error) {
-      failed++;
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      errors.push(`Book ${book.id}: ${message}`);
     }
 
-    // Small delay to avoid rate limiting
-    await new Promise(resolve => setTimeout(resolve, 200));
+    processedCount += batch.length;
+    onProgress(processedCount, total);
   }
 
   return {
