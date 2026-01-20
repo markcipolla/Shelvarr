@@ -1,8 +1,10 @@
+import { APP_VERSION, APP_NAME } from '@/lib/constants';
+
 export function AboutTab() {
   return (
     <div className="max-w-xl space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-white mb-2">Shelvarr</h2>
+        <h2 className="text-lg font-semibold text-white mb-2">{APP_NAME}</h2>
         <p className="text-shelvarr-text-muted">
           Self-hosted book and comic metadata management application.
         </p>
@@ -11,7 +13,7 @@ export function AboutTab() {
       <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-4 space-y-3">
         <div className="flex justify-between">
           <span className="text-shelvarr-text-muted">Version</span>
-          <span className="text-white">0.0.1</span>
+          <span className="text-white">{APP_VERSION}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-shelvarr-text-muted">Framework</span>
@@ -21,19 +23,6 @@ export function AboutTab() {
           <span className="text-shelvarr-text-muted">Database</span>
           <span className="text-white">SQLite</span>
         </div>
-      </div>
-
-      <div>
-        <h3 className="text-md font-semibold text-white mb-2">Metadata Sources</h3>
-        <ul className="text-shelvarr-text-muted space-y-1">
-          <li>Google Books - Book metadata and covers</li>
-          <li>OpenLibrary - Open source book database</li>
-          <li>Hardcover - Book discovery platform (API key required)</li>
-          <li>BookBrainz - Open book encyclopedia</li>
-          <li>Audnexus - Audiobook metadata</li>
-          <li>ComicVine - Comic book database (API key required)</li>
-          <li>Wikidata - Knowledge base with series info</li>
-        </ul>
       </div>
 
       <div>

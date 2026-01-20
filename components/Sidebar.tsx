@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { GlobalSearch } from './GlobalSearch';
 import type { SidebarCounts } from '@/lib/actions/stats';
+import { APP_VERSION } from '@/lib/constants';
 
 interface NavItem {
   href: string;
@@ -85,7 +86,7 @@ export function Sidebar({ counts }: SidebarProps) {
       </nav>
 
       <div className="p-4 border-t border-shelvarr-border">
-        <p className="text-xs text-shelvarr-text-muted">v0.1.0</p>
+        <p className="text-xs text-shelvarr-text-muted">v{APP_VERSION}</p>
       </div>
     </aside>
   );
