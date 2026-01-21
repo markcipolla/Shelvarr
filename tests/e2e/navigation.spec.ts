@@ -50,7 +50,7 @@ test.describe('Navigation', () => {
   test('should navigate to Settings page', async ({ page }) => {
     await page.goto('/');
     await page.locator('aside').getByText('Settings').click();
-    await expect(page).toHaveURL('/settings');
+    await expect(page).toHaveURL(/\/settings\/metadata/);
     await expect(page.getByRole('heading', { name: /Settings/i })).toBeVisible();
   });
 
