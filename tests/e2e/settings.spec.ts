@@ -68,7 +68,7 @@ test.describe('Settings Page', () => {
     await page.getByRole('link', { name: /About/i }).click();
 
     await expect(page).toHaveURL(/\/settings\/about/);
-    await expect(page.getByText(/Shelvarr/i)).toBeVisible();
+    await expect(page.getByText(/Self-hosted book and comic metadata management application/i)).toBeVisible();
   });
 });
 
