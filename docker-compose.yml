@@ -18,8 +18,7 @@ services:
       - LIBRARY_ROOT=/libraries
       # Optional: Komga integration
       # - KOMGA_URL=http://your-komga:25600
-      # - KOMGA_USERNAME=your-username
-      # - KOMGA_PASSWORD=your-password
+      # - KOMGA_API_KEY=your-api-key
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]

@@ -6,8 +6,7 @@ import { setKomgaSettings, testKomgaConnection } from '@/lib/actions/settings';
 
 interface KomgaSettings {
   url: string | null;
-  username: string | null;
-  hasPassword: boolean;
+  hasApiKey: boolean;
 }
 
 interface KomgaTabProps {
@@ -17,8 +16,7 @@ interface KomgaTabProps {
 export function KomgaTab({ settings }: KomgaTabProps) {
   const router = useRouter();
   const [url, setUrl] = useState(settings.url || '');
-  const [username, setUsername] = useState(settings.username || '');
-  const [password, setPassword] = useState('');
+  const [apiKey, setApiKey] = useState('');
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
@@ -29,7 +27,7 @@ export function KomgaTab({ settings }: KomgaTabProps) {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
-    await setKomgaSettings(url, username, password || undefined);
+    await setKomgaSettings(url, apiKey || undefined);
     router.refresh();
     setSaving(false);
   };
@@ -68,41 +66,27 @@ export function KomgaTab({ settings }: KomgaTabProps) {
 
         <div>
           <label
-            htmlFor="komga-username"
+            htmlFor="komga-api-key"
             className="block text-sm font-medium text-shelvarr-text-muted mb-1"
           >
-            Username
-          </label>
-          <input
-            type="text"
-            id="komga-username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="admin"
-            className="w-full bg-shelvarr-surface border border-shelvarr-border rounded-lg px-3 py-2 text-white placeholder-shelvarr-text-muted focus:outline-none focus:border-blue-500"
-          />
-        </div>
-
-        <div>
-          <label
-            htmlFor="komga-password"
-            className="block text-sm font-medium text-shelvarr-text-muted mb-1"
-          >
-            Password
+            API Key
           </label>
           <input
             type="password"
-            id="komga-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder={settings.hasPassword ? '••••••••' : 'Enter password'}
+            id="komga-api-key"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder={settings.hasApiKey ? '••••••••' : 'Enter API key'}
             className="w-full bg-shelvarr-surface border border-shelvarr-border rounded-lg px-3 py-2 text-white placeholder-shelvarr-text-muted focus:outline-none focus:border-blue-500"
           />
-          {settings.hasPassword && (
+          {settings.hasApiKey && (
             <p className="mt-1 text-xs text-shelvarr-text-muted">
-              Leave blank to keep existing password
+              Leave blank to keep existing API key
             </p>
           )}
+          <p className="mt-1 text-xs text-shelvarr-text-muted">
+            Create a Personal Access Token in your Komga account settings
+          </p>
         </div>
 
         {testResult && (
@@ -131,7 +115,7 @@ export function KomgaTab({ settings }: KomgaTabProps) {
           <button
             type="button"
             onClick={handleTest}
-            disabled={testing || !url || !username}
+            disabled={testing || !url}
             className="bg-shelvarr-surface hover:bg-shelvarr-border text-white border border-shelvarr-border px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
           >
             {testing ? 'Testing...' : 'Test Connection'}

@@ -100,8 +100,8 @@ class KomgaClient {
   /**
    * Configure the client with Komga server details
    */
-  configure(url: string | null, username: string | null, password: string | null): void {
-    if (!url || !username || !password) {
+  configure(url: string | null, apiKey: string | null): void {
+    if (!url || !apiKey) {
       this.baseUrl = null;
       this.authHeader = null;
       return;
@@ -109,8 +109,8 @@ class KomgaClient {
 
     // Remove trailing slash
     this.baseUrl = url.replace(/\/$/, '');
-    // Create basic auth header
-    this.authHeader = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
+    // Create Bearer token auth header
+    this.authHeader = `Bearer ${apiKey}`;
   }
 
   /**
@@ -126,8 +126,7 @@ class KomgaClient {
   loadFromConfig(): void {
     this.configure(
       config.komga.url,
-      config.komga.username,
-      config.komga.password
+      config.komga.apiKey
     );
   }
 

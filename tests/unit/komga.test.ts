@@ -14,11 +14,11 @@ describe('Komga Client', () => {
       assert.strictEqual(client.isConfigured(), false);
     });
 
-    it('should configure with valid credentials', async () => {
+    it('should configure with valid API key', async () => {
       const { KomgaClient } = await getKomgaClientClass();
       const client = new KomgaClient();
 
-      client.configure('http://localhost:25600', 'user', 'pass');
+      client.configure('http://localhost:25600', 'test-api-key');
 
       assert.strictEqual(client.isConfigured(), true);
     });
@@ -27,10 +27,10 @@ describe('Komga Client', () => {
       const { KomgaClient } = await getKomgaClientClass();
       const client = new KomgaClient();
 
-      client.configure('http://localhost:25600', 'user', 'pass');
+      client.configure('http://localhost:25600', 'test-api-key');
       assert.strictEqual(client.isConfigured(), true);
 
-      client.configure(null, null, null);
+      client.configure(null, null);
       assert.strictEqual(client.isConfigured(), false);
     });
 
@@ -39,7 +39,7 @@ describe('Komga Client', () => {
       const client = new KomgaClient();
 
       // Use internal state check (accessing private through any)
-      client.configure('http://localhost:25600/', 'user', 'pass');
+      client.configure('http://localhost:25600/', 'test-api-key');
 
       // Test by attempting to make a request (it will fail but we can check the URL)
       // For this test, we just verify configure doesn't throw
@@ -150,15 +150,15 @@ async function getKomgaClientClass() {
     private baseUrl: string | null = null;
     private authHeader: string | null = null;
 
-    configure(url: string | null, username: string | null, password: string | null): void {
-      if (!url || !username || !password) {
+    configure(url: string | null, apiKey: string | null): void {
+      if (!url || !apiKey) {
         this.baseUrl = null;
         this.authHeader = null;
         return;
       }
 
       this.baseUrl = url.replace(/\/$/, '');
-      this.authHeader = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
+      this.authHeader = `Bearer ${apiKey}`;
     }
 
     isConfigured(): boolean {

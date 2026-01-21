@@ -22,8 +22,7 @@ services:
       - DATABASE_URL=postgresql://shelvarr:shelvarr@postgres:5432/shelvarr
       # Optional Komga integration:
       # - KOMGA_URL=http://komga:25600
-      # - KOMGA_USERNAME=admin
-      # - KOMGA_PASSWORD=secret
+      # - KOMGA_API_KEY=your-api-key
     depends_on:
       postgres:
         condition: service_healthy

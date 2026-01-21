@@ -34,8 +34,7 @@ services:
     environment:
       # Optional Komga integration:
       - KOMGA_URL=http://your-komga-server:25600
-      - KOMGA_USERNAME=your-username
-      - KOMGA_PASSWORD=your-password
+      - KOMGA_API_KEY=your-api-key
     restart: unless-stopped
 
 volumes:
@@ -94,8 +93,7 @@ npm run test:e2e
 | `DATA_DIR` | ./data | Data directory for SQLite database and app files |
 | `LIBRARY_ROOT` | /libraries | Base path for library mounts |
 | `KOMGA_URL` | - | Komga server URL |
-| `KOMGA_USERNAME` | - | Komga username |
-| `KOMGA_PASSWORD` | - | Komga password |
+| `KOMGA_API_KEY` | - | Komga Personal Access Token (create in Komga account settings) |
 
 ## Development Status
 

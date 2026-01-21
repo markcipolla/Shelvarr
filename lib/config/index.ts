@@ -20,8 +20,7 @@ const config: AppConfig = {
   // Komga integration (optional)
   komga: {
     url: process.env['KOMGA_URL'] || null,
-    username: process.env['KOMGA_USERNAME'] || null,
-    password: process.env['KOMGA_PASSWORD'] || null,
+    apiKey: process.env['KOMGA_API_KEY'] || null,
   },
 
   // Supported file extensions

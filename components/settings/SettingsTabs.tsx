@@ -19,8 +19,7 @@ interface SourceStatus {
 
 interface KomgaSettings {
   url: string | null;
-  username: string | null;
-  hasPassword: boolean;
+  hasApiKey: boolean;
 }
 
 interface SettingsTabsProps {

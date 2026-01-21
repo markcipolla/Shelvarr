@@ -128,8 +128,7 @@ export interface HealthResponse {
 // Config types
 export interface KomgaConfig {
   url: string | null;
-  username: string | null;
-  password: string | null;
+  apiKey: string | null;
 }
 
 export interface AppConfig {
@@ -154,7 +153,6 @@ export interface Settings {
     supportedExtensions: string[];
     komgaConfigured: boolean;
     komgaUrl?: string | null;
-    komgaUsername?: string | null;
   };
 }
 

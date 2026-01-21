@@ -26,8 +26,7 @@ describe('Config', () => {
   it('should have komga config structure', () => {
     assert.ok(config.komga !== undefined);
     assert.ok('url' in config.komga);
-    assert.ok('username' in config.komga);
-    assert.ok('password' in config.komga);
+    assert.ok('apiKey' in config.komga);
   });
 
   it('should have rate limits', () => {

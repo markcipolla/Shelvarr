@@ -65,16 +65,14 @@ export async function isHardcoverConfigured(): Promise<boolean> {
 export async function getKomgaSettings() {
   return {
     url: await getSetting<string>('komga_url', null),
-    username: await getSetting<string>('komga_username', null),
-    hasPassword: !!(await getSetting<string>('komga_password', null)),
+    hasApiKey: !!(await getSetting<string>('komga_api_key', null)),
   };
 }
 
-export async function setKomgaSettings(url: string, username: string, password?: string) {
+export async function setKomgaSettings(url: string, apiKey?: string) {
   setSetting('komga_url', url);
-  setSetting('komga_username', username);
-  if (password) {
-    setSetting('komga_password', password);
+  if (apiKey) {
+    setSetting('komga_api_key', apiKey);
   }
 
   revalidatePath('/settings');
@@ -83,17 +81,16 @@ export async function setKomgaSettings(url: string, username: string, password?:
 
 export async function testKomgaConnection() {
   const url = await getSetting<string>('komga_url', null);
-  const username = await getSetting<string>('komga_username', null);
-  const password = await getSetting<string>('komga_password', null);
+  const apiKey = await getSetting<string>('komga_api_key', null);
 
-  if (!url || !username || !password) {
+  if (!url || !apiKey) {
     return { success: false, error: 'Komga settings incomplete' };
   }
 
   try {
     const response = await fetch(`${url}/api/v1/libraries`, {
       headers: {
-        Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`,
+        Authorization: `Bearer ${apiKey}`,
       },
     });
 
