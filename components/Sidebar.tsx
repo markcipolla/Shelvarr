@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { GlobalSearch } from './GlobalSearch';
+import { useSidebar } from './SidebarContext';
 import type { SidebarCounts } from '@/lib/actions/stats';
 import { APP_VERSION } from '@/lib/constants';
 
@@ -32,67 +33,150 @@ interface SidebarProps {
 
 export function Sidebar({ counts }: SidebarProps) {
   const pathname = usePathname();
+  const { isCollapsed, isMobileOpen, toggleCollapsed, closeMobile } = useSidebar();
+
+  const handleNavClick = () => {
+    // Close mobile sidebar on navigation
+    closeMobile();
+  };
 
   return (
-    <aside className="left-0 top-0 h-full w-64 bg-shelvarr-surface border-r border-shelvarr-border flex flex-col">
-      <div className="p-4 border-b border-shelvarr-border">
-        <h1 className="text-xl font-bold text-shelvarr-primary">Shelvarr</h1>
-        <p className="text-xs text-shelvarr-text-muted mt-1">Book & Comic Manager</p>
-      </div>
+    <>
+      {/* Mobile overlay backdrop */}
+      {isMobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={closeMobile}
+          aria-hidden="true"
+        />
+      )}
 
-      <div className="p-4 border-b border-shelvarr-border">
-        <GlobalSearch />
-      </div>
+      {/* Sidebar */}
+      <aside
+        className={`
+          fixed lg:relative z-50 lg:z-auto
+          left-0 top-0 h-full
+          bg-shelvarr-surface border-r border-shelvarr-border
+          flex flex-col
+          transition-all duration-300 ease-in-out
+          ${isCollapsed ? 'w-16' : 'w-64'}
+          ${isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        `}
+      >
+        {/* Header with toggle button */}
+        <div className={`p-4 border-b border-shelvarr-border flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
+          {!isCollapsed && (
+            <div>
+              <h1 className="text-xl font-bold text-shelvarr-primary">Shelvarr</h1>
+              <p className="text-xs text-shelvarr-text-muted mt-1">Book & Comic Manager</p>
+            </div>
+          )}
+          <button
+            onClick={toggleCollapsed}
+            className="p-2 rounded-lg text-shelvarr-text-muted hover:text-shelvarr-text hover:bg-shelvarr-bg transition-colors"
+            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <MenuIcon className="w-5 h-5" />
+          </button>
+        </div>
 
-      <nav className="flex-1 p-4 overflow-y-auto">
-        <ul className="space-y-1">
-          {navItems.map((item) => {
-            const isActive = pathname === item.href ||
-              (item.href !== '/' && pathname.startsWith(item.href));
-            const count = item.countKey && counts ? counts[item.countKey] : undefined;
+        {/* Search - hidden when collapsed */}
+        {!isCollapsed && (
+          <div className="p-4 border-b border-shelvarr-border">
+            <GlobalSearch />
+          </div>
+        )}
 
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className={`flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
-                    isActive
-                      ? 'bg-shelvarr-primary text-white'
-                      : 'text-shelvarr-text-muted hover:text-shelvarr-text hover:bg-shelvarr-bg'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <item.icon className="w-5 h-5" />
-                    <span>{item.label}</span>
-                  </div>
-                  {count !== undefined && count > 0 && (
-                    <span
-                      className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                        isActive
-                          ? 'bg-white/20 text-white'
-                          : item.countColor === 'orange'
-                            ? 'bg-orange-500/20 text-orange-400'
-                            : 'bg-blue-500/20 text-blue-400'
-                      }`}
-                    >
-                      {count}
-                    </span>
-                  )}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
+        {/* Navigation */}
+        <nav className="flex-1 p-2 overflow-y-auto">
+          <ul className="space-y-1">
+            {navItems.map((item) => {
+              const isActive = pathname === item.href ||
+                (item.href !== '/' && pathname.startsWith(item.href));
+              const count = item.countKey && counts ? counts[item.countKey] : undefined;
 
-      <div className="p-4 border-t border-shelvarr-border">
-        <p className="text-xs text-shelvarr-text-muted">v{APP_VERSION}</p>
-      </div>
-    </aside>
+              return (
+                <li key={item.href} className="relative">
+                  <Link
+                    href={item.href}
+                    onClick={handleNavClick}
+                    className={`
+                      flex items-center rounded-lg transition-colors
+                      ${isCollapsed ? 'justify-center px-2 py-3' : 'justify-between px-3 py-2'}
+                      ${isActive
+                        ? 'bg-shelvarr-primary text-white'
+                        : 'text-shelvarr-text-muted hover:text-shelvarr-text hover:bg-shelvarr-bg'
+                      }
+                    `}
+                    title={isCollapsed ? item.label : undefined}
+                  >
+                    <div className={`flex items-center ${isCollapsed ? '' : 'gap-3'}`}>
+                      <item.icon className="w-5 h-5 flex-shrink-0" />
+                      {!isCollapsed && <span>{item.label}</span>}
+                    </div>
+                    {!isCollapsed && count !== undefined && count > 0 && (
+                      <span
+                        className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                          isActive
+                            ? 'bg-white/20 text-white'
+                            : item.countColor === 'orange'
+                              ? 'bg-orange-500/20 text-orange-400'
+                              : 'bg-blue-500/20 text-blue-400'
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    )}
+                    {/* Show count as dot when collapsed */}
+                    {isCollapsed && count !== undefined && count > 0 && (
+                      <span
+                        className={`absolute top-1 right-1 w-2 h-2 rounded-full ${
+                          item.countColor === 'orange' ? 'bg-orange-400' : 'bg-blue-400'
+                        }`}
+                      />
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+
+        {/* Footer */}
+        <div className={`p-4 border-t border-shelvarr-border ${isCollapsed ? 'text-center' : ''}`}>
+          <p className="text-xs text-shelvarr-text-muted">
+            {isCollapsed ? `v${APP_VERSION.split('.')[0]}` : `v${APP_VERSION}`}
+          </p>
+        </div>
+      </aside>
+    </>
+  );
+}
+
+// Mobile menu toggle button - to be placed in the main content area
+export function MobileMenuButton() {
+  const { openMobile } = useSidebar();
+
+  return (
+    <button
+      onClick={openMobile}
+      className="lg:hidden fixed top-4 left-4 z-30 p-2 rounded-lg bg-shelvarr-surface border border-shelvarr-border text-shelvarr-text-muted hover:text-shelvarr-text hover:bg-shelvarr-surface-light transition-colors"
+      aria-label="Open menu"
+    >
+      <MenuIcon className="w-6 h-6" />
+    </button>
   );
 }
 
 // Icons
+function MenuIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  );
+}
+
 function HomeIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">

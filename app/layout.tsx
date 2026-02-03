@@ -18,7 +18,7 @@ export default function RootLayout({
       <body className="min-h-screen h-full flex bg-shelvarr-bg">
         <ToastProvider>
           <SidebarWrapper />
-          <main className="flex-1 p-6 min-h-screen h-full overflow-auto">
+          <main className="flex-1 p-6 pt-16 lg:pt-6 min-h-screen h-full overflow-auto">
             {children}
           </main>
         </ToastProvider>

@@ -1,8 +1,8 @@
 import { getSidebarCounts } from '@/lib/actions/stats';
-import { Sidebar } from './Sidebar';
+import { SidebarClient } from './SidebarClient';
 
 export async function SidebarWrapper() {
   const counts = await getSidebarCounts();
 
-  return <Sidebar counts={counts} />;
+  return <SidebarClient counts={counts} />;
 }
