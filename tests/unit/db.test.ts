@@ -346,5 +346,233 @@ describe('Database Operations', () => {
         assert.strictEqual(acquired.id, book2.id);
       });
     });
+
+    describe('isBookWanted', () => {
+      it('should return true when book is wanted by hardcover ID', async () => {
+        if (!db) return;
+
+        db.addWantedBook({
+          title: 'Test Book',
+          hardcover_id: 'hc_test_123',
+        });
+
+        const result = db.isBookWanted('hc_test_123', undefined, undefined);
+        assert.strictEqual(result, true);
+      });
+
+      it('should return true when book is wanted by ISBN', async () => {
+        if (!db) return;
+
+        db.addWantedBook({
+          title: 'Test Book',
+          isbn: '9781234567890',
+        });
+
+        const result = db.isBookWanted(undefined, '9781234567890', undefined);
+        assert.strictEqual(result, true);
+      });
+
+      it('should return true when book is wanted by title', async () => {
+        if (!db) return;
+
+        db.addWantedBook({
+          title: 'Unique Test Title',
+        });
+
+        const result = db.isBookWanted(undefined, undefined, 'Unique Test Title');
+        assert.strictEqual(result, true);
+      });
+
+      it('should return false when book is not wanted', async () => {
+        if (!db) return;
+
+        const result = db.isBookWanted('nonexistent', 'nonexistent', 'nonexistent');
+        assert.strictEqual(result, false);
+      });
+
+      it('should prioritize hardcover ID check', async () => {
+        if (!db) return;
+
+        db.addWantedBook({
+          title: 'Test Book',
+          hardcover_id: 'hc_priority',
+        });
+
+        const result = db.isBookWanted('hc_priority', 'nonexistent', 'nonexistent');
+        assert.strictEqual(result, true);
+      });
+    });
+
+    describe('updateWantedBook edge cases', () => {
+      it('should return false when no fields to update', async () => {
+        if (!db) return;
+
+        const book = db.addWantedBook({ title: 'Test Book' });
+        assert.ok(book);
+
+        const result = db.updateWantedBook(book.id, {});
+        assert.strictEqual(result, false);
+      });
+    });
+  });
+
+  describe('download source config', () => {
+    beforeEach(async () => {
+      if (!db) return;
+      const database = db.getDb();
+      database.exec('DELETE FROM download_source_config');
+    });
+
+    it('should get empty download source configs', async () => {
+      if (!db) return;
+
+      const configs = db.getDownloadSourceConfigs();
+      assert.ok(Array.isArray(configs));
+    });
+
+    it('should upsert and get download source config', async () => {
+      if (!db) return;
+
+      db.upsertDownloadSourceConfig('test_source', true, { apiKey: 'test123' });
+
+      const config = db.getDownloadSourceConfig('test_source');
+      assert.ok(config);
+      assert.strictEqual(config.source, 'test_source');
+      assert.strictEqual(config.enabled, 1);
+      assert.ok(config.credentials?.includes('apiKey'));
+    });
+
+    it('should update existing download source config', async () => {
+      if (!db) return;
+
+      db.upsertDownloadSourceConfig('test_source', true);
+      db.upsertDownloadSourceConfig('test_source', false);
+
+      const config = db.getDownloadSourceConfig('test_source');
+      assert.ok(config);
+      assert.strictEqual(config.enabled, 0);
+    });
+
+    it('should return null for nonexistent config', async () => {
+      if (!db) return;
+
+      const config = db.getDownloadSourceConfig('nonexistent');
+      assert.strictEqual(config, null);
+    });
+
+    it('should check if source is enabled', async () => {
+      if (!db) return;
+
+      // Default is enabled
+      assert.strictEqual(db.isSourceEnabled('unknown_source'), true);
+
+      db.upsertDownloadSourceConfig('disabled_source', false);
+      assert.strictEqual(db.isSourceEnabled('disabled_source'), false);
+
+      db.upsertDownloadSourceConfig('enabled_source', true);
+      assert.strictEqual(db.isSourceEnabled('enabled_source'), true);
+    });
+  });
+
+  describe('source status cache', () => {
+    beforeEach(async () => {
+      if (!db) return;
+      const database = db.getDb();
+      database.exec('DELETE FROM source_status_cache');
+    });
+
+    it('should get empty source status cache', async () => {
+      if (!db) return;
+
+      const cache = db.getSourceStatusCache();
+      assert.ok(Array.isArray(cache));
+      assert.strictEqual(cache.length, 0);
+    });
+
+    it('should update and get source status', async () => {
+      if (!db) return;
+
+      db.updateSourceStatus('test_source', 'up', 150);
+
+      const status = db.getSourceStatus('test_source');
+      assert.ok(status);
+      assert.strictEqual(status.source, 'test_source');
+      assert.strictEqual(status.status, 'up');
+      assert.strictEqual(status.response_time, 150);
+    });
+
+    it('should update existing source status', async () => {
+      if (!db) return;
+
+      db.updateSourceStatus('test_source', 'up', 100);
+      db.updateSourceStatus('test_source', 'down', 500);
+
+      const status = db.getSourceStatus('test_source');
+      assert.ok(status);
+      assert.strictEqual(status.status, 'down');
+      assert.strictEqual(status.response_time, 500);
+    });
+
+    it('should handle status update without response time', async () => {
+      if (!db) return;
+
+      db.updateSourceStatus('test_source', 'unknown');
+
+      const status = db.getSourceStatus('test_source');
+      assert.ok(status);
+      assert.strictEqual(status.status, 'unknown');
+      assert.strictEqual(status.response_time, null);
+    });
+
+    it('should return null for nonexistent source status', async () => {
+      if (!db) return;
+
+      const status = db.getSourceStatus('nonexistent');
+      assert.strictEqual(status, null);
+    });
+
+    it('should check if status cache is stale when empty', async () => {
+      if (!db) return;
+
+      const isStale = db.isStatusCacheStale(5);
+      assert.strictEqual(isStale, true);
+    });
+
+    it('should check if status cache is fresh', async () => {
+      if (!db) return;
+
+      db.updateSourceStatus('test_source', 'up', 100);
+
+      const isStale = db.isStatusCacheStale(5);
+      assert.strictEqual(isStale, false);
+    });
+
+    it('should check if status cache is stale after timeout', async () => {
+      if (!db) return;
+
+      // Update with old timestamp by directly inserting
+      const database = db.getDb();
+      database.exec(`
+        INSERT INTO source_status_cache (source, status, response_time, last_updated)
+        VALUES ('old_source', 'up', 100, datetime('now', '-10 minutes'))
+      `);
+
+      const isStale = db.isStatusCacheStale(5);
+      assert.strictEqual(isStale, true);
+    });
+  });
+
+  describe('insertReturning', () => {
+    it('should handle insert without RETURNING clause', async () => {
+      if (!db) return;
+
+      const result = db.insertReturning<{ id: number }>(
+        'INSERT INTO libraries (name, path) VALUES (?, ?)',
+        ['Test Library', '/test/path']
+      );
+
+      assert.ok(result);
+      assert.ok(result.id > 0);
+    });
   });
 });

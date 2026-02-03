@@ -335,6 +335,53 @@ if (canRunTests) {
         assert.strictEqual(stats.failed, 0);
       });
     });
+
+    describe('getTasks with statuses array', () => {
+      it('should filter by multiple statuses', () => {
+        const task1 = createTask('scan');
+        const task2 = createTask('metadata');
+        const task3 = createTask('organize');
+        const task4 = createTask('download');
+
+        startTask(task2.id);
+        completeTask(task3.id, {});
+        failTask(task4.id, 'error');
+
+        const result = getTasks({ statuses: ['running', 'completed'] });
+
+        assert.strictEqual(result.tasks.length, 2);
+        assert.ok(result.tasks.every(t => t.status === 'running' || t.status === 'completed'));
+      });
+
+      it('should handle empty statuses array', () => {
+        createTask('scan');
+        createTask('metadata');
+
+        const result = getTasks({ statuses: [] });
+
+        assert.strictEqual(result.tasks.length, 2);
+      });
+    });
+
+    describe('rowToTask with invalid JSON', () => {
+      it('should handle invalid JSON in result field', () => {
+        const task = createTask('scan');
+        // Update with invalid JSON
+        execute('UPDATE tasks SET result = ? WHERE id = ?', ['invalid json{', task.id]);
+
+        const retrieved = getTask(task.id);
+        assert.ok(retrieved);
+        assert.strictEqual(retrieved.result, 'invalid json{');
+        assert.strictEqual(retrieved.data, undefined);
+      });
+    });
+
+    describe('cancelTask with non-existent task', () => {
+      it('should return true even for non-existent task', () => {
+        const result = cancelTask(99999);
+        assert.strictEqual(result, true);
+      });
+    });
   });
 } else {
   // Placeholder test when native modules aren't available

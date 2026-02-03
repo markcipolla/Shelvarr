@@ -39,6 +39,14 @@ describe('Authors Utilities', () => {
       assert.deepStrictEqual(result, ['[Adrian Tchaikovsky']);
     });
 
+    it('should handle array passed directly (defensive check)', () => {
+      // This tests the defensive Array.isArray check on lines 11-13
+      // TypeScript says it should be string | null | undefined, but we handle arrays defensively
+      const arrayInput = ['Already', 'An', 'Array'] as unknown as string;
+      const result = parseAuthors(arrayInput);
+      assert.deepStrictEqual(result, ['Already', 'An', 'Array']);
+    });
+
     it('should handle JSON array with empty strings', () => {
       const result = parseAuthors('["Adrian Tchaikovsky","","Brandon Sanderson"]');
       assert.deepStrictEqual(result, ['Adrian Tchaikovsky', '', 'Brandon Sanderson']);
