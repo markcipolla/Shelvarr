@@ -23,7 +23,7 @@ export interface GetBooksParams {
 export async function getBooks(params: GetBooksParams = {}) {
   return getBooksFromDb({
     page: params.page || 1,
-    pageSize: params.pageSize || 24,
+    pageSize: params.pageSize || 20,
     libraryId: params.libraryId,
     search: params.search,
     unmatchedOnly: params.unmatchedOnly,

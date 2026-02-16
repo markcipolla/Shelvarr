@@ -21,7 +21,7 @@ export default async function UnmatchedPage({ searchParams }: PageProps) {
   const search = params.search || '';
 
   const [booksResult, libraries] = await Promise.all([
-    getBooks({ page, pageSize: 24, libraryId, search, unmatchedOnly: true }),
+    getBooks({ page, pageSize: 20, libraryId, search, unmatchedOnly: true }),
     getLibraries(),
   ]);
 
