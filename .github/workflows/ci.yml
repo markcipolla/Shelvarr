@@ -29,6 +29,8 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    env:
+      HARDCOVER_API_TOKEN: test-token-for-ci
     steps:
       - uses: actions/checkout@v4
 
