@@ -210,8 +210,8 @@ export async function getAuthorsFromBooks(search?: string): Promise<Array<{
     };
   });
 
-  // Sort by book count descending
-  result.sort((a, b) => b.bookCount - a.bookCount);
+  // Sort alphabetically by author name
+  result.sort((a, b) => a.name.localeCompare(b.name));
 
   return result;
 }
