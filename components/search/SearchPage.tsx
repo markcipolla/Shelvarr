@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import { addToWanted } from '@/lib/actions/wanted';
+import { BookIcon, LoadingSpinner } from '@/components/ui/Icons';
+import { HardcoverNotConfigured } from '@/components/ui/HardcoverNotConfigured';
 import type { SearchResultWithStatus } from '@/app/search/page';
 
 interface SearchPageProps {
@@ -56,31 +58,15 @@ export function SearchPage({ initialQuery, initialResults, isConfigured }: Searc
 
       {/* Not configured warning */}
       {!isConfigured && (
-        <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-          <div className="flex items-start gap-3">
-            <svg className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <div>
-              <p className="text-yellow-500 font-medium">Hardcover API key not configured</p>
-              <p className="text-sm text-shelvarr-text-muted mt-1">
-                To search for books, you need to add your Hardcover API key in settings.
-              </p>
-              <Link
-                href="/settings"
-                className="inline-block mt-2 text-sm text-blue-400 hover:text-blue-300"
-              >
-                Go to Settings →
-              </Link>
-            </div>
-          </div>
-        </div>
+        <HardcoverNotConfigured
+          description="To search for books, you need to add your Hardcover API key in settings."
+        />
       )}
 
       {/* Loading state */}
       {isPending && (
         <div className="flex justify-center py-12">
-          <LoadingSpinner />
+          <LoadingSpinner className="w-8 h-8 animate-spin text-shelvarr-text-muted" />
         </div>
       )}
 
@@ -149,7 +135,7 @@ function SearchResultCard({ result }: { result: SearchResultWithStatus }) {
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-shelvarr-text-muted">
-            <BookIcon />
+            <BookIcon className="w-12 h-12" />
           </div>
         )}
         {/* Want button overlay */}
@@ -184,24 +170,3 @@ function SearchResultCard({ result }: { result: SearchResultWithStatus }) {
   );
 }
 
-function BookIcon() {
-  return (
-    <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1}
-        d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-      />
-    </svg>
-  );
-}
-
-function LoadingSpinner() {
-  return (
-    <svg className="w-8 h-8 animate-spin text-shelvarr-text-muted" fill="none" viewBox="0 0 24 24">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-    </svg>
-  );
-}

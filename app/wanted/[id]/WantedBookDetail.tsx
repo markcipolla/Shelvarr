@@ -12,6 +12,7 @@ import {
 import type { SourceStatus } from '@/lib/services/downloads';
 import { DownloadSourcesModal } from '@/components/wanted/DownloadSourcesModal';
 import { SourceStatusBar } from '@/components/wanted/SourceStatusBadge';
+import { BookIcon } from '@/components/ui/Icons';
 
 interface WantedBookDetailProps {
   book: WantedBook;
@@ -75,7 +76,7 @@ export function WantedBookDetail({ book, sourceStatuses }: WantedBookDetailProps
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
-                  <BookIcon />
+                  <BookIcon className="w-24 h-24 text-shelvarr-text-muted" />
                 </div>
               )}
             </div>
@@ -209,23 +210,5 @@ export function WantedBookDetail({ book, sourceStatuses }: WantedBookDetailProps
         <DownloadSourcesModal book={book} onClose={() => setShowDownloads(false)} />
       )}
     </>
-  );
-}
-
-function BookIcon() {
-  return (
-    <svg
-      className="w-24 h-24 text-shelvarr-text-muted"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.5}
-        d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-      />
-    </svg>
   );
 }
