@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach, after, mock } from 'node:test';
 import assert from 'node:assert';
-import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync } from 'fs';
+import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
@@ -488,7 +488,7 @@ if (canRunTests) {
         assert.strictEqual(updated.status, 'completed');
 
         // Filename should be truncated to 200 chars
-        const files = require('fs').readdirSync(join(testLibPath, 'Author'));
+        const files = readdirSync(join(testLibPath, 'Author'));
         const organizedFile = files[0];
         assert.ok(organizedFile.length <= 205); // 200 + ".epub"
       });
