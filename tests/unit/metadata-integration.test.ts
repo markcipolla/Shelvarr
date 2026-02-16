@@ -9,7 +9,7 @@ import assert from 'node:assert';
 // Store original fetch
 let originalFetch: typeof global.fetch;
 
-describe('Metadata Service Integration', () => {
+describe('Metadata Service Integration', { timeout: 30_000 }, () => {
   beforeEach(() => {
     originalFetch = global.fetch;
   });

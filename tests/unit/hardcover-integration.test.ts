@@ -7,7 +7,7 @@ import assert from 'node:assert';
 
 let originalFetch: typeof global.fetch;
 
-describe('Hardcover Service Integration', () => {
+describe('Hardcover Service Integration', { timeout: 30_000 }, () => {
   beforeEach(() => {
     originalFetch = global.fetch;
   });
