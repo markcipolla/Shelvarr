@@ -9,11 +9,19 @@
  * a test database instance.
  */
 
-import { describe, it, beforeEach, afterEach, after } from 'node:test';
+import { describe, it, beforeEach, afterEach, after, mock } from 'node:test';
 import assert from 'node:assert';
 import { mkdtempSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+
+// Mock next/cache to prevent revalidatePath errors outside Next.js server context
+mock.module('next/cache', {
+  namedExports: {
+    revalidatePath: () => {},
+    revalidateTag: () => {},
+  },
+});
 
 // Check if we can run database tests
 let canRunTests = true;
@@ -764,8 +772,8 @@ if (canRunTests) {
       });
 
       it('should return all tasks', async () => {
-        execute(`INSERT INTO tasks (type, status, data) VALUES ('scan', 'pending', '{}')`, []);
-        execute(`INSERT INTO tasks (type, status, data) VALUES ('metadata', 'completed', '{}')`, []);
+        execute(`INSERT INTO tasks (type, status, result) VALUES ('scan', 'pending', '{}')`, []);
+        execute(`INSERT INTO tasks (type, status, result) VALUES ('metadata', 'completed', '{}')`, []);
 
         const { getTasks } = await import('../../lib/actions/tasks.js');
         const result = await getTasks();
@@ -775,8 +783,8 @@ if (canRunTests) {
       });
 
       it('should filter by status', async () => {
-        execute(`INSERT INTO tasks (type, status, data) VALUES ('scan', 'pending', '{}')`, []);
-        execute(`INSERT INTO tasks (type, status, data) VALUES ('metadata', 'completed', '{}')`, []);
+        execute(`INSERT INTO tasks (type, status, result) VALUES ('scan', 'pending', '{}')`, []);
+        execute(`INSERT INTO tasks (type, status, result) VALUES ('metadata', 'completed', '{}')`, []);
 
         const { getTasks } = await import('../../lib/actions/tasks.js');
         const result = await getTasks({ status: 'pending' });
@@ -787,7 +795,7 @@ if (canRunTests) {
 
       it('should apply limit', async () => {
         for (let i = 0; i < 10; i++) {
-          execute(`INSERT INTO tasks (type, status, data) VALUES ('scan', 'pending', '{}')`, []);
+          execute(`INSERT INTO tasks (type, status, result) VALUES ('scan', 'pending', '{}')`, []);
         }
 
         const { getTasks } = await import('../../lib/actions/tasks.js');
@@ -800,7 +808,7 @@ if (canRunTests) {
 
     describe('getTaskById', () => {
       it('should return task by ID', async () => {
-        const taskId = execute(`INSERT INTO tasks (type, status, data) VALUES ('scan', 'pending', '{}')`, []).lastInsertRowid as number;
+        const taskId = execute(`INSERT INTO tasks (type, status, result) VALUES ('scan', 'pending', '{}')`, []).lastInsertRowid as number;
 
         const { getTaskById } = await import('../../lib/actions/tasks.js');
         const result = await getTaskById(taskId);
@@ -819,7 +827,7 @@ if (canRunTests) {
 
     describe('cancelTask', () => {
       it('should cancel a pending task', async () => {
-        const taskId = execute(`INSERT INTO tasks (type, status, data) VALUES ('scan', 'pending', '{}')`, []).lastInsertRowid as number;
+        const taskId = execute(`INSERT INTO tasks (type, status, result) VALUES ('scan', 'pending', '{}')`, []).lastInsertRowid as number;
 
         const { cancelTask } = await import('../../lib/actions/tasks.js');
         const result = await cancelTask(taskId);
@@ -836,12 +844,12 @@ if (canRunTests) {
       it('should cleanup old tasks', async () => {
         // Insert old task (simulate by manually setting created_at)
         execute(`
-          INSERT INTO tasks (type, status, data, created_at)
+          INSERT INTO tasks (type, status, result, created_at)
           VALUES ('scan', 'completed', '{}', datetime('now', '-10 days'))
         `, []);
 
         // Insert recent task
-        execute(`INSERT INTO tasks (type, status, data) VALUES ('scan', 'pending', '{}')`, []);
+        execute(`INSERT INTO tasks (type, status, result) VALUES ('scan', 'pending', '{}')`, []);
 
         const { cleanupTasks } = await import('../../lib/actions/tasks.js');
         const result = await cleanupTasks(7);

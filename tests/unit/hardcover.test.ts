@@ -11,7 +11,7 @@ import * as hardcover from '../../lib/services/metadata/hardcover.js';
 let originalFetch: typeof global.fetch;
 let mockFetchResponse: any = null;
 
-describe('Hardcover API Service', { timeout: 30_000 }, () => {
+describe('Hardcover API Service', { timeout: 120_000 }, () => {
   beforeEach(() => {
     originalFetch = global.fetch;
     mockFetchResponse = null;

@@ -3,13 +3,12 @@
  * Tests Sidebar and MobileMenuButton components
  */
 
-import { describe, it, mock, beforeEach } from 'node:test';
+import { describe, it, mock, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import '../../../tests/setup-react.js';
-import { render, screen, waitFor } from '@testing-library/react';
+import React from 'react';
+import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
-import { Sidebar, MobileMenuButton } from '../../../components/Sidebar.js';
-import { SidebarProvider } from '../../../components/SidebarContext.js';
 
 // Mock next/link
 const mockLinks: any[] = [];
@@ -29,18 +28,33 @@ const mockUsePathname = () => mockPathname;
 // Mock GlobalSearch component
 const GlobalSearch = () => <div data-testid="global-search">GlobalSearch</div>;
 
-// Apply mocks
-mock.module('../../../node_modules/next/link.js', () => ({ default: Link }));
-mock.module('../../../node_modules/next/navigation.js', () => ({
-  usePathname: mockUsePathname,
-}));
-mock.module('../../../components/GlobalSearch.js', () => ({
-  GlobalSearch,
-}));
+// Apply mocks BEFORE dynamic imports
+mock.module('next/link', {
+  namedExports: {},
+  defaultExport: Link,
+});
+mock.module('next/navigation', {
+  namedExports: {
+    usePathname: mockUsePathname,
+  },
+});
+mock.module('../../../components/GlobalSearch.js', {
+  namedExports: {
+    GlobalSearch,
+  },
+});
+
+// Dynamic imports after mocks are applied
+const { Sidebar, MobileMenuButton } = await import('../../../components/Sidebar.js');
+const { SidebarProvider } = await import('../../../components/SidebarContext.js');
 
 describe('Sidebar Component', () => {
   beforeEach(() => {
     mockLinks.length = 0;
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   describe('Rendering', () => {
@@ -725,9 +739,11 @@ describe('Sidebar Component', () => {
       await user.click(toggleButton);
       await user.click(toggleButton);
 
-      // Should end up expanded (clicked 3 times)
+      // 3 toggles: expanded → collapsed → expanded → collapsed
+      // Should end up collapsed after odd number of clicks
       await waitFor(() => {
-        assert.ok(screen.getByText('Shelvarr'));
+        const sidebar = document.querySelector('aside');
+        assert.ok(sidebar?.className.includes('w-16'));
       });
     });
 

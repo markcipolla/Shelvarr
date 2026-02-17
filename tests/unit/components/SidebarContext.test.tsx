@@ -7,18 +7,20 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import '../../../tests/setup-react.js';
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { SidebarProvider, useSidebar } from '../../../components/SidebarContext.js';
 
 describe('SidebarContext', () => {
   let listeners: { [key: string]: EventListener[] } = {};
+  let originalAddEventListener: typeof document.addEventListener;
+  let originalRemoveEventListener: typeof document.removeEventListener;
 
   beforeEach(() => {
-    // Mock event listeners
+    // Mock event listeners - save originals only once
     listeners = {};
-    const originalAddEventListener = document.addEventListener;
-    const originalRemoveEventListener = document.removeEventListener;
+    originalAddEventListener = document.addEventListener;
+    originalRemoveEventListener = document.removeEventListener;
 
     document.addEventListener = function(type: string, listener: EventListener) {
       if (!listeners[type]) {
@@ -37,12 +39,11 @@ describe('SidebarContext', () => {
   });
 
   afterEach(() => {
-    // Clean up listeners
-    Object.keys(listeners).forEach(type => {
-      listeners[type].forEach(listener => {
-        document.removeEventListener(type, listener);
-      });
-    });
+    // Clean up React rendering
+    cleanup();
+    // Restore original event listeners to prevent stacking wrappers
+    document.addEventListener = originalAddEventListener;
+    document.removeEventListener = originalRemoveEventListener;
   });
 
   describe('SidebarProvider', () => {
@@ -98,6 +99,7 @@ describe('SidebarContext', () => {
     });
 
     it('should add escape key listener on mount', () => {
+      const keydownBefore = listeners.keydown?.length || 0;
       render(
         <SidebarProvider>
           <div>Test</div>
@@ -105,7 +107,7 @@ describe('SidebarContext', () => {
       );
 
       assert.ok(listeners.keydown);
-      assert.strictEqual(listeners.keydown.length, 1);
+      assert.strictEqual(listeners.keydown.length, keydownBefore + 1);
     });
 
     it('should remove escape key listener on unmount', () => {
