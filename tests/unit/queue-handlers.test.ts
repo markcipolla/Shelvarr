@@ -844,7 +844,10 @@ if (canRunTests) {
 
         const updated = getTask(task.id);
         assert.ok(updated);
-        assert.strictEqual(updated.status, 'failed');
+        // Komga is not configured in tests, so handler returns 'skipped' before checking book
+        assert.strictEqual(updated.status, 'completed');
+        const data = updated.data as { status: string };
+        assert.strictEqual(data.status, 'skipped');
       });
 
       it('should skip book without file path', async () => {

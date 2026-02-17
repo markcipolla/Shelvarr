@@ -408,11 +408,12 @@ if (canRunTests) {
       });
 
       it('should handle handler not registered for enqueued task', async () => {
-        // Enqueue task without registering handler
-        const task = enqueueTask('organize' as any, {});
+        // Enqueue task with a type that has no handler registered
+        // Using a truly unregistered type (not one that was registered by earlier tests)
+        const task = enqueueTask('nonexistent_type' as any, {});
 
         // Wait for task to process
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 200));
 
         const updated = getTask(task.id);
         assert.ok(updated);

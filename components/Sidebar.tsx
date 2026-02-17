@@ -6,6 +6,7 @@ import { GlobalSearch } from './GlobalSearch';
 import { useSidebar } from './SidebarContext';
 import type { SidebarCounts } from '@/lib/actions/stats';
 import { APP_VERSION } from '@/lib/constants';
+import { BookIcon, AuthorIcon, SeriesIcon } from '@/components/ui/Icons';
 
 interface NavItem {
   href: string;
@@ -21,7 +22,7 @@ const navItems: NavItem[] = [
   { href: '/books', label: 'Books', icon: BookIcon, countKey: 'books', countColor: 'blue' },
   { href: '/unmatched', label: 'Unmatched', icon: UnmatchedIcon, countKey: 'unmatched', countColor: 'orange' },
   { href: '/wanted', label: 'Wanted', icon: WantedIcon },
-  { href: '/series', label: 'Series', icon: CollectionIcon },
+  { href: '/series', label: 'Series', icon: SeriesIcon },
   { href: '/authors', label: 'Authors', icon: AuthorIcon },
   { href: '/tasks', label: 'Tasks', icon: QueueIcon },
   { href: '/settings', label: 'Settings', icon: SettingsIcon },
@@ -193,29 +194,6 @@ function FolderIcon({ className }: { className?: string }) {
   );
 }
 
-function BookIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-    </svg>
-  );
-}
-
-function CollectionIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-    </svg>
-  );
-}
-
-function AuthorIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-    </svg>
-  );
-}
 
 function QueueIcon({ className }: { className?: string }) {
   return (

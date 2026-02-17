@@ -1,6 +1,42 @@
 import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert';
-import {
+
+// Mock the hardcover module BEFORE importing metadata service
+// ESM modules have read-only exports, so we must use mock.module()
+const mockIsConfigured = mock.fn(() => false);
+const mockSearchBooks = mock.fn(async (_query: string, _maxResults: number) => [] as any[]);
+const mockSearchByIsbn = mock.fn(async (_isbn: string) => null as any);
+const mockGetBookById = mock.fn(async (_id: string) => null as any);
+
+mock.module('../../lib/services/metadata/hardcover.js', {
+  namedExports: {
+    isConfigured: mockIsConfigured,
+    searchBooks: mockSearchBooks,
+    searchByIsbn: mockSearchByIsbn,
+    getBookById: mockGetBookById,
+    searchSeries: mock.fn(async () => null),
+    getSeriesById: mock.fn(async () => null),
+  },
+});
+
+// Define the BookMetadata type locally (matches the one from the module)
+interface BookMetadata {
+  title: string;
+  authors: string;
+  publisher?: string;
+  publishDate?: string;
+  description?: string;
+  isbn?: string;
+  coverUrl?: string;
+  pageCount?: number;
+  categories?: string[];
+  series?: Array<[string, number | null]>;
+  source: 'hardcover';
+  sourceId: string;
+}
+
+// Now import the metadata service (which will use the mocked hardcover)
+const {
   scoreResult,
   isConfigured,
   getAllSourcesStatus,
@@ -8,9 +44,7 @@ import {
   searchByIsbn,
   getBookBySourceId,
   autoMatch,
-  type BookMetadata
-} from '../../lib/services/metadata/index.js';
-import * as hardcover from '../../lib/services/metadata/hardcover.js';
+} = await import('../../lib/services/metadata/index.js');
 
 describe('Metadata Service - Scoring', () => {
   // Helper to create a mock BookMetadata
@@ -23,6 +57,13 @@ describe('Metadata Service - Scoring', () => {
       ...overrides,
     };
   }
+
+  beforeEach(() => {
+    mockIsConfigured.mock.resetCalls();
+    mockSearchBooks.mock.resetCalls();
+    mockSearchByIsbn.mock.resetCalls();
+    mockGetBookById.mock.resetCalls();
+  });
 
   describe('scoreResult', () => {
     describe('title matching', () => {
@@ -224,6 +265,7 @@ describe('Metadata Service - Scoring', () => {
 
   describe('isConfigured', () => {
     it('should return boolean indicating if hardcover is configured', () => {
+      mockIsConfigured.mock.mockImplementation(() => true);
       const result = isConfigured();
       assert.strictEqual(typeof result, 'boolean');
     });
@@ -231,6 +273,7 @@ describe('Metadata Service - Scoring', () => {
 
   describe('getAllSourcesStatus', () => {
     it('should return array with hardcover status', async () => {
+      mockIsConfigured.mock.mockImplementation(() => true);
       const sources = await getAllSourcesStatus();
       assert.ok(Array.isArray(sources));
       assert.strictEqual(sources.length, 1);
@@ -243,6 +286,7 @@ describe('Metadata Service - Scoring', () => {
     });
 
     it('should have enabled matching configured status', async () => {
+      mockIsConfigured.mock.mockImplementation(() => false);
       const sources = await getAllSourcesStatus();
       assert.strictEqual(sources[0].enabled, sources[0].configured);
     });
@@ -250,94 +294,50 @@ describe('Metadata Service - Scoring', () => {
 
   describe('searchBooks', () => {
     it('should return empty array when hardcover is not configured', async () => {
-      const origIsConfigured = hardcover.isConfigured;
-      hardcover.isConfigured = () => false;
+      mockIsConfigured.mock.mockImplementation(() => false);
 
       const results = await searchBooks('test query');
       assert.deepStrictEqual(results, []);
-
-      hardcover.isConfigured = origIsConfigured;
     });
 
     it('should call hardcover.searchBooks when configured', async () => {
-      const origIsConfigured = hardcover.isConfigured;
-      const origSearchBooks = hardcover.searchBooks;
-
-      let called = false;
-      let receivedQuery = '';
-      let receivedMaxResults = 0;
-
-      hardcover.isConfigured = () => true;
-      hardcover.searchBooks = async (query: string, maxResults: number) => {
-        called = true;
-        receivedQuery = query;
-        receivedMaxResults = maxResults;
-        return [];
-      };
+      mockIsConfigured.mock.mockImplementation(() => true);
+      mockSearchBooks.mock.mockImplementation(async () => []);
 
       await searchBooks('test query', { maxResults: 5 });
 
-      assert.ok(called);
-      assert.strictEqual(receivedQuery, 'test query');
-      assert.strictEqual(receivedMaxResults, 5);
-
-      hardcover.isConfigured = origIsConfigured;
-      hardcover.searchBooks = origSearchBooks;
+      assert.strictEqual(mockSearchBooks.mock.callCount(), 1);
+      assert.strictEqual(mockSearchBooks.mock.calls[0].arguments[0], 'test query');
+      assert.strictEqual(mockSearchBooks.mock.calls[0].arguments[1], 5);
     });
 
     it('should use default maxResults of 10 when not specified', async () => {
-      const origIsConfigured = hardcover.isConfigured;
-      const origSearchBooks = hardcover.searchBooks;
-
-      let receivedMaxResults = 0;
-
-      hardcover.isConfigured = () => true;
-      hardcover.searchBooks = async (query: string, maxResults: number) => {
-        receivedMaxResults = maxResults;
-        return [];
-      };
+      mockIsConfigured.mock.mockImplementation(() => true);
+      mockSearchBooks.mock.mockImplementation(async () => []);
 
       await searchBooks('test query');
 
-      assert.strictEqual(receivedMaxResults, 10);
-
-      hardcover.isConfigured = origIsConfigured;
-      hardcover.searchBooks = origSearchBooks;
+      assert.strictEqual(mockSearchBooks.mock.callCount(), 1);
+      assert.strictEqual(mockSearchBooks.mock.calls[0].arguments[1], 10);
     });
   });
 
   describe('searchByIsbn', () => {
     it('should return null when hardcover is not configured', async () => {
-      const origIsConfigured = hardcover.isConfigured;
-      hardcover.isConfigured = () => false;
+      mockIsConfigured.mock.mockImplementation(() => false);
 
       const result = await searchByIsbn('9780385121675');
       assert.strictEqual(result, null);
-
-      hardcover.isConfigured = origIsConfigured;
     });
 
     it('should call hardcover.searchByIsbn when configured', async () => {
-      const origIsConfigured = hardcover.isConfigured;
-      const origSearchByIsbn = hardcover.searchByIsbn;
-
-      let called = false;
-      let receivedIsbn = '';
-
-      hardcover.isConfigured = () => true;
-      hardcover.searchByIsbn = async (isbn: string) => {
-        called = true;
-        receivedIsbn = isbn;
-        return null;
-      };
+      mockIsConfigured.mock.mockImplementation(() => true);
+      mockSearchByIsbn.mock.mockImplementation(async () => null);
 
       await searchByIsbn('9780385121675');
 
-      assert.ok(called);
-      assert.strictEqual(receivedIsbn, '9780385121675');
-
-      hardcover.isConfigured = origIsConfigured;
-      hardcover.searchByIsbn = origSearchByIsbn;
+      assert.strictEqual(mockSearchByIsbn.mock.callCount(), 1);
+      assert.strictEqual(mockSearchByIsbn.mock.calls[0].arguments[0], '9780385121675');
     });
   });
 
@@ -348,42 +348,24 @@ describe('Metadata Service - Scoring', () => {
     });
 
     it('should call hardcover.getBookById for hardcover source', async () => {
-      const origGetBookById = hardcover.getBookById;
-
-      let called = false;
-      let receivedId = '';
-
-      hardcover.getBookById = async (id: string) => {
-        called = true;
-        receivedId = id;
-        return null;
-      };
+      mockGetBookById.mock.mockImplementation(async () => null);
 
       await getBookBySourceId('hardcover', '123');
 
-      assert.ok(called);
-      assert.strictEqual(receivedId, '123');
-
-      hardcover.getBookById = origGetBookById;
+      assert.strictEqual(mockGetBookById.mock.callCount(), 1);
+      assert.strictEqual(mockGetBookById.mock.calls[0].arguments[0], '123');
     });
   });
 
   describe('autoMatch', () => {
     it('should return null when hardcover is not configured', async () => {
-      const origIsConfigured = hardcover.isConfigured;
-      hardcover.isConfigured = () => false;
+      mockIsConfigured.mock.mockImplementation(() => false);
 
       const result = await autoMatch('The Shining', 'Stephen King');
       assert.strictEqual(result, null);
-
-      hardcover.isConfigured = origIsConfigured;
     });
 
     it('should try ISBN search first when ISBN is provided', async () => {
-      const origIsConfigured = hardcover.isConfigured;
-      const origSearchByIsbn = hardcover.searchByIsbn;
-
-      let isbnCalled = false;
       const mockResult: BookMetadata = {
         title: 'Test Book',
         authors: 'Test Author',
@@ -392,27 +374,16 @@ describe('Metadata Service - Scoring', () => {
         sourceId: '123',
       };
 
-      hardcover.isConfigured = () => true;
-      hardcover.searchByIsbn = async (isbn: string) => {
-        isbnCalled = true;
-        return mockResult;
-      };
+      mockIsConfigured.mock.mockImplementation(() => true);
+      mockSearchByIsbn.mock.mockImplementation(async () => mockResult);
 
       const result = await autoMatch('Test Book', 'Test Author', '9780385121675');
 
-      assert.ok(isbnCalled);
+      assert.ok(mockSearchByIsbn.mock.callCount() >= 1);
       assert.deepStrictEqual(result, mockResult);
-
-      hardcover.isConfigured = origIsConfigured;
-      hardcover.searchByIsbn = origSearchByIsbn;
     });
 
     it('should fall back to text search when ISBN search returns null', async () => {
-      const origIsConfigured = hardcover.isConfigured;
-      const origSearchByIsbn = hardcover.searchByIsbn;
-      const origSearchBooks = hardcover.searchBooks;
-
-      let searchBooksCalled = false;
       const mockResult: BookMetadata = {
         title: 'Test Book',
         authors: 'Test Author',
@@ -420,80 +391,46 @@ describe('Metadata Service - Scoring', () => {
         sourceId: '123',
       };
 
-      hardcover.isConfigured = () => true;
-      hardcover.searchByIsbn = async () => null;
-      hardcover.searchBooks = async (query: string, maxResults: number) => {
-        searchBooksCalled = true;
-        assert.strictEqual(maxResults, 1);
-        return [mockResult];
-      };
+      mockIsConfigured.mock.mockImplementation(() => true);
+      mockSearchByIsbn.mock.mockImplementation(async () => null);
+      mockSearchBooks.mock.mockImplementation(async (_query: string, _maxResults: number) => [mockResult]);
 
       const result = await autoMatch('Test Book', 'Test Author', '9780385121675');
 
-      assert.ok(searchBooksCalled);
+      assert.ok(mockSearchBooks.mock.callCount() >= 1);
+      assert.strictEqual(mockSearchBooks.mock.calls[0].arguments[1], 1);
       assert.deepStrictEqual(result, mockResult);
-
-      hardcover.isConfigured = origIsConfigured;
-      hardcover.searchByIsbn = origSearchByIsbn;
-      hardcover.searchBooks = origSearchBooks;
     });
 
     it('should combine title and author in search query', async () => {
-      const origIsConfigured = hardcover.isConfigured;
-      const origSearchBooks = hardcover.searchBooks;
-
-      let receivedQuery = '';
-
-      hardcover.isConfigured = () => true;
-      hardcover.searchBooks = async (query: string) => {
-        receivedQuery = query;
-        return [];
-      };
+      mockIsConfigured.mock.mockImplementation(() => true);
+      mockSearchBooks.mock.mockImplementation(async () => []);
 
       await autoMatch('The Shining', 'Stephen King');
 
-      assert.strictEqual(receivedQuery, 'The Shining Stephen King');
-
-      hardcover.isConfigured = origIsConfigured;
-      hardcover.searchBooks = origSearchBooks;
+      assert.strictEqual(mockSearchBooks.mock.callCount(), 1);
+      assert.strictEqual(mockSearchBooks.mock.calls[0].arguments[0], 'The Shining Stephen King');
     });
 
     it('should handle missing author', async () => {
-      const origIsConfigured = hardcover.isConfigured;
-      const origSearchBooks = hardcover.searchBooks;
-
-      let receivedQuery = '';
-
-      hardcover.isConfigured = () => true;
-      hardcover.searchBooks = async (query: string) => {
-        receivedQuery = query;
-        return [];
-      };
+      mockIsConfigured.mock.mockImplementation(() => true);
+      mockSearchBooks.mock.mockImplementation(async () => []);
 
       await autoMatch('The Shining');
 
-      assert.strictEqual(receivedQuery, 'The Shining');
-
-      hardcover.isConfigured = origIsConfigured;
-      hardcover.searchBooks = origSearchBooks;
+      assert.strictEqual(mockSearchBooks.mock.callCount(), 1);
+      assert.strictEqual(mockSearchBooks.mock.calls[0].arguments[0], 'The Shining');
     });
 
     it('should return null for empty query', async () => {
-      const origIsConfigured = hardcover.isConfigured;
-
-      hardcover.isConfigured = () => true;
+      mockIsConfigured.mock.mockImplementation(() => true);
 
       const result = await autoMatch('');
 
       assert.strictEqual(result, null);
-
-      hardcover.isConfigured = origIsConfigured;
     });
 
     it('should return first result from search', async () => {
-      const origIsConfigured = hardcover.isConfigured;
-      const origSearchBooks = hardcover.searchBooks;
-
       const mockResult1: BookMetadata = {
         title: 'Test Book 1',
         authors: 'Test Author',
@@ -507,30 +444,21 @@ describe('Metadata Service - Scoring', () => {
         sourceId: '456',
       };
 
-      hardcover.isConfigured = () => true;
-      hardcover.searchBooks = async () => [mockResult1, mockResult2];
+      mockIsConfigured.mock.mockImplementation(() => true);
+      mockSearchBooks.mock.mockImplementation(async () => [mockResult1, mockResult2]);
 
       const result = await autoMatch('Test Book');
 
       assert.deepStrictEqual(result, mockResult1);
-
-      hardcover.isConfigured = origIsConfigured;
-      hardcover.searchBooks = origSearchBooks;
     });
 
     it('should return null when no results found', async () => {
-      const origIsConfigured = hardcover.isConfigured;
-      const origSearchBooks = hardcover.searchBooks;
-
-      hardcover.isConfigured = () => true;
-      hardcover.searchBooks = async () => [];
+      mockIsConfigured.mock.mockImplementation(() => true);
+      mockSearchBooks.mock.mockImplementation(async () => []);
 
       const result = await autoMatch('Nonexistent Book');
 
       assert.strictEqual(result, null);
-
-      hardcover.isConfigured = origIsConfigured;
-      hardcover.searchBooks = origSearchBooks;
     });
   });
 });

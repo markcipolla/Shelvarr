@@ -2,12 +2,13 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import type { Book } from '@/types';
 import { searchMetadata, applyMetadata } from '@/lib/actions/books';
 import { isHardcoverConfigured } from '@/lib/actions/settings';
 import type { BookMetadata } from '@/lib/services/metadata';
 import { useToast } from '@/components/ui/Toast';
+import { BookIcon } from '@/components/ui/Icons';
+import { HardcoverNotConfigured } from '@/components/ui/HardcoverNotConfigured';
 import { parseAuthors } from '@/lib/utils/authors';
 
 interface MetadataSearchModalProps {
@@ -116,25 +117,11 @@ export function MetadataSearchModal({
 
         <div className="overflow-y-auto max-h-[50vh]">
           {isConfigured === false && (
-            <div className="m-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-              <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <div>
-                  <p className="text-yellow-500 font-medium">Hardcover API key not configured</p>
-                  <p className="text-sm text-shelvarr-text-muted mt-1">
-                    To search for book metadata, you need to add your Hardcover API key in settings.
-                  </p>
-                  <Link
-                    href="/settings"
-                    className="inline-block mt-2 text-sm text-blue-400 hover:text-blue-300"
-                    onClick={onClose}
-                  >
-                    Go to Settings →
-                  </Link>
-                </div>
-              </div>
+            <div className="m-4">
+              <HardcoverNotConfigured
+                description="To search for book metadata, you need to add your Hardcover API key in settings."
+                onLinkClick={onClose}
+              />
             </div>
           )}
 
@@ -189,7 +176,7 @@ function MetadataResult({
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-shelvarr-text-muted">
-            <BookIcon />
+            <BookIcon className="w-8 h-8" />
           </div>
         )}
       </div>
@@ -235,18 +222,5 @@ function MetadataResult({
         {applying ? 'Applying...' : 'Apply'}
       </button>
     </div>
-  );
-}
-
-function BookIcon() {
-  return (
-    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.5}
-        d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-      />
-    </svg>
   );
 }

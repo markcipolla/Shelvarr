@@ -6,7 +6,7 @@
 import { createHash } from 'crypto';
 import { readFileSync, renameSync, mkdirSync, existsSync } from 'fs';
 import { dirname, basename, extname, join } from 'path';
-import { query, queryOne } from '@/lib/db';
+import { query, queryOne, execute } from '@/lib/db';
 import type { Book } from '@/types';
 
 // Smart organization:
@@ -432,7 +432,7 @@ export async function applyReorganization(
         renameSync(item.currentPath, item.newPath);
 
         // Update database
-        await query(
+        execute(
           'UPDATE books SET file_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
           [item.newPath, item.bookId]
         );
@@ -478,12 +478,12 @@ export function calculateFileHash(filePath: string): string {
  * Update file hash for a book
  */
 export async function updateBookHash(bookId: number): Promise<string | null> {
-  const book = await queryOne<Book>('SELECT file_path FROM books WHERE id = ?', [bookId]);
-  if (!book) return null;
+  const row = queryOne<{ file_path: string }>('SELECT file_path FROM books WHERE id = ?', [bookId]);
+  if (!row) return null;
 
-  const hash = calculateFileHash(book.filePath);
+  const hash = calculateFileHash(row.file_path);
   if (hash) {
-    await query('UPDATE books SET file_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [hash, bookId]);
+    execute('UPDATE books SET file_hash = ? WHERE id = ?', [hash, bookId]);
   }
 
   return hash;

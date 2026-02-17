@@ -1,23 +1,14 @@
-'use client';
-
-import { useState } from 'react';
-import { AddWantedBookModal } from './AddWantedBookModal';
+import Link from 'next/link';
 
 export function AddWantedBookButton() {
-  const [isOpen, setIsOpen] = useState(false);
-
   return (
-    <>
-      <button
-        onClick={() => setIsOpen(true)}
-        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors inline-flex items-center gap-2"
-      >
-        <PlusIcon />
-        Add Book
-      </button>
-
-      {isOpen && <AddWantedBookModal onClose={() => setIsOpen(false)} />}
-    </>
+    <Link
+      href="/search"
+      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors inline-flex items-center gap-2"
+    >
+      <PlusIcon />
+      Add Book
+    </Link>
   );
 }
 
