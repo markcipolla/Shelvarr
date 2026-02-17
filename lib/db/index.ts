@@ -445,7 +445,9 @@ export function isStatusCacheStale(maxAgeMinutes: number = 5): boolean {
   );
   if (!result?.oldest) return true;
 
-  const lastUpdate = new Date(result.oldest);
+  // SQLite CURRENT_TIMESTAMP stores UTC but without 'Z' suffix;
+  // append 'Z' so Date parses it as UTC correctly
+  const lastUpdate = new Date(result.oldest.endsWith('Z') ? result.oldest : result.oldest + 'Z');
   const now = new Date();
   const diffMinutes = (now.getTime() - lastUpdate.getTime()) / (1000 * 60);
   return diffMinutes > maxAgeMinutes;
