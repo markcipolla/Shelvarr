@@ -1005,6 +1005,14 @@ const komgaSyncHandler: TaskHandler = async (taskId, onProgress) => {
   onProgress(3, 3);
 
   if (result.success) {
+    // Persist the Komga book ID back to the database
+    if (result.komgaBookId) {
+      execute(
+        'UPDATE books SET komga_book_id = ? WHERE id = ?',
+        [result.komgaBookId, book.id]
+      );
+    }
+
     return {
       status: 'synced',
       bookId: book.id,

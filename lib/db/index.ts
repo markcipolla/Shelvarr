@@ -108,6 +108,15 @@ function runMigrations(database: Database.Database): void {
     database.exec("ALTER TABLE books ADD COLUMN extension TEXT");
   }
 
+  // Check if books table has 'komga_book_id' column
+  const hasKomgaBookIdColumn = booksInfo.some(col => col.name === 'komga_book_id');
+
+  if (!hasKomgaBookIdColumn) {
+    console.log('Running migration: adding komga_book_id column to books');
+    database.exec("ALTER TABLE books ADD COLUMN komga_book_id TEXT");
+    database.exec("CREATE INDEX IF NOT EXISTS idx_books_komga_book_id ON books(komga_book_id)");
+  }
+
   // Check if author_works table has 'language' column
   const authorWorksInfo = database.prepare("PRAGMA table_info(author_works)").all() as Array<{ name: string }>;
   const hasLanguageColumn = authorWorksInfo.some(col => col.name === 'language');

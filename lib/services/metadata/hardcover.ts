@@ -319,6 +319,156 @@ export function isConfigured(): boolean {
   return !!getApiToken();
 }
 
+// ============ Reading Status Mutations ============
+
+// Hardcover status IDs: 1=want to read, 2=currently reading, 3=read, 5=DNF
+export type HardcoverStatusId = 1 | 2 | 3 | 5;
+
+interface UserBook {
+  id: number;
+  status_id: number;
+  book_id: number;
+  started_reading_at?: string;
+  finished_reading_at?: string;
+}
+
+/**
+ * Search for a user's existing tracking of a book
+ */
+export async function searchUserBook(hardcoverId: string): Promise<UserBook | null> {
+  const query = `
+    query GetUserBook($bookId: Int!) {
+      user_books(where: { book_id: { _eq: $bookId } }) {
+        id
+        status_id
+        book_id
+        started_reading_at
+        finished_reading_at
+      }
+    }
+  `;
+
+  const data = await graphqlFetch<{ user_books?: UserBook[] }>(query, {
+    bookId: parseInt(hardcoverId, 10),
+  });
+
+  return data?.user_books?.[0] ?? null;
+}
+
+/**
+ * Add a book to user's tracking with a status
+ */
+export async function insertUserBook(
+  hardcoverId: string,
+  statusId: HardcoverStatusId,
+  startedAt?: string,
+  finishedAt?: string,
+): Promise<UserBook | null> {
+  const mutation = `
+    mutation InsertUserBook($bookId: Int!, $statusId: Int!, $startedAt: date, $finishedAt: date) {
+      insert_user_books_one(object: {
+        book_id: $bookId,
+        status_id: $statusId,
+        started_reading_at: $startedAt,
+        finished_reading_at: $finishedAt
+      }) {
+        id
+        status_id
+        book_id
+        started_reading_at
+        finished_reading_at
+      }
+    }
+  `;
+
+  const data = await graphqlFetch<{ insert_user_books_one?: UserBook }>(mutation, {
+    bookId: parseInt(hardcoverId, 10),
+    statusId,
+    startedAt: startedAt ?? null,
+    finishedAt: finishedAt ?? null,
+  });
+
+  return data?.insert_user_books_one ?? null;
+}
+
+/**
+ * Update status on an existing user book entry
+ */
+export async function updateUserBook(
+  userBookId: number,
+  statusId: HardcoverStatusId,
+  startedAt?: string,
+  finishedAt?: string,
+): Promise<UserBook | null> {
+  const mutation = `
+    mutation UpdateUserBook($id: Int!, $statusId: Int!, $startedAt: date, $finishedAt: date) {
+      update_user_books_by_pk(
+        pk_columns: { id: $id },
+        _set: {
+          status_id: $statusId,
+          started_reading_at: $startedAt,
+          finished_reading_at: $finishedAt
+        }
+      ) {
+        id
+        status_id
+        book_id
+        started_reading_at
+        finished_reading_at
+      }
+    }
+  `;
+
+  const data = await graphqlFetch<{ update_user_books_by_pk?: UserBook }>(mutation, {
+    id: userBookId,
+    statusId,
+    startedAt: startedAt ?? null,
+    finishedAt: finishedAt ?? null,
+  });
+
+  return data?.update_user_books_by_pk ?? null;
+}
+
+/**
+ * Upsert reading status — searches for existing entry, then inserts or updates
+ */
+export async function upsertReadingStatus(
+  hardcoverId: string,
+  statusId: HardcoverStatusId,
+  startedAt?: string,
+  finishedAt?: string,
+): Promise<{ success: boolean; userBook?: UserBook; error?: string }> {
+  try {
+    const existing = await searchUserBook(hardcoverId);
+
+    if (existing) {
+      // Don't downgrade: if already "read" (3), don't set back to "reading" (2)
+      if (existing.status_id === 3 && statusId === 2) {
+        return { success: true, userBook: existing };
+      }
+
+      const updated = await updateUserBook(
+        existing.id,
+        statusId,
+        startedAt ?? existing.started_reading_at,
+        finishedAt,
+      );
+      return updated
+        ? { success: true, userBook: updated }
+        : { success: false, error: 'Failed to update user book' };
+    }
+
+    const inserted = await insertUserBook(hardcoverId, statusId, startedAt, finishedAt);
+    return inserted
+      ? { success: true, userBook: inserted }
+      : { success: false, error: 'Failed to insert user book' };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`Hardcover upsertReadingStatus error: ${message}`);
+    return { success: false, error: message };
+  }
+}
+
 /**
  * Series book info from Hardcover
  */
