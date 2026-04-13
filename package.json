@@ -10,6 +10,8 @@
     "dev:native": "pnpm --filter @shelvarr/native start",
     "dev:native:ios": "pnpm --filter @shelvarr/native ios",
     "dev:native:android": "pnpm --filter @shelvarr/native android",
+    "build:native:android": "cd apps/native && npx expo export && cd android && ./gradlew assembleRelease",
+    "deploy:native:android": "adb -s ec5ae1ec install -r apps/native/android/app/build/outputs/apk/release/app-release.apk",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",

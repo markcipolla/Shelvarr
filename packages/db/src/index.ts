@@ -130,13 +130,16 @@ function runMigrations(database: Database.Database): void {
 }
 
 /**
- * Get the database instance (must be initialized first)
+ * Get the database instance.
+ * Auto-initializes from environment variables if not yet initialized.
  */
 export function getDb(): Database.Database {
   if (!db) {
-    throw new Error('Database not initialized. Call initDatabase(dbPath) first.');
+    const dataDir = process.env['DATA_DIR'] || process.cwd() + '/data';
+    const dbPath = process.env['DB_PATH'] || join(dataDir, 'shelvarr.db');
+    initDatabase(dbPath);
   }
-  return db;
+  return db!;
 }
 
 /**
