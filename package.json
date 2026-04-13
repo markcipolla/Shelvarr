@@ -6,7 +6,6 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm --filter @shelvarr/web dev",
-    "dev:server": "pnpm --filter @shelvarr/server dev",
     "dev:native": "pnpm --filter @shelvarr/native start",
     "dev:native:ios": "pnpm --filter @shelvarr/native ios",
     "dev:native:android": "pnpm --filter @shelvarr/native android",
