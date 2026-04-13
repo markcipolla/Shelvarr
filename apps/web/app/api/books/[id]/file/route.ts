@@ -1,45 +1,56 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { readFileSync, existsSync } from 'fs';
-import { getBook } from '@/lib/actions/books';
+import { NextResponse } from 'next/server';
+import { createReadStream, statSync } from 'fs';
+import { extname } from 'path';
+import { Readable } from 'stream';
+import '@/lib/config';
+import { queryOne } from '@/lib/db';
+import { validateApiAuth } from '@shelvarr/services';
+
+export const dynamic = 'force-dynamic';
+
+const MEDIA_TYPES: Record<string, string> = {
+  epub: 'application/epub+zip',
+  pdf: 'application/pdf',
+  cbz: 'application/x-cbz',
+  cbr: 'application/x-cbr',
+  mobi: 'application/x-mobipocket-ebook',
+};
 
 export async function GET(
-  _request: NextRequest,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
-  const bookId = parseInt(id, 10);
-
-  if (isNaN(bookId)) {
-    return NextResponse.json({ error: 'Invalid book ID' }, { status: 400 });
+  if (!validateApiAuth(request.headers)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const book = await getBook(bookId);
+  const { id } = await params;
+  const row = queryOne<{ file_path: string; extension: string | null; title: string | null }>(
+    'SELECT file_path, extension, title FROM books WHERE id = ?',
+    [id]
+  );
 
-  if (!book) {
+  if (!row) {
     return NextResponse.json({ error: 'Book not found' }, { status: 404 });
   }
 
-  if (!existsSync(book.filePath)) {
-    return NextResponse.json({ error: 'File not found' }, { status: 404 });
-  }
-
-  // Only allow epub files for the reader
-  if (!book.filePath.toLowerCase().endsWith('.epub')) {
-    return NextResponse.json({ error: 'Only EPUB files can be read' }, { status: 400 });
-  }
-
   try {
-    const fileBuffer = readFileSync(book.filePath);
+    const stats = statSync(row.file_path);
+    const ext = row.extension || extname(row.file_path).replace('.', '');
+    const contentType = MEDIA_TYPES[ext] || 'application/octet-stream';
+    const filename = row.title ? `${row.title}.${ext}` : row.file_path.split('/').pop() || 'book';
 
-    return new NextResponse(fileBuffer, {
+    const stream = createReadStream(row.file_path);
+    const webStream = Readable.toWeb(stream) as ReadableStream;
+
+    return new Response(webStream, {
       headers: {
-        'Content-Type': 'application/epub+zip',
-        'Content-Disposition': `inline; filename="${encodeURIComponent(book.title || 'book')}.epub"`,
-        'Cache-Control': 'private, max-age=3600',
+        'Content-Type': contentType,
+        'Content-Length': String(stats.size),
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
       },
     });
-  } catch (error) {
-    console.error('Error reading file:', error);
-    return NextResponse.json({ error: 'Failed to read file' }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: 'File not found on disk' }, { status: 404 });
   }
 }

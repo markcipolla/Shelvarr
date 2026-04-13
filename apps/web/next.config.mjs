@@ -34,16 +34,6 @@ const nextConfig = {
       },
     ],
   },
-  // Proxy Komga-compatible API to the Hono server
-  async rewrites() {
-    const serverUrl = process.env['SHELVARR_SERVER_URL'] || 'http://localhost:3001';
-    return [
-      {
-        source: '/api/v1/:path*',
-        destination: `${serverUrl}/api/v1/:path*`,
-      },
-    ];
-  },
 };
 
 export default nextConfig;
