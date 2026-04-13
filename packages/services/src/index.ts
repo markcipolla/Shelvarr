@@ -13,6 +13,12 @@ export * as downloads from './downloads/index';
 export * as komga from './komga/index';
 export * as sourceStatus from './downloads/source-status';
 
+// Komga response adapters
+export * as komgaResponse from './komga-response';
+
+// API auth
+export { validateApiAuth } from './api-auth';
+
 // Utils
 export * as authors from './utils/authors';
 export * as logger from './utils/logger';
