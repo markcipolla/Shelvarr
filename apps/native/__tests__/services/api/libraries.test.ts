@@ -16,6 +16,6 @@ describe('fetchLibraries', () => {
     mockGet.mockResolvedValue({ data: libs });
     const result = await fetchLibraries();
     expect(result).toEqual(libs);
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/libraries');
+    expect(mockGet).toHaveBeenCalledWith('/api/libraries');
   });
 });

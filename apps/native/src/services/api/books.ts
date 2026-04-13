@@ -7,19 +7,19 @@ export async function fetchBooksForSeries(
   page: number = 0
 ): Promise<PagedResponse<Book>> {
   const { data } = await getApiClient().get<PagedResponse<Book>>(
-    `/api/v1/series/${seriesId}/books`,
+    `/api/series/${seriesId}/books`,
     { params: { page, size: PAGE_SIZE, sort: 'metadata.numberSort,asc' } }
   );
   return data;
 }
 
 export async function fetchBook(bookId: string): Promise<Book> {
-  const { data } = await getApiClient().get<Book>(`/api/v1/books/${bookId}`);
+  const { data } = await getApiClient().get<Book>(`/api/books/${bookId}`);
   return data;
 }
 
 export async function fetchBookPages(bookId: string): Promise<Page[]> {
-  const { data } = await getApiClient().get<Page[]>(`/api/v1/books/${bookId}/pages`);
+  const { data } = await getApiClient().get<Page[]>(`/api/books/${bookId}/pages`);
   return data;
 }
 
@@ -27,7 +27,7 @@ export async function fetchOnDeck(page: number = 0, libraryId?: string): Promise
   const params: Record<string, any> = { page, size: PAGE_SIZE };
   if (libraryId) params.library_id = libraryId;
   const { data } = await getApiClient().get<PagedResponse<Book>>(
-    '/api/v1/books/ondeck',
+    '/api/books/ondeck',
     { params }
   );
   return data;
@@ -35,17 +35,17 @@ export async function fetchOnDeck(page: number = 0, libraryId?: string): Promise
 
 export function getBookThumbnailUrl(bookId: string): string {
   const { credentials } = require('../../stores/useAuthStore').useAuthStore.getState();
-  return `${credentials?.serverUrl}/api/v1/books/${bookId}/thumbnail`;
+  return `${credentials?.serverUrl}/api/books/${bookId}/thumbnail`;
 }
 
 export function getBookPageUrl(bookId: string, pageNumber: number): string {
   const { credentials } = require('../../stores/useAuthStore').useAuthStore.getState();
-  return `${credentials?.serverUrl}/api/v1/books/${bookId}/pages/${pageNumber}`;
+  return `${credentials?.serverUrl}/api/books/${bookId}/pages/${pageNumber}`;
 }
 
 export function getSeriesThumbnailUrl(seriesId: string): string {
   const { credentials } = require('../../stores/useAuthStore').useAuthStore.getState();
-  return `${credentials?.serverUrl}/api/v1/series/${seriesId}/thumbnail`;
+  return `${credentials?.serverUrl}/api/series/${seriesId}/thumbnail`;
 }
 
 export async function updateReadProgress(
@@ -59,7 +59,7 @@ export async function updateReadProgress(
   } else {
     body.page = page;
   }
-  await getApiClient().patch(`/api/v1/books/${bookId}/read-progress`, body);
+  await getApiClient().patch(`/api/books/${bookId}/read-progress`, body);
 }
 
 export async function updateEpubProgression(
@@ -83,7 +83,7 @@ export async function updateEpubProgression(
       },
     },
   };
-  await getApiClient().put(`/api/v1/books/${bookId}/progression`, body);
+  await getApiClient().put(`/api/books/${bookId}/progression`, body);
 }
 
 export interface EpubProgression {
@@ -98,7 +98,7 @@ export interface EpubProgression {
 
 export async function getEpubProgression(bookId: string): Promise<EpubProgression | null> {
   try {
-    const { data } = await getApiClient().get(`/api/v1/books/${bookId}/progression`);
+    const { data } = await getApiClient().get(`/api/books/${bookId}/progression`);
     return data;
   } catch {
     return null;
@@ -106,7 +106,7 @@ export async function getEpubProgression(bookId: string): Promise<EpubProgressio
 }
 
 export async function deleteReadProgress(bookId: string): Promise<void> {
-  await getApiClient().delete(`/api/v1/books/${bookId}/read-progress`);
+  await getApiClient().delete(`/api/books/${bookId}/read-progress`);
 }
 
 export async function searchBooks(
@@ -114,7 +114,7 @@ export async function searchBooks(
   page: number = 0
 ): Promise<PagedResponse<Book>> {
   const { data } = await getApiClient().get<PagedResponse<Book>>(
-    '/api/v1/books',
+    '/api/books',
     { params: { search: query, page, size: PAGE_SIZE, sort: 'metadata.titleSort,asc' } }
   );
   return data;
@@ -129,7 +129,7 @@ export async function fetchInProgressBooks(
     sort: 'readProgress.lastModified,desc',
   };
   if (libraryId) params.library_id = libraryId;
-  const { data } = await getApiClient().get<PagedResponse<Book>>('/api/v1/books', { params });
+  const { data } = await getApiClient().get<PagedResponse<Book>>('/api/books', { params });
   return data;
 }
 
@@ -141,6 +141,6 @@ export async function fetchRecentlyAdded(
     sort: 'createdDate,desc',
   };
   if (libraryId) params.library_id = libraryId;
-  const { data } = await getApiClient().get<PagedResponse<Book>>('/api/v1/books', { params });
+  const { data } = await getApiClient().get<PagedResponse<Book>>('/api/books', { params });
   return data;
 }

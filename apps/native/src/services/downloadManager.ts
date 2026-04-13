@@ -76,7 +76,7 @@ async function downloadComicPages(
         continue;
       }
 
-      const url = `${credentials.serverUrl}/api/v1/books/${book.id}/pages/${i}`;
+      const url = `${credentials.serverUrl}/api/books/${book.id}/pages/${i}`;
       const dl = createDownloadResumable(url, filePath, { headers });
       const result = await dl.downloadAsync();
       if (!result) throw new Error(`Failed to download page ${i}`);
@@ -154,7 +154,7 @@ export async function prepareBookForReading(
   }
 
   // Download the file
-  const url = `${credentials.serverUrl}/api/v1/books/${book.id}/file`;
+  const url = `${credentials.serverUrl}/api/books/${book.id}/file`;
   const headers = getAuthHeaders();
 
   store.setActiveDownload(book.id, 0);

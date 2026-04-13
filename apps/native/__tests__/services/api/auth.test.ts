@@ -31,7 +31,7 @@ describe('validateCredentials', () => {
     const result = await validateCredentials(creds);
     expect(result).toBe(true);
     expect(mockGet).toHaveBeenCalledWith(
-      'http://example.com/api/v1/libraries',
+      'http://example.com/api/libraries',
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: expect.stringMatching(/^Basic /),
@@ -51,7 +51,7 @@ describe('validateCredentials', () => {
     const result = await validateCredentials(creds);
     expect(result).toBe(true);
     expect(mockGet).toHaveBeenCalledWith(
-      'http://example.com/api/v1/libraries',
+      'http://example.com/api/libraries',
       expect.objectContaining({
         headers: { 'X-API-Key': 'my-api-key' },
       })
@@ -68,7 +68,7 @@ describe('validateCredentials', () => {
     };
     await validateCredentials(creds);
     expect(mockGet).toHaveBeenCalledWith(
-      'http://example.com/api/v1/libraries',
+      'http://example.com/api/libraries',
       expect.anything()
     );
   });
@@ -77,7 +77,7 @@ describe('validateCredentials', () => {
     mockGet.mockRejectedValue({
       message: 'Request failed',
       response: { status: 401 },
-      config: { url: 'http://example.com/api/v1/libraries' },
+      config: { url: 'http://example.com/api/libraries' },
     });
     const creds: AuthCredentials = {
       serverUrl: 'http://example.com',
@@ -107,7 +107,7 @@ describe('validateCredentials', () => {
     };
     await validateCredentials(creds);
     expect(mockGet).toHaveBeenCalledWith(
-      'http://example.com/api/v1/libraries',
+      'http://example.com/api/libraries',
       expect.objectContaining({ headers: {} })
     );
   });

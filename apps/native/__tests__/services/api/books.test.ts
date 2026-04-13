@@ -49,7 +49,7 @@ describe('fetchBooksForSeries', () => {
     mockGet.mockResolvedValue({ data: mockData });
     const result = await fetchBooksForSeries('s1');
     expect(result).toEqual(mockData);
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/series/s1/books', {
+    expect(mockGet).toHaveBeenCalledWith('/api/series/s1/books', {
       params: { page: 0, size: PAGE_SIZE, sort: 'metadata.numberSort,asc' },
     });
   });
@@ -57,7 +57,7 @@ describe('fetchBooksForSeries', () => {
   it('fetches books with specific page', async () => {
     mockGet.mockResolvedValue({ data: { content: [] } });
     await fetchBooksForSeries('s1', 3);
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/series/s1/books', {
+    expect(mockGet).toHaveBeenCalledWith('/api/series/s1/books', {
       params: { page: 3, size: PAGE_SIZE, sort: 'metadata.numberSort,asc' },
     });
   });
@@ -69,7 +69,7 @@ describe('fetchBook', () => {
     mockGet.mockResolvedValue({ data: book });
     const result = await fetchBook('b1');
     expect(result).toEqual(book);
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/books/b1');
+    expect(mockGet).toHaveBeenCalledWith('/api/books/b1');
   });
 });
 
@@ -79,7 +79,7 @@ describe('fetchBookPages', () => {
     mockGet.mockResolvedValue({ data: pages });
     const result = await fetchBookPages('b1');
     expect(result).toEqual(pages);
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/books/b1/pages');
+    expect(mockGet).toHaveBeenCalledWith('/api/books/b1/pages');
   });
 });
 
@@ -87,7 +87,7 @@ describe('fetchOnDeck', () => {
   it('fetches on-deck without libraryId', async () => {
     mockGet.mockResolvedValue({ data: { content: [] } });
     await fetchOnDeck();
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/books/ondeck', {
+    expect(mockGet).toHaveBeenCalledWith('/api/books/ondeck', {
       params: { page: 0, size: PAGE_SIZE },
     });
   });
@@ -95,7 +95,7 @@ describe('fetchOnDeck', () => {
   it('fetches on-deck with libraryId', async () => {
     mockGet.mockResolvedValue({ data: { content: [] } });
     await fetchOnDeck(1, 'lib1');
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/books/ondeck', {
+    expect(mockGet).toHaveBeenCalledWith('/api/books/ondeck', {
       params: { page: 1, size: PAGE_SIZE, library_id: 'lib1' },
     });
   });
@@ -104,21 +104,21 @@ describe('fetchOnDeck', () => {
 describe('getBookThumbnailUrl', () => {
   it('returns correct thumbnail URL', () => {
     const url = getBookThumbnailUrl('b1');
-    expect(url).toBe('http://example.com/api/v1/books/b1/thumbnail');
+    expect(url).toBe('http://example.com/api/books/b1/thumbnail');
   });
 });
 
 describe('getBookPageUrl', () => {
   it('returns correct page URL', () => {
     const url = getBookPageUrl('b1', 5);
-    expect(url).toBe('http://example.com/api/v1/books/b1/pages/5');
+    expect(url).toBe('http://example.com/api/books/b1/pages/5');
   });
 });
 
 describe('getSeriesThumbnailUrl', () => {
   it('returns correct series thumbnail URL', () => {
     const url = getSeriesThumbnailUrl('s1');
-    expect(url).toBe('http://example.com/api/v1/series/s1/thumbnail');
+    expect(url).toBe('http://example.com/api/series/s1/thumbnail');
   });
 });
 
@@ -126,7 +126,7 @@ describe('updateReadProgress', () => {
   it('sends page when not completed', async () => {
     mockPatch.mockResolvedValue({});
     await updateReadProgress('b1', 5);
-    expect(mockPatch).toHaveBeenCalledWith('/api/v1/books/b1/read-progress', {
+    expect(mockPatch).toHaveBeenCalledWith('/api/books/b1/read-progress', {
       page: 5,
     });
   });
@@ -134,7 +134,7 @@ describe('updateReadProgress', () => {
   it('sends completed flag when completed', async () => {
     mockPatch.mockResolvedValue({});
     await updateReadProgress('b1', 5, true);
-    expect(mockPatch).toHaveBeenCalledWith('/api/v1/books/b1/read-progress', {
+    expect(mockPatch).toHaveBeenCalledWith('/api/books/b1/read-progress', {
       completed: true,
     });
   });
@@ -145,7 +145,7 @@ describe('updateEpubProgression', () => {
     mockPut.mockResolvedValue({});
     await updateEpubProgression('b1', 0.5, false, 'ch1.xhtml');
     expect(mockPut).toHaveBeenCalledWith(
-      '/api/v1/books/b1/progression',
+      '/api/books/b1/progression',
       expect.objectContaining({
         device: { id: 'stacks-android', name: 'Stacks' },
         locator: expect.objectContaining({
@@ -160,7 +160,7 @@ describe('updateEpubProgression', () => {
     mockPut.mockResolvedValue({});
     await updateEpubProgression('b1', 0.5, true);
     expect(mockPut).toHaveBeenCalledWith(
-      '/api/v1/books/b1/progression',
+      '/api/books/b1/progression',
       expect.objectContaining({
         locator: expect.objectContaining({
           locations: { progression: 1.0, totalProgression: 1.0 },
@@ -173,7 +173,7 @@ describe('updateEpubProgression', () => {
     mockPut.mockResolvedValue({});
     await updateEpubProgression('b1', 0.3);
     expect(mockPut).toHaveBeenCalledWith(
-      '/api/v1/books/b1/progression',
+      '/api/books/b1/progression',
       expect.objectContaining({
         locator: expect.objectContaining({
           href: '',
@@ -203,7 +203,7 @@ describe('deleteReadProgress', () => {
   it('deletes read progress', async () => {
     mockDelete.mockResolvedValue({});
     await deleteReadProgress('b1');
-    expect(mockDelete).toHaveBeenCalledWith('/api/v1/books/b1/read-progress');
+    expect(mockDelete).toHaveBeenCalledWith('/api/books/b1/read-progress');
   });
 });
 
@@ -211,7 +211,7 @@ describe('searchBooks', () => {
   it('searches books with default page', async () => {
     mockGet.mockResolvedValue({ data: { content: [] } });
     await searchBooks('query');
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/books', {
+    expect(mockGet).toHaveBeenCalledWith('/api/books', {
       params: { search: 'query', page: 0, size: PAGE_SIZE, sort: 'metadata.titleSort,asc' },
     });
   });
@@ -221,7 +221,7 @@ describe('fetchInProgressBooks', () => {
   it('fetches without libraryId', async () => {
     mockGet.mockResolvedValue({ data: { content: [] } });
     await fetchInProgressBooks();
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/books', {
+    expect(mockGet).toHaveBeenCalledWith('/api/books', {
       params: {
         read_status: 'IN_PROGRESS',
         size: 10,
@@ -233,7 +233,7 @@ describe('fetchInProgressBooks', () => {
   it('fetches with libraryId', async () => {
     mockGet.mockResolvedValue({ data: { content: [] } });
     await fetchInProgressBooks('lib1');
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/books', {
+    expect(mockGet).toHaveBeenCalledWith('/api/books', {
       params: {
         read_status: 'IN_PROGRESS',
         size: 10,
@@ -248,7 +248,7 @@ describe('fetchRecentlyAdded', () => {
   it('fetches without libraryId', async () => {
     mockGet.mockResolvedValue({ data: { content: [] } });
     await fetchRecentlyAdded();
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/books', {
+    expect(mockGet).toHaveBeenCalledWith('/api/books', {
       params: { size: 10, sort: 'createdDate,desc' },
     });
   });
@@ -256,7 +256,7 @@ describe('fetchRecentlyAdded', () => {
   it('fetches with libraryId', async () => {
     mockGet.mockResolvedValue({ data: { content: [] } });
     await fetchRecentlyAdded('lib1');
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/books', {
+    expect(mockGet).toHaveBeenCalledWith('/api/books', {
       params: { size: 10, sort: 'createdDate,desc', library_id: 'lib1' },
     });
   });

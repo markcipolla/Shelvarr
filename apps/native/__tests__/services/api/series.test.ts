@@ -16,7 +16,7 @@ describe('fetchSeriesForLibrary', () => {
   it('fetches series with default page', async () => {
     mockGet.mockResolvedValue({ data: { content: [] } });
     await fetchSeriesForLibrary('lib1');
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/series', {
+    expect(mockGet).toHaveBeenCalledWith('/api/series', {
       params: { library_id: 'lib1', page: 0, size: PAGE_SIZE, sort: 'metadata.titleSort,asc' },
     });
   });
@@ -24,7 +24,7 @@ describe('fetchSeriesForLibrary', () => {
   it('fetches series with specific page', async () => {
     mockGet.mockResolvedValue({ data: { content: [] } });
     await fetchSeriesForLibrary('lib1', 2);
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/series', {
+    expect(mockGet).toHaveBeenCalledWith('/api/series', {
       params: { library_id: 'lib1', page: 2, size: PAGE_SIZE, sort: 'metadata.titleSort,asc' },
     });
   });
@@ -36,6 +36,6 @@ describe('fetchSeries', () => {
     mockGet.mockResolvedValue({ data: series });
     const result = await fetchSeries('s1');
     expect(result).toEqual(series);
-    expect(mockGet).toHaveBeenCalledWith('/api/v1/series/s1');
+    expect(mockGet).toHaveBeenCalledWith('/api/series/s1');
   });
 });

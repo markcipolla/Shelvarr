@@ -229,7 +229,7 @@ describe('prepareBookForReading', () => {
       const result = await prepareBookForReading(epubBook);
       expect(result.filePath).toBe('/dl/b1.epub');
       expect(mockedDownloadBookFile).toHaveBeenCalledWith(
-        'http://example.com/api/v1/books/b1/file',
+        'http://example.com/api/books/b1/file',
         'b1',
         '.epub',
         expect.any(Object),

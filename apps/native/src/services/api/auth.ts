@@ -14,7 +14,7 @@ export async function validateCredentials(creds: AuthCredentials): Promise<boole
       headers['X-API-Key'] = creds.apiKey;
     }
 
-    const fullUrl = `${url}/api/v1/libraries`;
+    const fullUrl = `${url}/api/libraries`;
     console.log('Validating credentials:', fullUrl);
     await axios.get(fullUrl, { headers, timeout: 10000 });
     return true;
