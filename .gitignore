@@ -37,3 +37,6 @@ coverage/
 *.temp
 .cache/
 .next/
+
+# pnpm
+.pnpm-store/
