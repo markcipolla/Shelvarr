@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, Switch, StyleSheet, TouchableOpacity, Alert, TextInput } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, Switch, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { cleanAllDownloads } from '../services/fileManager';
@@ -8,26 +8,13 @@ import { resetApiClient } from '../services/api/client';
 export default function SettingsScreen() {
   const autoDelete = useSettingsStore((s) => s.autoDeleteAfterReading);
   const setAutoDelete = useSettingsStore((s) => s.setAutoDelete);
-  const shelvarrUrl = useSettingsStore((s) => s.shelvarrUrl);
-  const setShelvarrUrl = useSettingsStore((s) => s.setShelvarrUrl);
   const loadSettings = useSettingsStore((s) => s.loadSettings);
   const logout = useAuthStore((s) => s.logout);
   const serverUrl = useAuthStore((s) => s.credentials?.serverUrl);
 
-  const [shelvarrInput, setShelvarrInput] = useState(shelvarrUrl);
-
   useEffect(() => {
     loadSettings();
   }, []);
-
-  useEffect(() => {
-    setShelvarrInput(shelvarrUrl);
-  }, [shelvarrUrl]);
-
-  const handleSaveShelvarrUrl = () => {
-    setShelvarrUrl(shelvarrInput.trim());
-    Alert.alert('Saved', 'Shelvarr URL updated.');
-  };
 
   const handleClearDownloads = () => {
     Alert.alert('Clear Downloads', 'Delete all downloaded books?', [
@@ -74,24 +61,6 @@ export default function SettingsScreen() {
         />
       </View>
 
-      <Text style={styles.sectionTitle}>Shelvarr</Text>
-      <Text style={styles.description}>Sync reading status to Hardcover via Shelvarr</Text>
-      <View style={styles.inputRow}>
-        <TextInput
-          style={styles.input}
-          value={shelvarrInput}
-          onChangeText={setShelvarrInput}
-          placeholder="http://192.168.1.x:3000"
-          placeholderTextColor="#999"
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-        />
-        <TouchableOpacity style={styles.saveButton} onPress={handleSaveShelvarrUrl}>
-          <Text style={styles.saveButtonText}>Save</Text>
-        </TouchableOpacity>
-      </View>
-
       <Text style={styles.sectionTitle}>Storage</Text>
       <TouchableOpacity style={styles.button} onPress={handleClearDownloads}>
         <Text style={styles.buttonText}>Clear all downloads</Text>
@@ -99,6 +68,7 @@ export default function SettingsScreen() {
 
       <Text style={styles.sectionTitle}>Server</Text>
       <Text style={styles.serverUrl}>{serverUrl}</Text>
+      <Text style={styles.description}>Reading status syncs automatically via the connected server</Text>
       <TouchableOpacity style={[styles.button, styles.logoutButton]} onPress={handleLogout}>
         <Text style={styles.buttonText}>Logout</Text>
       </TouchableOpacity>
@@ -113,25 +83,6 @@ const styles = StyleSheet.create({
   rowText: { flex: 1, marginRight: 12 },
   label: { fontSize: 16, color: '#222' },
   description: { fontSize: 12, color: '#777', marginTop: 4 },
-  inputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
-  input: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 14,
-    color: '#222',
-    borderWidth: 1,
-    borderColor: '#d5d0c8',
-  },
-  saveButton: {
-    marginLeft: 8,
-    backgroundColor: '#8b5e3c',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  saveButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   button: {
     backgroundColor: '#e8e4de',
     borderRadius: 8,

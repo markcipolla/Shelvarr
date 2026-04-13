@@ -1,4 +1,4 @@
-name: Build and Publish Docker Image
+name: Build and Publish Docker Images
 
 on:
   workflow_run:
@@ -13,13 +13,11 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # Force lowercase for Docker image name
   IMAGE_NAME: ${{ github.repository_owner }}/shelvarr
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    # Only run if CI succeeded (or if triggered by tag/manual dispatch)
     if: >
       github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
@@ -27,6 +25,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+
+    strategy:
+      matrix:
+        target: [web, server]
 
     steps:
       - name: Checkout repository
@@ -51,7 +53,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.target }}
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -64,6 +66,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          target: ${{ matrix.target }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

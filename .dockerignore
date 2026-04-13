@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.claude
+data
+coverage
+test-results
+playwright-report
+dist
+*.log
+.DS_Store
+apps/native

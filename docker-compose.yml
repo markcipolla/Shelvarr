@@ -1,0 +1,57 @@
+services:
+  server:
+    build:
+      context: .
+      target: server
+    container_name: shelvarr-server
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./data:/app/data
+      # Add your library mounts here:
+      # - /path/to/ebooks:/libraries/ebooks:rw
+      # - /path/to/comics:/libraries/comics:rw
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DATA_DIR=/app/data
+      - LIBRARY_ROOT=/libraries
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  web:
+    build:
+      context: .
+      target: web
+    container_name: shelvarr-web
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+      # Add your library mounts here (same as server):
+      # - /path/to/ebooks:/libraries/ebooks:rw
+      # - /path/to/comics:/libraries/comics:rw
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATA_DIR=/app/data
+      - LIBRARY_ROOT=/libraries
+      - SHELVARR_SERVER_URL=http://server:3001
+      # Optional: Komga integration
+      # - KOMGA_URL=http://your-komga:25600
+      # - KOMGA_API_KEY=your-api-key
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
