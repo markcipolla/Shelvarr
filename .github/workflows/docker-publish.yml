@@ -26,10 +26,6 @@ jobs:
       contents: read
       packages: write
 
-    strategy:
-      matrix:
-        target: [web, server]
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -53,7 +49,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.target }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-web
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
@@ -66,7 +62,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          target: ${{ matrix.target }}
+          target: web
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

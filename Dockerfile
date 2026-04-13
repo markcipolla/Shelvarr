@@ -1,6 +1,6 @@
 # ==============================================================================
-# Multi-stage Dockerfile for Shelvarr monorepo
-# Targets: web (Next.js on :3000), server (Hono on :3001)
+# Multi-stage Dockerfile for Shelvarr
+# Target: web (Next.js on :3000)
 # ==============================================================================
 
 # --- Base stage: install pnpm and build dependencies ---
@@ -19,7 +19,6 @@ COPY apps/web/package.json apps/web/package.json
 COPY packages/types/package.json packages/types/package.json
 COPY packages/db/package.json packages/db/package.json
 COPY packages/services/package.json packages/services/package.json
-COPY packages/server/package.json packages/server/package.json
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
@@ -63,40 +62,3 @@ USER shelvarr
 EXPOSE 3000
 
 CMD ["node", "apps/web/server.js"]
-
-# --- Server runtime ---
-FROM node:20-alpine AS server
-
-WORKDIR /app
-
-RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
-RUN addgroup -g 1001 -S shelvarr && \
-    adduser -S shelvarr -u 1001 -G shelvarr
-
-ENV NODE_ENV=production
-ENV PORT=3001
-ENV DATA_DIR=/app/data
-ENV LIBRARY_ROOT=/libraries
-
-# Copy workspace config
-COPY --from=base /app/pnpm-workspace.yaml /app/package.json /app/pnpm-lock.yaml /app/.npmrc ./
-
-# Copy package files for workspace resolution
-COPY --from=base /app/packages/types/package.json packages/types/package.json
-COPY --from=base /app/packages/db/package.json packages/db/package.json
-COPY --from=base /app/packages/services/package.json packages/services/package.json
-COPY --from=base /app/packages/server/package.json packages/server/package.json
-
-# Install production dependencies only
-RUN pnpm install --frozen-lockfile --prod
-
-# Copy source files
-COPY --from=base /app/packages/ packages/
-
-RUN mkdir -p /app/data && chown -R shelvarr:shelvarr /app
-
-USER shelvarr
-
-EXPOSE 3001
-
-CMD ["node", "--import", "tsx/esm", "packages/server/src/index.ts"]
