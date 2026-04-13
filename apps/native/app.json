@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "Stacks",
+    "slug": "stacks",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f5f1eb"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#f5f1eb"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.stacks.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "assetBundlePatterns": [
+      "assets/fonts/*"
+    ],
+    "plugins": [
+      "expo-secure-store",
+      "./plugins/withCleartextTraffic",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/Literata-Regular.ttf",
+            "./assets/fonts/Literata-Bold.ttf",
+            "./assets/fonts/Literata-Italic.ttf",
+            "./assets/fonts/Literata-BoldItalic.ttf"
+          ]
+        }
+      ]
+    ]
+  }
+}
