@@ -5,7 +5,7 @@
  * Simplified: Always fetch full book details for complete metadata.
  */
 
-import { getServiceConfig } from '../config.js';
+import { getServiceConfig } from '../config';
 import { getSetting } from '@shelvarr/db';
 
 const API_BASE = 'https://api.hardcover.app/v1/graphql';

@@ -1,2 +1,2 @@
-export * from './domain.js';
-export * as Komga from './komga.js';
+export * from './domain';
+export * as Komga from './komga';

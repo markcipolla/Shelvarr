@@ -11,7 +11,7 @@ import {
   getEpubProgression,
   upsertEpubProgression,
 } from '@shelvarr/db';
-import { toKomgaBook, toPagedResponse, toEpubProgression } from '../adapters/komga-response.js';
+import { toKomgaBook, toPagedResponse, toEpubProgression } from '../adapters/komga-response';
 
 const books = new Hono();
 

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { query } from '@shelvarr/db';
-import { toKomgaLibrary } from '../adapters/komga-response.js';
+import { toKomgaLibrary } from '../adapters/komga-response';
 
 const libraries = new Hono();
 

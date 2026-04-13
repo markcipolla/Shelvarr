@@ -1,20 +1,20 @@
 // Config initialization
-export { initServiceConfig, getServiceConfig } from './config.js';
+export { initServiceConfig, getServiceConfig } from './config';
 
 // Services
-export * as scanner from './scanner/index.js';
-export * as library from './library/index.js';
-export * as metadata from './metadata/index.js';
-export * as hardcover from './metadata/hardcover.js';
-export * as organizer from './organizer/index.js';
-export * as queue from './queue/index.js';
-export * as queueHandlers from './queue/handlers.js';
-export * as downloads from './downloads/index.js';
-export * as komga from './komga/index.js';
-export * as sourceStatus from './downloads/source-status.js';
+export * as scanner from './scanner/index';
+export * as library from './library/index';
+export * as metadata from './metadata/index';
+export * as hardcover from './metadata/hardcover';
+export * as organizer from './organizer/index';
+export * as queue from './queue/index';
+export * as queueHandlers from './queue/handlers';
+export * as downloads from './downloads/index';
+export * as komga from './komga/index';
+export * as sourceStatus from './downloads/source-status';
 
 // Utils
-export * as authors from './utils/authors.js';
-export * as logger from './utils/logger.js';
-export * as sanitize from './utils/sanitize.js';
-export * from './constants.js';
+export * as authors from './utils/authors';
+export * as logger from './utils/logger';
+export * as sanitize from './utils/sanitize';
+export * from './constants';

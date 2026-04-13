@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { query, queryOne } from '@shelvarr/db';
-import { toKomgaSeries, toKomgaBook, toPagedResponse } from '../adapters/komga-response.js';
+import { toKomgaSeries, toKomgaBook, toPagedResponse } from '../adapters/komga-response';
 import { getReadProgress } from '@shelvarr/db';
 
 const series = new Hono();

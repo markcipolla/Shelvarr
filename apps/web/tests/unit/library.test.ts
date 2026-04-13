@@ -391,7 +391,7 @@ describe('Library Service', () => {
       // correctly based on code review.
 
       const { readFileSync } = await import('fs');
-      const sourcePath = join(process.cwd(), 'lib/services/library/index.ts');
+      const sourcePath = join(process.cwd(), '..', '..', 'packages/services/src/library/index.ts');
       const sourceCode = readFileSync(sourcePath, 'utf8');
 
       // Verify error handling code exists
@@ -406,7 +406,7 @@ describe('Library Service', () => {
       // This handles rare database failures during DELETE operations
 
       const { readFileSync } = await import('fs');
-      const sourcePath = join(process.cwd(), 'lib/services/library/index.ts');
+      const sourcePath = join(process.cwd(), '..', '..', 'packages/services/src/library/index.ts');
       const sourceCode = readFileSync(sourcePath, 'utf8');
 
       // Find the deleteLibrary function

@@ -3,6 +3,8 @@ import { query, execute } from '@/lib/db';
 import { komgaClient } from '@/lib/services/komga';
 import path from 'path';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST() {
   if (!komgaClient.isConfigured()) {
     return NextResponse.json({ error: 'Komga not configured' }, { status: 400 });

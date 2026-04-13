@@ -3,6 +3,9 @@ import './globals.css';
 import { SidebarWrapper } from '@/components/SidebarWrapper';
 import { ToastProvider } from '@/components/ui/Toast';
 
+// Force all pages to be dynamic — this app uses SQLite and has no static content
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Shelvarr',
   description: 'Self-hosted book and comic metadata management',

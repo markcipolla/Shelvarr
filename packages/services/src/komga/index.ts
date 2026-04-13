@@ -3,7 +3,7 @@
  * Integrates with Komga server for library management
  */
 
-import { getServiceConfig } from '../config.js';
+import { getServiceConfig } from '../config';
 
 export interface KomgaLibrary {
   id: string;
@@ -509,7 +509,29 @@ class KomgaClient {
 // Singleton instance
 export const komgaClient = new KomgaClient();
 
-// Initialize from config on module load
-komgaClient.loadFromConfig();
+// Lazy initialization — loadFromConfig is called on first use, not at import time
+let _initialized = false;
+const ensureInit = () => {
+  if (!_initialized) {
+    _initialized = true;
+    try {
+      komgaClient.loadFromConfig();
+    } catch {
+      // Config not yet initialized (e.g. during build), ignore
+    }
+  }
+};
+
+// Wrap methods that need config to be loaded
+const origRequest = (komgaClient as any).request.bind(komgaClient);
+(komgaClient as any).request = function<T>(...args: any[]): Promise<T> {
+  ensureInit();
+  return origRequest(...args);
+};
+const origIsConfigured = komgaClient.isConfigured.bind(komgaClient);
+komgaClient.isConfigured = () => {
+  ensureInit();
+  return origIsConfigured();
+};
 
 export default komgaClient;

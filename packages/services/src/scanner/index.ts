@@ -4,7 +4,7 @@ import { createHash } from 'crypto';
 import { readFileSync } from 'fs';
 import { query, queryOne, execute } from '@shelvarr/db';
 import { getLibraryById } from '../library';
-import { getServiceConfig } from '../config.js';
+import { getServiceConfig } from '../config';
 import type { Book } from '@shelvarr/types';
 
 interface BookRow {

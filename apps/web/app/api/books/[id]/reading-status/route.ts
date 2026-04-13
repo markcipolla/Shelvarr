@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { queryOne } from '@/lib/db';
 import { upsertReadingStatus, HardcoverStatusId } from '@/lib/services/metadata/hardcover';
 
+export const dynamic = 'force-dynamic';
+
 const STATUS_MAP: Record<string, HardcoverStatusId> = {
   reading: 2,
   read: 3,

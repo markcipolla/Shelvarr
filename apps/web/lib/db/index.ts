@@ -1,7 +1,9 @@
 // Re-export everything from @shelvarr/db
 // This maintains backward compatibility with @/lib/db imports
+import { initDatabase as _initDatabase } from '@shelvarr/db';
+import { join } from 'path';
+
 export {
-  initDatabase,
   getDb,
   getPool,
   closeDatabase,
@@ -46,3 +48,11 @@ export type {
   DownloadSourceConfig,
   SourceStatusCache,
 } from '@shelvarr/types';
+
+// Backwards-compatible wrapper: reads DB_PATH from env when no arg given
+export function initDatabase(dbPath?: string) {
+  const resolvedPath = dbPath
+    || process.env['DB_PATH']
+    || join(process.env['DATA_DIR'] || process.cwd() + '/data', 'shelvarr.db');
+  return _initDatabase(resolvedPath);
+}
