@@ -18,7 +18,7 @@ import { validateCredentials } from '../services/api/auth';
 export default function LoginScreen() {
   const login = useAuthStore((s) => s.login);
   const [serverAddress, setServerAddress] = useState(process.env['EXPO_PUBLIC_DEFAULT_SERVER_ADDRESS'] || '');
-  const [serverPort, setServerPort] = useState(process.env['EXPO_PUBLIC_DEFAULT_SERVER_PORT'] || '3001');
+  const [serverPort, setServerPort] = useState(process.env['EXPO_PUBLIC_DEFAULT_SERVER_PORT'] || '25600');
   const [authType, setAuthType] = useState<'basic' | 'apikey'>('basic');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');

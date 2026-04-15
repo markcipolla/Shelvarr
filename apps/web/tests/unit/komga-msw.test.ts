@@ -43,9 +43,12 @@ if (canRunTests) {
       }
     });
 
-    beforeEach(() => {
+    beforeEach(async () => {
       initDatabase();
       server.resetHandlers();
+      // Trigger lazy init so loadFromConfig() runs before test's configure() call
+      const { komgaClient } = await import('../../lib/services/komga/index.js');
+      komgaClient.isConfigured();
     });
 
     afterEach(() => {

@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, Text, Switch, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TextInput, Switch, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { cleanAllDownloads } from '../services/fileManager';
@@ -8,13 +8,25 @@ import { resetApiClient } from '../services/api/client';
 export default function SettingsScreen() {
   const autoDelete = useSettingsStore((s) => s.autoDeleteAfterReading);
   const setAutoDelete = useSettingsStore((s) => s.setAutoDelete);
+  const shelvarrUrl = useSettingsStore((s) => s.shelvarrUrl);
+  const setShelvarrUrl = useSettingsStore((s) => s.setShelvarrUrl);
   const loadSettings = useSettingsStore((s) => s.loadSettings);
   const logout = useAuthStore((s) => s.logout);
   const serverUrl = useAuthStore((s) => s.credentials?.serverUrl);
+  const [shelvarrUrlInput, setShelvarrUrlInput] = useState(shelvarrUrl);
 
   useEffect(() => {
     loadSettings();
   }, []);
+
+  useEffect(() => {
+    setShelvarrUrlInput(shelvarrUrl);
+  }, [shelvarrUrl]);
+
+  const handleSaveShelvarrUrl = () => {
+    setShelvarrUrl(shelvarrUrlInput);
+    Alert.alert('Saved', 'Shelvarr URL updated.');
+  };
 
   const handleClearDownloads = () => {
     Alert.alert('Clear Downloads', 'Delete all downloaded books?', [
@@ -61,6 +73,21 @@ export default function SettingsScreen() {
         />
       </View>
 
+      <Text style={styles.sectionTitle}>Shelvarr</Text>
+      <TextInput
+        style={styles.input}
+        value={shelvarrUrlInput}
+        onChangeText={setShelvarrUrlInput}
+        placeholder="Shelvarr server URL"
+        placeholderTextColor="#888"
+        autoCapitalize="none"
+        autoCorrect={false}
+        keyboardType="url"
+      />
+      <TouchableOpacity style={styles.button} onPress={handleSaveShelvarrUrl}>
+        <Text style={styles.buttonText}>Save</Text>
+      </TouchableOpacity>
+
       <Text style={styles.sectionTitle}>Storage</Text>
       <TouchableOpacity style={styles.button} onPress={handleClearDownloads}>
         <Text style={styles.buttonText}>Clear all downloads</Text>
@@ -93,5 +120,15 @@ const styles = StyleSheet.create({
   },
   logoutButton: { borderColor: '#c0392b', marginTop: 8 },
   buttonText: { color: '#333', fontSize: 15 },
+  input: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 14,
+    fontSize: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#d5d0c8',
+    color: '#222',
+  },
   serverUrl: { fontSize: 14, color: '#777', marginBottom: 12 },
 });

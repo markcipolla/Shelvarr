@@ -97,7 +97,7 @@ export const hardcoverHandlers = [
 export const komgaHandlers = [
   // Test connection
   http.get('*/api/v1/libraries', ({ request }) => {
-    const authHeader = request.headers.get('X-Auth-Token');
+    const authHeader = request.headers.get('Authorization');
     if (!authHeader) {
       return new HttpResponse(null, { status: 401 });
     }
@@ -108,7 +108,7 @@ export const komgaHandlers = [
 
   // Get libraries
   http.get('*/api/v2/libraries', ({ request }) => {
-    const authHeader = request.headers.get('X-Auth-Token');
+    const authHeader = request.headers.get('Authorization');
     if (!authHeader) {
       return new HttpResponse(null, { status: 401 });
     }
