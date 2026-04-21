@@ -6,6 +6,7 @@ import { useSettingsStore } from '../../src/stores/useSettingsStore';
 import { useAuthStore } from '../../src/stores/useAuthStore';
 import { cleanAllDownloads } from '../../src/services/fileManager';
 import { resetApiClient } from '../../src/services/api/client';
+import { APP_VERSION, BUILD_VERSION } from '../../src/utils/constants';
 
 jest.mock('../../src/services/api/client', () => ({
   getApiClient: jest.fn(),
@@ -113,5 +114,33 @@ describe('SettingsScreen', () => {
     expect(mockCleanAllDownloads).toHaveBeenCalled();
     expect(mockResetApiClient).toHaveBeenCalled();
     expect(mockLogout).toHaveBeenCalled();
+  });
+
+  describe('About section', () => {
+    it('renders the About section heading', () => {
+      const { getByText } = render(<SettingsScreen />);
+      expect(getByText('About')).toBeTruthy();
+    });
+
+    it('renders the Version label and value', () => {
+      const { getByText } = render(<SettingsScreen />);
+      expect(getByText('Version')).toBeTruthy();
+      expect(getByText(APP_VERSION)).toBeTruthy();
+    });
+
+    it('renders the Build label and value', () => {
+      const { getByText } = render(<SettingsScreen />);
+      expect(getByText('Build')).toBeTruthy();
+      expect(getByText(BUILD_VERSION)).toBeTruthy();
+    });
+
+    it('renders the build value with monospace font', () => {
+      const { getByText } = render(<SettingsScreen />);
+      const buildValue = getByText(BUILD_VERSION);
+      const style = Array.isArray(buildValue.props.style)
+        ? Object.assign({}, ...buildValue.props.style)
+        : buildValue.props.style;
+      expect(style.fontFamily).toBe('monospace');
+    });
   });
 });

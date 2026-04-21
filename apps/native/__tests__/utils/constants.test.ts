@@ -1,10 +1,13 @@
 import {
+  APP_VERSION,
+  BUILD_VERSION,
   DOWNLOADS_DIR,
   EXTRACTED_DIR,
   PROGRESS_SYNC_DEBOUNCE_MS,
   PAGE_SIZE,
   SECURE_STORE_KEYS,
 } from '../../src/utils/constants';
+import appJson from '../../app.json';
 
 describe('constants', () => {
   it('exports DOWNLOADS_DIR', () => {
@@ -31,6 +34,39 @@ describe('constants', () => {
       API_KEY: 'komga_api_key',
       AUTH_TYPE: 'komga_auth_type',
       SESSION_COOKIE: 'komga_session',
+    });
+  });
+
+  describe('APP_VERSION', () => {
+    it('is a string', () => {
+      expect(typeof APP_VERSION).toBe('string');
+    });
+
+    it('matches the version in app.json', () => {
+      expect(APP_VERSION).toBe(appJson.expo.version);
+    });
+
+    it('matches semantic versioning pattern', () => {
+      expect(APP_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+    });
+  });
+
+  describe('BUILD_VERSION', () => {
+    it('is a string', () => {
+      expect(typeof BUILD_VERSION).toBe('string');
+    });
+
+    it('is non-empty', () => {
+      expect(BUILD_VERSION.length).toBeGreaterThan(0);
+    });
+
+    it('matches EXPO_PUBLIC_BUILD_VERSION when set, otherwise falls back to "dev"', () => {
+      const fromEnv = process.env.EXPO_PUBLIC_BUILD_VERSION;
+      if (fromEnv) {
+        expect(BUILD_VERSION).toBe(fromEnv);
+      } else {
+        expect(BUILD_VERSION).toBe('dev');
+      }
     });
   });
 });
