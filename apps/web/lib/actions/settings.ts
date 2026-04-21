@@ -106,3 +106,58 @@ export async function testKomgaConnection() {
     };
   }
 }
+
+// Kapowarr settings
+export async function getKapowarrSettings() {
+  return {
+    url: await getSetting<string>('kapowarr_url', null),
+    hasApiKey: !!(await getSetting<string>('kapowarr_api_key', null)),
+  };
+}
+
+export async function setKapowarrSettings(url: string, apiKey?: string) {
+  setSetting('kapowarr_url', url);
+  if (apiKey) {
+    setSetting('kapowarr_api_key', apiKey);
+  }
+
+  const { configureKapowarrFromDb } = await import('@/lib/services/kapowarr');
+  await configureKapowarrFromDb();
+
+  revalidatePath('/settings');
+  revalidatePath('/comics');
+  return { success: true };
+}
+
+export async function testKapowarrConnection() {
+  const url = await getSetting<string>('kapowarr_url', null);
+  const apiKey = await getSetting<string>('kapowarr_api_key', null);
+
+  if (!url || !apiKey) {
+    return { success: false, error: 'Kapowarr settings incomplete' };
+  }
+
+  try {
+    const base = url.replace(/\/$/, '');
+    const response = await fetch(
+      `${base}/api/system/about?api_key=${encodeURIComponent(apiKey)}`
+    );
+
+    if (response.ok) {
+      return { success: true };
+    } else {
+      return { success: false, error: `HTTP ${response.status}` };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Connection failed',
+    };
+  }
+}
+
+export async function isKapowarrConfigured(): Promise<boolean> {
+  const url = await getSetting<string>('kapowarr_url', null);
+  const apiKey = await getSetting<string>('kapowarr_api_key', null);
+  return !!(url && apiKey);
+}

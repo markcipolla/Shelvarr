@@ -133,6 +133,11 @@ export interface KomgaConfig {
   apiKey: string | null;
 }
 
+export interface KapowarrConfig {
+  url: string | null;
+  apiKey: string | null;
+}
+
 export interface AppConfig {
   env: string;
   port: number;
@@ -140,11 +145,42 @@ export interface AppConfig {
   libraryRoot: string;
   dbPath: string;
   komga: KomgaConfig;
+  kapowarr: KapowarrConfig;
   supportedExtensions: string[];
   rateLimits: {
     hardcover: number;
   };
   hardcoverToken: string | null;
+}
+
+// Kapowarr domain types
+export interface KapowarrVolume {
+  id: number;
+  comicvine_id: number | null;
+  title: string;
+  year: number | null;
+  publisher: string | null;
+  volume_number: number | null;
+  description: string | null;
+  cover: string | null;
+  monitored: boolean;
+  issue_count: number;
+  issues_downloaded: number;
+  total_size: number | null;
+  folder: string | null;
+}
+
+export interface KapowarrIssue {
+  id: number;
+  volume_id: number;
+  comicvine_id: number | null;
+  issue_number: string | null;
+  calculated_issue_number: number | null;
+  title: string | null;
+  date: string | null;
+  description: string | null;
+  monitored: boolean;
+  files: string[];
 }
 
 // Settings stored in database
