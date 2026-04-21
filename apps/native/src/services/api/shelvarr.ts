@@ -1,5 +1,29 @@
 import { useSettingsStore } from '../../stores/useSettingsStore';
 
+export async function testShelvarrConnection(
+  url: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const trimmed = url.trim().replace(/\/+$/, '');
+  if (!trimmed) return { ok: false, error: 'URL is empty' };
+
+  try {
+    const res = await fetch(`${trimmed}/api/health`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) {
+      return { ok: false, error: `Server responded with ${res.status}` };
+    }
+    const body = (await res.json().catch(() => null)) as { status?: string } | null;
+    if (!body || body.status !== 'ok') {
+      return { ok: false, error: 'Not a Shelvarr server' };
+    }
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || 'Could not reach server' };
+  }
+}
+
 /**
  * Fire-and-forget: update reading status on Hardcover via Shelvarr server.
  * Uses the shelvarrUrl from settings (separate from Komga server URL).

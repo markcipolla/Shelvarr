@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, Switch, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, TextInput, Switch, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { cleanAllDownloads } from '../services/fileManager';
 import { APP_VERSION, BUILD_VERSION } from '../utils/constants';
+import { testShelvarrConnection } from '../services/api/shelvarr';
 
 export default function SettingsScreen() {
   const autoDelete = useSettingsStore((s) => s.autoDeleteAfterReading);
@@ -11,6 +12,7 @@ export default function SettingsScreen() {
   const setShelvarrUrl = useSettingsStore((s) => s.setShelvarrUrl);
   const loadSettings = useSettingsStore((s) => s.loadSettings);
   const [shelvarrUrlInput, setShelvarrUrlInput] = useState(shelvarrUrl);
+  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -20,7 +22,14 @@ export default function SettingsScreen() {
     setShelvarrUrlInput(shelvarrUrl);
   }, [shelvarrUrl]);
 
-  const handleSaveShelvarrUrl = () => {
+  const handleSaveShelvarrUrl = async () => {
+    setTesting(true);
+    const result = await testShelvarrConnection(shelvarrUrlInput);
+    setTesting(false);
+    if (!result.ok) {
+      Alert.alert('Could not reach server', `${shelvarrUrlInput || '(empty)'}\n\n${result.error}`);
+      return;
+    }
     setShelvarrUrl(shelvarrUrlInput);
     Alert.alert('Saved', 'Shelvarr URL updated.');
   };
@@ -52,8 +61,16 @@ export default function SettingsScreen() {
         autoCorrect={false}
         keyboardType="url"
       />
-      <TouchableOpacity style={styles.button} onPress={handleSaveShelvarrUrl}>
-        <Text style={styles.buttonText}>Save</Text>
+      <TouchableOpacity
+        style={[styles.button, testing && styles.buttonDisabled]}
+        onPress={handleSaveShelvarrUrl}
+        disabled={testing}
+      >
+        {testing ? (
+          <ActivityIndicator color="#333" />
+        ) : (
+          <Text style={styles.buttonText}>Save</Text>
+        )}
       </TouchableOpacity>
 
       <Text style={styles.sectionTitle}>Reading</Text>
@@ -103,6 +120,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#d5d0c8',
   },
+  buttonDisabled: { opacity: 0.6 },
   buttonText: { color: '#333', fontSize: 15 },
   input: {
     backgroundColor: '#fff',

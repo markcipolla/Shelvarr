@@ -1,10 +1,11 @@
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react-native';
+import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import SettingsScreen from '../../src/screens/SettingsScreen';
 import { useSettingsStore } from '../../src/stores/useSettingsStore';
 import { cleanAllDownloads } from '../../src/services/fileManager';
 import { APP_VERSION, BUILD_VERSION } from '../../src/utils/constants';
+import { testShelvarrConnection } from '../../src/services/api/shelvarr';
 
 // Mock api/client to prevent axios module side-effects at test boot
 // (useSettingsStore transitively loads api/client → axios fetch adapter).
@@ -14,6 +15,9 @@ jest.mock('../../src/services/api/client', () => ({
 }));
 jest.mock('../../src/stores/useSettingsStore');
 jest.mock('../../src/services/fileManager');
+jest.mock('../../src/services/api/shelvarr', () => ({
+  testShelvarrConnection: jest.fn(),
+}));
 
 const mockSetAutoDelete = jest.fn();
 const mockSetShelvarrUrl = jest.fn();
@@ -21,12 +25,14 @@ const mockLoadSettings = jest.fn();
 
 const mockUseSettingsStore = useSettingsStore as unknown as jest.Mock;
 const mockCleanAllDownloads = cleanAllDownloads as jest.Mock;
+const mockTestShelvarrConnection = testShelvarrConnection as jest.Mock;
 
 describe('SettingsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(Alert, 'alert').mockImplementation(jest.fn());
     mockCleanAllDownloads.mockResolvedValue(undefined);
+    mockTestShelvarrConnection.mockResolvedValue({ ok: true });
 
     mockUseSettingsStore.mockImplementation((selector: any) =>
       selector({
@@ -52,12 +58,32 @@ describe('SettingsScreen', () => {
     expect(mockLoadSettings).toHaveBeenCalled();
   });
 
-  it('saves shelvarr URL', () => {
+  it('tests the connection and saves when reachable', async () => {
     const { getByText, getByDisplayValue } = render(<SettingsScreen />);
     fireEvent.changeText(getByDisplayValue('http://shelvarr:3000'), 'http://new:3000');
     fireEvent.press(getByText('Save'));
+
+    await waitFor(() => {
+      expect(mockTestShelvarrConnection).toHaveBeenCalledWith('http://new:3000');
+    });
     expect(mockSetShelvarrUrl).toHaveBeenCalledWith('http://new:3000');
     expect(Alert.alert).toHaveBeenCalledWith('Saved', 'Shelvarr URL updated.');
+  });
+
+  it('does not save when connection test fails', async () => {
+    mockTestShelvarrConnection.mockResolvedValueOnce({ ok: false, error: 'Could not reach server' });
+    const { getByText, getByDisplayValue } = render(<SettingsScreen />);
+    fireEvent.changeText(getByDisplayValue('http://shelvarr:3000'), 'http://bad:3000');
+    fireEvent.press(getByText('Save'));
+
+    await waitFor(() => {
+      expect(mockTestShelvarrConnection).toHaveBeenCalledWith('http://bad:3000');
+    });
+    expect(mockSetShelvarrUrl).not.toHaveBeenCalled();
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Could not reach server',
+      expect.stringContaining('Could not reach server')
+    );
   });
 
   it('handles clear downloads', () => {
@@ -74,7 +100,6 @@ describe('SettingsScreen', () => {
     const { getByText } = render(<SettingsScreen />);
     fireEvent.press(getByText('Clear all downloads'));
 
-    // Get the alert buttons and press Delete
     const alertCall = (Alert.alert as jest.Mock).mock.calls[0];
     const deleteButton = alertCall[2].find((b: any) => b.text === 'Delete');
     await deleteButton.onPress();
