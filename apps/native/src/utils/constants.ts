@@ -1,3 +1,9 @@
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const appJson = require('../../app.json') as { expo: { version: string } };
+
+export const APP_VERSION: string = appJson.expo.version;
+export const BUILD_VERSION: string = process.env.EXPO_PUBLIC_BUILD_VERSION || 'dev';
+
 export const DOWNLOADS_DIR = 'komga-downloads';
 export const EXTRACTED_DIR = 'komga-extracted';
 

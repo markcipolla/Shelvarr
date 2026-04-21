@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { GlobalSearch } from './GlobalSearch';
 import { useSidebar } from './SidebarContext';
 import type { SidebarCounts } from '@/lib/actions/stats';
-import { APP_VERSION } from '@/lib/constants';
+import { APP_VERSION, BUILD_VERSION } from '@/lib/constants';
 import { BookIcon, AuthorIcon, SeriesIcon } from '@/components/ui/Icons';
 
 interface NavItem {
@@ -148,6 +148,11 @@ export function Sidebar({ counts }: SidebarProps) {
           <p className="text-xs text-shelvarr-text-muted">
             {isCollapsed ? `v${APP_VERSION.split('.')[0]}` : `v${APP_VERSION}`}
           </p>
+          {!isCollapsed && (
+            <p className="text-[10px] text-shelvarr-text-muted/70 mt-0.5 font-mono">
+              build {BUILD_VERSION}
+            </p>
+          )}
         </div>
       </aside>
     </>

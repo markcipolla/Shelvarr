@@ -1,4 +1,4 @@
-import { APP_VERSION, APP_NAME } from '@/lib/constants';
+import { APP_VERSION, APP_NAME, BUILD_VERSION } from '@/lib/constants';
 
 export function AboutTab() {
   return (
@@ -14,6 +14,10 @@ export function AboutTab() {
         <div className="flex justify-between">
           <span className="text-shelvarr-text-muted">Version</span>
           <span className="text-white">{APP_VERSION}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-shelvarr-text-muted">Build</span>
+          <span className="text-white font-mono">{BUILD_VERSION}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-shelvarr-text-muted">Framework</span>

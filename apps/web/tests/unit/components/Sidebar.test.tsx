@@ -114,6 +114,28 @@ describe('Sidebar Component', () => {
       assert.ok(versionText);
     });
 
+    it('should render build version in footer when expanded', () => {
+      render(
+        <SidebarProvider>
+          <Sidebar />
+        </SidebarProvider>
+      );
+
+      const buildText = screen.getByText(/^build \S+$/);
+      assert.ok(buildText);
+    });
+
+    it('should render build version text with monospace font', () => {
+      render(
+        <SidebarProvider>
+          <Sidebar />
+        </SidebarProvider>
+      );
+
+      const buildText = screen.getByText(/^build /);
+      assert.ok(buildText.className.includes('font-mono'));
+    });
+
     it('should render toggle button', () => {
       render(
         <SidebarProvider>
@@ -189,6 +211,27 @@ describe('Sidebar Component', () => {
       await waitFor(() => {
         const version = screen.getByText('v0');
         assert.ok(version);
+      });
+    });
+
+    it('should hide build version when collapsed', async () => {
+      render(
+        <SidebarProvider>
+          <Sidebar />
+        </SidebarProvider>
+      );
+
+      // Build version visible while expanded
+      assert.ok(screen.getByText(/^build /));
+
+      const user = userEvent.setup();
+      const toggleButton = screen.getByLabelText('Collapse sidebar');
+
+      await user.click(toggleButton);
+
+      await waitFor(() => {
+        const buildText = screen.queryByText(/^build /);
+        assert.strictEqual(buildText, null);
       });
     });
 
