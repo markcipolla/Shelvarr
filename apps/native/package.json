@@ -8,7 +8,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "prebuild": "npx expo prebuild --platform android",
-    "build": "cd android && ./gradlew assembleRelease",
+    "build": "export EXPO_PUBLIC_BUILD_VERSION=${EXPO_PUBLIC_BUILD_VERSION:-$(git rev-parse --short HEAD 2>/dev/null || echo dev)} && cd android && ./gradlew assembleRelease",
     "deploy": "adb install -r android/app/build/outputs/apk/release/app-release.apk",
     "bd": "npm run build && npm run deploy",
     "test": "jest"

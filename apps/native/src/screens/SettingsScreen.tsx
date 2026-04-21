@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Switch, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { cleanAllDownloads } from '../services/fileManager';
+import { APP_VERSION, BUILD_VERSION } from '../utils/constants';
 
 export default function SettingsScreen() {
   const autoDelete = useSettingsStore((s) => s.autoDeleteAfterReading);
@@ -73,6 +74,16 @@ export default function SettingsScreen() {
       <TouchableOpacity style={styles.button} onPress={handleClearDownloads}>
         <Text style={styles.buttonText}>Clear all downloads</Text>
       </TouchableOpacity>
+
+      <Text style={styles.sectionTitle}>About</Text>
+      <View style={styles.aboutRow}>
+        <Text style={styles.label}>Version</Text>
+        <Text style={styles.aboutValue}>{APP_VERSION}</Text>
+      </View>
+      <View style={styles.aboutRow}>
+        <Text style={styles.label}>Build</Text>
+        <Text style={styles.aboutValueMono}>{BUILD_VERSION}</Text>
+      </View>
     </View>
   );
 }
@@ -102,5 +113,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#d5d0c8',
     color: '#222',
+  },
+  aboutRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  aboutValue: { fontSize: 14, color: '#555' },
+  aboutValueMono: {
+    fontSize: 13,
+    color: '#555',
+    fontFamily: 'monospace',
   },
 });
