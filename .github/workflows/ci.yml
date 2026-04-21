@@ -75,6 +75,11 @@ jobs:
       - name: Build
         run: pnpm --filter @shelvarr/web build
 
+      - name: Free up disk space
+        run: |
+          sudo apt-get clean || true
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc || true
+
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
 
