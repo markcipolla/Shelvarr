@@ -74,7 +74,7 @@ export default async function ComicDetailPage({ params }: PageProps) {
                 Monitored
               </span>
             )}
-            {volume.volume_number !== null && volume.volume_number !== undefined && (
+            {volume.volume_number > 0 && (
               <span className="bg-shelvarr-surface border border-shelvarr-border rounded px-3 py-1 text-shelvarr-text-muted">
                 Volume {volume.volume_number}
               </span>
@@ -90,7 +90,7 @@ export default async function ComicDetailPage({ params }: PageProps) {
         </div>
       </div>
 
-      {volume.issues && volume.issues.length > 0 && (
+      {volume.issues.length > 0 && (
         <div>
           <h2 className="text-lg font-semibold text-white mb-3">Issues</h2>
           <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg divide-y divide-shelvarr-border">
@@ -99,20 +99,20 @@ export default async function ComicDetailPage({ params }: PageProps) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-3">
                     <span className="text-shelvarr-text-muted text-sm font-mono w-10 flex-shrink-0">
-                      #{issue.issue_number ?? '?'}
+                      #{issue.issue_number}
                     </span>
                     <span className="text-white truncate">
                       {issue.title || 'Untitled'}
                     </span>
                   </div>
                   {issue.date && (
-                    <p className="text-xs text-shelvarr-text-muted mt-1 ml-13 pl-13" style={{ paddingLeft: '3.25rem' }}>
+                    <p className="text-xs text-shelvarr-text-muted mt-1" style={{ paddingLeft: '3.25rem' }}>
                       {issue.date}
                     </p>
                   )}
                 </div>
                 <div className="flex items-center gap-2 text-xs">
-                  {issue.files && issue.files.length > 0 ? (
+                  {issue.files.length > 0 ? (
                     <span className="bg-green-600/20 text-green-400 px-2 py-1 rounded">
                       Downloaded
                     </span>

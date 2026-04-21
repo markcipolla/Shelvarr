@@ -5,9 +5,15 @@
  */
 
 import { getServiceConfig } from '../config';
-import type { KapowarrVolume, KapowarrIssue } from '@shelvarr/types';
+import type { KapowarrVolume, KapowarrVolumeDetail, KapowarrIssue, KapowarrFile } from '@shelvarr/types';
 
-export type { KapowarrVolume, KapowarrIssue };
+export type { KapowarrVolume, KapowarrVolumeDetail, KapowarrIssue, KapowarrFile };
+
+/**
+ * Valid sort values for GET /api/volumes, matching the LibrarySorting enum.
+ * See backend/base/definitions.py#LibrarySorting.
+ */
+export type KapowarrSort = 'title' | 'year' | 'volume_number' | 'recently_added' | 'publisher';
 
 export interface KapowarrConnectionStatus {
   connected: boolean;
@@ -102,15 +108,16 @@ class KapowarrClient {
     }
   }
 
-  async getVolumes(params: { query?: string; sort?: string } = {}): Promise<KapowarrVolume[]> {
+  async getVolumes(params: { query?: string; sort?: KapowarrSort; filter?: 'wanted' | 'monitored' } = {}): Promise<KapowarrVolume[]> {
     return this.request<KapowarrVolume[]>('/api/volumes', {
       query: params.query,
       sort: params.sort,
+      filter: params.filter,
     });
   }
 
-  async getVolume(id: number): Promise<KapowarrVolume & { issues?: KapowarrIssue[] }> {
-    return this.request<KapowarrVolume & { issues?: KapowarrIssue[] }>(`/api/volumes/${id}`);
+  async getVolume(id: number): Promise<KapowarrVolumeDetail> {
+    return this.request<KapowarrVolumeDetail>(`/api/volumes/${id}`);
   }
 
   async getIssue(id: number): Promise<KapowarrIssue> {

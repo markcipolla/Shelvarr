@@ -1,7 +1,7 @@
 'use server';
 
 import { kapowarrClient, configureKapowarrFromDb } from '@/lib/services/kapowarr';
-import type { KapowarrVolume, KapowarrIssue } from '@shelvarr/types';
+import type { KapowarrVolume, KapowarrVolumeDetail } from '@shelvarr/types';
 
 export interface ComicsListResult {
   configured: boolean;
@@ -11,7 +11,7 @@ export interface ComicsListResult {
 
 export interface ComicDetailResult {
   configured: boolean;
-  volume: (KapowarrVolume & { issues?: KapowarrIssue[] }) | null;
+  volume: KapowarrVolumeDetail | null;
   coverUrl: string | null;
   error?: string;
 }
