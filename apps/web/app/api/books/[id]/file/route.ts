@@ -25,6 +25,10 @@ export async function GET(
   }
 
   const { id } = await params;
+  if (!/^\d+$/.test(id)) {
+    return NextResponse.json({ error: 'Invalid book ID' }, { status: 400 });
+  }
+
   const row = queryOne<{ file_path: string; extension: string | null; title: string | null }>(
     'SELECT file_path, extension, title FROM books WHERE id = ?',
     [id]
