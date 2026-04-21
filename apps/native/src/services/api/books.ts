@@ -34,18 +34,18 @@ export async function fetchOnDeck(page: number = 0, libraryId?: string): Promise
 }
 
 export function getBookThumbnailUrl(bookId: string): string {
-  const { credentials } = require('../../stores/useAuthStore').useAuthStore.getState();
-  return `${credentials?.serverUrl}/api/books/${bookId}/thumbnail`;
+  const { shelvarrUrl } = require('../../stores/useSettingsStore').useSettingsStore.getState();
+  return `${shelvarrUrl}/api/books/${bookId}/thumbnail`;
 }
 
 export function getBookPageUrl(bookId: string, pageNumber: number): string {
-  const { credentials } = require('../../stores/useAuthStore').useAuthStore.getState();
-  return `${credentials?.serverUrl}/api/books/${bookId}/pages/${pageNumber}`;
+  const { shelvarrUrl } = require('../../stores/useSettingsStore').useSettingsStore.getState();
+  return `${shelvarrUrl}/api/books/${bookId}/pages/${pageNumber}`;
 }
 
 export function getSeriesThumbnailUrl(seriesId: string): string {
-  const { credentials } = require('../../stores/useAuthStore').useAuthStore.getState();
-  return `${credentials?.serverUrl}/api/series/${seriesId}/thumbnail`;
+  const { shelvarrUrl } = require('../../stores/useSettingsStore').useSettingsStore.getState();
+  return `${shelvarrUrl}/api/series/${seriesId}/thumbnail`;
 }
 
 export async function updateReadProgress(

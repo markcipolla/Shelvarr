@@ -1,5 +1,4 @@
 export type RootStackParamList = {
-  Login: undefined;
   Home: undefined;
   Library: { libraryId: string; libraryName: string };
   Series: { seriesId: string; seriesName: string };

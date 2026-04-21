@@ -20,6 +20,7 @@ import { fetchOnDeck, searchBooks, fetchInProgressBooks, fetchRecentlyAdded } fr
 import BookCard from '../components/BookCard';
 import { useColumns } from '../hooks/useColumns';
 import { padDataForGrid, isPlaceholder } from '../utils/gridHelpers';
+import { useSettingsStore } from '../stores/useSettingsStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -31,6 +32,7 @@ interface LibraryData {
 }
 
 export default function HomeScreen({ navigation }: Props) {
+  const shelvarrUrl = useSettingsStore((s) => s.shelvarrUrl);
   const [libraryData, setLibraryData] = useState<LibraryData[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -148,6 +150,16 @@ export default function HomeScreen({ navigation }: Props) {
       ),
     });
   }, [navigation, search]);
+
+  if (!shelvarrUrl) {
+    return (
+      <View style={styles.center}>
+        <Text style={{ fontSize: 18, color: '#666', textAlign: 'center', paddingHorizontal: 32 }}>
+          No server configured.{'\n'}Tap the gear icon to set your Shelvarr URL.
+        </Text>
+      </View>
+    );
+  }
 
   if (loading) {
     return (

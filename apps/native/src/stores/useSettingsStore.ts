@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
+import { resetApiClient } from '../services/api/client';
 
 interface SettingsState {
   autoDeleteAfterReading: boolean;
@@ -17,8 +18,10 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     SecureStore.setItemAsync('settings_autoDelete', JSON.stringify(value));
   },
   setShelvarrUrl: (value) => {
-    set({ shelvarrUrl: value });
-    SecureStore.setItemAsync('settings_shelvarrUrl', value);
+    const url = value.replace(/\/+$/, '');
+    set({ shelvarrUrl: url });
+    SecureStore.setItemAsync('settings_shelvarrUrl', url);
+    resetApiClient();
   },
   loadSettings: async () => {
     const autoDelete = await SecureStore.getItemAsync('settings_autoDelete');

@@ -4,17 +4,13 @@ import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import * as Font from 'expo-font';
 import RootNavigator from './src/navigation/RootNavigator';
-import { useAuthStore } from './src/stores/useAuthStore';
 import { useSettingsStore } from './src/stores/useSettingsStore';
 import { retryOfflineQueue } from './src/services/progressSync';
 
 export default function App() {
-  const isLoading = useAuthStore((s) => s.isLoading);
-  const loadCredentials = useAuthStore((s) => s.loadCredentials);
   const [fontsReady, setFontsReady] = useState(false);
 
   useEffect(() => {
-    loadCredentials();
     useSettingsStore.getState().loadSettings();
     retryOfflineQueue();
     Font.loadAsync({
@@ -27,7 +23,7 @@ export default function App() {
       .catch(() => setFontsReady(true)); // continue without custom fonts
   }, []);
 
-  if (isLoading || !fontsReady) {
+  if (!fontsReady) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f1eb' }}>
         <ActivityIndicator size="large" color="#8b5e3c" />

@@ -1,7 +1,6 @@
-import { encode as btoa } from 'base-64';
 import { Book, DownloadedBook } from '../types/komga';
 import { getMediaFormat, getFileExtension, isComicFormat, getFormatFromName } from '../utils/fileTypes';
-import { useAuthStore } from '../stores/useAuthStore';
+import { useSettingsStore } from '../stores/useSettingsStore';
 import { useDownloadStore } from '../stores/useDownloadStore';
 import { downloadBookFile } from './fileManager';
 import { getBookExtractDir, getBookDownloadPath } from '../utils/paths';
@@ -12,21 +11,10 @@ import {
   readDirectoryAsync,
 } from 'expo-file-system/legacy';
 
-function getAuthHeaders(): Record<string, string> {
-  const { credentials, sessionCookie } = useAuthStore.getState();
-  const headers: Record<string, string> = {};
-  /* istanbul ignore next -- callers check credentials before calling */
-  if (!credentials) return headers;
-
-  if (sessionCookie) {
-    headers['Cookie'] = `KOMGA-SESSION=${sessionCookie}`;
-  }
-  if (credentials.authType === 'basic' && credentials.username && credentials.password) {
-    headers['Authorization'] = `Basic ${btoa(`${credentials.username}:${credentials.password}`)}`;
-  } else /* istanbul ignore next */ if (credentials.authType === 'apikey' && credentials.apiKey) {
-    headers['X-API-Key'] = credentials.apiKey;
-  }
-  return headers;
+function getServerUrl(): string {
+  const { shelvarrUrl } = useSettingsStore.getState();
+  if (!shelvarrUrl) throw new Error('Server URL not configured');
+  return shelvarrUrl;
 }
 
 function getFormat(book: Book) {
@@ -35,18 +23,15 @@ function getFormat(book: Book) {
 }
 
 /**
- * For comics: download all page images from Komga's page API.
+ * For comics: download all page images from the server's page API.
  * Returns the directory containing the downloaded images.
  */
 async function downloadComicPages(
   book: Book
 ): Promise<string> {
-  const { credentials } = useAuthStore.getState();
-  /* istanbul ignore next -- prepareBookForReading checks credentials first */
-  if (!credentials) throw new Error('Not authenticated');
+  const serverUrl = getServerUrl();
 
   const pagesDir = getBookExtractDir(book.id);
-  const headers = getAuthHeaders();
   const store = useDownloadStore.getState();
   const totalPages = book.media.pagesCount;
 
@@ -76,8 +61,8 @@ async function downloadComicPages(
         continue;
       }
 
-      const url = `${credentials.serverUrl}/api/books/${book.id}/pages/${i}`;
-      const dl = createDownloadResumable(url, filePath, { headers });
+      const url = `${serverUrl}/api/books/${book.id}/pages/${i}`;
+      const dl = createDownloadResumable(url, filePath, {});
       const result = await dl.downloadAsync();
       if (!result) throw new Error(`Failed to download page ${i}`);
 
@@ -96,9 +81,7 @@ export async function prepareBookForReading(
   book: Book
 ): Promise<{ filePath: string; extractedDir?: string }> {
   const format = getFormat(book);
-  const { credentials } = useAuthStore.getState();
-
-  if (!credentials) throw new Error('Not authenticated');
+  const serverUrl = getServerUrl();
 
   const store = useDownloadStore.getState();
 
@@ -154,13 +137,12 @@ export async function prepareBookForReading(
   }
 
   // Download the file
-  const url = `${credentials.serverUrl}/api/books/${book.id}/file`;
-  const headers = getAuthHeaders();
+  const url = `${serverUrl}/api/books/${book.id}/file`;
 
   store.setActiveDownload(book.id, 0);
 
   try {
-    const filePath = await downloadBookFile(url, book.id, extension, headers, (progress) => {
+    const filePath = await downloadBookFile(url, book.id, extension, {}, (progress) => {
       store.setActiveDownload(book.id, progress);
     });
 

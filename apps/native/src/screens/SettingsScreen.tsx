@@ -1,9 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Switch, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useSettingsStore } from '../stores/useSettingsStore';
-import { useAuthStore } from '../stores/useAuthStore';
 import { cleanAllDownloads } from '../services/fileManager';
-import { resetApiClient } from '../services/api/client';
 
 export default function SettingsScreen() {
   const autoDelete = useSettingsStore((s) => s.autoDeleteAfterReading);
@@ -11,8 +9,6 @@ export default function SettingsScreen() {
   const shelvarrUrl = useSettingsStore((s) => s.shelvarrUrl);
   const setShelvarrUrl = useSettingsStore((s) => s.setShelvarrUrl);
   const loadSettings = useSettingsStore((s) => s.loadSettings);
-  const logout = useAuthStore((s) => s.logout);
-  const serverUrl = useAuthStore((s) => s.credentials?.serverUrl);
   const [shelvarrUrlInput, setShelvarrUrlInput] = useState(shelvarrUrl);
 
   useEffect(() => {
@@ -42,23 +38,23 @@ export default function SettingsScreen() {
     ]);
   };
 
-  const handleLogout = () => {
-    Alert.alert('Logout', 'Disconnect from server?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Logout',
-        style: 'destructive',
-        onPress: async () => {
-          await cleanAllDownloads();
-          resetApiClient();
-          await logout();
-        },
-      },
-    ]);
-  };
-
   return (
     <View style={styles.container}>
+      <Text style={styles.sectionTitle}>Server</Text>
+      <TextInput
+        style={styles.input}
+        value={shelvarrUrlInput}
+        onChangeText={setShelvarrUrlInput}
+        placeholder="Shelvarr server URL (e.g. http://192.168.1.100:3000)"
+        placeholderTextColor="#888"
+        autoCapitalize="none"
+        autoCorrect={false}
+        keyboardType="url"
+      />
+      <TouchableOpacity style={styles.button} onPress={handleSaveShelvarrUrl}>
+        <Text style={styles.buttonText}>Save</Text>
+      </TouchableOpacity>
+
       <Text style={styles.sectionTitle}>Reading</Text>
       <View style={styles.row}>
         <View style={styles.rowText}>
@@ -73,31 +69,9 @@ export default function SettingsScreen() {
         />
       </View>
 
-      <Text style={styles.sectionTitle}>Shelvarr</Text>
-      <TextInput
-        style={styles.input}
-        value={shelvarrUrlInput}
-        onChangeText={setShelvarrUrlInput}
-        placeholder="Shelvarr server URL"
-        placeholderTextColor="#888"
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="url"
-      />
-      <TouchableOpacity style={styles.button} onPress={handleSaveShelvarrUrl}>
-        <Text style={styles.buttonText}>Save</Text>
-      </TouchableOpacity>
-
       <Text style={styles.sectionTitle}>Storage</Text>
       <TouchableOpacity style={styles.button} onPress={handleClearDownloads}>
         <Text style={styles.buttonText}>Clear all downloads</Text>
-      </TouchableOpacity>
-
-      <Text style={styles.sectionTitle}>Server</Text>
-      <Text style={styles.serverUrl}>{serverUrl}</Text>
-      <Text style={styles.description}>Reading status syncs automatically via the connected server</Text>
-      <TouchableOpacity style={[styles.button, styles.logoutButton]} onPress={handleLogout}>
-        <Text style={styles.buttonText}>Logout</Text>
       </TouchableOpacity>
     </View>
   );
@@ -118,7 +92,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#d5d0c8',
   },
-  logoutButton: { borderColor: '#c0392b', marginTop: 8 },
   buttonText: { color: '#333', fontSize: 15 },
   input: {
     backgroundColor: '#fff',
@@ -130,5 +103,4 @@ const styles = StyleSheet.create({
     borderColor: '#d5d0c8',
     color: '#222',
   },
-  serverUrl: { fontSize: 14, color: '#777', marginBottom: 12 },
 });
