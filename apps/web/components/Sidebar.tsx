@@ -20,6 +20,7 @@ const navItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: HomeIcon },
   { href: '/libraries', label: 'Libraries', icon: FolderIcon },
   { href: '/books', label: 'Books', icon: BookIcon, countKey: 'books', countColor: 'blue' },
+  { href: '/comics', label: 'Comics', icon: ComicIcon },
   { href: '/unmatched', label: 'Unmatched', icon: UnmatchedIcon, countKey: 'unmatched', countColor: 'orange' },
   { href: '/wanted', label: 'Wanted', icon: WantedIcon },
   { href: '/series', label: 'Series', icon: SeriesIcon },
@@ -229,6 +230,15 @@ function UnmatchedIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+}
+
+function ComicIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4h6a4 4 0 014 4v12a3 3 0 00-3-3H4V4z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 4h-6a4 4 0 00-4 4v12a3 3 0 013-3h7V4z" />
     </svg>
   );
 }

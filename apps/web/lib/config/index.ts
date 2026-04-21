@@ -25,6 +25,12 @@ const config: AppConfig = {
     apiKey: process.env['KOMGA_API_KEY'] || null,
   },
 
+  // Kapowarr integration (optional)
+  kapowarr: {
+    url: process.env['KAPOWARR_URL'] || null,
+    apiKey: process.env['KAPOWARR_API_KEY'] || null,
+  },
+
   // Supported file extensions
   supportedExtensions: ['.epub', '.pdf', '.mobi', '.azw', '.azw3'],
 

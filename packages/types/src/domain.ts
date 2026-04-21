@@ -133,6 +133,11 @@ export interface KomgaConfig {
   apiKey: string | null;
 }
 
+export interface KapowarrConfig {
+  url: string | null;
+  apiKey: string | null;
+}
+
 export interface AppConfig {
   env: string;
   port: number;
@@ -140,11 +145,66 @@ export interface AppConfig {
   libraryRoot: string;
   dbPath: string;
   komga: KomgaConfig;
+  kapowarr: KapowarrConfig;
   supportedExtensions: string[];
   rateLimits: {
     hardcover: number;
   };
   hardcoverToken: string | null;
+}
+
+// Kapowarr domain types — shapes mirror the Kapowarr Flask API
+// (see frontend/api.py and backend/implementations/volumes.py in casvt/Kapowarr).
+
+export interface KapowarrFile {
+  id: number;
+  filepath: string;
+  size: number;
+}
+
+export interface KapowarrGeneralFile extends KapowarrFile {
+  file_type: string;
+}
+
+export interface KapowarrVolume {
+  id: number;
+  comicvine_id: number;
+  title: string;
+  year: number | null;
+  publisher: string | null;
+  volume_number: number;
+  description: string;
+  monitored: boolean;
+  monitor_new_issues: boolean;
+  folder: string;
+  issue_count: number;
+  issue_count_monitored: number;
+  issues_downloaded: number;
+  issues_downloaded_monitored: number;
+  total_size: number | null;
+}
+
+export interface KapowarrVolumeDetail extends KapowarrVolume {
+  special_version: string | null;
+  special_version_locked: boolean;
+  site_url: string;
+  root_folder: number;
+  volume_folder: string;
+  issues: KapowarrIssue[];
+  general_files: KapowarrGeneralFile[];
+}
+
+export interface KapowarrIssue {
+  id: number;
+  volume_id: number;
+  comicvine_id: number;
+  issue_number: string;
+  calculated_issue_number: number;
+  title: string | null;
+  date: string | null;
+  description: string;
+  monitored: boolean;
+  files: KapowarrFile[];
 }
 
 // Settings stored in database

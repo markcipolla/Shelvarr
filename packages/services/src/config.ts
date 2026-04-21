@@ -30,6 +30,10 @@ export function getServiceConfig(): AppConfig {
         url: process.env['KOMGA_URL'] || null,
         apiKey: process.env['KOMGA_API_KEY'] || null,
       },
+      kapowarr: {
+        url: process.env['KAPOWARR_URL'] || null,
+        apiKey: process.env['KAPOWARR_API_KEY'] || null,
+      },
       rateLimits: { hardcover: 60 },
     };
   }
