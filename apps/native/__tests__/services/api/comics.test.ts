@@ -10,7 +10,7 @@ jest.mock('../../../src/stores/useSettingsStore', () => ({
   },
 }));
 
-import { fetchComics, getVolumeCoverUrl } from '../../../src/services/api/comics';
+import { fetchComics, fetchComicDetail, getVolumeCoverUrl } from '../../../src/services/api/comics';
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -76,6 +76,34 @@ describe('fetchComics', () => {
     mockGet.mockResolvedValue({ data: res });
 
     const result = await fetchComics();
+
+    expect(result.error).toBe('Kapowarr down');
+  });
+});
+
+describe('fetchComicDetail', () => {
+  it('calls /api/comics/:id and returns the unwrapped data', async () => {
+    const res = { configured: true, volume: { id: 42, title: 'Batman', issues: [] } };
+    mockGet.mockResolvedValue({ data: res });
+
+    const result = await fetchComicDetail(42);
+
+    expect(mockGet).toHaveBeenCalledWith('/api/comics/42');
+    expect(result).toEqual(res);
+  });
+
+  it('passes through configured:false responses', async () => {
+    mockGet.mockResolvedValue({ data: { configured: false } });
+
+    const result = await fetchComicDetail(7);
+
+    expect(result).toEqual({ configured: false });
+  });
+
+  it('passes through error responses', async () => {
+    mockGet.mockResolvedValue({ data: { configured: true, error: 'Kapowarr down' } });
+
+    const result = await fetchComicDetail(7);
 
     expect(result.error).toBe('Kapowarr down');
   });
