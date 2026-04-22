@@ -18,7 +18,7 @@ test.describe('Navigation', () => {
     await expect(sidebar).toBeVisible();
 
     // Check key nav items exist (using text content since links contain icons + text)
-    await expect(sidebar.getByText('Dashboard')).toBeVisible();
+    await expect(sidebar.getByText('Home')).toBeVisible();
     await expect(sidebar.getByText('Libraries')).toBeVisible();
     await expect(sidebar.getByText('Books')).toBeVisible();
     await expect(sidebar.getByText('Series')).toBeVisible();
