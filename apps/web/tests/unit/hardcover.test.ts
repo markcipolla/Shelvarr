@@ -6,6 +6,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import * as hardcover from '../../lib/services/metadata/hardcover.js';
+import { initServiceConfig, getServiceConfig } from '@shelvarr/services';
 
 // Mock global fetch
 let originalFetch: typeof global.fetch;
@@ -146,14 +147,14 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
 
   describe('getBookById', () => {
     it('should return null when API token is not configured', async () => {
-      // Mock isConfigured to return false
-      const origEnv = process.env.HARDCOVER_TOKEN;
-      delete process.env.HARDCOVER_TOKEN;
-
-      const result = await hardcover.getBookById('123');
-      assert.strictEqual(result, null);
-
-      if (origEnv) process.env.HARDCOVER_TOKEN = origEnv;
+      const original = getServiceConfig();
+      initServiceConfig({ ...original, hardcoverToken: null });
+      try {
+        const result = await hardcover.getBookById('123');
+        assert.strictEqual(result, null);
+      } finally {
+        initServiceConfig(original);
+      }
     });
 
     it('should handle GraphQL errors in response', async () => {
@@ -327,9 +328,14 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
     });
 
     it('should return null when API token is not configured', async () => {
-      delete process.env.HARDCOVER_TOKEN;
-      const result = await hardcover.searchBooks('test');
-      assert.deepStrictEqual(result, []);
+      const original = getServiceConfig();
+      initServiceConfig({ ...original, hardcoverToken: null });
+      try {
+        const result = await hardcover.searchBooks('test');
+        assert.deepStrictEqual(result, []);
+      } finally {
+        initServiceConfig(original);
+      }
     });
 
     it('should perform search and return book metadata', async () => {
