@@ -39,11 +39,11 @@ export default function MainTabs() {
       }}
     >
       <Tab.Screen
-        name="Books"
+        name="Home"
         component={HomeScreen as any}
         options={{
-          title: 'Books',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>📚</Text>,
+          title: 'Home',
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>🏠</Text>,
         }}
       />
       <Tab.Screen

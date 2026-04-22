@@ -1,7 +1,7 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
 
 export type MainTabParamList = {
-  Books: undefined;
+  Home: undefined;
   Comics: undefined;
 };
 
