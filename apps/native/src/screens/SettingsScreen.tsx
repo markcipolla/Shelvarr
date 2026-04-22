@@ -10,8 +10,11 @@ export default function SettingsScreen() {
   const setAutoDelete = useSettingsStore((s) => s.setAutoDelete);
   const shelvarrUrl = useSettingsStore((s) => s.shelvarrUrl);
   const setShelvarrUrl = useSettingsStore((s) => s.setShelvarrUrl);
+  const kapowarrUrl = useSettingsStore((s) => s.kapowarrUrl);
+  const setKapowarrUrl = useSettingsStore((s) => s.setKapowarrUrl);
   const loadSettings = useSettingsStore((s) => s.loadSettings);
   const [shelvarrUrlInput, setShelvarrUrlInput] = useState(shelvarrUrl);
+  const [kapowarrUrlInput, setKapowarrUrlInput] = useState(kapowarrUrl);
   const [testing, setTesting] = useState(false);
 
   useEffect(() => {
@@ -21,6 +24,10 @@ export default function SettingsScreen() {
   useEffect(() => {
     setShelvarrUrlInput(shelvarrUrl);
   }, [shelvarrUrl]);
+
+  useEffect(() => {
+    setKapowarrUrlInput(kapowarrUrl);
+  }, [kapowarrUrl]);
 
   const handleSaveShelvarrUrl = async () => {
     setTesting(true);
@@ -32,6 +39,11 @@ export default function SettingsScreen() {
     }
     setShelvarrUrl(shelvarrUrlInput);
     Alert.alert('Saved', 'Shelvarr URL updated.');
+  };
+
+  const handleSaveKapowarrUrl = () => {
+    setKapowarrUrl(kapowarrUrlInput);
+    Alert.alert('Saved', 'Kapowarr URL updated.');
   };
 
   const handleClearDownloads = () => {
@@ -50,7 +62,7 @@ export default function SettingsScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.sectionTitle}>Server</Text>
+      <Text style={styles.sectionTitle}>Shelvarr (Books)</Text>
       <TextInput
         style={styles.input}
         value={shelvarrUrlInput}
@@ -71,6 +83,21 @@ export default function SettingsScreen() {
         ) : (
           <Text style={styles.buttonText}>Save</Text>
         )}
+      </TouchableOpacity>
+
+      <Text style={styles.sectionTitle}>Kapowarr (Comics)</Text>
+      <TextInput
+        style={styles.input}
+        value={kapowarrUrlInput}
+        onChangeText={setKapowarrUrlInput}
+        placeholder="Kapowarr server URL (e.g. http://192.168.1.100:5656)"
+        placeholderTextColor="#888"
+        autoCapitalize="none"
+        autoCorrect={false}
+        keyboardType="url"
+      />
+      <TouchableOpacity style={styles.button} onPress={handleSaveKapowarrUrl}>
+        <Text style={styles.buttonText}>Save</Text>
       </TouchableOpacity>
 
       <Text style={styles.sectionTitle}>Reading</Text>

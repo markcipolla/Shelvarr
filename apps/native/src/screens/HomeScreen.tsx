@@ -5,7 +5,6 @@ import {
   Text,
   TextInput,
   FlatList,
-  TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
@@ -14,9 +13,8 @@ import {
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import { Library, Book } from '../types/komga';
-import { fetchLibraries } from '../services/api/libraries';
-import { fetchOnDeck, searchBooks, fetchInProgressBooks, fetchRecentlyAdded } from '../services/api/books';
+import { Book } from '../types/komga';
+import { searchBooks, fetchInProgressBooks, fetchRecentlyAdded } from '../services/api/books';
 import BookCard from '../components/BookCard';
 import { useColumns } from '../hooks/useColumns';
 import { padDataForGrid, isPlaceholder } from '../utils/gridHelpers';
@@ -24,22 +22,15 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
-interface LibraryData {
-  library: Library;
-  inProgress: Book[];
-  onDeck: Book[];
-  recentlyAdded: Book[];
-}
-
 export default function HomeScreen({ navigation }: Props) {
   const shelvarrUrl = useSettingsStore((s) => s.shelvarrUrl);
-  const [libraryData, setLibraryData] = useState<LibraryData[]>([]);
+  const [inProgress, setInProgress] = useState<Book[]>([]);
+  const [recentlyAdded, setRecentlyAdded] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const columns = useColumns();
   const { width: screenWidth } = useWindowDimensions();
-  // Card width: screen minus padding (16*2) and gaps (12*(columns-1)), divided by columns
   const cardWidth = (screenWidth - 32 - 12 * (columns - 1)) / columns;
   const [searchResults, setSearchResults] = useState<Book[]>([]);
   const [searching, setSearching] = useState(false);
@@ -49,28 +40,13 @@ export default function HomeScreen({ navigation }: Props) {
 
   const loadData = useCallback(async () => {
     try {
-      const libraries = await fetchLibraries();
-
-      // Fetch in-progress and recently added per library in parallel
-      const data = await Promise.all(
-        libraries.map(async (library) => {
-          const [inProgressRes, onDeckRes, recentRes] = await Promise.all([
-            fetchInProgressBooks(library.id),
-            fetchOnDeck(0, library.id),
-            fetchRecentlyAdded(library.id),
-          ]);
-
-          // Dedupe: on-deck excludes in-progress, recently added excludes both
-          const inProgressIds = new Set(inProgressRes.content.map((b) => b.id));
-          const onDeck = onDeckRes.content.filter((b) => !inProgressIds.has(b.id));
-          const shownIds = new Set([...inProgressIds, ...onDeck.map((b) => b.id)]);
-          const recentlyAdded = recentRes.content.filter((b) => !shownIds.has(b.id));
-
-          return { library, inProgress: inProgressRes.content, onDeck, recentlyAdded };
-        })
-      );
-
-      setLibraryData(data);
+      const [inProgressRes, recentRes] = await Promise.all([
+        fetchInProgressBooks(),
+        fetchRecentlyAdded(),
+      ]);
+      const inProgressIds = new Set(inProgressRes.content.map((b) => b.id));
+      setInProgress(inProgressRes.content);
+      setRecentlyAdded(recentRes.content.filter((b) => !inProgressIds.has(b.id)));
     } catch (err) {
       console.error('Failed to load home data:', err);
     } finally {
@@ -79,7 +55,6 @@ export default function HomeScreen({ navigation }: Props) {
     }
   }, []);
 
-  // Reload data every time the screen gains focus (e.g. after reading a book)
   useFocusEffect(
     useCallback(() => {
       loadData();
@@ -213,114 +188,69 @@ export default function HomeScreen({ navigation }: Props) {
     );
   }
 
+  const hasAny = inProgress.length > 0 || recentlyAdded.length > 0;
+
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.scrollContent}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#8b5e3c" />}
     >
-      {libraryData.map(({ library, inProgress, onDeck, recentlyAdded }) => (
-        <View key={library.id} style={styles.librarySection}>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Library', { libraryId: library.id, libraryName: library.name })}
-          >
-            <Text style={styles.libraryTitle}>{library.name} ›</Text>
-          </TouchableOpacity>
-
-          {inProgress.length > 0 && (
-            <View style={styles.subsection}>
-              <Text style={styles.subsectionTitle}>In Progress</Text>
-              <FlatList
-                horizontal
-                data={inProgress}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                  <View style={{ width: cardWidth, marginRight: 12 }}>
-                    <BookCard
-                      book={item}
-                      fill
-                      onPress={() => navigation.navigate('BookDetail', { bookId: item.id })}
-                    />
-                  </View>
-                )}
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.horizontalList}
-              />
-            </View>
-          )}
-
-          {onDeck.length > 0 && (
-            <View style={styles.subsection}>
-              <Text style={styles.subsectionTitle}>On Deck</Text>
-              <FlatList
-                horizontal
-                data={onDeck}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                  <View style={{ width: cardWidth, marginRight: 12 }}>
-                    <BookCard
-                      book={item}
-                      fill
-                      onPress={() => navigation.navigate('BookDetail', { bookId: item.id })}
-                    />
-                  </View>
-                )}
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.horizontalList}
-              />
-            </View>
-          )}
-
-          {recentlyAdded.length > 0 && (
-            <View style={styles.subsection}>
-              <Text style={styles.subsectionTitle}>Recently Added</Text>
-              <FlatList
-                horizontal
-                data={recentlyAdded}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                  <View style={{ width: cardWidth, marginRight: 12 }}>
-                    <BookCard
-                      book={item}
-                      fill
-                      onPress={() => navigation.navigate('BookDetail', { bookId: item.id })}
-                    />
-                  </View>
-                )}
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.horizontalList}
-              />
-            </View>
-          )}
-
-          {inProgress.length === 0 && onDeck.length === 0 && recentlyAdded.length === 0 && (
-            <Text style={styles.emptyText}>No books yet</Text>
-          )}
+      {inProgress.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>In Progress</Text>
+          <FlatList
+            horizontal
+            data={inProgress}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <View style={{ width: cardWidth, marginRight: 12 }}>
+                <BookCard
+                  book={item}
+                  fill
+                  onPress={() => navigation.navigate('BookDetail', { bookId: item.id })}
+                />
+              </View>
+            )}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.horizontalList}
+          />
         </View>
-      ))}
+      )}
+
+      {recentlyAdded.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Recently Added</Text>
+          <FlatList
+            horizontal
+            data={recentlyAdded}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <View style={{ width: cardWidth, marginRight: 12 }}>
+                <BookCard
+                  book={item}
+                  fill
+                  onPress={() => navigation.navigate('BookDetail', { bookId: item.id })}
+                />
+              </View>
+            )}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.horizontalList}
+          />
+        </View>
+      )}
+
+      {!hasAny && <Text style={styles.emptyText}>No books yet</Text>}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f1eb' },
-  scrollContent: { paddingBottom: 80 },
+  scrollContent: { paddingTop: 16, paddingBottom: 80 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f1eb' },
-  librarySection: {
-    paddingTop: 16,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#d5d0c8',
-  },
-  libraryTitle: {
-    fontSize: 30,
-    fontWeight: '600',
-    color: '#222',
-    paddingHorizontal: 16,
-    marginBottom: 10,
-  },
-  subsection: { marginTop: 4 },
-  subsectionTitle: {
+  section: { marginBottom: 24 },
+  sectionTitle: {
     fontSize: 21,
     fontWeight: '500',
     color: '#777',
@@ -330,7 +260,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   horizontalList: { paddingHorizontal: 16, paddingBottom: 8 },
-  emptyText: { color: '#999', fontSize: 20, paddingHorizontal: 16, paddingBottom: 8 },
+  emptyText: { color: '#999', fontSize: 20, paddingHorizontal: 16, paddingTop: 32, textAlign: 'center' },
   searchBar: {
     flex: 1,
     backgroundColor: '#fff',
