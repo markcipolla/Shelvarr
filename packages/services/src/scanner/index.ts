@@ -216,20 +216,21 @@ export async function scanLibrary(
       const stats = statSync(filePath);
       const fileSize = stats.size;
       const fileHash = computeFileHash(filePath);
+      const ext = extname(filePath).replace('.', '').toLowerCase() || null;
 
       if (existingPaths.has(filePath)) {
-        // Update existing book
+        // Update existing book (backfills extension for rows scanned before it was tracked)
         await execute(
-          'UPDATE books SET file_size = ?, file_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE file_path = ?',
-          [fileSize, fileHash, filePath]
+          'UPDATE books SET file_size = ?, file_hash = ?, extension = COALESCE(extension, ?), updated_at = CURRENT_TIMESTAMP WHERE file_path = ?',
+          [fileSize, fileHash, ext, filePath]
         );
         result.updated++;
       } else {
         // Add new book
         const parsed = parseFilename(filePath);
         await execute(
-          'INSERT INTO books (library_id, file_path, file_size, file_hash, title, authors) VALUES (?, ?, ?, ?, ?, ?)',
-          [libraryId, filePath, fileSize, fileHash, parsed.title, JSON.stringify(parsed.authors)]
+          'INSERT INTO books (library_id, file_path, file_size, file_hash, extension, title, authors) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [libraryId, filePath, fileSize, fileHash, ext, parsed.title, JSON.stringify(parsed.authors)]
         );
         result.added++;
       }
