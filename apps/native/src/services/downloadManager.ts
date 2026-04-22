@@ -2,7 +2,7 @@ import { Book, DownloadedBook } from '../types/komga';
 import { getMediaFormat, getFileExtension, isComicFormat, getFormatFromName } from '../utils/fileTypes';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useDownloadStore } from '../stores/useDownloadStore';
-import { downloadBookFile } from './fileManager';
+import { downloadBookFile, deleteBookFiles } from './fileManager';
 import { getBookExtractDir, getBookDownloadPath } from '../utils/paths';
 import {
   getInfoAsync,
@@ -22,20 +22,12 @@ function getFormat(book: Book) {
   return format !== 'unknown' ? format : getFormatFromName(book.name);
 }
 
-/**
- * For comics: download all page images from the server's page API.
- * Returns the directory containing the downloaded images.
- */
-async function downloadComicPages(
-  book: Book
-): Promise<string> {
+async function downloadComicPages(book: Book): Promise<string> {
   const serverUrl = getServerUrl();
-
   const pagesDir = getBookExtractDir(book.id);
   const store = useDownloadStore.getState();
   const totalPages = book.media.pagesCount;
 
-  // Check if already downloaded
   const dirInfo = await getInfoAsync(pagesDir);
   if (dirInfo.exists) {
     const files = await readDirectoryAsync(pagesDir);
@@ -54,7 +46,6 @@ async function downloadComicPages(
       const padded = String(i).padStart(5, '0');
       const filePath = `${pagesDir}${padded}.jpg`;
 
-      // Skip already downloaded pages
       const fileInfo = await getInfoAsync(filePath);
       if (fileInfo.exists) {
         store.setActiveDownload(book.id, i / totalPages);
@@ -77,17 +68,14 @@ async function downloadComicPages(
   }
 }
 
-export async function prepareBookForReading(
+async function ensureDownloaded(
   book: Book
 ): Promise<{ filePath: string; extractedDir?: string }> {
   const format = getFormat(book);
   const serverUrl = getServerUrl();
-
   const store = useDownloadStore.getState();
 
-  // Comics: download page images instead of the archive file
   if (isComicFormat(format)) {
-    // Check store first
     const existing = store.downloads[book.id];
     if (existing?.extractedDir) {
       const dirInfo = await getInfoAsync(existing.extractedDir);
@@ -101,20 +89,11 @@ export async function prepareBookForReading(
     }
 
     const pagesDir = await downloadComicPages(book);
-    store.setDownload(book.id, {
-      bookId: book.id,
-      filePath: pagesDir,
-      format,
-      extractedDir: pagesDir,
-      downloadedAt: Date.now(),
-    });
     return { filePath: pagesDir, extractedDir: pagesDir };
   }
 
-  // Non-comics (EPUB, PDF): download the whole file
   const extension = getFileExtension(format);
 
-  // Check if already downloaded
   const existing = store.downloads[book.id];
   if (existing) {
     const info = await getInfoAsync(existing.filePath);
@@ -127,37 +106,63 @@ export async function prepareBookForReading(
   const expectedPath = getBookDownloadPath(book.id, extension);
   const fileInfo = await getInfoAsync(expectedPath);
   if (fileInfo.exists) {
-    store.setDownload(book.id, {
-      bookId: book.id,
-      filePath: expectedPath,
-      format,
-      downloadedAt: Date.now(),
-    });
     return { filePath: expectedPath };
   }
 
-  // Download the file
   const url = `${serverUrl}/api/books/${book.id}/file`;
-
   store.setActiveDownload(book.id, 0);
 
   try {
     const filePath = await downloadBookFile(url, book.id, extension, {}, (progress) => {
       store.setActiveDownload(book.id, progress);
     });
-
-    const download: DownloadedBook = {
-      bookId: book.id,
-      filePath,
-      format,
-      downloadedAt: Date.now(),
-    };
-    store.setDownload(book.id, download);
     store.setActiveDownload(null);
-
     return { filePath };
   } catch (err) {
     store.setActiveDownload(null);
     throw err;
   }
+}
+
+function recordDownload(
+  book: Book,
+  filePath: string,
+  extractedDir: string | undefined,
+  persisted: boolean
+): DownloadedBook {
+  const store = useDownloadStore.getState();
+  const existing = store.downloads[book.id];
+  const format = getFormat(book);
+  const download: DownloadedBook = {
+    bookId: book.id,
+    filePath,
+    format,
+    extractedDir,
+    downloadedAt: existing?.downloadedAt ?? Date.now(),
+    persisted: persisted || existing?.persisted || false,
+    book,
+  };
+  store.setDownload(book.id, download);
+  return download;
+}
+
+export async function prepareBookForReading(
+  book: Book
+): Promise<{ filePath: string; extractedDir?: string }> {
+  const result = await ensureDownloaded(book);
+  recordDownload(book, result.filePath, result.extractedDir, false);
+  return result;
+}
+
+export async function downloadBook(book: Book): Promise<DownloadedBook> {
+  const result = await ensureDownloaded(book);
+  return recordDownload(book, result.filePath, result.extractedDir, true);
+}
+
+export async function removeDownloadedBook(bookId: string): Promise<void> {
+  const store = useDownloadStore.getState();
+  const existing = store.downloads[bookId];
+  if (!existing) return;
+  await deleteBookFiles(bookId, getFileExtension(existing.format));
+  store.removeDownload(bookId);
 }

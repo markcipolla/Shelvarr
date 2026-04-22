@@ -17,7 +17,7 @@ import { fetchSeries } from '../services/api/series';
 import { getMediaFormat, getFormatFromName } from '../utils/fileTypes';
 import { useAuthHeaders } from '../hooks/useAuthHeaders';
 import { useDownloadStore } from '../stores/useDownloadStore';
-import { prepareBookForReading } from '../services/downloadManager';
+import { prepareBookForReading, downloadBook, removeDownloadedBook } from '../services/downloadManager';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BookDetail'>;
 
@@ -27,9 +27,12 @@ export default function BookDetailScreen({ route, navigation }: Props) {
   const [series, setSeries] = useState<Series | null>(null);
   const [loading, setLoading] = useState(true);
   const [preparing, setPreparing] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const headers = useAuthHeaders();
   const downloadProgress = useDownloadStore((s) => s.progress);
   const activeDownloadId = useDownloadStore((s) => s.activeDownloadId);
+  const downloadedEntry = useDownloadStore((s) => s.downloads[bookId]);
+  const isPersisted = !!downloadedEntry?.persisted;
 
   useEffect(() => {
     fetchBook(bookId)
@@ -89,6 +92,27 @@ export default function BookDetailScreen({ route, navigation }: Props) {
       Alert.alert('Error', err.message || 'Failed to prepare book');
     } finally {
       setPreparing(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!book) return;
+    setDownloading(true);
+    try {
+      await downloadBook(book);
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to download book');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleRemoveDownload = async () => {
+    if (!book) return;
+    try {
+      await removeDownloadedBook(book.id);
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to remove download');
     }
   };
 
@@ -176,6 +200,28 @@ export default function BookDetailScreen({ route, navigation }: Props) {
           </Text>
         )}
       </TouchableOpacity>
+
+      {isPersisted ? (
+        <TouchableOpacity style={styles.secondaryButton} onPress={handleRemoveDownload}>
+          <Text style={styles.secondaryButtonText}>Remove Download</Text>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          style={[styles.secondaryButton, (downloading || isDownloading) && styles.readButtonDisabled]}
+          onPress={handleDownload}
+          disabled={downloading || isDownloading}
+        >
+          {downloading && activeDownloadId === bookId ? (
+            <Text style={styles.secondaryButtonText}>
+              Downloading... {Math.round(downloadProgress * 100)}%
+            </Text>
+          ) : downloading ? (
+            <ActivityIndicator color="#333" />
+          ) : (
+            <Text style={styles.secondaryButtonText}>Download</Text>
+          )}
+        </TouchableOpacity>
+      )}
 
       {book.readProgress && (
         <TouchableOpacity style={styles.secondaryButton} onPress={handleMarkUnread}>

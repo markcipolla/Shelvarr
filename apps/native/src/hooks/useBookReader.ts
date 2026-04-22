@@ -33,8 +33,8 @@ export function useBookReader(bookId: string) {
     await flushProgress(bookId);
     stopReading();
 
-    // Auto-delete if enabled
-    if (autoDelete && download) {
+    // Auto-delete if enabled (but never delete explicitly-downloaded books)
+    if (autoDelete && download && !download.persisted) {
       try {
         await deleteBookFiles(bookId, getFileExtension(download.format));
         removeDownload(bookId);

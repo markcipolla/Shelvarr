@@ -95,4 +95,6 @@ export interface DownloadedBook {
   format: MediaFormat;
   extractedDir?: string;
   downloadedAt: number;
+  persisted?: boolean;
+  book?: Book;
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -18,11 +18,21 @@ import { searchBooks, fetchInProgressBooks, fetchRecentlyAdded } from '../servic
 import BookCard from '../components/BookCard';
 import { useColumns } from '../hooks/useColumns';
 import { useSettingsStore } from '../stores/useSettingsStore';
+import { useDownloadStore } from '../stores/useDownloadStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 export default function HomeScreen({ navigation }: Props) {
   const shelvarrUrl = useSettingsStore((s) => s.shelvarrUrl);
+  const downloadsMap = useDownloadStore((s) => s.downloads);
+  const downloadedBooks = useMemo(
+    () =>
+      Object.values(downloadsMap)
+        .filter((d) => d.persisted && d.book)
+        .sort((a, b) => b.downloadedAt - a.downloadedAt)
+        .map((d) => d.book as Book),
+    [downloadsMap]
+  );
   const [inProgress, setInProgress] = useState<Book[]>([]);
   const [recentlyAdded, setRecentlyAdded] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
@@ -277,7 +287,7 @@ export default function HomeScreen({ navigation }: Props) {
     );
   }
 
-  const hasAny = inProgress.length > 0 || recentlyAdded.length > 0;
+  const hasAny = inProgress.length > 0 || recentlyAdded.length > 0 || downloadedBooks.length > 0;
 
   return (
     <View style={styles.container}>
@@ -293,6 +303,28 @@ export default function HomeScreen({ navigation }: Props) {
             <FlatList
               horizontal
               data={inProgress}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <View style={{ width: cardWidth, marginRight: 12 }}>
+                  <BookCard
+                    book={item}
+                    fill
+                    onPress={() => navigation.navigate('BookDetail', { bookId: item.id })}
+                  />
+                </View>
+              )}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+            />
+          </View>
+        )}
+
+        {downloadedBooks.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Downloaded</Text>
+            <FlatList
+              horizontal
+              data={downloadedBooks}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <View style={{ width: cardWidth, marginRight: 12 }}>
