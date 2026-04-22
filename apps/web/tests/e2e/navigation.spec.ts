@@ -56,7 +56,7 @@ test.describe('Navigation', () => {
 
   test('should have search input in sidebar', async ({ page }) => {
     await page.goto('/');
-    // GlobalSearch uses placeholder "Search books, authors..."
+    // GlobalSearch uses placeholder "Search books, comics, authors..."
     const searchInput = page.locator('aside').getByPlaceholder(/Search/i);
     await expect(searchInput).toBeVisible();
   });

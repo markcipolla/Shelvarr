@@ -7,15 +7,27 @@ import Link from 'next/link';
 import { addToWanted } from '@/lib/actions/wanted';
 import { BookIcon, LoadingSpinner } from '@/components/ui/Icons';
 import { HardcoverNotConfigured } from '@/components/ui/HardcoverNotConfigured';
+import { BookCard } from '@/components/books/BookGrid';
+import { ComicCard } from '@/components/comics/ComicGrid';
 import type { SearchResultWithStatus } from '@/app/search/page';
+import type { Book } from '@/types';
+import type { KapowarrVolume } from '@shelvarr/types';
 
 interface SearchPageProps {
   initialQuery: string;
   initialResults: SearchResultWithStatus[];
+  initialLocalBooks?: Book[];
+  initialLocalComics?: KapowarrVolume[];
   isConfigured: boolean;
 }
 
-export function SearchPage({ initialQuery, initialResults, isConfigured }: SearchPageProps) {
+export function SearchPage({
+  initialQuery,
+  initialResults,
+  initialLocalBooks = [],
+  initialLocalComics = [],
+  isConfigured,
+}: SearchPageProps) {
   const router = useRouter();
   const [query, setQuery] = useState(initialQuery);
   const [isPending, startTransition] = useTransition();
@@ -29,12 +41,15 @@ export function SearchPage({ initialQuery, initialResults, isConfigured }: Searc
     });
   };
 
+  const hasLocalResults = initialLocalBooks.length > 0 || initialLocalComics.length > 0;
+  const hasAnyResults = hasLocalResults || initialResults.length > 0;
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-white">Search Hardcover</h1>
-        <p className="text-shelvarr-text-muted mt-1">Find books to add to your wanted list</p>
+        <h1 className="text-2xl font-bold text-white">Search</h1>
+        <p className="text-shelvarr-text-muted mt-1">Search your library and Hardcover</p>
       </div>
 
       {/* Search form */}
@@ -56,13 +71,6 @@ export function SearchPage({ initialQuery, initialResults, isConfigured }: Searc
         </button>
       </form>
 
-      {/* Not configured warning */}
-      {!isConfigured && (
-        <HardcoverNotConfigured
-          description="To search for books, you need to add your Hardcover API key in settings."
-        />
-      )}
-
       {/* Loading state */}
       {isPending && (
         <div className="flex justify-center py-12">
@@ -70,17 +78,66 @@ export function SearchPage({ initialQuery, initialResults, isConfigured }: Searc
         </div>
       )}
 
-      {/* Results grid */}
+      {/* Local Books */}
+      {!isPending && initialLocalBooks.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white">Books in Your Library</h2>
+            <span className="text-sm text-shelvarr-text-muted">
+              {initialLocalBooks.length} {initialLocalBooks.length === 1 ? 'result' : 'results'}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
+            {initialLocalBooks.map((book) => (
+              <BookCard key={book.id} book={book} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Local Comics */}
+      {!isPending && initialLocalComics.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white">Comics</h2>
+            <span className="text-sm text-shelvarr-text-muted">
+              {initialLocalComics.length} {initialLocalComics.length === 1 ? 'result' : 'results'}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
+            {initialLocalComics.map((volume) => (
+              <ComicCard key={volume.id} volume={volume} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Hardcover results */}
       {!isPending && initialResults.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-          {initialResults.map((result) => (
-            <SearchResultCard key={result.hardcoverId} result={result} />
-          ))}
-        </div>
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white">From Hardcover</h2>
+            <span className="text-sm text-shelvarr-text-muted">
+              {initialResults.length} {initialResults.length === 1 ? 'result' : 'results'}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            {initialResults.map((result) => (
+              <SearchResultCard key={result.hardcoverId} result={result} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Not configured warning */}
+      {!isPending && !isConfigured && (
+        <HardcoverNotConfigured
+          description="To search for books on Hardcover, you need to add your Hardcover API key in settings."
+        />
       )}
 
       {/* No results */}
-      {!isPending && initialQuery && initialResults.length === 0 && isConfigured && (
+      {!isPending && initialQuery && !hasAnyResults && isConfigured && (
         <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-8 text-center">
           <p className="text-shelvarr-text-muted">No results found for &ldquo;{initialQuery}&rdquo;</p>
         </div>
@@ -89,7 +146,9 @@ export function SearchPage({ initialQuery, initialResults, isConfigured }: Searc
       {/* Empty state - no query yet */}
       {!isPending && !initialQuery && isConfigured && (
         <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-8 text-center">
-          <p className="text-shelvarr-text-muted">Enter a search term above to find books on Hardcover</p>
+          <p className="text-shelvarr-text-muted">
+            Enter a search term above to find books and comics in your library or on Hardcover
+          </p>
         </div>
       )}
     </div>
@@ -169,4 +228,3 @@ function SearchResultCard({ result }: { result: SearchResultWithStatus }) {
     </div>
   );
 }
-

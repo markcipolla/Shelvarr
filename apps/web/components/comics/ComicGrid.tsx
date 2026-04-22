@@ -1,6 +1,9 @@
+'use client';
+
+import { useState } from 'react';
 import Link from 'next/link';
 import type { KapowarrVolume } from '@shelvarr/types';
-import { BookIcon } from '@/components/ui/Icons';
+import { BookIcon, ComicIcon } from '@/components/ui/Icons';
 
 interface ComicGridProps {
   volumes: KapowarrVolume[];
@@ -24,6 +27,7 @@ export function ComicCard({ volume }: ComicCardProps) {
   const title = volume.title;
   const subtitle = [volume.publisher, volume.year].filter(Boolean).join(' · ');
   const coverSrc = `/api/comics/${volume.id}/cover`;
+  const [coverFailed, setCoverFailed] = useState(false);
 
   return (
     <Link
@@ -31,15 +35,19 @@ export function ComicCard({ volume }: ComicCardProps) {
       className="group block bg-shelvarr-surface border border-shelvarr-border rounded-lg overflow-hidden hover:border-shelvarr-primary transition-colors"
     >
       <div className="aspect-[2/3] bg-shelvarr-bg relative">
-        <img
-          src={coverSrc}
-          alt={title}
-          className="w-full h-full object-cover"
-          loading="lazy"
-          onError={(e) => {
-            (e.currentTarget as HTMLImageElement).style.display = 'none';
-          }}
-        />
+        {coverFailed ? (
+          <div className="w-full h-full flex items-center justify-center p-2">
+            <ComicIcon className="w-12 h-12 text-shelvarr-text-muted" />
+          </div>
+        ) : (
+          <img
+            src={coverSrc}
+            alt={title}
+            className="w-full h-full object-cover"
+            loading="lazy"
+            onError={() => setCoverFailed(true)}
+          />
+        )}
         {volume.issue_count > 0 && (
           <div className="absolute top-2 right-2 bg-shelvarr-primary/90 text-white text-xs font-bold px-2 py-1 rounded">
             {volume.issues_downloaded}/{volume.issue_count}

@@ -81,7 +81,7 @@ describe('GlobalSearch Component', () => {
     it('should render search input', () => {
       render(<GlobalSearch />);
 
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
       assert.ok(input);
     });
 
@@ -102,7 +102,7 @@ describe('GlobalSearch Component', () => {
     it('should have correct input type', () => {
       render(<GlobalSearch />);
 
-      const input = screen.getByPlaceholderText('Search books, authors...') as HTMLInputElement;
+      const input = screen.getByPlaceholderText('Search books, comics, authors...') as HTMLInputElement;
       assert.strictEqual(input.type, 'text');
     });
   });
@@ -112,7 +112,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...') as HTMLInputElement;
+      const input = screen.getByPlaceholderText('Search books, comics, authors...') as HTMLInputElement;
 
       await user.type(input, 'test');
 
@@ -123,7 +123,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'te');
 
@@ -137,7 +137,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 't');
 
@@ -151,7 +151,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
@@ -167,7 +167,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
@@ -180,7 +180,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test query');
 
@@ -198,7 +198,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'te');
 
@@ -214,7 +214,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
@@ -230,7 +230,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
@@ -243,7 +243,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
@@ -271,7 +271,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
@@ -289,7 +289,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
@@ -303,17 +303,19 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
       await waitFor(() => {
-        const types = Array.from(document.querySelectorAll('.capitalize'))
-          .map(el => el.textContent);
-        assert.ok(types.includes('book'));
-        assert.ok(types.includes('author'));
-        assert.ok(types.includes('series'));
+        assert.ok(screen.getByText('Test Book'));
       });
+
+      const caps = document.querySelectorAll('.capitalize');
+      const types = Array.from(caps).map(el => el.textContent);
+      assert.ok(types.includes('book'));
+      assert.ok(types.includes('author'));
+      assert.ok(types.includes('series'));
     });
   });
 
@@ -322,7 +324,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
@@ -341,7 +343,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
@@ -362,7 +364,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...') as HTMLInputElement;
+      const input = screen.getByPlaceholderText('Search books, comics, authors...') as HTMLInputElement;
 
       await user.type(input, 'test');
 
@@ -384,7 +386,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
@@ -397,7 +399,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
@@ -413,7 +415,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
@@ -432,7 +434,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
@@ -453,7 +455,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...') as HTMLInputElement;
+      const input = screen.getByPlaceholderText('Search books, comics, authors...') as HTMLInputElement;
 
       await user.type(input, 'test');
 
@@ -473,7 +475,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test & query');
 
@@ -491,7 +493,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
@@ -511,7 +513,7 @@ describe('GlobalSearch Component', () => {
       );
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
@@ -533,7 +535,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
@@ -556,7 +558,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
@@ -575,7 +577,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
@@ -592,7 +594,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, '   ');
 
@@ -607,7 +609,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, '<script>alert("xss")</script>');
 
@@ -620,7 +622,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       const longQuery = 'a'.repeat(1000);
       await user.type(input, longQuery);
@@ -643,7 +645,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'test');
 
@@ -656,7 +658,7 @@ describe('GlobalSearch Component', () => {
       render(<GlobalSearch />);
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText('Search books, authors...');
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
       await user.type(input, 'first');
       await user.clear(input);

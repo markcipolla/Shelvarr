@@ -95,14 +95,14 @@ describe('SearchPage Component', () => {
     it('should render page title', () => {
       render(<SearchPage initialQuery="" initialResults={[]} isConfigured={true} />);
 
-      assert.ok(screen.getByText('Search Hardcover'));
+      assert.ok(screen.getByRole('heading', { name: 'Search' }));
     });
 
     it('should render search form with input and button', () => {
       render(<SearchPage initialQuery="" initialResults={[]} isConfigured={true} />);
 
       assert.ok(screen.getByPlaceholderText('Search by title, author, ISBN...'));
-      assert.ok(screen.getByText('Search'));
+      assert.ok(screen.getByRole('button', { name: 'Search' }));
     });
 
     it('should pre-fill input with initial query', () => {
@@ -115,7 +115,7 @@ describe('SearchPage Component', () => {
     it('should disable search button when query is empty', () => {
       render(<SearchPage initialQuery="" initialResults={[]} isConfigured={true} />);
 
-      const button = screen.getByText('Search') as HTMLButtonElement;
+      const button = screen.getByRole('button', { name: 'Search' }) as HTMLButtonElement;
       assert.strictEqual(button.disabled, true);
     });
   });
@@ -147,7 +147,7 @@ describe('SearchPage Component', () => {
     it('should show empty state message when no query and configured', () => {
       render(<SearchPage initialQuery="" initialResults={[]} isConfigured={true} />);
 
-      assert.ok(screen.getByText('Enter a search term above to find books on Hardcover'));
+      assert.ok(screen.getByText('Enter a search term above to find books and comics in your library or on Hardcover'));
     });
 
     it('should show no results message when query has no results', () => {
@@ -159,7 +159,7 @@ describe('SearchPage Component', () => {
     it('should not show empty state when not configured', () => {
       render(<SearchPage initialQuery="" initialResults={[]} isConfigured={false} />);
 
-      const empty = screen.queryByText('Enter a search term above to find books on Hardcover');
+      const empty = screen.queryByText('Enter a search term above to find books and comics in your library or on Hardcover');
       assert.strictEqual(empty, null);
     });
   });
@@ -299,7 +299,7 @@ describe('SearchPage Component', () => {
       const input = screen.getByPlaceholderText('Search by title, author, ISBN...');
 
       await user.type(input, 'new search');
-      await user.click(screen.getByText('Search'));
+      await user.click(screen.getByRole('button', { name: 'Search' }));
 
       await waitFor(() => {
         assert.strictEqual(mockPush.mock.callCount(), 1);
@@ -310,7 +310,7 @@ describe('SearchPage Component', () => {
     it('should not submit with empty query', async () => {
       render(<SearchPage initialQuery="" initialResults={[]} isConfigured={true} />);
 
-      const button = screen.getByText('Search') as HTMLButtonElement;
+      const button = screen.getByRole('button', { name: 'Search' }) as HTMLButtonElement;
       assert.strictEqual(button.disabled, true);
     });
 
@@ -321,7 +321,7 @@ describe('SearchPage Component', () => {
       const input = screen.getByPlaceholderText('Search by title, author, ISBN...');
 
       await user.type(input, '  test query  ');
-      await user.click(screen.getByText('Search'));
+      await user.click(screen.getByRole('button', { name: 'Search' }));
 
       await waitFor(() => {
         assert.strictEqual(mockPush.mock.calls[0].arguments[0], '/search?q=test%20query');
@@ -335,7 +335,7 @@ describe('SearchPage Component', () => {
       const input = screen.getByPlaceholderText('Search by title, author, ISBN...');
 
       await user.type(input, 'test & query');
-      await user.click(screen.getByText('Search'));
+      await user.click(screen.getByRole('button', { name: 'Search' }));
 
       await waitFor(() => {
         assert.strictEqual(mockPush.mock.calls[0].arguments[0], '/search?q=test%20%26%20query');
