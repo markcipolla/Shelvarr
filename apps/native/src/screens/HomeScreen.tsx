@@ -17,7 +17,6 @@ import { Book } from '../types/komga';
 import { searchBooks, fetchInProgressBooks, fetchRecentlyAdded } from '../services/api/books';
 import BookCard from '../components/BookCard';
 import { useColumns } from '../hooks/useColumns';
-import { padDataForGrid, isPlaceholder } from '../utils/gridHelpers';
 import { useSettingsStore } from '../stores/useSettingsStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
@@ -114,7 +113,7 @@ export default function HomeScreen({ navigation }: Props) {
       headerTitle: () => (
         <TextInput
           style={styles.searchBar}
-          placeholder="Search all books..."
+          placeholder="Search all books, comics, authors and series..."
           placeholderTextColor="#888"
           value={search}
           onChangeText={setSearch}
@@ -147,44 +146,126 @@ export default function HomeScreen({ navigation }: Props) {
   const isSearching = search.trim().length > 0;
 
   if (isSearching) {
-    /* istanbul ignore next */
-    const searchColWrapper = columns > 1 ? styles.searchRow : undefined;
-    /* istanbul ignore next */
-    const renderSearchItem = ({ item }: { item: any }) =>
-      isPlaceholder(item) ? (
-        <BookCard book={item as any} onPress={() => {}} fill placeholder />
-      ) : (
-        <BookCard
-          book={item as Book}
-          fill
-          onPress={() => navigation.navigate('BookDetail', { bookId: (item as Book).id })}
-        />
+    const comicMediaTypes = new Set(['application/x-cbz', 'application/x-cbr', 'application/x-cbt']);
+    const isComic = (b: Book) => comicMediaTypes.has(b.media.mediaType);
+    const bookResults = searchResults.filter((b) => !isComic(b));
+    const comicResults = searchResults.filter(isComic);
+
+    const queryLower = search.trim().toLowerCase();
+    const authorNames = new Set<string>();
+    for (const b of searchResults) {
+      for (const a of b.metadata.authors || []) {
+        if (a.name && a.name.toLowerCase().includes(queryLower)) {
+          authorNames.add(a.name);
+        }
+      }
+    }
+    const authorResults = Array.from(authorNames);
+
+    const seriesNames = new Set<string>();
+    for (const b of searchResults) {
+      const name = b.seriesId;
+      if (name && name.toLowerCase().includes(queryLower)) {
+        seriesNames.add(name);
+      }
+    }
+    const seriesResults = Array.from(seriesNames);
+
+    if (searching && searchResults.length === 0) {
+      return (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#8b5e3c" />
+        </View>
       );
-    return (
-      <FlatList
-        key={`search-${columns}`}
-        style={styles.container}
-        data={padDataForGrid(searchResults, columns)}
-        numColumns={columns}
-        keyExtractor={(item) => item.id}
-        renderItem={renderSearchItem}
-        ListHeaderComponent={
-          searching && searchResults.length === 0 ? (
-            <ActivityIndicator size="large" color="#8b5e3c" style={styles.searchSpinner} />
-          ) : !searching && searchResults.length === 0 ? (
-            <Text style={styles.noResults}>No results found</Text>
-          ) : null
-        }
-        ListFooterComponent={
-          searching && searchResults.length > 0 ? (
-            <ActivityIndicator size="small" color="#8b5e3c" style={styles.searchSpinner} />
-          ) : null
-        }
-        contentContainerStyle={styles.searchList}
-        columnWrapperStyle={searchColWrapper}
-        onEndReached={loadMoreResults}
-        onEndReachedThreshold={0.5}
+    }
+
+    if (searchResults.length === 0) {
+      return (
+        <View style={styles.center}>
+          <Text style={styles.noResults}>No results found</Text>
+        </View>
+      );
+    }
+
+    const renderBookItem = ({ item }: { item: Book }) => (
+      <BookCard
+        book={item}
+        onPress={() => navigation.navigate('BookDetail', { bookId: item.id })}
       />
+    );
+
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+        {bookResults.length > 0 && (
+          <View style={styles.subsection}>
+            <Text style={styles.subsectionTitle}>Books</Text>
+            <FlatList
+              horizontal
+              data={bookResults}
+              keyExtractor={(item) => item.id}
+              renderItem={renderBookItem}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+              onEndReached={loadMoreResults}
+              onEndReachedThreshold={0.5}
+            />
+          </View>
+        )}
+
+        {comicResults.length > 0 && (
+          <View style={styles.subsection}>
+            <Text style={styles.subsectionTitle}>Comics</Text>
+            <FlatList
+              horizontal
+              data={comicResults}
+              keyExtractor={(item) => item.id}
+              renderItem={renderBookItem}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+            />
+          </View>
+        )}
+
+        {authorResults.length > 0 && (
+          <View style={styles.subsection}>
+            <Text style={styles.subsectionTitle}>Authors</Text>
+            <FlatList
+              horizontal
+              data={authorResults}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => (
+                <View style={styles.pill}>
+                  <Text style={styles.pillText}>{item}</Text>
+                </View>
+              )}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+            />
+          </View>
+        )}
+
+        {seriesResults.length > 0 && (
+          <View style={styles.subsection}>
+            <Text style={styles.subsectionTitle}>Series</Text>
+            <FlatList
+              horizontal
+              data={seriesResults}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => (
+                <View style={styles.pill}>
+                  <Text style={styles.pillText}>{item}</Text>
+                </View>
+              )}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+            />
+          </View>
+        )}
+
+        {searching && (
+          <ActivityIndicator size="small" color="#8b5e3c" style={styles.searchSpinner} />
+        )}
+      </ScrollView>
     );
   }
 
@@ -272,8 +353,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#d5d0c8',
   },
-  searchList: { padding: 12 },
-  searchRow: { gap: 12 },
-  searchSpinner: { marginTop: 40 },
-  noResults: { color: '#888', fontSize: 22, textAlign: 'center', marginTop: 40 },
+  searchSpinner: { marginTop: 20, marginBottom: 20 },
+  noResults: { color: '#888', fontSize: 22, textAlign: 'center' },
+  pill: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#d5d0c8',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginRight: 10,
+    justifyContent: 'center',
+  },
+  pillText: { fontSize: 16, color: '#222' },
 });
