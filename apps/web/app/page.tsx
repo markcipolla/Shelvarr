@@ -1,120 +1,107 @@
 import Link from 'next/link';
-import { getAllLibraries, getLibraryBookCount } from '@/lib/services/library';
-import { getRecentTasks, getTaskStats } from '@/lib/services/queue';
+import { getRecentBooks, getCurrentlyReadingBooks } from '@/lib/services/scanner';
+import { getRecentComics } from '@/lib/actions/comics';
+import { BookCard } from '@/components/books/BookGrid';
+import { ComicCard } from '@/components/comics/ComicGrid';
+import type { Book } from '@/types';
+import type { KapowarrVolume } from '@shelvarr/types';
 
 export const dynamic = 'force-dynamic';
 
-async function getStats() {
-  const libraries = await getAllLibraries();
-  let totalBooks = 0;
+const CURRENTLY_READING_LIMIT = 12;
+const RECENT_BOOKS_LIMIT = 12;
+const RECENT_COMICS_LIMIT = 12;
 
-  for (const lib of libraries) {
-    totalBooks += await getLibraryBookCount(lib.id);
-  }
+export default async function HomePage() {
+  const [currentlyReading, recentBooks, comicsResult] = await Promise.all([
+    getCurrentlyReadingBooks(CURRENTLY_READING_LIMIT),
+    getRecentBooks(RECENT_BOOKS_LIMIT),
+    getRecentComics(RECENT_COMICS_LIMIT),
+  ]);
 
-  const taskStats = await getTaskStats();
-  const recentTasks = await getRecentTasks(5);
-
-  return {
-    libraryCount: libraries.length,
-    bookCount: totalBooks,
-    taskStats,
-    recentTasks,
-  };
-}
-
-export default async function DashboardPage() {
-  const stats = await getStats();
+  const recentComics = comicsResult.volumes;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      <h1 className="text-2xl font-bold text-white">Home</h1>
+
+      <HomeSection
+        title="Currently Reading"
+        empty="No books in progress. Open a book to start reading."
+        isEmpty={currentlyReading.length === 0}
+      >
+        <BookRow books={currentlyReading} />
+      </HomeSection>
+
+      <HomeSection
+        title="Recently Added Books"
+        href="/books"
+        empty="No books yet. Add a library and scan it to import books."
+        isEmpty={recentBooks.length === 0}
+      >
+        <BookRow books={recentBooks} />
+      </HomeSection>
+
+      {comicsResult.configured && (
+        <HomeSection
+          title="Recently Added Comics"
+          href="/comics"
+          empty={comicsResult.error || 'No comics found in Kapowarr.'}
+          isEmpty={recentComics.length === 0}
+        >
+          <ComicRow volumes={recentComics} />
+        </HomeSection>
+      )}
+    </div>
+  );
+}
+
+interface HomeSectionProps {
+  title: string;
+  href?: string;
+  empty: string;
+  isEmpty: boolean;
+  children: React.ReactNode;
+}
+
+function HomeSection({ title, href, empty, isEmpty, children }: HomeSectionProps) {
+  return (
+    <section className="space-y-3">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Link
-          href="/libraries"
-          className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-4 hover:border-shelvarr-primary transition-colors"
-        >
-          <div className="text-shelvarr-text-muted text-sm">Libraries</div>
-          <div className="text-3xl font-bold text-white mt-1">{stats.libraryCount}</div>
-        </Link>
-
-        <Link
-          href="/books"
-          className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-4 hover:border-shelvarr-primary transition-colors"
-        >
-          <div className="text-shelvarr-text-muted text-sm">Books</div>
-          <div className="text-3xl font-bold text-white mt-1">{stats.bookCount}</div>
-        </Link>
-
-        <Link
-          href="/tasks"
-          className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-4 hover:border-shelvarr-primary transition-colors"
-        >
-          <div className="text-shelvarr-text-muted text-sm">Running Tasks</div>
-          <div className="text-3xl font-bold text-white mt-1">{stats.taskStats.running}</div>
-        </Link>
-
-        <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-4">
-          <div className="text-shelvarr-text-muted text-sm">Completed Tasks</div>
-          <div className="text-3xl font-bold text-white mt-1">{stats.taskStats.completed}</div>
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-4">
-        <h2 className="text-lg font-semibold text-white mb-4">Quick Actions</h2>
-        <div className="flex flex-wrap gap-3">
-          <Link
-            href="/libraries"
-            className="bg-shelvarr-primary hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-          >
-            Add Library
+        <h2 className="text-lg font-semibold text-white">{title}</h2>
+        {href && (
+          <Link href={href} className="text-sm text-shelvarr-primary hover:underline">
+            View all
           </Link>
-          <Link
-            href="/books"
-            className="bg-shelvarr-surface hover:bg-shelvarr-border text-shelvarr-text border border-shelvarr-border px-4 py-2 rounded-lg font-medium transition-colors"
-          >
-            Browse Books
-          </Link>
-        </div>
-      </div>
-
-      {/* Recent Activity */}
-      <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white">Recent Activity</h2>
-          <Link href="/tasks" className="text-sm text-shelvarr-primary hover:underline">
-            View All
-          </Link>
-        </div>
-
-        {stats.recentTasks.length === 0 ? (
-          <p className="text-shelvarr-text-muted">No recent activity</p>
-        ) : (
-          <div className="space-y-2">
-            {stats.recentTasks.map((task) => (
-              <div
-                key={task.id}
-                className="flex items-center justify-between py-2 border-b border-shelvarr-border last:border-0"
-              >
-                <div>
-                  <span className="text-white">{task.type}</span>
-                  <span className="text-shelvarr-text-muted ml-2 text-sm">
-                    {task.status}
-                  </span>
-                </div>
-                <span className="text-shelvarr-text-muted text-sm">
-                  {new Date(task.createdAt).toLocaleString()}
-                </span>
-              </div>
-            ))}
-          </div>
         )}
       </div>
+      {isEmpty ? (
+        <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-6 text-center">
+          <p className="text-shelvarr-text-muted text-sm">{empty}</p>
+        </div>
+      ) : (
+        children
+      )}
+    </section>
+  );
+}
+
+function BookRow({ books }: { books: Book[] }) {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
+      {books.map((book) => (
+        <BookCard key={book.id} book={book} />
+      ))}
+    </div>
+  );
+}
+
+function ComicRow({ volumes }: { volumes: KapowarrVolume[] }) {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
+      {volumes.map((volume) => (
+        <ComicCard key={volume.id} volume={volume} />
+      ))}
     </div>
   );
 }

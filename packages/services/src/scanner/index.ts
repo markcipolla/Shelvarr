@@ -327,6 +327,29 @@ export async function getBooks(queryParams: BookQuery = {}): Promise<BookListRes
   };
 }
 
+export async function getRecentBooks(limit: number): Promise<Book[]> {
+  const rows = query<BookRow>(
+    `SELECT * FROM books
+     WHERE metadata_source IS NOT NULL
+     ORDER BY created_at DESC
+     LIMIT ?`,
+    [Math.max(1, Math.min(100, limit))]
+  );
+  return rows.map(rowToBook);
+}
+
+export async function getCurrentlyReadingBooks(limit: number): Promise<Book[]> {
+  const rows = query<BookRow>(
+    `SELECT b.* FROM books b
+     JOIN read_progress rp ON b.id = rp.book_id
+     WHERE rp.completed = 0 AND rp.page > 0
+     ORDER BY rp.updated_at DESC
+     LIMIT ?`,
+    [Math.max(1, Math.min(100, limit))]
+  );
+  return rows.map(rowToBook);
+}
+
 export async function getBookById(id: number): Promise<Book | null> {
   const row = await queryOne<BookRow>('SELECT * FROM books WHERE id = ?', [id]);
   return row ? rowToBook(row) : null;

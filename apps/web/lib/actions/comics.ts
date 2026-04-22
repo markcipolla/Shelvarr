@@ -34,6 +34,24 @@ export async function getComics(search?: string): Promise<ComicsListResult> {
   }
 }
 
+export async function getRecentComics(limit: number): Promise<ComicsListResult> {
+  const configured = await configureKapowarrFromDb();
+  if (!configured) {
+    return { configured: false, volumes: [] };
+  }
+
+  try {
+    const volumes = await kapowarrClient.getVolumes({ sort: 'recently_added' });
+    return { configured: true, volumes: volumes.slice(0, limit) };
+  } catch (error) {
+    return {
+      configured: true,
+      volumes: [],
+      error: error instanceof Error ? error.message : 'Failed to load comics',
+    };
+  }
+}
+
 export async function getComic(id: number): Promise<ComicDetailResult> {
   const configured = await configureKapowarrFromDb();
   if (!configured) {

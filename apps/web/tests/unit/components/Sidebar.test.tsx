@@ -77,7 +77,7 @@ describe('Sidebar Component', () => {
       );
 
       const navItems = [
-        'Dashboard',
+        'Home',
         'Libraries',
         'Books',
         'Unmatched',
@@ -267,7 +267,7 @@ describe('Sidebar Component', () => {
 
       await waitFor(() => {
         // Check that links have title attributes in mockLinks
-        const dashboardLink = mockLinks.find(l => l.title === 'Dashboard');
+        const dashboardLink = mockLinks.find(l => l.title === 'Home');
         assert.ok(dashboardLink);
       });
     });
@@ -379,7 +379,7 @@ describe('Sidebar Component', () => {
         assert.ok(overlay);
       });
 
-      const dashboardLink = screen.getByText('Dashboard').closest('a') as HTMLElement;
+      const dashboardLink = screen.getByText('Home').closest('a') as HTMLElement;
       await user.click(dashboardLink);
 
       await waitFor(() => {
@@ -398,7 +398,7 @@ describe('Sidebar Component', () => {
         </SidebarProvider>
       );
 
-      const dashboardLink = screen.getByText('Dashboard').closest('a');
+      const dashboardLink = screen.getByText('Home').closest('a');
       assert.ok(dashboardLink?.className.includes('bg-shelvarr-primary'));
     });
 
@@ -409,7 +409,7 @@ describe('Sidebar Component', () => {
         </SidebarProvider>
       );
 
-      const dashboardLink = screen.getByText('Dashboard').closest('a');
+      const dashboardLink = screen.getByText('Home').closest('a');
       assert.ok(dashboardLink?.className.includes('text-white'));
     });
 
@@ -617,7 +617,7 @@ describe('Sidebar Component', () => {
         .map(el => el.textContent);
 
       const expectedOrder = [
-        'Dashboard',
+        'Home',
         'Libraries',
         'Books',
         'Unmatched',
@@ -751,7 +751,7 @@ describe('Sidebar Component', () => {
       );
 
       // Should render without errors
-      assert.ok(screen.getByText('Dashboard'));
+      assert.ok(screen.getByText('Home'));
     });
 
     it('should handle very large count numbers', () => {
