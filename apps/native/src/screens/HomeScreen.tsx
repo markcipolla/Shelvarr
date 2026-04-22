@@ -38,6 +38,11 @@ export default function HomeScreen({ navigation }: Props) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadData = useCallback(async () => {
+    if (!shelvarrUrl) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     try {
       const [inProgressRes, recentRes] = await Promise.all([
         fetchInProgressBooks(),
@@ -52,10 +57,11 @@ export default function HomeScreen({ navigation }: Props) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [shelvarrUrl]);
 
   useFocusEffect(
     useCallback(() => {
+      setRefreshing(true);
       loadData();
     }, [loadData])
   );
@@ -325,7 +331,13 @@ export default function HomeScreen({ navigation }: Props) {
           </View>
         )}
 
-        {!hasAny && <Text style={styles.emptyText}>No books yet</Text>}
+        {!hasAny && (
+          refreshing ? (
+            <ActivityIndicator size="large" color="#8b5e3c" style={styles.inlineSpinner} />
+          ) : (
+            <Text style={styles.emptyText}>No books yet</Text>
+          )
+        )}
       </ScrollView>
     </View>
   );
@@ -365,6 +377,7 @@ const styles = StyleSheet.create({
     borderColor: '#d5d0c8',
   },
   searchSpinner: { marginTop: 20, marginBottom: 20 },
+  inlineSpinner: { marginTop: 40 },
   noResults: { color: '#888', fontSize: 22, textAlign: 'center' },
   pill: {
     backgroundColor: '#fff',
