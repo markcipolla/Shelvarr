@@ -49,18 +49,29 @@ interface DbSeries {
   library_id?: number;
 }
 
-function extensionToMediaType(ext: string | null): string {
-  if (!ext) return 'application/octet-stream';
-  const map: Record<string, string> = {
-    epub: 'application/epub+zip',
-    pdf: 'application/pdf',
-    cbz: 'application/x-cbz',
-    cbr: 'application/x-cbr',
-    mobi: 'application/x-mobipocket-ebook',
-    azw: 'application/vnd.amazon.ebook',
-    azw3: 'application/vnd.amazon.ebook',
-  };
-  return map[ext.replace('.', '')] || 'application/octet-stream';
+const EXTENSION_MEDIA_TYPE_MAP: Record<string, string> = {
+  epub: 'application/epub+zip',
+  pdf: 'application/pdf',
+  cbz: 'application/x-cbz',
+  cbr: 'application/x-cbr',
+  mobi: 'application/x-mobipocket-ebook',
+  azw: 'application/vnd.amazon.ebook',
+  azw3: 'application/vnd.amazon.ebook',
+};
+
+function extensionToMediaType(ext: string | null, filePath?: string): string {
+  const normalized = ext?.replace('.', '') || '';
+  if (normalized && EXTENSION_MEDIA_TYPE_MAP[normalized]) {
+    return EXTENSION_MEDIA_TYPE_MAP[normalized];
+  }
+  // Fall back to file path extension
+  if (filePath) {
+    const match = filePath.match(/\.([a-z0-9]+)$/i);
+    if (match && EXTENSION_MEDIA_TYPE_MAP[match[1].toLowerCase()]) {
+      return EXTENSION_MEDIA_TYPE_MAP[match[1].toLowerCase()];
+    }
+  }
+  return 'application/octet-stream';
 }
 
 function parseAuthors(authorsField: string | null): Komga.Author[] {
@@ -95,7 +106,7 @@ export function toKomgaBook(row: DbBook, readProgress: ReadProgressRow | null = 
     number: row.series_number || 0,
     media: {
       status: 'READY',
-      mediaType: extensionToMediaType(row.extension),
+      mediaType: extensionToMediaType(row.extension, row.file_path),
       pagesCount: 0, // Not tracked for ebooks
     },
     metadata: {

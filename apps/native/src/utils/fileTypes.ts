@@ -14,6 +14,8 @@ const MEDIA_TYPE_MAP: Record<string, MediaFormat> = {
   'application/vnd.comicbook-rar': 'cbr',
   'application/vnd.rar': 'cbr',
   'application/x-rar': 'cbr',
+  'application/x-mobipocket-ebook': 'epub', // treat mobi as epub for reading
+  'application/vnd.amazon.ebook': 'epub',
 };
 
 export function getMediaFormat(mediaType: string): MediaFormat {
@@ -38,6 +40,7 @@ export function getFormatFromName(fileName: string): MediaFormat {
   if (lower.endsWith('.cbr')) return 'cbr';
   if (lower.endsWith('.zip')) return 'cbz';
   if (lower.endsWith('.rar')) return 'cbr';
+  if (lower.endsWith('.mobi') || lower.endsWith('.azw') || lower.endsWith('.azw3')) return 'epub';
   return 'unknown';
 }
 
