@@ -1,9 +1,8 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { TouchableOpacity, Text } from 'react-native';
 import { RootStackParamList } from './types';
 
-import HomeScreen from '../screens/HomeScreen';
+import MainTabs from './MainTabs';
 import LibraryScreen from '../screens/LibraryScreen';
 import SeriesScreen from '../screens/SeriesScreen';
 import BookDetailScreen from '../screens/BookDetailScreen';
@@ -27,19 +26,9 @@ export default function RootNavigator() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen
-        name="Home"
-        component={HomeScreen}
-        options={({ navigation }) => ({
-          title: 'Stacks',
-          headerRight: () => (
-            <TouchableOpacity
-              onPress={() => navigation.navigate('Settings')}
-              style={{ width: 48, height: 48, justifyContent: 'center', alignItems: 'center' }}
-            >
-              <Text style={{ color: '#222', fontSize: 26 }}>⚙</Text>
-            </TouchableOpacity>
-          ),
-        })}
+        name="MainTabs"
+        component={MainTabs}
+        options={{ headerShown: false }}
       />
       <Stack.Screen name="Library" component={LibraryScreen} />
       <Stack.Screen name="Series" component={SeriesScreen} />
