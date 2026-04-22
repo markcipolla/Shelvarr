@@ -17,7 +17,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { href: '/', label: 'Dashboard', icon: HomeIcon },
+  { href: '/', label: 'Home', icon: HomeIcon },
   { href: '/libraries', label: 'Libraries', icon: FolderIcon },
   { href: '/books', label: 'Books', icon: BookIcon, countKey: 'books', countColor: 'blue' },
   { href: '/comics', label: 'Comics', icon: ComicIcon },
