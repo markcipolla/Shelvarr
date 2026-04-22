@@ -108,22 +108,18 @@ export default function HomeScreen({ navigation }: Props) {
     loadData();
   };
 
-  useEffect(() => {
-    navigation.setOptions({
-      headerTitle: () => (
-        <TextInput
-          style={styles.searchBar}
-          placeholder="Search all books, comics, authors and series..."
-          placeholderTextColor="#888"
-          value={search}
-          onChangeText={setSearch}
-          autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="search"
-        />
-      ),
-    });
-  }, [navigation, search]);
+  const searchInput = (
+    <TextInput
+      style={styles.searchBar}
+      placeholder="Search all books, comics, authors and series..."
+      placeholderTextColor="#888"
+      value={search}
+      onChangeText={setSearch}
+      autoCapitalize="none"
+      autoCorrect={false}
+      returnKeyType="search"
+    />
+  );
 
   if (!shelvarrUrl) {
     return (
@@ -171,22 +167,6 @@ export default function HomeScreen({ navigation }: Props) {
     }
     const seriesResults = Array.from(seriesNames);
 
-    if (searching && searchResults.length === 0) {
-      return (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#8b5e3c" />
-        </View>
-      );
-    }
-
-    if (searchResults.length === 0) {
-      return (
-        <View style={styles.center}>
-          <Text style={styles.noResults}>No results found</Text>
-        </View>
-      );
-    }
-
     const renderBookItem = ({ item }: { item: Book }) => (
       <BookCard
         book={item}
@@ -194,11 +174,25 @@ export default function HomeScreen({ navigation }: Props) {
       />
     );
 
-    return (
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-        {bookResults.length > 0 && (
-          <View style={styles.subsection}>
-            <Text style={styles.subsectionTitle}>Books</Text>
+    let searchBody;
+    if (searching && searchResults.length === 0) {
+      searchBody = (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#8b5e3c" />
+        </View>
+      );
+    } else if (searchResults.length === 0) {
+      searchBody = (
+        <View style={styles.center}>
+          <Text style={styles.noResults}>No results found</Text>
+        </View>
+      );
+    } else {
+      searchBody = (
+        <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+          {bookResults.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Books</Text>
             <FlatList
               horizontal
               data={bookResults}
@@ -213,8 +207,8 @@ export default function HomeScreen({ navigation }: Props) {
         )}
 
         {comicResults.length > 0 && (
-          <View style={styles.subsection}>
-            <Text style={styles.subsectionTitle}>Comics</Text>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Comics</Text>
             <FlatList
               horizontal
               data={comicResults}
@@ -227,8 +221,8 @@ export default function HomeScreen({ navigation }: Props) {
         )}
 
         {authorResults.length > 0 && (
-          <View style={styles.subsection}>
-            <Text style={styles.subsectionTitle}>Authors</Text>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Authors</Text>
             <FlatList
               horizontal
               data={authorResults}
@@ -245,8 +239,8 @@ export default function HomeScreen({ navigation }: Props) {
         )}
 
         {seriesResults.length > 0 && (
-          <View style={styles.subsection}>
-            <Text style={styles.subsectionTitle}>Series</Text>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Series</Text>
             <FlatList
               horizontal
               data={seriesResults}
@@ -265,64 +259,75 @@ export default function HomeScreen({ navigation }: Props) {
         {searching && (
           <ActivityIndicator size="small" color="#8b5e3c" style={styles.searchSpinner} />
         )}
-      </ScrollView>
+        </ScrollView>
+      );
+    }
+
+    return (
+      <View style={styles.container}>
+        <View style={styles.searchBarContainer}>{searchInput}</View>
+        {searchBody}
+      </View>
     );
   }
 
   const hasAny = inProgress.length > 0 || recentlyAdded.length > 0;
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.scrollContent}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#8b5e3c" />}
-    >
-      {inProgress.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>In Progress</Text>
-          <FlatList
-            horizontal
-            data={inProgress}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <View style={{ width: cardWidth, marginRight: 12 }}>
-                <BookCard
-                  book={item}
-                  fill
-                  onPress={() => navigation.navigate('BookDetail', { bookId: item.id })}
-                />
-              </View>
-            )}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.horizontalList}
-          />
-        </View>
-      )}
+    <View style={styles.container}>
+      <View style={styles.searchBarContainer}>{searchInput}</View>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#8b5e3c" />}
+      >
+        {inProgress.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>In Progress</Text>
+            <FlatList
+              horizontal
+              data={inProgress}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <View style={{ width: cardWidth, marginRight: 12 }}>
+                  <BookCard
+                    book={item}
+                    fill
+                    onPress={() => navigation.navigate('BookDetail', { bookId: item.id })}
+                  />
+                </View>
+              )}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+            />
+          </View>
+        )}
 
-      {recentlyAdded.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recently Added</Text>
-          <FlatList
-            horizontal
-            data={recentlyAdded}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <View style={{ width: cardWidth, marginRight: 12 }}>
-                <BookCard
-                  book={item}
-                  fill
-                  onPress={() => navigation.navigate('BookDetail', { bookId: item.id })}
-                />
-              </View>
-            )}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.horizontalList}
-          />
-        </View>
-      )}
+        {recentlyAdded.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Recently Added</Text>
+            <FlatList
+              horizontal
+              data={recentlyAdded}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <View style={{ width: cardWidth, marginRight: 12 }}>
+                  <BookCard
+                    book={item}
+                    fill
+                    onPress={() => navigation.navigate('BookDetail', { bookId: item.id })}
+                  />
+                </View>
+              )}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+            />
+          </View>
+        )}
 
-      {!hasAny && <Text style={styles.emptyText}>No books yet</Text>}
-    </ScrollView>
+        {!hasAny && <Text style={styles.emptyText}>No books yet</Text>}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -342,14 +347,20 @@ const styles = StyleSheet.create({
   },
   horizontalList: { paddingHorizontal: 16, paddingBottom: 8 },
   emptyText: { color: '#999', fontSize: 20, paddingHorizontal: 16, paddingTop: 32, textAlign: 'center' },
+  searchBarContainer: {
+    backgroundColor: '#e8e4de',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#d5d0c8',
+  },
   searchBar: {
-    flex: 1,
     backgroundColor: '#fff',
     color: '#222',
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 22,
+    paddingVertical: 10,
+    fontSize: 18,
     borderWidth: 1,
     borderColor: '#d5d0c8',
   },
