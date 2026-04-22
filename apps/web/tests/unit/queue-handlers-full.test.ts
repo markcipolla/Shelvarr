@@ -1,8 +1,9 @@
-import { describe, it, beforeEach, afterEach, after, mock } from 'node:test';
+import { describe, it, before, beforeEach, afterEach, after, mock } from 'node:test';
 import assert from 'node:assert';
 import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { server } from '../mocks/server.js';
 
 // Check if we can use native modules
 let canRunTests = true;
@@ -33,8 +34,13 @@ if (canRunTests) {
   describe('Queue Handlers - Full Integration', () => {
     let testLibPath: string;
 
+    before(() => {
+      server.listen({ onUnhandledRequest: 'bypass' });
+    });
+
     beforeEach(() => {
       initDatabase();
+      server.resetHandlers();
       execute('DELETE FROM tasks', []);
       execute('DELETE FROM books', []);
       execute('DELETE FROM libraries', []);
@@ -59,6 +65,7 @@ if (canRunTests) {
     });
 
     after(() => {
+      server.close();
       if (existsSync(testDir)) {
         rmSync(testDir, { recursive: true, force: true });
       }

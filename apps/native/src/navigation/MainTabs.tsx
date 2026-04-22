@@ -5,6 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MainTabParamList, RootStackParamList } from './types';
 import HomeScreen from '../screens/HomeScreen';
+import BooksScreen from '../screens/BooksScreen';
 import ComicsScreen from '../screens/ComicsScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -39,8 +40,16 @@ export default function MainTabs() {
       }}
     >
       <Tab.Screen
-        name="Books"
+        name="Home"
         component={HomeScreen as any}
+        options={{
+          title: 'Home',
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>🏠</Text>,
+        }}
+      />
+      <Tab.Screen
+        name="Books"
+        component={BooksScreen as any}
         options={{
           title: 'Books',
           tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>📚</Text>,
