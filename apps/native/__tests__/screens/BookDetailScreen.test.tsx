@@ -65,7 +65,7 @@ describe('BookDetailScreen', () => {
     jest.spyOn(Alert, 'alert').mockImplementation(jest.fn());
     mockUseAuthHeaders.mockReturnValue({});
     mockUseDownloadStore.mockImplementation((selector: any) =>
-      selector({ progress: 0, activeDownloadId: null })
+      selector({ progress: 0, activeDownloadId: null, downloads: {} })
     );
     mockGetMediaFormat.mockReturnValue('epub');
     mockGetFormatFromName.mockReturnValue('epub');
@@ -326,7 +326,7 @@ describe('BookDetailScreen', () => {
 
   it('shows downloading state', async () => {
     mockUseDownloadStore.mockImplementation((selector: any) =>
-      selector({ progress: 0.5, activeDownloadId: 'b1' })
+      selector({ progress: 0.5, activeDownloadId: 'b1', downloads: {} })
     );
     mockFetchBook.mockResolvedValue(makeBook());
     mockFetchSeries.mockResolvedValue(makeSeries());

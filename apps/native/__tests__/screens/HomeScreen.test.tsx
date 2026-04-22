@@ -16,6 +16,11 @@ jest.mock('../../src/stores/useSettingsStore');
 jest.mock('../../src/hooks/useAuthHeaders', () => ({
   useAuthHeaders: jest.fn().mockReturnValue({}),
 }));
+jest.mock('../../src/stores/useDownloadStore', () => ({
+  useDownloadStore: jest.fn((selector: any) =>
+    selector({ downloads: {}, activeDownloadId: null, progress: 0 })
+  ),
+}));
 jest.mock('../../src/components/BookCard', () => {
   const { View, Text, TouchableOpacity } = require('react-native');
   return function MockBookCard({ book, placeholder, onPress }: any) {

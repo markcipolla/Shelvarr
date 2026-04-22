@@ -5,6 +5,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import * as Font from 'expo-font';
 import RootNavigator from './src/navigation/RootNavigator';
 import { useSettingsStore } from './src/stores/useSettingsStore';
+import { useDownloadStore } from './src/stores/useDownloadStore';
 import { retryOfflineQueue } from './src/services/progressSync';
 
 export default function App() {
@@ -12,6 +13,7 @@ export default function App() {
 
   useEffect(() => {
     useSettingsStore.getState().loadSettings();
+    useDownloadStore.getState().loadDownloads();
     retryOfflineQueue();
     Font.loadAsync({
       'Literata-Regular': require('./assets/fonts/Literata-Regular.ttf'),
