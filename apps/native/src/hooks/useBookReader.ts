@@ -17,7 +17,7 @@ export function useBookReader(bookId: string) {
       setStorePage(page);
       const completed = page >= totalPages;
       if (completed) {
-        // Flush immediately on completion so Komga updates on-deck
+        // Flush immediately on completion so server updates on-deck
         flushProgress(bookId);
         syncProgress(bookId, page, true);
         flushProgress(bookId);

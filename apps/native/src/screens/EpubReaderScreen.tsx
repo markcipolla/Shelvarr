@@ -144,7 +144,7 @@ export default function EpubReaderScreen({ route, navigation }: Props) {
     setContentHeight(e.nativeEvent.layout.height);
   }, []);
 
-  // Sync progress to Komga + save locally
+  // Sync progress to server + save locally
   useEffect(() => {
     if (!book) return;
     const isLastChapter = currentChapter >= book.chapters.length - 1;

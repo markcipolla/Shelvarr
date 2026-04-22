@@ -26,11 +26,10 @@ export async function testShelvarrConnection(
 
 /**
  * Fire-and-forget: update reading status on Hardcover via Shelvarr server.
- * Uses the shelvarrUrl from settings (separate from Komga server URL).
  * Never throws — silently logs errors so reading flow is never blocked.
  */
 export async function updateReadingStatus(
-  komgaBookId: string,
+  bookId: string,
   status: 'reading' | 'read' | 'dnf'
 ): Promise<void> {
   const shelvarrUrl = useSettingsStore.getState().shelvarrUrl;
@@ -41,7 +40,7 @@ export async function updateReadingStatus(
     await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ komgaBookId, status }),
+      body: JSON.stringify({ komgaBookId: bookId, status }),
     });
   } catch (err) {
     console.warn('Shelvarr status sync failed (non-blocking):', err);
