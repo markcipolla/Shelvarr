@@ -407,6 +407,64 @@ describe('Download Services', () => {
         assert.strictEqual(results.length, 0);
       });
 
+      it('should parse title from edition.php anchor (current libgen.vg format)', async () => {
+        // Real-world structure from libgen.vg as of 2026: the title is in
+        // the first <a href="edition.php?id=..."> link, not in a <b> tag.
+        // The title="..." attribute commonly contains a literal <br>, which
+        // must not confuse the opening-tag scanner.
+        const html = `
+          <table><tbody><tr>
+            <td><a data-toggle="tooltip" data-html="true" title="Add/Edit : 2025-12-12/2025-12-12; ID: 111982661<br>e89791ee2ebbaaeea097e7726e38e5eb" href="edition.php?id=204701843">Bee Speaker <i></i></a><br><a href="edition.php?id=204701843"><i><font color="green"> 9781035901456</font></i></a></td>
+            <td>Adrian Tchaikovsky</td>
+            <td>Head of Zeus</td>
+            <td><nobr></nobr></td>
+            <td>English</td>
+            <td>0</td>
+            <td><nobr><a href="/file.php?id=111982661">4 MB</a></nobr></td>
+            <td>epub</td>
+            <td><a href="/ads.php?md5=e89791ee2ebbaaeea097e7726e38e5eb">1</a></td>
+          </tr></tbody></table>
+        `;
+
+        mockFetch.mock.mockImplementationOnce(async () =>
+          new Response(html, { status: 200 })
+        );
+
+        const results = await libgen.searchLibGen('Bee Speaker');
+        assert.strictEqual(results.length, 1);
+        assert.strictEqual(results[0]?.title, 'Bee Speaker');
+        assert.strictEqual(results[0]?.author, 'Adrian Tchaikovsky');
+        assert.strictEqual(results[0]?.publisher, 'Head of Zeus');
+        assert.strictEqual(results[0]?.language, 'English');
+        assert.strictEqual(results[0]?.extension, 'epub');
+      });
+
+      it('should prefer edition.php title over series <b> tag', async () => {
+        // When a series is present, <b> wraps the series name + issue number
+        // (e.g. "Children of Time 1") — the real title is in the next <a>.
+        const html = `
+          <table><tbody><tr>
+            <td><b>Children of Time 1<a data-html="true" title="Add/Edit : 2026-01-10/2026-01-10; ID: 112257324<br>hash" href="edition.php?id=204905853"><i></i></a></b><br><a data-html="true" title="Add/Edit : 2026-01-10/2026-01-10; ID: 112257324<br>hash" href="edition.php?id=204905853">Children of Time: Children of Time <i></i></a></td>
+            <td>Adrian Tchaikovsky</td>
+            <td>Pan Macmillan</td>
+            <td><nobr>2015</nobr></td>
+            <td>English</td>
+            <td>0</td>
+            <td><nobr><a>506 kB</a></nobr></td>
+            <td>epub</td>
+            <td><a href="/ads.php?md5=546b98d564b7e5d0f6b05cd173ffd8d9">1</a></td>
+          </tr></tbody></table>
+        `;
+
+        mockFetch.mock.mockImplementationOnce(async () =>
+          new Response(html, { status: 200 })
+        );
+
+        const results = await libgen.searchLibGen('test');
+        assert.strictEqual(results.length, 1);
+        assert.strictEqual(results[0]?.title, 'Children of Time: Children of Time');
+      });
+
       it('should extract extension from table cell', async () => {
         const html = `
           <table>

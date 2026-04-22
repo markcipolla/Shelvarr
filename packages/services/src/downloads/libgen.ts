@@ -102,18 +102,17 @@ export async function searchLibGen(
 
     const html = await response.text();
 
-    // LibGen+ table structure:
-    // <tr>
-    //   <td><b>Title</b>...</td>      -- Title (in bold)
-    //   <td>Author</td>               -- Author
-    //   <td>Publisher</td>            -- Publisher
-    //   <td><nobr>Year</nobr></td>    -- Year (may have nobr)
-    //   <td>Language</td>             -- Language
-    //   <td>Pages</td>                -- Pages
-    //   <td><nobr><a>Size</a></nobr></td>  -- Size (link)
-    //   <td>ext</td>                  -- Extension
-    //   <td>...md5=XXX...</td>        -- Mirrors with MD5
-    // </tr>
+    // LibGen+ table structure (first cell layout, 2026):
+    //   <td>
+    //     [optional <b>Series Name N<a href="edition.php?id=...">...</a></b><br>]
+    //     <a href="edition.php?id=...">Title <i>...</i></a>
+    //     <br><a href="edition.php?id=..."><i><font color="green">ISBNs</font></i></a>
+    //     ...badges...
+    //   </td>
+    //   <td>Author</td> <td>Publisher</td> <td><nobr>Year</nobr></td>
+    //   <td>Language</td> <td>Pages</td>
+    //   <td><nobr><a>Size</a></nobr></td> <td>ext</td>
+    //   <td>...md5=XXX...</td>
 
     // Find all table rows that contain book data (have md5 links)
     const rowPattern = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
@@ -140,17 +139,6 @@ export async function searchLibGen(
       // Need at least 8 cells for a valid row
       if (cells.length < 8) continue;
 
-      // Extract title from first cell - get text from first <b> tag only
-      let title = 'Unknown';
-      const firstCell = cells[0] || '';
-      const boldMatch = firstCell.match(/<b>([^<]+)/i);
-      if (boldMatch) {
-        // Get just the text before any child tags
-        title = boldMatch[1]!.trim();
-        // Remove trailing series numbers like "Children of Time 2" -> "Children of Time"
-        title = title.replace(/\s+\d+\s*$/, '').trim();
-      }
-
       // Helper to strip HTML and clean text
       const stripHtml = (html: string) => {
         return html
@@ -163,6 +151,32 @@ export async function searchLibGen(
           .replace(/\s+/g, ' ')
           .trim();
       };
+
+      // Extract title from first cell. Preferred source is the first
+      // <a href="edition.php?id=..."> link with non-empty visible text —
+      // that holds the actual title. When a series is present the <b> tag
+      // wraps the series name + issue number (not the title), so we skip it.
+      // Anchor on `href=` rather than `<a ...href=` because the preceding
+      // `title="…"` attribute may contain a literal `<br>`, which breaks a
+      // naive `<a[^>]*` match.
+      let title = 'Unknown';
+      const firstCell = cells[0] || '';
+      const editionLinkPattern = /href="[^"]*edition\.php[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+      let linkMatch;
+      while ((linkMatch = editionLinkPattern.exec(firstCell)) !== null) {
+        const text = stripHtml(linkMatch[1] || '');
+        if (text) {
+          title = text;
+          break;
+        }
+      }
+      // Fallback for older table formats where title lived in <b>…</b>.
+      if (title === 'Unknown') {
+        const boldMatch = firstCell.match(/<b>([^<]+)/i);
+        if (boldMatch) {
+          title = boldMatch[1]!.trim().replace(/\s+\d+\s*$/, '').trim();
+        }
+      }
 
       // Extract size from cell that contains MB/KB
       let size = 'Unknown';
