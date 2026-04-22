@@ -121,7 +121,11 @@ export default function ComicsScreen({ navigation }: Props) {
           <ComicCard
             volume={(item as { volume: KapowarrVolume }).volume}
             fill
-            onPress={() => {}}
+            onPress={() =>
+              navigation.navigate('ComicDetail', {
+                volumeId: (item as { volume: KapowarrVolume }).volume.id,
+              })
+            }
           />
         )
       }

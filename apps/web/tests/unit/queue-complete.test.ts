@@ -29,6 +29,9 @@ if (canRunTests) {
     runTask,
     getTask,
   } = await import('../../lib/services/queue/index.js');
+  const { initServiceConfig, getServiceConfig } = await import('@shelvarr/services');
+
+  initServiceConfig({ ...getServiceConfig(), hardcoverToken: null });
 
   describe('Queue Handlers - Complete Coverage', () => {
     let testLibPath: string;

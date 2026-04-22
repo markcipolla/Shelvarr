@@ -147,6 +147,22 @@ describe('ComicsScreen', () => {
     });
   });
 
+  it('navigates to ComicDetail when a volume is tapped', async () => {
+    mockFetchComics.mockResolvedValue({
+      configured: true,
+      volumes: [makeVolume(42, { title: 'Batman' })],
+    });
+
+    const { getByTestId } = render(<ComicsScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => {
+      expect(getByTestId('volume-42')).toBeTruthy();
+    });
+
+    fireEvent.press(getByTestId('volume-42'));
+    expect(mockNavigation.navigate).toHaveBeenCalledWith('ComicDetail', { volumeId: 42 });
+  });
+
   it('shows empty state when configured with zero volumes', async () => {
     mockFetchComics.mockResolvedValue({ configured: true, volumes: [] });
 
