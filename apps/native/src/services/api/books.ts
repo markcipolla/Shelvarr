@@ -144,3 +144,11 @@ export async function fetchRecentlyAdded(
   const { data } = await getApiClient().get<PagedResponse<Book>>('/api/books', { params });
   return data;
 }
+
+export async function fetchBooks(page: number = 0): Promise<PagedResponse<Book>> {
+  const { data } = await getApiClient().get<PagedResponse<Book>>(
+    '/api/books',
+    { params: { page, size: PAGE_SIZE, sort: 'metadata.titleSort,asc' } }
+  );
+  return data;
+}
