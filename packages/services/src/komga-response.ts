@@ -67,8 +67,9 @@ function extensionToMediaType(ext: string | null, filePath?: string): string {
   // Fall back to file path extension
   if (filePath) {
     const match = filePath.match(/\.([a-z0-9]+)$/i);
-    if (match && EXTENSION_MEDIA_TYPE_MAP[match[1].toLowerCase()]) {
-      return EXTENSION_MEDIA_TYPE_MAP[match[1].toLowerCase()];
+    const ext = match?.[1]?.toLowerCase();
+    if (ext && EXTENSION_MEDIA_TYPE_MAP[ext]) {
+      return EXTENSION_MEDIA_TYPE_MAP[ext];
     }
   }
   return 'application/octet-stream';
