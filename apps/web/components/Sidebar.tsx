@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { GlobalSearch } from './GlobalSearch';
 import { useSidebar } from './SidebarContext';
 import type { SidebarCounts } from '@/lib/actions/stats';
 import { APP_VERSION, BUILD_VERSION } from '@/lib/constants';
@@ -81,13 +80,6 @@ export function Sidebar({ counts }: SidebarProps) {
             <MenuIcon className="w-5 h-5" />
           </button>
         </div>
-
-        {/* Search - hidden when collapsed */}
-        {!isCollapsed && (
-          <div className="p-4 border-b border-shelvarr-border">
-            <GlobalSearch />
-          </div>
-        )}
 
         {/* Navigation */}
         <nav className="flex-1 p-2 overflow-y-auto">

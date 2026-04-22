@@ -34,6 +34,15 @@ export function SeriesIcon({ className }: IconProps) {
   );
 }
 
+export function ComicIcon({ className }: IconProps) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4h6a4 4 0 014 4v12a3 3 0 00-3-3H4V4z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 4h-6a4 4 0 00-4 4v12a3 3 0 013-3h7V4z" />
+    </svg>
+  );
+}
+
 export function LoadingSpinner({ className }: IconProps) {
   return (
     <svg className={className || "w-4 h-4 animate-spin text-shelvarr-text-muted"} fill="none" viewBox="0 0 24 24">

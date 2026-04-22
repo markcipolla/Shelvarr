@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { searchLocal, type LocalSearchResult } from '@/lib/actions/search';
-import { BookIcon, SearchIcon, AuthorIcon, SeriesIcon, LoadingSpinner } from '@/components/ui/Icons';
+import { BookIcon, SearchIcon, AuthorIcon, SeriesIcon, ComicIcon, LoadingSpinner } from '@/components/ui/Icons';
 
 export function GlobalSearch() {
   const router = useRouter();
@@ -74,12 +74,13 @@ export function GlobalSearch() {
     book: <BookIcon className="w-4 h-4" />,
     author: <AuthorIcon className="w-4 h-4" />,
     series: <SeriesIcon className="w-4 h-4" />,
+    comic: <ComicIcon className="w-4 h-4" />,
   };
 
   const showDropdown = isOpen && query.length >= 2;
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative max-w-2xl mx-auto">
       <div className="relative">
         <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-shelvarr-text-muted" />
         <input
@@ -91,8 +92,8 @@ export function GlobalSearch() {
             setIsOpen(true);
           }}
           onFocus={() => setIsOpen(true)}
-          placeholder="Search books, authors..."
-          className="w-full bg-shelvarr-bg border border-shelvarr-border rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-shelvarr-text-muted focus:outline-none focus:border-shelvarr-primary"
+          placeholder="Search books, comics, authors..."
+          className="w-full bg-shelvarr-surface border border-shelvarr-border rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-shelvarr-text-muted focus:outline-none focus:border-shelvarr-primary"
         />
         {isLoading && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2">

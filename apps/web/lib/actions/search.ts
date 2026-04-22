@@ -2,9 +2,12 @@
 
 import { query } from '@/lib/db';
 import * as metadataService from '@/lib/services/metadata';
+import { kapowarrClient, configureKapowarrFromDb } from '@/lib/services/kapowarr';
+import type { Book } from '@/types';
+import type { KapowarrVolume } from '@shelvarr/types';
 
 export interface LocalSearchResult {
-  type: 'book' | 'author' | 'series';
+  type: 'book' | 'author' | 'series' | 'comic';
   id: number | string;
   title: string;
   subtitle?: string;
@@ -112,7 +115,102 @@ export async function searchLocal(searchQuery: string, limit = 10): Promise<Loca
     });
   }
 
+  // Search comics (Kapowarr)
+  const comicVolumes = await searchLocalComics(searchQuery, Math.ceil(limit / 3));
+  for (const volume of comicVolumes) {
+    const subtitle = [volume.publisher, volume.year].filter(Boolean).join(' · ');
+    results.push({
+      type: 'comic',
+      id: volume.id,
+      title: volume.title,
+      subtitle: subtitle || undefined,
+      coverUrl: `/api/comics/${volume.id}/cover`,
+      href: `/comics/${volume.id}`,
+    });
+  }
+
   return results.slice(0, limit);
+}
+
+async function searchLocalComics(searchQuery: string, limit: number): Promise<KapowarrVolume[]> {
+  try {
+    const configured = await configureKapowarrFromDb();
+    if (!configured) return [];
+    const volumes = await kapowarrClient.getVolumes({ query: searchQuery });
+    return volumes.slice(0, limit);
+  } catch (error) {
+    console.warn('Comic search failed:', error);
+    return [];
+  }
+}
+
+/**
+ * Search local books by title/author. Used by /search page.
+ */
+export async function searchLocalBooks(searchQuery: string, limit = 20): Promise<Book[]> {
+  if (!searchQuery || searchQuery.length < 2) return [];
+
+  const searchTerm = `%${searchQuery}%`;
+  const rows = query<{
+    id: number;
+    library_id: number;
+    file_path: string;
+    file_hash: string;
+    file_size: number | null;
+    title: string | null;
+    authors: string | null;
+    series: string | null;
+    series_name: string | null;
+    series_number: number | null;
+    isbn: string | null;
+    publisher: string | null;
+    publish_date: string | null;
+    description: string | null;
+    cover_url: string | null;
+    extension: string | null;
+    komga_book_id: string | null;
+    metadata_source: string | null;
+    metadata_id: string | null;
+    created_at: string;
+    updated_at: string;
+  }>(
+    `SELECT * FROM books
+     WHERE title LIKE ? OR authors LIKE ? OR series_name LIKE ?
+     ORDER BY title COLLATE NOCASE
+     LIMIT ?`,
+    [searchTerm, searchTerm, searchTerm, limit]
+  );
+
+  return rows.map(row => ({
+    id: row.id,
+    libraryId: row.library_id,
+    filePath: row.file_path,
+    fileHash: row.file_hash,
+    fileSize: row.file_size,
+    title: row.title,
+    authors: row.authors,
+    series: row.series,
+    seriesName: row.series_name,
+    seriesNumber: row.series_number,
+    isbn: row.isbn,
+    publisher: row.publisher,
+    publishDate: row.publish_date,
+    description: row.description,
+    coverUrl: row.cover_url,
+    extension: row.extension,
+    komgaBookId: row.komga_book_id,
+    metadataSource: row.metadata_source,
+    metadataId: row.metadata_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+/**
+ * Search local comics (Kapowarr). Used by /search page.
+ */
+export async function searchLocalComicsList(searchQuery: string, limit = 20): Promise<KapowarrVolume[]> {
+  return searchLocalComics(searchQuery, limit);
 }
 
 /**

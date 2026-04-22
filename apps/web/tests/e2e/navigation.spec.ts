@@ -54,10 +54,10 @@ test.describe('Navigation', () => {
     await expect(page.getByRole('heading', { name: /Settings/i })).toBeVisible();
   });
 
-  test('should have search input in sidebar', async ({ page }) => {
+  test('should have search input in top header', async ({ page }) => {
     await page.goto('/');
-    // GlobalSearch uses placeholder "Search books, authors..."
-    const searchInput = page.locator('aside').getByPlaceholder(/Search/i);
+    // GlobalSearch lives in the sticky top header and uses placeholder "Search books, comics, authors..."
+    const searchInput = page.locator('header').getByPlaceholder(/Search/i);
     await expect(searchInput).toBeVisible();
   });
 });

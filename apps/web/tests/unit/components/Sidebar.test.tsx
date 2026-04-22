@@ -93,14 +93,15 @@ describe('Sidebar Component', () => {
       });
     });
 
-    it('should render global search when not collapsed', () => {
+    it('should not render global search in sidebar (moved to top bar)', () => {
       render(
         <SidebarProvider>
           <Sidebar />
         </SidebarProvider>
       );
 
-      assert.ok(screen.getByTestId('global-search'));
+      const search = screen.queryByTestId('global-search');
+      assert.strictEqual(search, null);
     });
 
     it('should render version in footer', () => {
@@ -175,24 +176,6 @@ describe('Sidebar Component', () => {
       await waitFor(() => {
         const header = screen.queryByText('Shelvarr');
         assert.strictEqual(header, null);
-      });
-    });
-
-    it('should hide global search when collapsed', async () => {
-      render(
-        <SidebarProvider>
-          <Sidebar />
-        </SidebarProvider>
-      );
-
-      const user = userEvent.setup();
-      const toggleButton = screen.getByLabelText('Collapse sidebar');
-
-      await user.click(toggleButton);
-
-      await waitFor(() => {
-        const search = screen.queryByTestId('global-search');
-        assert.strictEqual(search, null);
       });
     });
 

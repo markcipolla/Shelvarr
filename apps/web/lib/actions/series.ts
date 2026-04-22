@@ -8,6 +8,7 @@ interface SeriesInfo {
   seriesName: string;
   bookCount: number;
   authors: string | null;
+  coverUrl?: string | null;
 }
 
 interface BookRow {
@@ -62,13 +63,13 @@ function mapBookRow(row: BookRow): Book {
 
 export async function getSeries(search?: string): Promise<SeriesInfo[]> {
   // Get all books with series data (either primary or JSON)
-  const rows = query<{ series_name: string | null; series: string | null; authors: string | null }>(`
-    SELECT series_name, series, authors FROM books
+  const rows = query<{ series_name: string | null; series: string | null; authors: string | null; cover_url: string | null }>(`
+    SELECT series_name, series, authors, cover_url FROM books
     WHERE series_name IS NOT NULL OR series IS NOT NULL
   `);
 
   // Extract all unique series from both columns
-  const seriesMap = new Map<string, { count: number; authors: string | null }>();
+  const seriesMap = new Map<string, { count: number; authors: string | null; coverUrl: string | null }>();
 
   for (const row of rows) {
     const seriesToAdd: string[] = [];
@@ -97,8 +98,11 @@ export async function getSeries(search?: string): Promise<SeriesInfo[]> {
       const existing = seriesMap.get(name);
       if (existing) {
         existing.count++;
+        if (!existing.coverUrl && row.cover_url) {
+          existing.coverUrl = row.cover_url;
+        }
       } else {
-        seriesMap.set(name, { count: 1, authors: row.authors });
+        seriesMap.set(name, { count: 1, authors: row.authors, coverUrl: row.cover_url });
       }
     }
   }
@@ -108,6 +112,7 @@ export async function getSeries(search?: string): Promise<SeriesInfo[]> {
     seriesName: name,
     bookCount: data.count,
     authors: data.authors,
+    coverUrl: data.coverUrl,
   }));
 
   if (search) {
