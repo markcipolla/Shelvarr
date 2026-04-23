@@ -472,6 +472,190 @@ export async function upsertReadingStatus(
   }
 }
 
+// ============ Reading Progress Mutations ============
+
+interface UserBookRead {
+  id: number;
+  user_book_id?: number;
+  edition_id?: number | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  progress_pages?: number | null;
+  progress_seconds?: number | null;
+}
+
+export async function getLatestUserBookRead(userBookId: number): Promise<UserBookRead | null> {
+  const q = `
+    query GetUserBookReads($userBookId: Int!) {
+      user_book_reads(
+        where: { user_book_id: { _eq: $userBookId } }
+        order_by: { id: desc }
+        limit: 1
+      ) {
+        id
+        edition_id
+        started_at
+        finished_at
+        progress_pages
+        progress_seconds
+      }
+    }
+  `;
+  const data = await graphqlFetch<{ user_book_reads?: UserBookRead[] }>(q, { userBookId });
+  return data?.user_book_reads?.[0] ?? null;
+}
+
+export async function insertUserBookRead(
+  userBookId: number,
+  progressPages: number,
+  editionId?: number | null,
+  startedAt?: string | null,
+): Promise<UserBookRead | null> {
+  const mutation = `
+    mutation InsertUserBookRead($id: Int!, $pages: Int, $editionId: Int, $startedAt: date) {
+      insert_user_book_read(user_book_id: $id, user_book_read: {
+        progress_pages: $pages,
+        edition_id: $editionId,
+        started_at: $startedAt
+      }) {
+        error
+        user_book_read {
+          id
+          edition_id
+          started_at
+          finished_at
+          progress_pages
+        }
+      }
+    }
+  `;
+  const data = await graphqlFetch<{
+    insert_user_book_read?: { error?: string | null; user_book_read?: UserBookRead };
+  }>(mutation, {
+    id: userBookId,
+    pages: progressPages,
+    editionId: editionId ?? null,
+    startedAt: startedAt ?? null,
+  });
+  if (data?.insert_user_book_read?.error) {
+    console.error(`Hardcover insertUserBookRead error: ${data.insert_user_book_read.error}`);
+    return null;
+  }
+  return data?.insert_user_book_read?.user_book_read ?? null;
+}
+
+export async function updateUserBookRead(
+  readId: number,
+  progressPages: number,
+  finishedAt?: string | null,
+): Promise<UserBookRead | null> {
+  const mutation = `
+    mutation UpdateUserBookRead($id: Int!, $pages: Int, $finishedAt: date) {
+      update_user_book_read(id: $id, object: {
+        progress_pages: $pages,
+        finished_at: $finishedAt
+      }) {
+        error
+        user_book_read {
+          id
+          edition_id
+          started_at
+          finished_at
+          progress_pages
+        }
+      }
+    }
+  `;
+  const data = await graphqlFetch<{
+    update_user_book_read?: { error?: string | null; user_book_read?: UserBookRead };
+  }>(mutation, {
+    id: readId,
+    pages: progressPages,
+    finishedAt: finishedAt ?? null,
+  });
+  if (data?.update_user_book_read?.error) {
+    console.error(`Hardcover updateUserBookRead error: ${data.update_user_book_read.error}`);
+    return null;
+  }
+  return data?.update_user_book_read?.user_book_read ?? null;
+}
+
+/**
+ * Fetch total pages for a Hardcover book (used to convert progression % -> progress_pages)
+ */
+async function getBookPages(hardcoverId: string): Promise<number | null> {
+  const q = `query GetBookPages($id: Int!) {
+    books(where: { id: { _eq: $id } }) { id pages }
+  }`;
+  const data = await graphqlFetch<{ books?: Array<{ pages?: number | null }> }>(q, {
+    id: parseInt(hardcoverId, 10),
+  });
+  return data?.books?.[0]?.pages ?? null;
+}
+
+// Per-book throttle: avoid hammering Hardcover during active reading.
+const lastSyncByBook: Map<string, number> = new Map();
+const MIN_SYNC_INTERVAL_MS = 30_000;
+
+/**
+ * Sync reading progress to Hardcover.
+ *
+ * Ensures a user_book exists (creates as "reading" if not), then inserts/updates
+ * a user_book_read row with progress_pages derived from `progression` (0-1).
+ * Throttled per-book; returns { skipped: true } when throttled.
+ */
+export async function syncReadingProgress(
+  hardcoverId: string,
+  progression: number,
+): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
+  if (!isConfigured()) return { success: false, error: 'Hardcover not configured' };
+
+  const now = Date.now();
+  const completed = progression >= 0.98;
+  const lastSync = lastSyncByBook.get(hardcoverId) ?? 0;
+  if (!completed && now - lastSync < MIN_SYNC_INTERVAL_MS) {
+    return { success: true, skipped: true };
+  }
+  lastSyncByBook.set(hardcoverId, now);
+
+  try {
+    // 1. Ensure user_book exists with status "currently reading"
+    let userBook = await searchUserBook(hardcoverId);
+    if (!userBook) {
+      const today = new Date().toISOString().split('T')[0];
+      userBook = await insertUserBook(hardcoverId, 2, today);
+      if (!userBook) return { success: false, error: 'Failed to create user_book' };
+    }
+
+    // 2. Get total pages to convert progression -> progress_pages
+    const pages = await getBookPages(hardcoverId);
+    if (!pages || pages <= 0) {
+      return { success: false, error: 'Hardcover has no page count for this book' };
+    }
+    const progressPages = Math.max(0, Math.min(pages, Math.round(progression * pages)));
+    const today = new Date().toISOString().split('T')[0];
+
+    // 3. Insert or update the latest user_book_read
+    const existing = await getLatestUserBookRead(userBook.id);
+    if (existing && !existing.finished_at) {
+      await updateUserBookRead(existing.id, progressPages, completed ? today : null);
+    } else {
+      await insertUserBookRead(userBook.id, progressPages, existing?.edition_id ?? null, today);
+    }
+
+    // 4. If completed, flip status to "read"
+    if (completed) {
+      await upsertReadingStatus(hardcoverId, 3, undefined, today);
+    }
+
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`Hardcover syncReadingProgress error: ${message}`);
+    return { success: false, error: message };
+  }
+}
+
 /**
  * Series book info from Hardcover
  */

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import './globals.css';
 import { SidebarWrapper } from '@/components/SidebarWrapper';
 import { ToastProvider } from '@/components/ui/Toast';
@@ -24,7 +25,9 @@ export default function RootLayout({
           <SidebarWrapper />
           <div className="flex-1 flex flex-col min-h-screen h-full overflow-hidden">
             <header className="sticky top-0 z-30 bg-shelvarr-bg/95 backdrop-blur border-b border-shelvarr-border px-4 py-3 pl-16 lg:pl-4">
-              <GlobalSearch />
+              <Suspense fallback={null}>
+                <GlobalSearch />
+              </Suspense>
             </header>
             <main className="flex-1 p-6 overflow-auto">
               {children}

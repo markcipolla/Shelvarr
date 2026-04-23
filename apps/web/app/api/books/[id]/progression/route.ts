@@ -3,6 +3,7 @@ import '@/lib/config';
 import { queryOne, getEpubProgression, upsertEpubProgression, upsertReadProgress } from '@/lib/db';
 import { validateApiAuth } from '@shelvarr/services';
 import { toEpubProgression } from '@shelvarr/services/komga-response';
+import { syncReadingProgress } from '@/lib/services/metadata/hardcover';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,7 +43,10 @@ export async function PUT(
     progression: number;
   };
 
-  const book = queryOne<{ id: number }>('SELECT id FROM books WHERE id = ?', [bookId]);
+  const book = queryOne<{ id: number; metadata_id: string | null; metadata_source: string | null }>(
+    'SELECT id, metadata_id, metadata_source FROM books WHERE id = ?',
+    [bookId]
+  );
   if (!book) {
     return NextResponse.json({ error: 'Book not found' }, { status: 404 });
   }
@@ -52,6 +56,13 @@ export async function PUT(
 
   upsertEpubProgression(bookId, deviceId, locator, body.progression);
   upsertReadProgress(bookId, 0, body.progression >= 0.98);
+
+  // Fire-and-forget Hardcover sync — throttled per-book inside syncReadingProgress.
+  if (book.metadata_id && book.metadata_source === 'hardcover') {
+    void syncReadingProgress(book.metadata_id, body.progression).catch((err) => {
+      console.error('Hardcover progress sync failed:', err);
+    });
+  }
 
   const result = getEpubProgression(bookId, deviceId);
   return NextResponse.json(toEpubProgression(result));

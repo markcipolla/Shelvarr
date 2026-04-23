@@ -30,6 +30,9 @@ export interface Book {
   metadataId: string | null;
   createdAt: string;
   updatedAt: string;
+  // Reading progress (optional — only populated by queries that join progress tables)
+  progressPercent?: number | null; // 0-100, null if unknown
+  progressCompleted?: boolean;
 }
 
 export interface Series {

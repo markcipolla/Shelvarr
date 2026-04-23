@@ -4,6 +4,7 @@
 
 import type * as Komga from '@shelvarr/types/komga';
 import type { ReadProgressRow, EpubProgressionRow } from '@shelvarr/db';
+import { getEpubProgression } from '@shelvarr/db';
 
 interface DbBook {
   id: number;
@@ -88,18 +89,26 @@ function parseAuthors(authorsField: string | null): Komga.Author[] {
   }
 }
 
-function formatReadProgress(progress: ReadProgressRow | null): Komga.ReadProgress | null {
-  if (!progress) return null;
+function formatReadProgress(
+  progress: ReadProgressRow | null,
+  epub: EpubProgressionRow | null = null,
+): Komga.ReadProgress | null {
+  if (!progress && !epub) return null;
+  const completed = progress?.completed === 1 || (epub ? epub.progression >= 0.98 : false);
+  const lastModified = epub?.updated_at ?? progress?.updated_at ?? new Date().toISOString();
+  const created = progress?.created_at ?? epub?.created_at ?? lastModified;
   return {
-    page: progress.page,
-    completed: progress.completed === 1,
-    readDate: progress.updated_at,
-    created: progress.created_at,
-    lastModified: progress.updated_at,
+    page: progress?.page ?? 0,
+    completed,
+    readDate: lastModified,
+    created,
+    lastModified,
+    progression: epub?.progression,
   };
 }
 
 export function toKomgaBook(row: DbBook, readProgress: ReadProgressRow | null = null): Komga.Book {
+  const epub = getEpubProgression(row.id);
   return {
     id: String(row.id),
     seriesId: row.series_name ? String(row.series_name) : String(row.library_id),
@@ -116,7 +125,7 @@ export function toKomgaBook(row: DbBook, readProgress: ReadProgressRow | null = 
       number: row.series_number ? String(row.series_number) : '0',
       authors: parseAuthors(row.authors),
     },
-    readProgress: formatReadProgress(readProgress),
+    readProgress: formatReadProgress(readProgress, epub),
     sizeBytes: row.file_size || 0,
   };
 }
