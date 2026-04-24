@@ -34,12 +34,27 @@ export {
   deleteReadProgress,
   getEpubProgression,
   upsertEpubProgression,
+  getCachedComic,
+  getCachedComicDetail,
+  getCachedComics,
+  upsertComicVolume,
+  upsertComicVolumes,
+  upsertComicDetail,
+  upsertComicIssue,
+  softDeleteComic,
+  isComicDetailStale,
+  getSyncChangesSince,
+  buildFtsQuery,
+  searchBooksFts,
+  searchComicsFts,
   initDatabaseAsync,
 } from '@shelvarr/db';
 
 export type {
   ReadProgressRow,
   EpubProgressionRow,
+  BookSearchRow,
+  ComicSearchRow,
 } from '@shelvarr/db';
 
 // Re-export types from @shelvarr/types that were previously defined here

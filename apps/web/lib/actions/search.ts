@@ -1,6 +1,6 @@
 'use server';
 
-import { query } from '@/lib/db';
+import { query, searchBooksFts, searchComicsFts, buildFtsQuery } from '@/lib/db';
 import * as metadataService from '@/lib/services/metadata';
 import { kapowarrClient, configureKapowarrFromDb } from '@/lib/services/kapowarr';
 import type { Book } from '@/types';
@@ -33,27 +33,16 @@ export async function searchLocal(searchQuery: string, limit = 10): Promise<Loca
   const results: LocalSearchResult[] = [];
   const searchTerm = `%${searchQuery}%`;
 
-  // Search books
-  const books = query<{
-    id: number;
-    title: string | null;
-    authors: string | null;
-    cover_url: string | null;
-  }>(
-    `SELECT id, title, authors, cover_url FROM books
-     WHERE title LIKE ? OR authors LIKE ?
-     ORDER BY title COLLATE NOCASE
-     LIMIT ?`,
-    [searchTerm, searchTerm, Math.ceil(limit / 3)]
-  );
+  // Search books via FTS5
+  const books = searchBooksFts(searchQuery, Math.ceil(limit / 3));
 
   for (const book of books) {
     let authorName = '';
     if (book.authors) {
       try {
-        const arr = JSON.parse(book.authors);
+        const arr = JSON.parse(book.authors) as unknown;
         if (Array.isArray(arr) && arr.length > 0) {
-          authorName = arr[0];
+          authorName = String(arr[0]);
         }
       } catch {
         authorName = book.authors;
@@ -115,9 +104,9 @@ export async function searchLocal(searchQuery: string, limit = 10): Promise<Loca
     });
   }
 
-  // Search comics (Kapowarr)
-  const comicVolumes = await searchLocalComics(searchQuery, Math.ceil(limit / 3));
-  for (const volume of comicVolumes) {
+  // Search comics via FTS5 against the local cache (works offline).
+  const comicRows = searchComicsFts(searchQuery, Math.ceil(limit / 3));
+  for (const volume of comicRows) {
     const subtitle = [volume.publisher, volume.year].filter(Boolean).join(' · ');
     results.push({
       type: 'comic',
@@ -150,7 +139,9 @@ async function searchLocalComics(searchQuery: string, limit: number): Promise<Ka
 export async function searchLocalBooks(searchQuery: string, limit = 20): Promise<Book[]> {
   if (!searchQuery || searchQuery.length < 2) return [];
 
-  const searchTerm = `%${searchQuery}%`;
+  const match = buildFtsQuery(searchQuery);
+  if (!match) return [];
+
   const rows = query<{
     id: number;
     library_id: number;
@@ -174,11 +165,13 @@ export async function searchLocalBooks(searchQuery: string, limit = 20): Promise
     created_at: string;
     updated_at: string;
   }>(
-    `SELECT * FROM books
-     WHERE title LIKE ? OR authors LIKE ? OR series_name LIKE ?
-     ORDER BY title COLLATE NOCASE
-     LIMIT ?`,
-    [searchTerm, searchTerm, searchTerm, limit]
+    `SELECT b.* FROM books_fts f
+       JOIN books b ON b.id = f.rowid
+      WHERE f.books_fts MATCH ?
+        AND b.deleted_at IS NULL
+      ORDER BY rank
+      LIMIT ?`,
+    [match, limit]
   );
 
   return rows.map(row => ({

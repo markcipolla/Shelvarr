@@ -3,6 +3,7 @@ import '@/lib/config';
 import { kapowarrClient, configureKapowarrFromDb } from '@/lib/services/kapowarr';
 import { validateApiAuth } from '@shelvarr/services';
 import type { KapowarrSort } from '@shelvarr/services/kapowarr/index';
+import { getCachedComics, upsertComicVolumes } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,18 +21,28 @@ export async function GET(request: NextRequest) {
     ? (sortParam as KapowarrSort)
     : undefined;
 
+  const cached = getCachedComics();
+
   const configured = await configureKapowarrFromDb();
   if (!configured) {
-    return NextResponse.json({ configured: false, volumes: [] });
+    return NextResponse.json({
+      configured: false,
+      volumes: cached,
+      cached: cached.length > 0,
+    });
   }
 
   try {
     const volumes = await kapowarrClient.getVolumes({ query: search, sort });
+    if (!search && !sort) {
+      upsertComicVolumes(volumes);
+    }
     return NextResponse.json({ configured: true, volumes });
   } catch (err) {
     return NextResponse.json({
       configured: true,
-      volumes: [],
+      volumes: cached,
+      cached: cached.length > 0,
       error: err instanceof Error ? err.message : 'Failed to load comics',
     });
   }

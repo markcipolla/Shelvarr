@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS books (
   metadata_source TEXT,
   metadata_id TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TEXT
 );
 
 -- Series (detected/grouped)
@@ -160,6 +161,53 @@ CREATE TABLE IF NOT EXISTS read_progress (
   UNIQUE(book_id)
 );
 
+-- Comics (cached Kapowarr volumes)
+-- id is the Kapowarr volume id (natural key)
+CREATE TABLE IF NOT EXISTS comics (
+  id INTEGER PRIMARY KEY,
+  comicvine_id INTEGER,
+  title TEXT NOT NULL,
+  year INTEGER,
+  publisher TEXT,
+  volume_number INTEGER,
+  description TEXT,
+  monitored INTEGER DEFAULT 1,
+  monitor_new_issues INTEGER DEFAULT 0,
+  folder TEXT,
+  issue_count INTEGER,
+  issue_count_monitored INTEGER,
+  issues_downloaded INTEGER,
+  issues_downloaded_monitored INTEGER,
+  total_size INTEGER,
+  special_version TEXT,
+  special_version_locked INTEGER,
+  site_url TEXT,
+  root_folder INTEGER,
+  volume_folder TEXT,
+  general_files TEXT,
+  cached_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  detail_cached_at TEXT,
+  deleted_at TEXT
+);
+
+-- Comic issues (cached Kapowarr issues)
+CREATE TABLE IF NOT EXISTS comic_issues (
+  id INTEGER PRIMARY KEY,
+  volume_id INTEGER NOT NULL REFERENCES comics(id) ON DELETE CASCADE,
+  comicvine_id INTEGER,
+  issue_number TEXT,
+  calculated_issue_number REAL,
+  title TEXT,
+  date TEXT,
+  description TEXT,
+  monitored INTEGER DEFAULT 1,
+  files TEXT,
+  cached_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TEXT
+);
+
 -- EPUB progression tracking (CFI/position)
 CREATE TABLE IF NOT EXISTS epub_progression (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -189,3 +237,62 @@ CREATE INDEX IF NOT EXISTS idx_source_status_cache_source ON source_status_cache
 CREATE INDEX IF NOT EXISTS idx_read_progress_book ON read_progress(book_id);
 CREATE INDEX IF NOT EXISTS idx_epub_progression_book ON epub_progression(book_id);
 CREATE INDEX IF NOT EXISTS idx_books_komga_book_id ON books(komga_book_id);
+CREATE INDEX IF NOT EXISTS idx_comics_title ON comics(title);
+CREATE INDEX IF NOT EXISTS idx_comics_updated_at ON comics(updated_at);
+CREATE INDEX IF NOT EXISTS idx_comic_issues_volume ON comic_issues(volume_id);
+CREATE INDEX IF NOT EXISTS idx_comic_issues_updated_at ON comic_issues(updated_at);
+
+-- Full-text search indexes (FTS5). Contentless-delete tables kept in sync
+-- with source tables via triggers below.
+CREATE VIRTUAL TABLE IF NOT EXISTS books_fts USING fts5(
+  title,
+  authors,
+  series_name,
+  isbn,
+  content='books',
+  content_rowid='id',
+  tokenize='porter unicode61'
+);
+
+CREATE TRIGGER IF NOT EXISTS books_fts_ai AFTER INSERT ON books BEGIN
+  INSERT INTO books_fts (rowid, title, authors, series_name, isbn)
+  VALUES (new.id, new.title, new.authors, new.series_name, new.isbn);
+END;
+
+CREATE TRIGGER IF NOT EXISTS books_fts_ad AFTER DELETE ON books BEGIN
+  INSERT INTO books_fts (books_fts, rowid, title, authors, series_name, isbn)
+  VALUES ('delete', old.id, old.title, old.authors, old.series_name, old.isbn);
+END;
+
+CREATE TRIGGER IF NOT EXISTS books_fts_au AFTER UPDATE ON books BEGIN
+  INSERT INTO books_fts (books_fts, rowid, title, authors, series_name, isbn)
+  VALUES ('delete', old.id, old.title, old.authors, old.series_name, old.isbn);
+  INSERT INTO books_fts (rowid, title, authors, series_name, isbn)
+  VALUES (new.id, new.title, new.authors, new.series_name, new.isbn);
+END;
+
+CREATE VIRTUAL TABLE IF NOT EXISTS comics_fts USING fts5(
+  title,
+  publisher,
+  description,
+  content='comics',
+  content_rowid='id',
+  tokenize='porter unicode61'
+);
+
+CREATE TRIGGER IF NOT EXISTS comics_fts_ai AFTER INSERT ON comics BEGIN
+  INSERT INTO comics_fts (rowid, title, publisher, description)
+  VALUES (new.id, new.title, new.publisher, new.description);
+END;
+
+CREATE TRIGGER IF NOT EXISTS comics_fts_ad AFTER DELETE ON comics BEGIN
+  INSERT INTO comics_fts (comics_fts, rowid, title, publisher, description)
+  VALUES ('delete', old.id, old.title, old.publisher, old.description);
+END;
+
+CREATE TRIGGER IF NOT EXISTS comics_fts_au AFTER UPDATE ON comics BEGIN
+  INSERT INTO comics_fts (comics_fts, rowid, title, publisher, description)
+  VALUES ('delete', old.id, old.title, old.publisher, old.description);
+  INSERT INTO comics_fts (rowid, title, publisher, description)
+  VALUES (new.id, new.title, new.publisher, new.description);
+END;
