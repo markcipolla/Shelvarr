@@ -1,0 +1,349 @@
+/**
+ * Offline cache for Kapowarr comics metadata.
+ * Reads/writes go through the local expo-sqlite database so the app
+ * can render detail pages and lists without a server connection.
+ */
+import type {
+  KapowarrVolume,
+  KapowarrVolumeDetail,
+  KapowarrIssue,
+  KapowarrFile,
+  KapowarrGeneralFile,
+} from '@shelvarr/types';
+import { getDatabase } from './database';
+
+interface ComicRow {
+  id: number;
+  comicvine_id: number | null;
+  title: string;
+  year: number | null;
+  publisher: string | null;
+  volume_number: number | null;
+  description: string | null;
+  monitored: number;
+  monitor_new_issues: number;
+  folder: string | null;
+  issue_count: number | null;
+  issue_count_monitored: number | null;
+  issues_downloaded: number | null;
+  issues_downloaded_monitored: number | null;
+  total_size: number | null;
+  special_version: string | null;
+  special_version_locked: number | null;
+  site_url: string | null;
+  root_folder: number | null;
+  volume_folder: string | null;
+  general_files: string | null;
+  cached_at: string;
+  updated_at: string;
+  detail_cached_at: string | null;
+  deleted_at: string | null;
+}
+
+interface IssueRow {
+  id: number;
+  volume_id: number;
+  comicvine_id: number | null;
+  issue_number: string | null;
+  calculated_issue_number: number | null;
+  title: string | null;
+  date: string | null;
+  description: string | null;
+  monitored: number;
+  files: string | null;
+  cached_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+function parseJson<T>(text: string | null, fallback: T): T {
+  if (!text) return fallback;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function rowToVolume(row: ComicRow): KapowarrVolume {
+  return {
+    id: row.id,
+    comicvine_id: row.comicvine_id ?? 0,
+    title: row.title,
+    year: row.year,
+    publisher: row.publisher,
+    volume_number: row.volume_number ?? 0,
+    description: row.description ?? '',
+    monitored: Boolean(row.monitored),
+    monitor_new_issues: Boolean(row.monitor_new_issues),
+    folder: row.folder ?? '',
+    issue_count: row.issue_count ?? 0,
+    issue_count_monitored: row.issue_count_monitored ?? 0,
+    issues_downloaded: row.issues_downloaded ?? 0,
+    issues_downloaded_monitored: row.issues_downloaded_monitored ?? 0,
+    total_size: row.total_size,
+  };
+}
+
+function rowToIssue(row: IssueRow): KapowarrIssue {
+  return {
+    id: row.id,
+    volume_id: row.volume_id,
+    comicvine_id: row.comicvine_id ?? 0,
+    issue_number: row.issue_number ?? '',
+    calculated_issue_number: row.calculated_issue_number ?? 0,
+    title: row.title,
+    date: row.date,
+    description: row.description ?? '',
+    monitored: Boolean(row.monitored),
+    files: parseJson<KapowarrFile[]>(row.files, []),
+  };
+}
+
+function rowToDetail(row: ComicRow, issues: KapowarrIssue[]): KapowarrVolumeDetail {
+  return {
+    ...rowToVolume(row),
+    special_version: row.special_version,
+    special_version_locked: Boolean(row.special_version_locked),
+    site_url: row.site_url ?? '',
+    root_folder: row.root_folder ?? 0,
+    volume_folder: row.volume_folder ?? '',
+    issues,
+    general_files: parseJson<KapowarrGeneralFile[]>(row.general_files, []),
+  };
+}
+
+export async function getCachedComic(id: number): Promise<KapowarrVolume | null> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<ComicRow>(
+    'SELECT * FROM comics WHERE id = ? AND deleted_at IS NULL',
+    [id]
+  );
+  return row ? rowToVolume(row) : null;
+}
+
+export async function getCachedComicDetail(id: number): Promise<KapowarrVolumeDetail | null> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<ComicRow>(
+    'SELECT * FROM comics WHERE id = ? AND deleted_at IS NULL',
+    [id]
+  );
+  if (!row || !row.detail_cached_at) return null;
+  const issueRows = await db.getAllAsync<IssueRow>(
+    'SELECT * FROM comic_issues WHERE volume_id = ? AND deleted_at IS NULL ORDER BY calculated_issue_number',
+    [id]
+  );
+  return rowToDetail(row, issueRows.map(rowToIssue));
+}
+
+export async function getCachedComics(): Promise<KapowarrVolume[]> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<ComicRow>(
+    'SELECT * FROM comics WHERE deleted_at IS NULL ORDER BY title'
+  );
+  return rows.map(rowToVolume);
+}
+
+const UPSERT_COMIC_LIST_SQL = `INSERT INTO comics (
+  id, comicvine_id, title, year, publisher, volume_number, description,
+  monitored, monitor_new_issues, folder,
+  issue_count, issue_count_monitored, issues_downloaded, issues_downloaded_monitored,
+  total_size, updated_at, deleted_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, NULL)
+ON CONFLICT (id) DO UPDATE SET
+  comicvine_id = excluded.comicvine_id,
+  title = excluded.title,
+  year = excluded.year,
+  publisher = excluded.publisher,
+  volume_number = excluded.volume_number,
+  description = excluded.description,
+  monitored = excluded.monitored,
+  monitor_new_issues = excluded.monitor_new_issues,
+  folder = excluded.folder,
+  issue_count = excluded.issue_count,
+  issue_count_monitored = excluded.issue_count_monitored,
+  issues_downloaded = excluded.issues_downloaded,
+  issues_downloaded_monitored = excluded.issues_downloaded_monitored,
+  total_size = excluded.total_size,
+  updated_at = CURRENT_TIMESTAMP,
+  deleted_at = NULL`;
+
+export async function upsertComicVolume(volume: KapowarrVolume): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(UPSERT_COMIC_LIST_SQL, [
+    volume.id,
+    volume.comicvine_id,
+    volume.title,
+    volume.year,
+    volume.publisher,
+    volume.volume_number,
+    volume.description,
+    volume.monitored ? 1 : 0,
+    volume.monitor_new_issues ? 1 : 0,
+    volume.folder,
+    volume.issue_count,
+    volume.issue_count_monitored,
+    volume.issues_downloaded,
+    volume.issues_downloaded_monitored,
+    volume.total_size,
+  ]);
+}
+
+export async function upsertComicVolumes(volumes: KapowarrVolume[]): Promise<void> {
+  const db = await getDatabase();
+  await db.withTransactionAsync(async () => {
+    for (const v of volumes) {
+      await db.runAsync(UPSERT_COMIC_LIST_SQL, [
+        v.id,
+        v.comicvine_id,
+        v.title,
+        v.year,
+        v.publisher,
+        v.volume_number,
+        v.description,
+        v.monitored ? 1 : 0,
+        v.monitor_new_issues ? 1 : 0,
+        v.folder,
+        v.issue_count,
+        v.issue_count_monitored,
+        v.issues_downloaded,
+        v.issues_downloaded_monitored,
+        v.total_size,
+      ]);
+    }
+  });
+}
+
+const UPSERT_COMIC_DETAIL_SQL = `INSERT INTO comics (
+  id, comicvine_id, title, year, publisher, volume_number, description,
+  monitored, monitor_new_issues, folder,
+  issue_count, issue_count_monitored, issues_downloaded, issues_downloaded_monitored,
+  total_size, special_version, special_version_locked, site_url, root_folder, volume_folder,
+  general_files, updated_at, detail_cached_at, deleted_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL)
+ON CONFLICT (id) DO UPDATE SET
+  comicvine_id = excluded.comicvine_id,
+  title = excluded.title,
+  year = excluded.year,
+  publisher = excluded.publisher,
+  volume_number = excluded.volume_number,
+  description = excluded.description,
+  monitored = excluded.monitored,
+  monitor_new_issues = excluded.monitor_new_issues,
+  folder = excluded.folder,
+  issue_count = excluded.issue_count,
+  issue_count_monitored = excluded.issue_count_monitored,
+  issues_downloaded = excluded.issues_downloaded,
+  issues_downloaded_monitored = excluded.issues_downloaded_monitored,
+  total_size = excluded.total_size,
+  special_version = excluded.special_version,
+  special_version_locked = excluded.special_version_locked,
+  site_url = excluded.site_url,
+  root_folder = excluded.root_folder,
+  volume_folder = excluded.volume_folder,
+  general_files = excluded.general_files,
+  updated_at = CURRENT_TIMESTAMP,
+  detail_cached_at = CURRENT_TIMESTAMP,
+  deleted_at = NULL`;
+
+const UPSERT_ISSUE_SQL = `INSERT INTO comic_issues (
+  id, volume_id, comicvine_id, issue_number, calculated_issue_number,
+  title, date, description, monitored, files, updated_at, deleted_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, NULL)
+ON CONFLICT (id) DO UPDATE SET
+  volume_id = excluded.volume_id,
+  comicvine_id = excluded.comicvine_id,
+  issue_number = excluded.issue_number,
+  calculated_issue_number = excluded.calculated_issue_number,
+  title = excluded.title,
+  date = excluded.date,
+  description = excluded.description,
+  monitored = excluded.monitored,
+  files = excluded.files,
+  updated_at = CURRENT_TIMESTAMP,
+  deleted_at = NULL`;
+
+export async function upsertComicDetail(detail: KapowarrVolumeDetail): Promise<void> {
+  const db = await getDatabase();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(UPSERT_COMIC_DETAIL_SQL, [
+      detail.id,
+      detail.comicvine_id,
+      detail.title,
+      detail.year,
+      detail.publisher,
+      detail.volume_number,
+      detail.description,
+      detail.monitored ? 1 : 0,
+      detail.monitor_new_issues ? 1 : 0,
+      detail.folder,
+      detail.issue_count,
+      detail.issue_count_monitored,
+      detail.issues_downloaded,
+      detail.issues_downloaded_monitored,
+      detail.total_size,
+      detail.special_version,
+      detail.special_version_locked ? 1 : 0,
+      detail.site_url,
+      detail.root_folder,
+      detail.volume_folder,
+      JSON.stringify(detail.general_files ?? []),
+    ]);
+
+    const incomingIds = new Set<number>();
+    for (const issue of detail.issues) {
+      incomingIds.add(issue.id);
+      await db.runAsync(UPSERT_ISSUE_SQL, [
+        issue.id,
+        issue.volume_id,
+        issue.comicvine_id,
+        issue.issue_number,
+        issue.calculated_issue_number,
+        issue.title,
+        issue.date,
+        issue.description,
+        issue.monitored ? 1 : 0,
+        JSON.stringify(issue.files ?? []),
+      ]);
+    }
+
+    const existing = await db.getAllAsync<{ id: number }>(
+      'SELECT id FROM comic_issues WHERE volume_id = ? AND deleted_at IS NULL',
+      [detail.id]
+    );
+    for (const { id } of existing) {
+      if (!incomingIds.has(id)) {
+        await db.runAsync(
+          'UPDATE comic_issues SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+          [id]
+        );
+      }
+    }
+  });
+}
+
+export async function softDeleteComic(id: number): Promise<void> {
+  const db = await getDatabase();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      'UPDATE comics SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND deleted_at IS NULL',
+      [id]
+    );
+    await db.runAsync(
+      'UPDATE comic_issues SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE volume_id = ? AND deleted_at IS NULL',
+      [id]
+    );
+  });
+}
+
+export async function isComicDetailStale(id: number, maxAgeMinutes: number): Promise<boolean> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ detail_cached_at: string | null }>(
+    'SELECT detail_cached_at FROM comics WHERE id = ?',
+    [id]
+  );
+  if (!row?.detail_cached_at) return true;
+  const cachedAt = new Date(row.detail_cached_at.endsWith('Z') ? row.detail_cached_at : row.detail_cached_at + 'Z');
+  const diffMinutes = (Date.now() - cachedAt.getTime()) / 60000;
+  return diffMinutes > maxAgeMinutes;
+}

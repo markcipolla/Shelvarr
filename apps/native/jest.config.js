@@ -7,6 +7,7 @@ module.exports = {
   moduleNameMapper: {
     'react-native/Libraries/Animated/NativeAnimatedHelper': '<rootDir>/__mocks__/NativeAnimatedHelper.ts',
     '^expo-secure-store$': '<rootDir>/__mocks__/expo-secure-store.ts',
+    '^expo-sqlite$': '<rootDir>/__mocks__/expo-sqlite.ts',
     '^expo-file-system/legacy$': '<rootDir>/__mocks__/expo-file-system/legacy.ts',
     '^expo-navigation-bar$': '<rootDir>/__mocks__/expo-navigation-bar.ts',
     '^expo-font$': '<rootDir>/__mocks__/expo-font.ts',
