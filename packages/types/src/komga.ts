@@ -56,6 +56,8 @@ export interface ReadProgress {
   readDate: string;
   created: string;
   lastModified: string;
+  // Shelvarr extension: 0-1 progression for EPUB (and other % trackable formats)
+  progression?: number;
 }
 
 export interface Page {

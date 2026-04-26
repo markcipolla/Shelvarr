@@ -22,22 +22,36 @@ export default function BookCard({ book, onPress, fill, placeholder }: Props) {
 
   const progress = book.readProgress;
   const isRead = progress?.completed;
-  const progressPercent = progress
-    ? Math.round((progress.page / Math.max(book.media.pagesCount, 1)) * 100)
+  const pagePercent = progress && book.media.pagesCount > 0
+    ? Math.round((progress.page / book.media.pagesCount) * 100)
     : 0;
+  const epubPercent = progress?.progression != null
+    ? Math.round(progress.progression * 100)
+    : 0;
+  const progressPercent = Math.max(pagePercent, epubPercent);
+  const showBar = !!progress && !progress.completed && progressPercent > 0;
 
   const containerStyle: ViewStyle = fill
     ? { flex: 1, marginBottom: 12 }
     : { width: 120, marginRight: 12 };
 
+  const coverWrapperStyle: ViewStyle = fill
+    ? styles.coverWrapper
+    : styles.coverWrapperFixed;
+
   return (
     <TouchableOpacity style={containerStyle} onPress={onPress} activeOpacity={0.7}>
-      <View style={fill ? styles.coverWrapper : undefined}>
+      <View style={coverWrapperStyle}>
         <Image
           source={{ uri: getBookThumbnailUrl(book.id), headers }}
           style={fill ? styles.coverFill : styles.cover}
           resizeMode="cover"
         />
+        {showBar && (
+          <View style={styles.progressBarOverlay}>
+            <View style={[styles.progressFillOverlay, { width: `${progressPercent}%` }]} />
+          </View>
+        )}
         {isRead && (
           <View style={styles.readBadge}>
             <View style={styles.readTriangle} />
@@ -48,11 +62,6 @@ export default function BookCard({ book, onPress, fill, placeholder }: Props) {
         <Text style={styles.title} numberOfLines={2}>
           {book.metadata.title || book.name}
         </Text>
-        {progress && !progress.completed && (
-          <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
-          </View>
-        )}
       </View>
     </TouchableOpacity>
   );
@@ -61,6 +70,7 @@ export default function BookCard({ book, onPress, fill, placeholder }: Props) {
 const styles = StyleSheet.create({
   cover: { width: 140, height: 200, borderRadius: 6, backgroundColor: '#e8e4de' },
   coverWrapper: { aspectRatio: COVER_ASPECT_RATIO, borderRadius: 6, overflow: 'hidden', backgroundColor: '#e8e4de' },
+  coverWrapperFixed: { width: 140, height: 200, borderRadius: 6, overflow: 'hidden', backgroundColor: '#e8e4de' },
   coverFill: { width: '100%', height: '100%' },
   readBadge: {
     position: 'absolute',
@@ -81,12 +91,16 @@ const styles = StyleSheet.create({
   },
   info: { marginTop: 6 },
   title: { fontSize: 13, color: '#222', lineHeight: 17 },
-  progressBar: {
-    height: 3,
-    backgroundColor: '#d5d0c8',
-    borderRadius: 2,
-    marginTop: 4,
-    overflow: 'hidden',
+  progressBarOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 4,
+    backgroundColor: 'rgba(0,0,0,0.3)',
   },
-  progressFill: { height: '100%', backgroundColor: '#8b5e3c', borderRadius: 2 },
+  progressFillOverlay: {
+    height: '100%',
+    backgroundColor: '#f5c518',
+  },
 });

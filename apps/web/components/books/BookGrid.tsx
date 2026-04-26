@@ -25,6 +25,8 @@ interface BookCardProps {
 export function BookCard({ book, showSeriesNumber }: BookCardProps) {
   const authors = formatAuthors(book.authors);
   const title = book.title || getFilenameFromPath(book.filePath);
+  const percent = book.progressPercent;
+  const showBar = !book.progressCompleted && typeof percent === 'number' && percent > 0;
 
   return (
     <Link
@@ -46,6 +48,15 @@ export function BookCard({ book, showSeriesNumber }: BookCardProps) {
         {showSeriesNumber && book.seriesNumber && (
           <div className="absolute top-2 left-2 bg-shelvarr-primary text-white text-xs font-bold px-2 py-1 rounded">
             #{book.seriesNumber}
+          </div>
+        )}
+        {showBar && (
+          <div className="absolute top-0 left-0 right-0 h-1 bg-black/30">
+            <div
+              className="h-full bg-yellow-400"
+              style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+              aria-label={`${percent}% read`}
+            />
           </div>
         )}
       </div>

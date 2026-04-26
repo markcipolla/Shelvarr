@@ -32,7 +32,7 @@ export default function BookDetailScreen({ route, navigation }: Props) {
   const downloadProgress = useDownloadStore((s) => s.progress);
   const activeDownloadId = useDownloadStore((s) => s.activeDownloadId);
   const downloadedEntry = useDownloadStore((s) => s.downloads[bookId]);
-  const isPersisted = !!downloadedEntry?.persisted;
+  const isDownloaded = !!downloadedEntry;
 
   useEffect(() => {
     fetchBook(bookId)
@@ -201,7 +201,7 @@ export default function BookDetailScreen({ route, navigation }: Props) {
         )}
       </TouchableOpacity>
 
-      {isPersisted ? (
+      {isDownloaded ? (
         <TouchableOpacity style={styles.secondaryButton} onPress={handleRemoveDownload}>
           <Text style={styles.secondaryButtonText}>Remove Download</Text>
         </TouchableOpacity>

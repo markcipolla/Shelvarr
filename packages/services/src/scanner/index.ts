@@ -29,6 +29,28 @@ interface BookRow {
   metadata_id: string | null;
   created_at: string;
   updated_at: string;
+  // Optional progress columns populated by joins
+  rp_page?: number | null;
+  rp_completed?: number | null;
+  ep_progression?: number | null;
+}
+
+function computeProgress(row: BookRow): Pick<Book, 'progressPercent' | 'progressCompleted'> {
+  const hasProgressJoin =
+    row.rp_page !== undefined || row.rp_completed !== undefined || row.ep_progression !== undefined;
+  if (!hasProgressJoin) return {};
+
+  const completed = row.rp_completed === 1;
+  let percent: number | null = null;
+  if (row.ep_progression != null && row.ep_progression > 0) {
+    percent = Math.round(row.ep_progression * 100);
+  } else if (completed) {
+    percent = 100;
+  } else if (row.rp_page != null && row.rp_page > 0) {
+    // Page-based progress without a known total — mark as "started" without a useful percent
+    percent = null;
+  }
+  return { progressPercent: percent, progressCompleted: completed };
 }
 
 function rowToBook(row: BookRow): Book {
@@ -54,6 +76,7 @@ function rowToBook(row: BookRow): Book {
     metadataId: row.metadata_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    ...computeProgress(row),
   };
 }
 
@@ -329,9 +352,15 @@ export async function getBooks(queryParams: BookQuery = {}): Promise<BookListRes
 
 export async function getRecentBooks(limit: number): Promise<Book[]> {
   const rows = query<BookRow>(
-    `SELECT * FROM books
-     WHERE metadata_source IS NOT NULL
-     ORDER BY created_at DESC
+    `SELECT b.*,
+       rp.page AS rp_page,
+       rp.completed AS rp_completed,
+       ep.progression AS ep_progression
+     FROM books b
+     LEFT JOIN read_progress rp ON b.id = rp.book_id
+     LEFT JOIN epub_progression ep ON b.id = ep.book_id
+     WHERE b.metadata_source IS NOT NULL
+     ORDER BY b.created_at DESC
      LIMIT ?`,
     [Math.max(1, Math.min(100, limit))]
   );
@@ -340,10 +369,17 @@ export async function getRecentBooks(limit: number): Promise<Book[]> {
 
 export async function getCurrentlyReadingBooks(limit: number): Promise<Book[]> {
   const rows = query<BookRow>(
-    `SELECT b.* FROM books b
-     JOIN read_progress rp ON b.id = rp.book_id
-     WHERE rp.completed = 0 AND rp.page > 0
-     ORDER BY rp.updated_at DESC
+    `SELECT b.*,
+       rp.page AS rp_page,
+       rp.completed AS rp_completed,
+       ep.progression AS ep_progression
+     FROM books b
+     LEFT JOIN read_progress rp ON b.id = rp.book_id
+     LEFT JOIN epub_progression ep ON b.id = ep.book_id
+     WHERE (rp.completed IS NULL OR rp.completed = 0)
+       AND ((rp.page IS NOT NULL AND rp.page > 0)
+            OR (ep.progression IS NOT NULL AND ep.progression > 0 AND ep.progression < 0.98))
+     ORDER BY COALESCE(ep.updated_at, rp.updated_at) DESC
      LIMIT ?`,
     [Math.max(1, Math.min(100, limit))]
   );
