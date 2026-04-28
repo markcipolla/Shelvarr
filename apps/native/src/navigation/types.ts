@@ -4,6 +4,7 @@ export type MainTabParamList = {
   Home: undefined;
   Books: undefined;
   Comics: undefined;
+  WantedSearch: undefined;
 };
 
 export type RootStackParamList = {
@@ -11,6 +12,7 @@ export type RootStackParamList = {
   Home: undefined;
   Books: undefined;
   Comics: undefined;
+  WantedSearch: undefined;
   Library: { libraryId: string; libraryName: string };
   Series: { seriesId: string; seriesName: string };
   BookDetail: { bookId: string };
