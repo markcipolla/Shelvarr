@@ -3,6 +3,8 @@ import { View, Text, Image, TouchableOpacity, StyleSheet, ViewStyle } from 'reac
 import { Book } from '../types/komga';
 import { getBookThumbnailUrl } from '../services/api/books';
 import { useAuthHeaders } from '../hooks/useAuthHeaders';
+import { useConnectivityStore } from '../stores/useConnectivityStore';
+import { useDownloadStore } from '../stores/useDownloadStore';
 
 const COVER_ASPECT_RATIO = 140 / 200; // match SeriesCard
 
@@ -15,10 +17,15 @@ interface Props {
 
 export default function BookCard({ book, onPress, fill, placeholder }: Props) {
   const headers = useAuthHeaders();
+  const online = useConnectivityStore((s) => s.online);
+  const isDownloaded = useDownloadStore((s) => !!s.downloads[book?.id]);
 
   if (placeholder) {
     return <View style={{ flex: 1, marginBottom: 12 }} />;
   }
+
+  // Offline + not cached locally → can't open detail or read; grey it out.
+  const offlineUnavailable = !online && !isDownloaded;
 
   const progress = book.readProgress;
   const isRead = progress?.completed;
@@ -40,7 +47,13 @@ export default function BookCard({ book, onPress, fill, placeholder }: Props) {
     : styles.coverWrapperFixed;
 
   return (
-    <TouchableOpacity style={containerStyle} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity
+      style={[containerStyle, offlineUnavailable && styles.dimmed]}
+      onPress={onPress}
+      activeOpacity={0.7}
+      disabled={offlineUnavailable}
+      accessibilityState={{ disabled: offlineUnavailable }}
+    >
       <View style={coverWrapperStyle}>
         <Image
           source={{ uri: getBookThumbnailUrl(book.id), headers }}
@@ -103,4 +116,5 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#f5c518',
   },
+  dimmed: { opacity: 0.4 },
 });

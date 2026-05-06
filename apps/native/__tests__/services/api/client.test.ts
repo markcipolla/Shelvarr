@@ -16,7 +16,8 @@ const mockAxios = jest.requireMock('axios').default;
 const mockCreate = mockAxios.create as jest.Mock;
 mockCreate.mockReturnValue(mockAxiosInstance);
 
-import { useAuthStore } from '../../../src/stores/useAuthStore';
+import { useSettingsStore } from '../../../src/stores/useSettingsStore';
+import { useConnectivityStore } from '../../../src/stores/useConnectivityStore';
 import { getApiClient, resetApiClient } from '../../../src/services/api/client';
 
 beforeEach(() => {
@@ -25,6 +26,7 @@ beforeEach(() => {
   mockCreate.mockClear();
   mockCreate.mockReturnValue(mockAxiosInstance);
   resetApiClient();
+  useConnectivityStore.setState({ online: true });
 });
 
 describe('getApiClient', () => {
@@ -57,129 +59,48 @@ describe('getApiClient', () => {
       requestInterceptor = mockInterceptorRequest.use.mock.calls[0][0];
     });
 
-    it('returns config unchanged when no credentials', () => {
-      useAuthStore.setState({ credentials: null, sessionCookie: null });
-      const config = { headers: { set: jest.fn() } };
-      const result = requestInterceptor(config);
-      expect(result).toBe(config);
-      expect(config.headers.set).not.toHaveBeenCalled();
-    });
-
-    it('sets basic auth header', () => {
-      useAuthStore.setState({
-        credentials: {
-          serverUrl: 'http://example.com',
-          authType: 'basic',
-          username: 'user',
-          password: 'pass',
-        },
-        sessionCookie: null,
-      });
-      const config = { headers: { set: jest.fn() } } as any;
+    it('sets baseURL from settings store', () => {
+      useSettingsStore.setState({ shelvarrUrl: 'http://example.com' });
+      const config: any = { headers: {} };
       const result = requestInterceptor(config);
       expect(result.baseURL).toBe('http://example.com');
-      expect(config.headers.set).toHaveBeenCalledWith(
-        'Authorization',
-        expect.stringMatching(/^Basic /)
-      );
     });
 
-    it('sets apikey header', () => {
-      useAuthStore.setState({
-        credentials: {
-          serverUrl: 'http://example.com',
-          authType: 'apikey',
-          apiKey: 'my-key',
-        },
-        sessionCookie: null,
-      });
-      const config = { headers: { set: jest.fn() } } as any;
-      requestInterceptor(config);
-      expect(config.headers.set).toHaveBeenCalledWith('X-API-Key', 'my-key');
-    });
-
-    it('does not set auth header when basic creds have no username', () => {
-      useAuthStore.setState({
-        credentials: {
-          serverUrl: 'http://example.com',
-          authType: 'basic',
-        },
-        sessionCookie: null,
-      });
-      const config = { headers: { set: jest.fn() } } as any;
-      requestInterceptor(config);
-      expect(config.headers.set).not.toHaveBeenCalledWith('Authorization', expect.anything());
-      expect(config.headers.set).not.toHaveBeenCalledWith('X-API-Key', expect.anything());
-    });
-
-    it('does not set auth header when apikey creds have no apiKey', () => {
-      useAuthStore.setState({
-        credentials: {
-          serverUrl: 'http://example.com',
-          authType: 'apikey',
-        },
-        sessionCookie: null,
-      });
-      const config = { headers: { set: jest.fn() } } as any;
-      requestInterceptor(config);
-      expect(config.headers.set).not.toHaveBeenCalledWith('Authorization', expect.anything());
-      expect(config.headers.set).not.toHaveBeenCalledWith('X-API-Key', expect.anything());
-    });
-
-    it('sets session cookie when available', () => {
-      useAuthStore.setState({
-        credentials: {
-          serverUrl: 'http://example.com',
-          authType: 'basic',
-          username: 'user',
-          password: 'pass',
-        },
-        sessionCookie: 'abc123',
-      });
-      const config = { headers: { set: jest.fn() } } as any;
-      requestInterceptor(config);
-      expect(config.headers.set).toHaveBeenCalledWith(
-        'Cookie',
-        'KOMGA-SESSION=abc123'
-      );
+    it('leaves baseURL unset when no shelvarrUrl configured', () => {
+      useSettingsStore.setState({ shelvarrUrl: '' });
+      const config: any = { headers: {} };
+      const result = requestInterceptor(config);
+      expect(result.baseURL).toBeUndefined();
     });
   });
 
   describe('response interceptor', () => {
-    let responseInterceptor: (response: any) => any;
+    let onSuccess: (response: any) => any;
+    let onError: (err: any) => any;
 
     beforeEach(() => {
       getApiClient();
-      responseInterceptor = mockInterceptorResponse.use.mock.calls[0][0];
+      onSuccess = mockInterceptorResponse.use.mock.calls[0][0];
+      onError = mockInterceptorResponse.use.mock.calls[0][1];
     });
 
-    it('captures session cookie from set-cookie header', () => {
-      const setSessionCookie = jest.fn();
-      useAuthStore.setState({ setSessionCookie } as any);
-      const response = {
-        headers: { 'set-cookie': 'KOMGA-SESSION=xyz789; Path=/' },
-      };
-      const result = responseInterceptor(response);
-      expect(result).toBe(response);
-      expect(setSessionCookie).toHaveBeenCalledWith('xyz789');
+    it('marks connectivity online on a successful response', () => {
+      useConnectivityStore.setState({ online: false });
+      const response = { data: {} };
+      expect(onSuccess(response)).toBe(response);
+      expect(useConnectivityStore.getState().online).toBe(true);
     });
 
-    it('does nothing when no set-cookie header', () => {
-      const setSessionCookie = jest.fn();
-      useAuthStore.setState({ setSessionCookie } as any);
-      const response = { headers: {} };
-      responseInterceptor(response);
-      expect(setSessionCookie).not.toHaveBeenCalled();
+    it('marks connectivity offline on a network error (no response)', async () => {
+      const err: any = { message: 'Network Error' };
+      await expect(onError(err)).rejects.toBe(err);
+      expect(useConnectivityStore.getState().online).toBe(false);
     });
 
-    it('does nothing when set-cookie has no KOMGA-SESSION', () => {
-      const setSessionCookie = jest.fn();
-      useAuthStore.setState({ setSessionCookie } as any);
-      const response = {
-        headers: { 'set-cookie': 'OTHER=value; Path=/' },
-      };
-      responseInterceptor(response);
-      expect(setSessionCookie).not.toHaveBeenCalled();
+    it('keeps connectivity online on an HTTP error response', async () => {
+      const err: any = { response: { status: 500 } };
+      await expect(onError(err)).rejects.toBe(err);
+      expect(useConnectivityStore.getState().online).toBe(true);
     });
   });
 });
