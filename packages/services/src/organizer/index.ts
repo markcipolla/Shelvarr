@@ -4,35 +4,56 @@
  */
 
 import { createHash } from 'crypto';
-import { readFileSync, renameSync, mkdirSync, existsSync } from 'fs';
+import {
+  readFileSync,
+  renameSync,
+  copyFileSync,
+  unlinkSync,
+  mkdirSync,
+  existsSync,
+  readdirSync,
+  rmdirSync,
+} from 'fs';
 import { dirname, basename, extname, join } from 'path';
 import { query, queryOne, execute } from '@shelvarr/db';
 import type { Book } from '@shelvarr/types';
 
-// Smart organization:
-// - Books WITH series: {series}/Book {number} - {title}
-// - Books WITHOUT series: {author}/{title}
+/**
+ * Default filename template used when the user has not configured one.
+ * Produces a hierarchical layout: `Author/Series/Book NNN - Title.ext`
+ * For standalone books (no series) the empty `{series}` and `{number}` segments
+ * collapse, leaving `Author/Book  - Title.ext`. See applyTemplate for the
+ * exact collapsing rules and TemplateVars docs for the available placeholders.
+ */
+export const DEFAULT_ORGANIZE_TEMPLATE =
+  '{author}/{series}/Book {number} - {title}.{ext}';
 
 /**
  * Template variables that can be used in naming patterns
  *
- * Available variables:
- * - {author} - First author name
- * - {title} - Book title
- * - {series} - Series name (empty if standalone)
- * - {number} or {series_number} - Zero-padded series number (e.g., "01", "02")
- * - {year} - Publication year
- * - {isbn} - ISBN
+ * Available placeholders (case-sensitive):
+ * - {author}                              First author (sanitized; default "Unknown Author")
+ * - {title}                               Book title (sanitized; default "Untitled")
+ * - {series} / {series_name}              Series name (sanitized; empty if standalone)
+ * - {number} / {series_number}            Zero-padded (3 digits) series number; empty if none
+ * - {year}                                4-digit year parsed from publish_date; empty if unparseable
+ * - {isbn}                                Raw ISBN; empty if absent
+ * - {ext} / {extension}                   File extension WITHOUT the leading dot
+ *
+ * Double-brace placeholders ({{x}}) are accepted as input and normalized to {x}.
+ * If the template contains an explicit {ext}/{extension} placeholder, it is
+ * substituted inline and no trailing extension is appended. Otherwise the
+ * original `vars.ext` (which includes the dot) is appended at the end.
  */
 interface TemplateVars {
   author: string;
   title: string;
   series: string;
-  number: string;  // Zero-padded series number
-  series_number: string;  // Alias for number
+  number: string;          // Zero-padded series number
+  series_number: string;   // Alias for number
   year: string;
   isbn: string;
-  ext: string;
+  ext: string;             // With leading dot, e.g. ".epub"
 }
 
 /**
@@ -51,9 +72,29 @@ export interface ReorgPreviewItem {
  */
 export interface ReorgResult {
   success: boolean;
+  total: number;
   moved: number;
+  skipped: number;
   errors: string[];
   details: Array<{ bookId: number; oldPath: string; newPath: string; success: boolean; error?: string }>;
+}
+
+/**
+ * Options for previewReorganization / applyReorganization
+ */
+export interface ReorgOptions {
+  /** When true, do not touch the filesystem (preview-only). Default false for apply. */
+  dryRun?: boolean;
+  /** Limit reorganization to these book IDs. */
+  bookIds?: number[];
+  /** Override the configured filename template. */
+  template?: string;
+  /** Progress callback (current, total). */
+  onProgress?: (current: number, total: number) => void;
+  /** Abort signal — checked between books. */
+  signal?: AbortSignal;
+  /** Enqueue a komga_sync task for each successfully moved book. */
+  enqueueKomgaSync?: (bookId: number, libraryPath: string) => void;
 }
 
 /**
@@ -112,37 +153,65 @@ function parseAuthors(authorsJson: string | null): string {
 }
 
 /**
- * Apply a naming template to generate a new path
+ * Apply a naming template to generate a new path.
+ * See TemplateVars JSDoc for the canonical list of supported placeholders.
  */
-export function applyTemplate(template: string, vars: TemplateVars): string {
+export function applyTemplate(template: string, vars: Partial<TemplateVars>): string {
   let result = template;
 
-  // Replace all template variables
-  result = result.replace(/\{author\}/g, vars.author);
-  result = result.replace(/\{title\}/g, vars.title);
-  result = result.replace(/\{series\}/g, vars.series);
-  result = result.replace(/\{number\}/g, vars.number);
-  result = result.replace(/\{series_number\}/g, vars.series_number);
-  result = result.replace(/\{year\}/g, vars.year);
-  result = result.replace(/\{isbn\}/g, vars.isbn);
+  // Normalize friendly double-brace input
+  result = result.replace(/\{\{(\w+)\}\}/g, '{$1}');
 
-  // Remove empty path components (e.g., if series is empty, "{series}/" becomes nothing)
+  // Alias normalization — collapse aliases to canonical placeholders
+  result = result
+    .replace(/\{series_name\}/g, '{series}')
+    .replace(/\{series_number\}/g, '{number}')
+    .replace(/\{extension\}/g, '{ext}');
+
+  // Resolve values, supporting either `number`/`series_number` field names
+  const author = vars.author ?? '';
+  const title = vars.title ?? '';
+  const series = vars.series ?? '';
+  const numberVal = vars.number ?? vars.series_number ?? '';
+  const year = vars.year ?? '';
+  const isbn = vars.isbn ?? '';
+  const extWithDot = vars.ext ?? '';
+  const extWithoutDot = extWithDot.startsWith('.') ? extWithDot.slice(1) : extWithDot;
+
+  // Determine whether the template substitutes the extension inline
+  const hasExtPlaceholder = /\{ext\}/.test(result);
+
+  // Replace all template variables
+  result = result.replace(/\{author\}/g, author);
+  result = result.replace(/\{title\}/g, title);
+  result = result.replace(/\{series\}/g, series);
+  result = result.replace(/\{number\}/g, numberVal);
+  result = result.replace(/\{year\}/g, year);
+  result = result.replace(/\{isbn\}/g, isbn);
+  if (hasExtPlaceholder) {
+    result = result.replace(/\{ext\}/g, extWithoutDot);
+  }
+
+  // Remove empty path components (e.g., if series is empty, "{series}/" becomes nothing).
+  // Trim whitespace and stray punctuation left behind by empty placeholders within each segment.
   result = result
     .split('/')
-    .filter(part => part.trim() !== '')
+    .map(part => part
+      .replace(/\s*\(\s*\)/g, '')
+      .replace(/\s*\[\s*\]/g, '')
+      .replace(/\s*#\s*$/g, '')
+      .replace(/\s+-\s*$/g, '')
+      .replace(/^\s*-\s+/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+    )
+    .filter(part => part !== '')
     .join('/');
 
-  // Handle empty parentheses/brackets from empty variables
-  result = result
-    .replace(/\s*\(\s*\)/g, '')
-    .replace(/\s*\[\s*\]/g, '')
-    .replace(/\s*#\s*$/g, '')
-    .replace(/\s+-\s*$/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  // Add extension
-  result += vars.ext;
+  // Append extension only if the template didn't substitute one inline
+  if (!hasExtPlaceholder) {
+    result += extWithDot;
+  }
 
   return result;
 }
@@ -272,32 +341,69 @@ function parsePathInfo(filePath: string, libraryPath: string): PathInfo {
 }
 
 /**
- * Generate a new path for a book using smart organization
- * Parses existing path structure - does NOT use unreliable metadata
- * - Books WITH series: {series}/Book {number} - {title}.ext
- * - Books WITHOUT series: {author}/{title}.ext
+ * Move a file, falling back to copy+delete for cross-filesystem moves (EXDEV).
  */
-export function generateNewPath(book: Book, libraryPath: string): string {
+export function moveFile(source: string, target: string): void {
+  try {
+    renameSync(source, target);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EXDEV') {
+      copyFileSync(source, target);
+      unlinkSync(source);
+    } else {
+      throw err;
+    }
+  }
+}
+
+/**
+ * Generate a new path for a book using the configured naming template.
+ * DB metadata wins over path parsing; falls back to parsePathInfo when missing.
+ */
+export function generateNewPath(
+  book: Book,
+  libraryPath: string,
+  template: string = DEFAULT_ORGANIZE_TEMPLATE,
+): string {
   const ext = extname(book.filePath);
+  const parsed = parsePathInfo(book.filePath, libraryPath);
 
-  // Parse info from existing file path (not metadata!)
-  const info = parsePathInfo(book.filePath, libraryPath);
+  // DB-wins-over-parse precedence
+  const dbAuthor = parseAuthors(book.authors);
+  const author = sanitizePathComponent(
+    dbAuthor !== 'Unknown Author' ? dbAuthor : parsed.author,
+    'Unknown Author',
+  );
+  const title = sanitizePathComponent(book.title || parsed.title, 'Untitled');
+  const series = sanitizePathComponent(book.seriesName || parsed.series, '');
 
-  let relativePath: string;
-
-  if (info.series && info.seriesNumber) {
-    // Series with number: Series Name/Book 001 - Title.ext
-    const paddedNumber = info.seriesNumber.padStart(3, '0');
-    relativePath = `${info.series}/Book ${paddedNumber} - ${info.title}${ext}`;
-  } else if (info.series) {
-    // Series without number: Series Name/Title.ext
-    relativePath = `${info.series}/${info.title}${ext}`;
-  } else {
-    // No series: Author/Title.ext
-    relativePath = `${info.author}/${info.title}${ext}`;
+  let number = '';
+  if (book.seriesNumber !== null && book.seriesNumber !== undefined) {
+    number = String(book.seriesNumber).padStart(3, '0');
+  } else if (parsed.seriesNumber) {
+    number = parsed.seriesNumber.padStart(3, '0');
   }
 
-  return join(libraryPath, relativePath);
+  let year = '';
+  if (book.publishDate) {
+    const m = book.publishDate.match(/\d{4}/);
+    if (m) year = m[0];
+  }
+
+  const isbn = book.isbn || '';
+
+  const vars: TemplateVars = {
+    author,
+    title,
+    series,
+    number,
+    series_number: number,
+    year,
+    isbn,
+    ext,
+  };
+
+  return join(libraryPath, applyTemplate(template, vars));
 }
 
 // Database row type (snake_case)
@@ -342,34 +448,56 @@ function rowToBook(row: BookRow): Book {
 }
 
 /**
- * Preview reorganization for a library
+ * Preview reorganization for a library.
  */
 export async function previewReorganization(
-  libraryId: number
+  libraryId: number,
+  opts: { bookIds?: number[]; template?: string } = {},
 ): Promise<ReorgPreviewItem[]> {
-  // Get library path
-  const library = await queryOne<{ path: string }>('SELECT path FROM libraries WHERE id = ?', [libraryId]);
+  const library = await queryOne<{ path: string }>(
+    'SELECT path FROM libraries WHERE id = ?',
+    [libraryId],
+  );
   if (!library) {
     throw new Error('Library not found');
   }
 
-  // Get all books in library
-  const rows = query<BookRow>('SELECT * FROM books WHERE library_id = ?', [libraryId]);
+  let rows: BookRow[];
+  if (opts.bookIds && opts.bookIds.length > 0) {
+    const placeholders = opts.bookIds.map(() => '?').join(',');
+    rows = query<BookRow>(
+      `SELECT * FROM books WHERE library_id = ? AND id IN (${placeholders})`,
+      [libraryId, ...opts.bookIds],
+    );
+  } else {
+    rows = query<BookRow>('SELECT * FROM books WHERE library_id = ?', [libraryId]);
+  }
   const books = rows.map(rowToBook);
 
   const preview: ReorgPreviewItem[] = [];
 
   for (const book of books) {
     try {
-      const newPath = generateNewPath(book, library.path);
+      const newPath = generateNewPath(book, library.path, opts.template);
       const willMove = newPath !== book.filePath;
+      const sourceMissing = !existsSync(book.filePath);
 
-      preview.push({
-        bookId: book.id,
-        currentPath: book.filePath,
-        newPath,
-        willMove,
-      });
+      if (sourceMissing && willMove) {
+        preview.push({
+          bookId: book.id,
+          currentPath: book.filePath,
+          newPath,
+          willMove: false,
+          error: 'Source file not found',
+        });
+      } else {
+        preview.push({
+          bookId: book.id,
+          currentPath: book.filePath,
+          newPath,
+          willMove,
+        });
+      }
     } catch (error) {
       preview.push({
         bookId: book.id,
@@ -385,25 +513,42 @@ export async function previewReorganization(
 }
 
 /**
- * Apply reorganization to a library
+ * Apply reorganization to a library.
  */
 export async function applyReorganization(
   libraryId: number,
-  dryRun: boolean = false
+  opts: ReorgOptions = {},
 ): Promise<ReorgResult> {
-  const preview = await previewReorganization(libraryId);
+  const library = await queryOne<{ path: string }>(
+    'SELECT path FROM libraries WHERE id = ?',
+    [libraryId],
+  );
+  if (!library) {
+    throw new Error('Library not found');
+  }
 
+  const preview = await previewReorganization(libraryId, {
+    bookIds: opts.bookIds,
+    template: opts.template,
+  });
+
+  const total = preview.length;
   const result: ReorgResult = {
     success: true,
+    total,
     moved: 0,
+    skipped: 0,
     errors: [],
     details: [],
   };
 
-  for (const item of preview) {
-    if (!item.willMove) {
-      continue;
+  for (let i = 0; i < preview.length; i++) {
+    if (opts.signal?.aborted) {
+      throw new Error('Task cancelled');
     }
+
+    const item = preview[i]!;
+    opts.onProgress?.(i + 1, total);
 
     if (item.error) {
       result.errors.push(`Book ${item.bookId}: ${item.error}`);
@@ -417,27 +562,68 @@ export async function applyReorganization(
       continue;
     }
 
+    if (!item.willMove) {
+      result.skipped++;
+      continue;
+    }
+
     try {
-      if (!dryRun) {
-        // Create target directory if it doesn't exist
+      if (!opts.dryRun) {
         const targetDir = dirname(item.newPath);
         if (!existsSync(targetDir)) {
           mkdirSync(targetDir, { recursive: true });
         }
 
-        // Check if target already exists
-        if (existsSync(item.newPath) && item.newPath !== item.currentPath) {
-          throw new Error(`Target file already exists: ${item.newPath}`);
+        // Resolve target collisions by appending " (N)" before the extension.
+        let finalPath = item.newPath;
+        if (existsSync(finalPath) && finalPath !== item.currentPath) {
+          const ext = extname(finalPath);
+          const base = finalPath.slice(0, finalPath.length - ext.length);
+          let counter = 1;
+          while (existsSync(finalPath)) {
+            finalPath = `${base} (${counter})${ext}`;
+            counter++;
+          }
+          item.newPath = finalPath;
         }
 
-        // Move the file
-        renameSync(item.currentPath, item.newPath);
+        moveFile(item.currentPath, finalPath);
 
-        // Update database
         execute(
           'UPDATE books SET file_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-          [item.newPath, item.bookId]
+          [finalPath, item.bookId],
         );
+
+        // Calibre/metadata cleanup on the old directory.
+        try {
+          const oldDir = dirname(item.currentPath);
+          if (oldDir !== library.path && existsSync(oldDir)) {
+            const metadataPatterns = ['.opf', 'cover.jpg', 'cover.png', 'metadata.opf'];
+            for (const file of readdirSync(oldDir)) {
+              const lower = file.toLowerCase();
+              if (metadataPatterns.some(p => lower.endsWith(p) || lower === p)) {
+                try {
+                  unlinkSync(join(oldDir, file));
+                } catch {
+                  // ignore individual cleanup errors
+                }
+              }
+            }
+            if (readdirSync(oldDir).length === 0) {
+              rmdirSync(oldDir);
+              const parentDir = dirname(oldDir);
+              if (parentDir !== library.path && existsSync(parentDir)) {
+                if (readdirSync(parentDir).length === 0) {
+                  rmdirSync(parentDir);
+                }
+              }
+            }
+          }
+        } catch {
+          // ignore cleanup errors
+        }
+
+        opts.enqueueKomgaSync?.(item.bookId, library.path);
       }
 
       result.moved++;
@@ -457,7 +643,6 @@ export async function applyReorganization(
         success: false,
         error: errorMsg,
       });
-      result.success = false;
     }
   }
 
@@ -736,9 +921,11 @@ export async function getAllDuplicates(
 }
 
 export default {
+  DEFAULT_ORGANIZE_TEMPLATE,
   sanitizePathComponent,
   applyTemplate,
   generateNewPath,
+  moveFile,
   previewReorganization,
   applyReorganization,
   calculateFileHash,

@@ -94,8 +94,7 @@ async function applyMetadataToBook(bookId: number, metadata: metadataService.Boo
 
     // Organize file (rename/move based on new metadata)
     enqueueTask('organize', {
-      bookId,
-      bookTitle: metadata.title,
+      bookIds: [bookId],
     });
   }
 

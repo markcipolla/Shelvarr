@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Library } from '@/types';
-import { deleteLibrary, scanLibrary, fetchLibraryMetadata, organizeLibrary } from '@/lib/actions/libraries';
+import { deleteLibrary, scanLibrary, fetchLibraryMetadata } from '@/lib/actions/libraries';
 import { useToast } from '@/components/ui/Toast';
 
 interface LibraryWithCount extends Library {
@@ -53,31 +54,6 @@ export function LibraryList({ libraries }: { libraries: LibraryWithCount[] }) {
         return next;
       });
       toast.error('Failed to start metadata fetch');
-    }
-  };
-
-  const handleOrganize = async (id: number) => {
-    setLoading((prev) => ({ ...prev, [id]: 'organizing' }));
-    try {
-      const result = await organizeLibrary(id);
-      setLoading((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-      if (result.error) {
-        toast.error(result.error);
-      } else {
-        toast.success(`File organization started (Task #${result.taskId})`);
-        router.refresh();
-      }
-    } catch {
-      setLoading((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-      toast.error('Failed to start organization');
     }
   };
 
@@ -139,13 +115,12 @@ export function LibraryList({ libraries }: { libraries: LibraryWithCount[] }) {
                 onRefreshAll={() => handleMetadata(lib.id, false)}
               />
 
-              <button
-                onClick={() => handleOrganize(lib.id)}
-                disabled={!!loading[lib.id]}
-                className="bg-shelvarr-bg hover:bg-shelvarr-border text-shelvarr-text border border-shelvarr-border px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              <Link
+                href={`/libraries/${lib.id}/organize`}
+                className="bg-shelvarr-bg hover:bg-shelvarr-border text-shelvarr-text border border-shelvarr-border px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
               >
-                {loading[lib.id] === 'organizing' ? 'Organizing...' : 'Organize'}
-              </button>
+                Organize
+              </Link>
 
               <button
                 onClick={() => handleDelete(lib.id, lib.name)}
