@@ -72,6 +72,9 @@ function TaskRow({ task }: { task: Task }) {
               <span>Book ID: {String(taskData.bookId)}</span>
             ) : null}
           </div>
+          {task.status === 'completed' && task.type === 'organize' && (
+            <OrganizeSummary data={taskData} />
+          )}
           <div className="text-xs text-shelvarr-text-muted mt-1">
             Created: {formatDate(task.createdAt)}
             {task.completedAt && ` • Completed: ${formatDate(task.completedAt)}`}
@@ -127,6 +130,29 @@ function TaskRow({ task }: { task: Task }) {
           </span>
         )}
       </div>
+    </div>
+  );
+}
+
+function OrganizeSummary({ data }: { data: Record<string, unknown> }) {
+  const total = typeof data.total === 'number' ? data.total : undefined;
+  const organized = typeof data.organized === 'number' ? data.organized : undefined;
+  const skipped = typeof data.skipped === 'number' ? data.skipped : 0;
+  const failed = typeof data.failed === 'number' ? data.failed : 0;
+  const errors = Array.isArray(data.errors) ? (data.errors as string[]) : [];
+
+  if (organized === undefined || total === undefined) return null;
+
+  return (
+    <div className="text-xs text-shelvarr-text-muted mt-1">
+      <span>
+        {organized} / {total} moved · skipped {skipped} · failed {failed}
+      </span>
+      {failed > 0 && errors[0] && (
+        <span className="block text-red-400 truncate" title={errors.join('\n')}>
+          {errors[0]}
+        </span>
+      )}
     </div>
   );
 }

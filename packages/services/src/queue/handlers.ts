@@ -10,27 +10,10 @@ import { query, queryOne, execute, markWantedBookAsAcquired } from '@shelvarr/db
 import * as metadataService from '../metadata';
 import { downloadFile as downloadFromLibgen } from '../downloads/libgen';
 import { komgaClient } from '../komga';
+import { applyReorganization } from '../organizer';
 import { getOrCreateAuthor, fetchAuthorMetadata, getAuthorByName } from '@/lib/actions/authors';
 import * as fs from 'fs';
 import * as path from 'path';
-
-/**
- * Move a file, falling back to copy+delete for cross-filesystem moves
- */
-function moveFile(source: string, target: string): void {
-  try {
-    // Try rename first (fast, same filesystem)
-    fs.renameSync(source, target);
-  } catch (err) {
-    // If rename fails (cross-filesystem), copy then delete
-    if ((err as NodeJS.ErrnoException).code === 'EXDEV') {
-      fs.copyFileSync(source, target);
-      fs.unlinkSync(source);
-    } else {
-      throw err;
-    }
-  }
-}
 
 /**
  * Scan library task handler
@@ -66,12 +49,32 @@ const scanHandler: TaskHandler = async (taskId, onProgress, signal) => {
     onProgress(progress.current, progress.total);
   });
 
-  // If new books were added, automatically queue a metadata fetch task
+  // If new books were added, automatically queue a metadata fetch task.
+  // The metadata handler will chain into organize when auto-run is on.
+  // If no new books were queued, still attempt to chain organize directly so
+  // a clean re-scan still organizes pending files when auto-run is enabled.
   if (result.added > 0) {
     enqueueTask('metadata', {
       libraryId,
       unmatchedOnly: true,
     });
+  } else {
+    const autoRunRow = queryOne<{ value: string }>(
+      'SELECT value FROM settings WHERE key = ?',
+      ['organize_auto_run'],
+    );
+    let autoRun = true;
+    if (autoRunRow?.value) {
+      try {
+        const parsed = JSON.parse(autoRunRow.value);
+        if (typeof parsed === 'boolean') autoRun = parsed;
+      } catch {
+        autoRun = autoRunRow.value === 'true';
+      }
+    }
+    if (autoRun) {
+      enqueueTask('organize', { libraryId, libraryName: library.name });
+    }
   }
 
   return {
@@ -282,6 +285,30 @@ const metadataHandler: TaskHandler = async (taskId, onProgress, signal) => {
 
     processedCount += batch.length;
     onProgress(processedCount, total);
+  }
+
+  // Chain into organize if auto-run is enabled and we have a libraryId
+  if (data.libraryId) {
+    const autoRunRow = queryOne<{ value: string }>(
+      'SELECT value FROM settings WHERE key = ?',
+      ['organize_auto_run'],
+    );
+    let autoRun = true;
+    if (autoRunRow?.value) {
+      try {
+        const parsed = JSON.parse(autoRunRow.value);
+        if (typeof parsed === 'boolean') autoRun = parsed;
+      } catch {
+        autoRun = autoRunRow.value === 'true';
+      }
+    }
+    if (autoRun) {
+      const library = await getLibraryById(data.libraryId);
+      enqueueTask('organize', {
+        libraryId: data.libraryId,
+        libraryName: library?.name,
+      });
+    }
   }
 
   return {
@@ -572,8 +599,8 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
 };
 
 /**
- * Organize library task handler
- * Moves and renames books into Author/Title.ext structure
+ * Organize library task handler.
+ * Thin wrapper around applyReorganization from the organizer service.
  */
 const organizeHandler: TaskHandler = async (taskId, onProgress, signal) => {
   const taskRow = queryOne<{ result: string | null }>(
@@ -588,215 +615,65 @@ const organizeHandler: TaskHandler = async (taskId, onProgress, signal) => {
   const data = JSON.parse(taskRow.result) as {
     libraryId?: number;
     bookIds?: number[];
+    template?: string;
   };
 
-  // Get library info
-  let library = null;
-  if (data.libraryId) {
-    library = await getLibraryById(data.libraryId);
-    if (!library) {
-      throw new Error(`Library ${data.libraryId} not found`);
+  // Resolve libraryId — if only bookIds were provided, derive from the first book.
+  let libraryId = data.libraryId;
+  if (!libraryId && data.bookIds && data.bookIds.length > 0) {
+    const firstId = data.bookIds[0]!;
+    const row = queryOne<{ library_id: number }>(
+      'SELECT library_id FROM books WHERE id = ?',
+      [firstId],
+    );
+    if (!row) {
+      throw new Error(`Book ${firstId} not found`);
     }
+    libraryId = row.library_id;
   }
 
-  // Get books to organize
-  let books: Array<{
-    id: number;
-    library_id: number;
-    file_path: string;
-    title: string | null;
-    authors: string | null;
-    extension: string | null;
-    series_name: string | null;
-    series_number: number | null;
-  }>;
-
-  if (data.bookIds && data.bookIds.length > 0) {
-    const placeholders = data.bookIds.map(() => '?').join(',');
-    books = query(
-      `SELECT id, library_id, file_path, title, authors, extension, series_name, series_number FROM books WHERE id IN (${placeholders})`,
-      data.bookIds
-    );
-  } else if (data.libraryId) {
-    books = query(
-      'SELECT id, library_id, file_path, title, authors, extension, series_name, series_number FROM books WHERE library_id = ?',
-      [data.libraryId]
-    );
-  } else {
-    books = query('SELECT id, library_id, file_path, title, authors, extension, series_name, series_number FROM books', []);
+  if (!libraryId) {
+    throw new Error('Library ID not specified');
   }
 
-  const total = books.length;
-  let organized = 0;
-  let skipped = 0;
-  let failed = 0;
-  const errors: string[] = [];
-
-  // Cache library paths
-  const libraryPaths = new Map<number, string>();
-
-  for (let i = 0; i < books.length; i++) {
-    if (signal.aborted) {
-      throw new Error('Task cancelled');
-    }
-
-    const book = books[i]!;
-    onProgress(i + 1, total);
-
-    try {
-      // Get library path
-      let libPath = libraryPaths.get(book.library_id);
-      if (!libPath) {
-        const lib = await getLibraryById(book.library_id);
-        if (!lib) {
-          skipped++;
-          continue;
-        }
-        libPath = lib.path;
-        libraryPaths.set(book.library_id, libPath);
-      }
-
-      // Skip if no title
-      if (!book.title) {
-        skipped++;
-        continue;
-      }
-
-      // Parse author
-      let authorName = 'Unknown';
-      if (book.authors) {
-        try {
-          const arr = JSON.parse(book.authors);
-          if (Array.isArray(arr) && arr.length > 0 && arr[0]) {
-            authorName = arr[0];
-          }
-        } catch {
-          authorName = book.authors;
-        }
-      }
-
-      // Determine extension
-      const ext = book.extension || path.extname(book.file_path).replace('.', '') || 'epub';
-
-      // Build target path: Library/Author/Title - Series Book Position.ext
-      const cleanAuthor = sanitizeFilename(authorName);
-      const cleanTitle = sanitizeFilename(book.title);
-
-      // Build filename: "Title - Series Book N" or just "Title" if no series
-      let filename = cleanTitle;
-      if (book.series_name) {
-        const cleanSeries = sanitizeFilename(book.series_name);
-        if (book.series_number) {
-          filename = `${cleanTitle} - ${cleanSeries} Book ${book.series_number}`;
-        } else {
-          filename = `${cleanTitle} - ${cleanSeries}`;
-        }
-      }
-
-      const authorDir = path.join(libPath, cleanAuthor);
-      let targetPath = path.join(authorDir, `${filename}.${ext}`);
-
-      // If already in the correct location, still sync to Komga but skip file move
-      if (book.file_path === targetPath) {
-        // Queue Komga sync for books with metadata even if no file move needed
-        if (komgaClient.isConfigured() && book.title) {
-          enqueueTask('komga_sync', {
-            bookId: book.id,
-            libraryPath: libPath,
-          });
-        }
-        skipped++;
-        continue;
-      }
-
-      // Check if source file exists
-      if (!fs.existsSync(book.file_path)) {
-        skipped++;
-        errors.push(`Book ${book.id}: Source file not found`);
-        continue;
-      }
-
-      // Create author directory
-      if (!fs.existsSync(authorDir)) {
-        fs.mkdirSync(authorDir, { recursive: true });
-      }
-
-      // Handle duplicates
-      if (fs.existsSync(targetPath)) {
-        let counter = 1;
-        while (fs.existsSync(targetPath)) {
-          targetPath = path.join(authorDir, `${filename} (${counter}).${ext}`);
-          counter++;
-        }
-      }
-
-      // Move file (handles cross-filesystem moves)
-      moveFile(book.file_path, targetPath);
-
-      // Update database
-      execute('UPDATE books SET file_path = ? WHERE id = ?', [targetPath, book.id]);
-
-      // Queue Komga sync if Komga is configured
-      if (komgaClient.isConfigured()) {
-        enqueueTask('komga_sync', {
-          bookId: book.id,
-          libraryPath: libPath,
-        });
-      }
-
-      // Clean up old directory - remove metadata files and empty dirs
+  // Resolve template — explicit task arg wins, otherwise stored setting, otherwise default.
+  let template = data.template;
+  if (!template) {
+    const settingRow = queryOne<{ value: string }>(
+      'SELECT value FROM settings WHERE key = ?',
+      ['organize_template'],
+    );
+    if (settingRow?.value) {
       try {
-        const oldDir = path.dirname(book.file_path);
-        if (oldDir !== libPath && fs.existsSync(oldDir)) {
-          // Remove Calibre/metadata files that are left behind
-          const metadataPatterns = ['.opf', 'cover.jpg', 'cover.png', 'metadata.opf'];
-          const remaining = fs.readdirSync(oldDir);
-
-          for (const file of remaining) {
-            const lowerFile = file.toLowerCase();
-            const isMetadata = metadataPatterns.some(p => lowerFile.endsWith(p) || lowerFile === p);
-            if (isMetadata) {
-              try {
-                fs.unlinkSync(path.join(oldDir, file));
-              } catch {
-                // Ignore individual file deletion errors
-              }
-            }
-          }
-
-          // Check again if directory is now empty
-          const stillRemaining = fs.readdirSync(oldDir);
-          if (stillRemaining.length === 0) {
-            fs.rmdirSync(oldDir);
-
-            // Also try to remove parent if it's now empty (e.g., author folder)
-            const parentDir = path.dirname(oldDir);
-            if (parentDir !== libPath && fs.existsSync(parentDir)) {
-              const parentRemaining = fs.readdirSync(parentDir);
-              if (parentRemaining.length === 0) {
-                fs.rmdirSync(parentDir);
-              }
-            }
-          }
+        const parsed = JSON.parse(settingRow.value);
+        if (typeof parsed === 'string' && parsed.length > 0) {
+          template = parsed;
         }
       } catch {
-        // Ignore cleanup errors
+        // Treat raw value as the template string (fallback for non-JSON entries).
+        template = settingRow.value;
       }
-
-      organized++;
-    } catch (err) {
-      failed++;
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      errors.push(`Book ${book.id}: ${message}`);
     }
   }
 
+  const reorgResult = await applyReorganization(libraryId, {
+    bookIds: data.bookIds,
+    template,
+    onProgress,
+    signal,
+    enqueueKomgaSync: (bookId, libraryPath) => {
+      if (komgaClient.isConfigured()) {
+        enqueueTask('komga_sync', { bookId, libraryPath });
+      }
+    },
+  });
+
   return {
-    total,
-    organized,
-    skipped,
-    failed,
-    errors: errors.slice(0, 20),
+    total: reorgResult.total,
+    organized: reorgResult.moved,
+    skipped: reorgResult.skipped,
+    failed: reorgResult.details.filter(d => !d.success).length,
+    errors: reorgResult.errors.slice(0, 20),
   };
 };
 
