@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { setOrganizeSettings } from '@/lib/actions/settings';
-import { applyTemplate, DEFAULT_ORGANIZE_TEMPLATE } from '@/lib/services/organizer';
+import { applyTemplate, DEFAULT_ORGANIZE_TEMPLATE } from '@/lib/services/organizer/template';
 
 interface OrganizeSettings {
   template: string;
