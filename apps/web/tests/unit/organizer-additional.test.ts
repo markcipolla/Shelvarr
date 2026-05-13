@@ -6,7 +6,7 @@
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'fs';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { tmpdir } from 'os';
 
 import {
@@ -127,15 +127,14 @@ describe('Organizer Service - Additional Coverage Tests', () => {
       // Preview to see where they want to go
       const preview = await previewReorganization(libraryId);
 
-      // If both books want to move to the same location, the second will fail
-      const result = await applyReorganization(libraryId, false);
+      // If both books want to move to the same location, the second gets a (N) suffix
+      const result = await applyReorganization(libraryId, { dryRun: false });
 
       assert.ok(result);
       assert.ok(result.details.length >= 2);
-      // At least one should have an error about existing file
-      const hasConflictError = result.errors.some(e => e.includes('already exists'));
       if (preview[0]?.newPath === preview[1]?.newPath && preview[0]?.willMove && preview[1]?.willMove) {
-        assert.ok(hasConflictError || result.errors.length > 0);
+        // Both should have moved (collision resolved via (1) suffix)
+        assert.strictEqual(result.moved, 2);
       }
     });
 
@@ -148,25 +147,25 @@ describe('Organizer Service - Additional Coverage Tests', () => {
       const sourcePath = join(sourceDir, '[MySeriesName Book 1] The Book.epub');
       writeFileSync(sourcePath, 'source');
 
-      // Create target file where the book wants to be moved
-      const targetDir = join(libraryPath, 'MySeriesName');
-      mkdirSync(targetDir, { recursive: true });
-      const targetPath = join(targetDir, 'Book 001 - The Book.epub');
-      writeFileSync(targetPath, 'existing target');
-
       // Insert book
       database.prepare('INSERT INTO books (library_id, file_path, title) VALUES (?, ?, ?)').run(
         libraryId, sourcePath, 'The Book'
       );
 
-      // Apply reorganization - should detect conflict
-      const result = await applyReorganization(libraryId, false);
+      // Preview to find the target location, then pre-create a file there.
+      const [preview] = await previewReorganization(libraryId);
+      assert.ok(preview);
+      mkdirSync(dirname(preview.newPath), { recursive: true });
+      writeFileSync(preview.newPath, 'existing target');
 
-      // Should have error about existing file
-      assert.ok(result.errors.length > 0);
-      const hasConflict = result.errors.some(e => e.toLowerCase().includes('already exists'));
-      assert.ok(hasConflict);
-      assert.strictEqual(result.success, false);
+      // Apply reorganization — collision auto-resolved via (1) suffix
+      const result = await applyReorganization(libraryId, { dryRun: false });
+
+      // Operation should complete; the moved file should land at a (1) suffix path
+      assert.strictEqual(result.moved, 1);
+      const moveDetail = result.details.find(d => d.success);
+      assert.ok(moveDetail);
+      assert.ok(moveDetail.newPath.includes('(1)'));
     });
   });
 

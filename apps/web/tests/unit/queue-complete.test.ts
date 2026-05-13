@@ -445,8 +445,9 @@ if (canRunTests) {
         assert.ok(updated);
         assert.strictEqual(updated.status, 'completed');
 
-        // HTML tags should be removed from filename
-        const expectedPath = join(testLibPath, 'Italic Author', 'Bold Title.epub');
+        // sanitizePathComponent strips `<>:"/\|?*` chars — inner tag letters remain.
+        // Default template is {author}/{series}/Book {number} - {title}.{ext}; empty series collapses.
+        const expectedPath = join(testLibPath, 'iItalic Authori', 'Book - bBold Titleb.epub');
         assert.ok(existsSync(expectedPath));
       });
 
@@ -490,10 +491,11 @@ if (canRunTests) {
         assert.ok(updated);
         assert.strictEqual(updated.status, 'completed');
 
-        // Filename should be truncated to 200 chars
+        // Title is truncated to 200 chars by sanitizePathComponent.
+        // Default template prefixes with "Book - " then appends ".epub".
         const files = readdirSync(join(testLibPath, 'Author'));
         const organizedFile = files[0];
-        assert.ok(organizedFile.length <= 205); // 200 + ".epub"
+        assert.ok(organizedFile.length <= 212); // "Book - " (7) + 200 + ".epub" (5)
       });
 
       it('should normalize whitespace in filenames', async () => {
