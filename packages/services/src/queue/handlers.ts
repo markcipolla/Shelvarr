@@ -16,24 +16,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /**
- * Move a file, falling back to copy+delete for cross-filesystem moves
- */
-function moveFile(source: string, target: string): void {
-  try {
-    // Try rename first (fast, same filesystem)
-    fs.renameSync(source, target);
-  } catch (err) {
-    // If rename fails (cross-filesystem), copy then delete
-    if ((err as NodeJS.ErrnoException).code === 'EXDEV') {
-      fs.copyFileSync(source, target);
-      fs.unlinkSync(source);
-    } else {
-      throw err;
-    }
-  }
-}
-
-/**
  * Scan library task handler
  */
 const scanHandler: TaskHandler = async (taskId, onProgress, signal) => {

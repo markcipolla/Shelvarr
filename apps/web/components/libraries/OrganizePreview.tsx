@@ -31,7 +31,6 @@ export function OrganizePreview({ libraryId, preview }: OrganizePreviewProps) {
     const result = await organizeLibrary(libraryId);
     setApplying(false);
     if (result.error) {
-      // eslint-disable-next-line no-alert
       alert(result.error);
       return;
     }
