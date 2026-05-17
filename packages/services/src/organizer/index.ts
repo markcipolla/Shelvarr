@@ -47,12 +47,23 @@ export interface ReorgPreviewItem {
 /**
  * Result of applying reorganization
  */
+export interface ReorgSkippedReasons {
+  libraryMissing: number;
+  noTitle: number;
+  alreadyAtTarget: number;
+  sourceMissing: number;
+}
+
 export interface ReorgResult {
   success: boolean;
   total: number;
   moved: number;
   skipped: number;
   errors: string[];
+  /** Total error count before truncation (errors may be sliced for display). */
+  errorCount: number;
+  /** Breakdown of why books were skipped (no move performed). */
+  skippedReasons: ReorgSkippedReasons;
   details: Array<{ bookId: number; oldPath: string; newPath: string; success: boolean; error?: string }>;
 }
 
@@ -432,6 +443,13 @@ export async function applyReorganization(
     moved: 0,
     skipped: 0,
     errors: [],
+    errorCount: 0,
+    skippedReasons: {
+      libraryMissing: 0,
+      noTitle: 0,
+      alreadyAtTarget: 0,
+      sourceMissing: 0,
+    },
     details: [],
   };
 
@@ -444,7 +462,7 @@ export async function applyReorganization(
     opts.onProgress?.(i + 1, total);
 
     if (item.error) {
-      result.errors.push(`Book ${item.bookId}: ${item.error}`);
+      result.errors.push(`Book ${item.bookId}: ${item.error} (path: ${item.currentPath})`);
       result.details.push({
         bookId: item.bookId,
         oldPath: item.currentPath,
@@ -452,11 +470,16 @@ export async function applyReorganization(
         success: false,
         error: item.error,
       });
+      if (item.error === 'Source file not found') {
+        result.skipped++;
+        result.skippedReasons.sourceMissing++;
+      }
       continue;
     }
 
     if (!item.willMove) {
       result.skipped++;
+      result.skippedReasons.alreadyAtTarget++;
       continue;
     }
 
@@ -539,6 +562,7 @@ export async function applyReorganization(
     }
   }
 
+  result.errorCount = result.errors.length;
   return result;
 }
 

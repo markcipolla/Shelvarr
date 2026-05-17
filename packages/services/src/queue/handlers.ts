@@ -673,7 +673,9 @@ const organizeHandler: TaskHandler = async (taskId, onProgress, signal) => {
     organized: reorgResult.moved,
     skipped: reorgResult.skipped,
     failed: reorgResult.details.filter(d => !d.success).length,
-    errors: reorgResult.errors.slice(0, 20),
+    skippedReasons: reorgResult.skippedReasons,
+    errors: reorgResult.errors.slice(0, 200),
+    errorCount: reorgResult.errorCount,
   };
 };
 
