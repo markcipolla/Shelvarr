@@ -18,6 +18,7 @@ import { getMediaFormat, getFormatFromName } from '../utils/fileTypes';
 import { useAuthHeaders } from '../hooks/useAuthHeaders';
 import { useDownloadStore } from '../stores/useDownloadStore';
 import { prepareBookForReading, downloadBook, removeDownloadedBook } from '../services/downloadManager';
+import { updateReadingStatus, ReadingStatus } from '../services/api/shelvarr';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BookDetail'>;
 
@@ -113,6 +114,16 @@ export default function BookDetailScreen({ route, navigation }: Props) {
       await removeDownloadedBook(book.id);
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Failed to remove download');
+    }
+  };
+
+  const handleSetStatus = async (status: ReadingStatus, label: string) => {
+    if (!book) return;
+    try {
+      await updateReadingStatus(book.id, status);
+      Alert.alert('Hardcover', `Marked as ${label}`);
+    } catch {
+      Alert.alert('Error', 'Failed to sync to Hardcover');
     }
   };
 
@@ -228,6 +239,34 @@ export default function BookDetailScreen({ route, navigation }: Props) {
           <Text style={styles.secondaryButtonText}>Mark as Unread</Text>
         </TouchableOpacity>
       )}
+
+      <Text style={styles.statusLabel}>Hardcover status</Text>
+      <View style={styles.statusGrid}>
+        <TouchableOpacity
+          style={styles.statusButton}
+          onPress={() => handleSetStatus('want-to-read', 'Want to Read')}
+        >
+          <Text style={styles.statusButtonText}>Want to Read</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.statusButton}
+          onPress={() => handleSetStatus('reading', 'Reading')}
+        >
+          <Text style={styles.statusButtonText}>Reading</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.statusButton}
+          onPress={() => handleSetStatus('read', 'Read')}
+        >
+          <Text style={styles.statusButtonText}>Read</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.statusButton}
+          onPress={() => handleSetStatus('dnf', 'Did Not Finish')}
+        >
+          <Text style={styles.statusButtonText}>Did Not Finish</Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
@@ -263,4 +302,29 @@ const styles = StyleSheet.create({
     borderColor: '#d5d0c8',
   },
   secondaryButtonText: { color: '#333', fontSize: 22 },
+  statusLabel: {
+    fontSize: 18,
+    color: '#777',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    fontWeight: '600',
+  },
+  statusGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    gap: 8,
+  },
+  statusButton: {
+    flexGrow: 1,
+    flexBasis: '45%',
+    backgroundColor: '#e8e4de',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#d5d0c8',
+  },
+  statusButtonText: { color: '#333', fontSize: 18, fontWeight: '500' },
 });
