@@ -69,7 +69,7 @@ describe('Hardcover Reading Status', () => {
             id: 42,
             status_id: 2,
             book_id: 100,
-            started_reading_at: '2025-01-01',
+            first_started_reading_date: '2025-01-01',
           }],
         },
       });
@@ -104,11 +104,14 @@ describe('Hardcover Reading Status', () => {
     it('should insert a new user book with reading status', async () => {
       mockFetchResponses.push({
         data: {
-          insert_user_books_one: {
+          insert_user_book: {
             id: 1,
-            status_id: 2,
-            book_id: 100,
-            started_reading_at: '2025-06-01',
+            user_book: {
+              id: 1,
+              status_id: 2,
+              book_id: 100,
+              first_started_reading_date: '2025-06-01',
+            },
           },
         },
       });
@@ -122,11 +125,14 @@ describe('Hardcover Reading Status', () => {
     it('should insert with read status and finished date', async () => {
       mockFetchResponses.push({
         data: {
-          insert_user_books_one: {
+          insert_user_book: {
             id: 2,
-            status_id: 3,
-            book_id: 200,
-            finished_reading_at: '2025-06-15',
+            user_book: {
+              id: 2,
+              status_id: 3,
+              book_id: 200,
+              last_read_date: '2025-06-15',
+            },
           },
         },
       });
@@ -148,11 +154,14 @@ describe('Hardcover Reading Status', () => {
     it('should update status on existing entry', async () => {
       mockFetchResponses.push({
         data: {
-          update_user_books_by_pk: {
+          update_user_book: {
             id: 42,
-            status_id: 3,
-            book_id: 100,
-            finished_reading_at: '2025-06-15',
+            user_book: {
+              id: 42,
+              status_id: 3,
+              book_id: 100,
+              last_read_date: '2025-06-15',
+            },
           },
         },
       });
@@ -177,11 +186,14 @@ describe('Hardcover Reading Status', () => {
       // Second call: insertUserBook succeeds
       mockFetchResponses.push({
         data: {
-          insert_user_books_one: {
+          insert_user_book: {
             id: 1,
-            status_id: 2,
-            book_id: 100,
-            started_reading_at: '2025-06-01',
+            user_book: {
+              id: 1,
+              status_id: 2,
+              book_id: 100,
+              first_started_reading_date: '2025-06-01',
+            },
           },
         },
       });
@@ -200,19 +212,22 @@ describe('Hardcover Reading Status', () => {
             id: 42,
             status_id: 2,
             book_id: 100,
-            started_reading_at: '2025-06-01',
+            first_started_reading_date: '2025-06-01',
           }],
         },
       });
       // Second call: updateUserBook succeeds
       mockFetchResponses.push({
         data: {
-          update_user_books_by_pk: {
+          update_user_book: {
             id: 42,
-            status_id: 3,
-            book_id: 100,
-            started_reading_at: '2025-06-01',
-            finished_reading_at: '2025-06-15',
+            user_book: {
+              id: 42,
+              status_id: 3,
+              book_id: 100,
+              first_started_reading_date: '2025-06-01',
+              last_read_date: '2025-06-15',
+            },
           },
         },
       });
@@ -231,8 +246,8 @@ describe('Hardcover Reading Status', () => {
             id: 42,
             status_id: 3,
             book_id: 100,
-            started_reading_at: '2025-06-01',
-            finished_reading_at: '2025-06-10',
+            first_started_reading_date: '2025-06-01',
+            last_read_date: '2025-06-10',
           }],
         },
       });

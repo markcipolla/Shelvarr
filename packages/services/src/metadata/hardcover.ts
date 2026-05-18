@@ -331,8 +331,14 @@ interface UserBook {
   id: number;
   status_id: number;
   book_id: number;
-  started_reading_at?: string;
-  finished_reading_at?: string;
+  first_started_reading_date?: string;
+  last_read_date?: string;
+}
+
+interface UserBookIdResult {
+  id?: number;
+  error?: string;
+  user_book?: UserBook;
 }
 
 /**
@@ -345,8 +351,8 @@ export async function searchUserBook(hardcoverId: string): Promise<UserBook | nu
         id
         status_id
         book_id
-        started_reading_at
-        finished_reading_at
+        first_started_reading_date
+        last_read_date
       }
     }
   `;
@@ -368,30 +374,35 @@ export async function insertUserBook(
   finishedAt?: string,
 ): Promise<UserBook | null> {
   const mutation = `
-    mutation InsertUserBook($bookId: Int!, $statusId: Int!, $startedAt: date, $finishedAt: date) {
-      insert_user_books_one(object: {
-        book_id: $bookId,
-        status_id: $statusId,
-        started_reading_at: $startedAt,
-        finished_reading_at: $finishedAt
-      }) {
+    mutation InsertUserBook($object: UserBookCreateInput!) {
+      insert_user_book(object: $object) {
         id
-        status_id
-        book_id
-        started_reading_at
-        finished_reading_at
+        error
+        user_book {
+          id
+          status_id
+          book_id
+          first_started_reading_date
+          last_read_date
+        }
       }
     }
   `;
 
-  const data = await graphqlFetch<{ insert_user_books_one?: UserBook }>(mutation, {
-    bookId: parseInt(hardcoverId, 10),
-    statusId,
-    startedAt: startedAt ?? null,
-    finishedAt: finishedAt ?? null,
-  });
+  const object: Record<string, unknown> = {
+    book_id: parseInt(hardcoverId, 10),
+    status_id: statusId,
+  };
+  if (startedAt) object.first_started_reading_date = startedAt;
+  if (finishedAt) object.last_read_date = finishedAt;
 
-  return data?.insert_user_books_one ?? null;
+  const data = await graphqlFetch<{ insert_user_book?: UserBookIdResult }>(mutation, { object });
+
+  const result = data?.insert_user_book;
+  if (result?.error) {
+    throw new Error(`Hardcover insert_user_book error: ${result.error}`);
+  }
+  return result?.user_book ?? null;
 }
 
 /**
@@ -404,32 +415,37 @@ export async function updateUserBook(
   finishedAt?: string,
 ): Promise<UserBook | null> {
   const mutation = `
-    mutation UpdateUserBook($id: Int!, $statusId: Int!, $startedAt: date, $finishedAt: date) {
-      update_user_books_by_pk(
-        pk_columns: { id: $id },
-        _set: {
-          status_id: $statusId,
-          started_reading_at: $startedAt,
-          finished_reading_at: $finishedAt
-        }
-      ) {
+    mutation UpdateUserBook($id: Int!, $object: UserBookUpdateInput!) {
+      update_user_book(id: $id, object: $object) {
         id
-        status_id
-        book_id
-        started_reading_at
-        finished_reading_at
+        error
+        user_book {
+          id
+          status_id
+          book_id
+          first_started_reading_date
+          last_read_date
+        }
       }
     }
   `;
 
-  const data = await graphqlFetch<{ update_user_books_by_pk?: UserBook }>(mutation, {
+  const object: Record<string, unknown> = {
+    status_id: statusId,
+  };
+  if (startedAt) object.first_started_reading_date = startedAt;
+  if (finishedAt) object.last_read_date = finishedAt;
+
+  const data = await graphqlFetch<{ update_user_book?: UserBookIdResult }>(mutation, {
     id: userBookId,
-    statusId,
-    startedAt: startedAt ?? null,
-    finishedAt: finishedAt ?? null,
+    object,
   });
 
-  return data?.update_user_books_by_pk ?? null;
+  const result = data?.update_user_book;
+  if (result?.error) {
+    throw new Error(`Hardcover update_user_book error: ${result.error}`);
+  }
+  return result?.user_book ?? null;
 }
 
 /**
@@ -453,7 +469,7 @@ export async function upsertReadingStatus(
       const updated = await updateUserBook(
         existing.id,
         statusId,
-        startedAt ?? existing.started_reading_at,
+        startedAt ?? existing.first_started_reading_date,
         finishedAt,
       );
       return updated
