@@ -15,7 +15,7 @@ import {
   rmdirSync,
 } from 'fs';
 import { dirname, basename, extname, join } from 'path';
-import { query, queryOne, execute } from '@shelvarr/db';
+import { query, queryOne, execute, addWantedBook, isBookWanted } from '@shelvarr/db';
 import type { Book } from '@shelvarr/types';
 import {
   DEFAULT_ORGANIZE_TEMPLATE,
@@ -64,6 +64,10 @@ export interface ReorgResult {
   errorCount: number;
   /** Breakdown of why books were skipped (no move performed). */
   skippedReasons: ReorgSkippedReasons;
+  /** Books whose source file was missing and were removed from the library. */
+  removedMissing: number;
+  /** Books whose source file was missing and were re-added to the wanted list. */
+  requeuedAsWanted: number;
   details: Array<{ bookId: number; oldPath: string; newPath: string; success: boolean; error?: string }>;
 }
 
@@ -417,6 +421,57 @@ export async function previewReorganization(
 }
 
 /**
+ * Row shape needed to decide whether a missing book can be re-added as wanted.
+ */
+interface MissingBookRow {
+  id: number;
+  title: string | null;
+  authors: string | null;
+  isbn: string | null;
+  cover_url: string | null;
+  description: string | null;
+  metadata_source: string | null;
+  metadata_id: string | null;
+}
+
+/**
+ * When a book's source file is gone from disk, re-add it to the wanted list
+ * (if we have enough metadata to identify it) and delete the orphan book row.
+ * Mutates the provided result's removedMissing / requeuedAsWanted counters.
+ */
+function handleMissingBook(bookId: number, result: ReorgResult): void {
+  const row = queryOne<MissingBookRow>(
+    `SELECT id, title, authors, isbn, cover_url, description, metadata_source, metadata_id
+     FROM books WHERE id = ?`,
+    [bookId],
+  );
+  if (!row) return; // Already gone — nothing to do.
+
+  if (row.title) {
+    const hardcoverId =
+      row.metadata_source === 'hardcover' && row.metadata_id ? row.metadata_id : undefined;
+    const isbn = row.isbn ?? undefined;
+    const alreadyWanted = isBookWanted(hardcoverId, isbn, row.title);
+    if (!alreadyWanted) {
+      const author = parseAuthors(row.authors);
+      addWantedBook({
+        hardcover_id: hardcoverId,
+        title: row.title,
+        author: author !== 'Unknown Author' ? author : undefined,
+        isbn,
+        cover_url: row.cover_url ?? undefined,
+        description: row.description ?? undefined,
+        notes: 'Re-added automatically after source file went missing during organize',
+      });
+      result.requeuedAsWanted++;
+    }
+  }
+
+  execute('DELETE FROM books WHERE id = ?', [bookId]);
+  result.removedMissing++;
+}
+
+/**
  * Apply reorganization to a library.
  */
 export async function applyReorganization(
@@ -450,6 +505,8 @@ export async function applyReorganization(
       alreadyAtTarget: 0,
       sourceMissing: 0,
     },
+    removedMissing: 0,
+    requeuedAsWanted: 0,
     details: [],
   };
 
@@ -473,6 +530,16 @@ export async function applyReorganization(
       if (item.error === 'Source file not found') {
         result.skipped++;
         result.skippedReasons.sourceMissing++;
+        if (!opts.dryRun) {
+          // Source file is gone from disk: re-queue as wanted (if we have a title)
+          // and remove the orphan book row so a future scan/download can replace it.
+          try {
+            handleMissingBook(item.bookId, result);
+          } catch (cleanupErr) {
+            const msg = cleanupErr instanceof Error ? cleanupErr.message : 'Unknown error';
+            result.errors.push(`Book ${item.bookId}: missing-file cleanup failed: ${msg}`);
+          }
+        }
       }
       continue;
     }

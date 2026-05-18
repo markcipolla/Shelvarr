@@ -147,6 +147,8 @@ interface OrganizeResult {
     alreadyAtTarget?: number;
     sourceMissing?: number;
   };
+  removedMissing?: number;
+  requeuedAsWanted?: number;
   errors?: string[];
   errorCount?: number;
 }
@@ -156,13 +158,22 @@ function OrganizeResultSummary({ result }: { result: OrganizeResult }) {
   const reasons = result.skippedReasons;
   const errors = result.errors ?? [];
   const errorCount = result.errorCount ?? errors.length;
-  const hasDetail = !!reasons || errors.length > 0;
+  const removedMissing = result.removedMissing ?? 0;
+  const requeuedAsWanted = result.requeuedAsWanted ?? 0;
+  const hasDetail = !!reasons || errors.length > 0 || removedMissing > 0;
 
   return (
     <div className="text-xs text-shelvarr-text-muted mt-1">
       <div>
         {result.organized ?? 0} moved · {result.skipped ?? 0} skipped ·{' '}
         {result.failed ?? 0} failed
+        {removedMissing > 0 && (
+          <>
+            {' '}
+            · {removedMissing} removed (missing file
+            {requeuedAsWanted > 0 ? `, ${requeuedAsWanted} re-added to wanted` : ''})
+          </>
+        )}
         {hasDetail && (
           <button
             onClick={() => setShowDetails((v) => !v)}
