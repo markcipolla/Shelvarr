@@ -79,10 +79,12 @@ jobs:
         run: |
           echo "Disk usage before cleanup:"
           df -h || true
+          # The self-hosted runner is tight on disk, so reclaim what we can
+          # before pulling the browser and its libraries.
           # The E2E tests run `next dev` (see playwright.config webServer), so the
           # production build output created above is dead weight here.
           rm -rf apps/web/.next || true
-          # Clear apt caches/indexes (the bulk of what `--with-deps` will fetch).
+          # Clear apt caches/indexes.
           sudo apt-get clean || true
           sudo rm -rf /var/lib/apt/lists/* || true
           # These paths only exist on GitHub-hosted runners; harmless if absent.
@@ -90,13 +92,26 @@ jobs:
           # Drop unreferenced packages and stale tool caches.
           pnpm store prune || true
           npm cache clean --force || true
+          # Drop stale Playwright browser builds; the version we need is
+          # re-downloaded below.
+          rm -rf ~/.cache/ms-playwright || true
           echo "Disk usage after cleanup:"
           df -h || true
 
-      - name: Install Playwright system dependencies
-        run: npx playwright install-deps chromium
+      - name: Install Playwright system libraries
+        # `playwright install --with-deps` pulls ~650MB (fonts, xvfb, mesa, an
+        # X server) which does not fit on this runner. The headless Chromium
+        # shell only needs this handful of shared libraries, and
+        # --no-install-recommends keeps the footprint minimal.
+        run: |
+          sudo apt-get update || true
+          sudo apt-get install -y --no-install-recommends \
+            libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+            libdrm2 libgbm1 libxkbcommon0 libxcomposite1 libxdamage1 \
+            libxfixes3 libxrandr2 libxext6 libxcb1 libx11-6 \
+            libpango-1.0-0 libcairo2 libasound2 libatspi2.0-0
 
-      - name: Install Playwright browsers
+      - name: Install Playwright browser
         run: npx playwright install chromium
 
       - name: Run E2E tests
