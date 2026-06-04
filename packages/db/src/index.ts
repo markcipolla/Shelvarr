@@ -49,6 +49,38 @@ function findSchemaPath(): string {
 }
 
 /**
+ * Block the current thread for `ms` milliseconds without busy-waiting.
+ * Used to back off between retries while better-sqlite3 (which is fully
+ * synchronous) holds the thread.
+ */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Run a SQLite operation, retrying on SQLITE_BUSY. busy_timeout covers most
+ * lock waits, but switching a fresh database to WAL needs an exclusive lock
+ * that SQLite can refuse outright when many connections do it at once — which
+ * is what happens during `next build`, where ~11 worker processes initialize
+ * the same database file simultaneously.
+ */
+function withBusyRetry<T>(fn: () => T): T {
+  const maxAttempts = 40;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return fn();
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if ((code === 'SQLITE_BUSY' || code === 'SQLITE_BUSY_SNAPSHOT') && attempt < maxAttempts) {
+        sleepSync(50 * attempt);
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
+/**
  * Initialize the database connection and run migrations
  */
 export function initDatabase(dbPath: string): Database.Database {
@@ -61,29 +93,39 @@ export function initDatabase(dbPath: string): Database.Database {
 
     // Create database connection
     db = new Database(dbPath);
+    const database = db;
     console.log('Database connection created');
 
-    // Wait for locks instead of failing immediately. During `next build`,
-    // page-data collection runs many worker processes that each open this
-    // file and run the schema/migrations (writes), which otherwise race and
-    // throw SQLITE_BUSY ("database is locked").
-    db.pragma('busy_timeout = 10000');
+    // Wait for locks instead of failing immediately.
+    database.pragma('busy_timeout = 15000');
 
-    // Enable foreign keys and WAL mode for better performance
-    db.pragma('journal_mode = WAL');
+    // Enable WAL mode for better performance. The switch needs an exclusive
+    // lock, so retry it: when many processes initialize the same file at once
+    // (e.g. next build's page-data workers) the loser of the race otherwise
+    // gets an immediate SQLITE_BUSY that busy_timeout does not cover.
+    withBusyRetry(() => database.pragma('journal_mode = WAL'));
     console.log('WAL mode enabled');
-    db.pragma('foreign_keys = ON');
+    database.pragma('foreign_keys = ON');
     console.log('Foreign keys enabled');
 
-    // Run schema
+    // Run schema + migrations inside a single IMMEDIATE transaction so the
+    // write lock is taken up front (waitable via busy_timeout) rather than
+    // upgrading mid-statement, and retry the whole block on contention.
     const schemaPath = findSchemaPath();
     console.log(`Loading schema from: ${schemaPath}`);
     const schema = readFileSync(schemaPath, 'utf-8');
-    db.exec(schema);
+    withBusyRetry(() => {
+      database.exec('BEGIN IMMEDIATE');
+      try {
+        database.exec(schema);
+        runMigrations(database);
+        database.exec('COMMIT');
+      } catch (error) {
+        database.exec('ROLLBACK');
+        throw error;
+      }
+    });
     console.log('Schema loaded');
-
-    // Run migrations for schema updates
-    runMigrations(db);
     console.log('Migrations complete');
 
     console.log('Database initialized successfully');
