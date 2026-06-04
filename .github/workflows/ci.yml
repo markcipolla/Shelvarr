@@ -77,14 +77,26 @@ jobs:
 
       - name: Free up disk space
         run: |
+          echo "Disk usage before cleanup:"
+          df -h || true
           # The self-hosted runner is tight on disk, so reclaim what we can
           # before pulling the browser and its libraries.
+          # The E2E tests run `next dev` (see playwright.config webServer), so the
+          # production build output created above is dead weight here.
+          rm -rf apps/web/.next || true
+          # Clear apt caches/indexes.
           sudo apt-get clean || true
+          sudo rm -rf /var/lib/apt/lists/* || true
+          # These paths only exist on GitHub-hosted runners; harmless if absent.
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          # Drop unreferenced packages and stale tool caches.
           pnpm store prune || true
+          npm cache clean --force || true
           # Drop stale Playwright browser builds; the version we need is
           # re-downloaded below.
           rm -rf ~/.cache/ms-playwright || true
-          df -h / || true
+          echo "Disk usage after cleanup:"
+          df -h || true
 
       - name: Install Playwright system libraries
         # `playwright install --with-deps` pulls ~650MB (fonts, xvfb, mesa, an

@@ -29,6 +29,12 @@ const mockDeleteProgress = deleteReadProgress as jest.Mock;
 const mockGetMediaFormat = getMediaFormat as jest.Mock;
 const mockGetFormatFromName = getFormatFromName as jest.Mock;
 
+// The Hardcover status section adds a button also labelled "Read", so a plain
+// getByText('Read') is ambiguous. The primary read/continue button is rendered
+// before the status grid, so the first match is the primary button.
+const getPrimaryReadButton = (screen: ReturnType<typeof render>) =>
+  screen.getAllByText('Read')[0];
+
 const mockNavigation = {
   navigate: jest.fn(),
   setOptions: jest.fn(),
@@ -81,7 +87,8 @@ describe('BookDetailScreen', () => {
     mockFetchBook.mockResolvedValue(makeBook());
     mockFetchSeries.mockResolvedValue(makeSeries());
 
-    const { getByText } = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
+    const screen = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
+    const { getByText } = screen;
 
     await waitFor(() => {
       expect(getByText('Book Title')).toBeTruthy();
@@ -89,7 +96,7 @@ describe('BookDetailScreen', () => {
       expect(getByText('A great book')).toBeTruthy();
       expect(getByText('Format: EPUB')).toBeTruthy();
       expect(getByText('Pages: 100')).toBeTruthy();
-      expect(getByText('Read')).toBeTruthy();
+      expect(getPrimaryReadButton(screen)).toBeTruthy();
     });
   });
 
@@ -128,13 +135,13 @@ describe('BookDetailScreen', () => {
     mockFetchSeries.mockResolvedValue(makeSeries());
     mockPrepare.mockResolvedValue({ filePath: '/path/to/book.epub' });
 
-    const { getByText } = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
+    const screen = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
 
     await waitFor(() => {
-      expect(getByText('Read')).toBeTruthy();
+      expect(getPrimaryReadButton(screen)).toBeTruthy();
     });
 
-    fireEvent.press(getByText('Read'));
+    fireEvent.press(getPrimaryReadButton(screen));
 
     await waitFor(() => {
       expect(mockPrepare).toHaveBeenCalled();
@@ -148,10 +155,10 @@ describe('BookDetailScreen', () => {
     mockFetchSeries.mockResolvedValue(makeSeries());
     mockPrepare.mockResolvedValue({ filePath: '/path/to/book.pdf' });
 
-    const { getByText } = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
+    const screen = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
 
-    await waitFor(() => expect(getByText('Read')).toBeTruthy());
-    fireEvent.press(getByText('Read'));
+    await waitFor(() => expect(getPrimaryReadButton(screen)).toBeTruthy());
+    fireEvent.press(getPrimaryReadButton(screen));
 
     await waitFor(() => {
       expect(mockNavigation.navigate).toHaveBeenCalledWith('PdfReader', expect.any(Object));
@@ -164,10 +171,10 @@ describe('BookDetailScreen', () => {
     mockFetchSeries.mockResolvedValue(makeSeries());
     mockPrepare.mockResolvedValue({ extractedDir: '/path/to/extracted' });
 
-    const { getByText } = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
+    const screen = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
 
-    await waitFor(() => expect(getByText('Read')).toBeTruthy());
-    fireEvent.press(getByText('Read'));
+    await waitFor(() => expect(getPrimaryReadButton(screen)).toBeTruthy());
+    fireEvent.press(getPrimaryReadButton(screen));
 
     await waitFor(() => {
       expect(mockNavigation.navigate).toHaveBeenCalledWith('ComicReader', expect.any(Object));
@@ -180,10 +187,10 @@ describe('BookDetailScreen', () => {
     mockFetchSeries.mockResolvedValue(makeSeries());
     mockPrepare.mockResolvedValue({ extractedDir: '/path/to/extracted' });
 
-    const { getByText } = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
+    const screen = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
 
-    await waitFor(() => expect(getByText('Read')).toBeTruthy());
-    fireEvent.press(getByText('Read'));
+    await waitFor(() => expect(getPrimaryReadButton(screen)).toBeTruthy());
+    fireEvent.press(getPrimaryReadButton(screen));
 
     await waitFor(() => {
       expect(mockNavigation.navigate).toHaveBeenCalledWith('ComicReader', expect.any(Object));
@@ -196,10 +203,10 @@ describe('BookDetailScreen', () => {
     mockFetchBook.mockResolvedValue(makeBook());
     mockFetchSeries.mockResolvedValue(makeSeries());
 
-    const { getByText } = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
+    const screen = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
 
-    await waitFor(() => expect(getByText('Read')).toBeTruthy());
-    fireEvent.press(getByText('Read'));
+    await waitFor(() => expect(getPrimaryReadButton(screen)).toBeTruthy());
+    fireEvent.press(getPrimaryReadButton(screen));
 
     await waitFor(() => {
       expect(Alert.alert).toHaveBeenCalledWith('Unsupported', 'Format "unknown" is not supported yet.');
@@ -211,10 +218,10 @@ describe('BookDetailScreen', () => {
     mockFetchSeries.mockResolvedValue(makeSeries());
     mockPrepare.mockRejectedValue(new Error('Download failed'));
 
-    const { getByText } = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
+    const screen = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
 
-    await waitFor(() => expect(getByText('Read')).toBeTruthy());
-    fireEvent.press(getByText('Read'));
+    await waitFor(() => expect(getPrimaryReadButton(screen)).toBeTruthy());
+    fireEvent.press(getPrimaryReadButton(screen));
 
     await waitFor(() => {
       expect(Alert.alert).toHaveBeenCalledWith('Error', 'Download failed');
@@ -301,10 +308,10 @@ describe('BookDetailScreen', () => {
     mockFetchSeries.mockResolvedValue(makeSeries());
     mockPrepare.mockResolvedValue({ filePath: '/path/to/book.epub' });
 
-    const { getByText } = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
+    const screen = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
 
-    await waitFor(() => expect(getByText('Read')).toBeTruthy());
-    fireEvent.press(getByText('Read'));
+    await waitFor(() => expect(getPrimaryReadButton(screen)).toBeTruthy());
+    fireEvent.press(getPrimaryReadButton(screen));
 
     await waitFor(() => {
       expect(mockNavigation.navigate).toHaveBeenCalledWith('EpubReader', expect.any(Object));
@@ -332,14 +339,14 @@ describe('BookDetailScreen', () => {
     mockFetchSeries.mockResolvedValue(makeSeries());
     mockPrepare.mockReturnValue(new Promise(() => {})); // never resolves
 
-    const { getByText } = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
+    const screen = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
 
-    await waitFor(() => expect(getByText('Read')).toBeTruthy());
-    fireEvent.press(getByText('Read'));
+    await waitFor(() => expect(getPrimaryReadButton(screen)).toBeTruthy());
+    fireEvent.press(getPrimaryReadButton(screen));
 
     // The downloading state is shown while preparing
     await waitFor(() => {
-      expect(getByText('Downloading... 50%')).toBeTruthy();
+      expect(screen.getByText('Downloading... 50%')).toBeTruthy();
     });
   });
 });

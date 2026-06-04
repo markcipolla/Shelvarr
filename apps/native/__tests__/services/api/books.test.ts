@@ -14,10 +14,10 @@ jest.mock('../../../src/services/api/client', () => ({
   }),
 }));
 
-jest.mock('../../../src/stores/useAuthStore', () => ({
-  useAuthStore: {
+jest.mock('../../../src/stores/useSettingsStore', () => ({
+  useSettingsStore: {
     getState: jest.fn(() => ({
-      credentials: { serverUrl: 'http://example.com' },
+      shelvarrUrl: 'http://example.com',
     })),
   },
 }));

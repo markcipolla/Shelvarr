@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
-import { addWantedBook, isBookWanted } from '@/lib/db';
+import { addWantedBook, isBookWanted, getWantedBooks } from '@/lib/db';
 import { validateApiAuth } from '@shelvarr/services';
 
 export const dynamic = 'force-dynamic';
+
+export function GET(request: NextRequest) {
+  if (!validateApiAuth(request.headers)) {
+    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const status = request.nextUrl.searchParams.get('status') || undefined;
+  const books = getWantedBooks(status);
+  return NextResponse.json({ success: true, books });
+}
 
 interface AddBody {
   hardcoverId?: string;
