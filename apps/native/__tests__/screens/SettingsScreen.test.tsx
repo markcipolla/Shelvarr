@@ -21,7 +21,6 @@ jest.mock('../../src/services/api/shelvarr', () => ({
 
 const mockSetAutoDelete = jest.fn();
 const mockSetShelvarrUrl = jest.fn();
-const mockSetKapowarrUrl = jest.fn();
 const mockLoadSettings = jest.fn();
 
 const mockUseSettingsStore = useSettingsStore as unknown as jest.Mock;
@@ -41,8 +40,6 @@ describe('SettingsScreen', () => {
         setAutoDelete: mockSetAutoDelete,
         shelvarrUrl: 'http://shelvarr:3000',
         setShelvarrUrl: mockSetShelvarrUrl,
-        kapowarrUrl: 'http://kapowarr:5656',
-        setKapowarrUrl: mockSetKapowarrUrl,
         loadSettings: mockLoadSettings,
       })
     );
@@ -50,8 +47,7 @@ describe('SettingsScreen', () => {
 
   it('renders settings sections', () => {
     const { getByText } = render(<SettingsScreen />);
-    expect(getByText('Shelvarr (Books)')).toBeTruthy();
-    expect(getByText('Kapowarr (Comics)')).toBeTruthy();
+    expect(getByText('Server')).toBeTruthy();
     expect(getByText('Reading')).toBeTruthy();
     expect(getByText('Auto-delete after reading')).toBeTruthy();
     expect(getByText('Storage')).toBeTruthy();
@@ -63,10 +59,9 @@ describe('SettingsScreen', () => {
   });
 
   it('tests the connection and saves shelvarr URL when reachable', async () => {
-    const { getAllByText, getByDisplayValue } = render(<SettingsScreen />);
+    const { getByText, getByDisplayValue } = render(<SettingsScreen />);
     fireEvent.changeText(getByDisplayValue('http://shelvarr:3000'), 'http://new:3000');
-    // Two "Save" buttons — first one is for Shelvarr
-    fireEvent.press(getAllByText('Save')[0]);
+    fireEvent.press(getByText('Save'));
 
     await waitFor(() => {
       expect(mockTestShelvarrConnection).toHaveBeenCalledWith('http://new:3000');
@@ -77,9 +72,9 @@ describe('SettingsScreen', () => {
 
   it('does not save when shelvarr connection test fails', async () => {
     mockTestShelvarrConnection.mockResolvedValueOnce({ ok: false, error: 'Could not reach server' });
-    const { getAllByText, getByDisplayValue } = render(<SettingsScreen />);
+    const { getByText, getByDisplayValue } = render(<SettingsScreen />);
     fireEvent.changeText(getByDisplayValue('http://shelvarr:3000'), 'http://bad:3000');
-    fireEvent.press(getAllByText('Save')[0]);
+    fireEvent.press(getByText('Save'));
 
     await waitFor(() => {
       expect(mockTestShelvarrConnection).toHaveBeenCalledWith('http://bad:3000');
@@ -89,14 +84,6 @@ describe('SettingsScreen', () => {
       'Could not reach server',
       expect.stringContaining('Could not reach server')
     );
-  });
-
-  it('saves kapowarr URL', () => {
-    const { getAllByText, getByDisplayValue } = render(<SettingsScreen />);
-    fireEvent.changeText(getByDisplayValue('http://kapowarr:5656'), 'http://newkapo:5656');
-    fireEvent.press(getAllByText('Save')[1]);
-    expect(mockSetKapowarrUrl).toHaveBeenCalledWith('http://newkapo:5656');
-    expect(Alert.alert).toHaveBeenCalledWith('Saved', 'Kapowarr URL updated.');
   });
 
   it('handles clear downloads', () => {

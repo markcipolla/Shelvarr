@@ -1,11 +1,25 @@
 const mockGet = jest.fn();
 const mockPost = jest.fn();
+const mockDelete = jest.fn();
+const mockPatch = jest.fn();
 
 jest.mock('../../../src/services/api/client', () => ({
-  getApiClient: () => ({ get: mockGet, post: mockPost }),
+  getApiClient: () => ({
+    get: mockGet,
+    post: mockPost,
+    delete: mockDelete,
+    patch: mockPatch,
+  }),
 }));
 
-import { searchHardcover, addToWanted, checkIsWanted } from '../../../src/services/api/wanted';
+import {
+  searchHardcover,
+  addToWanted,
+  checkIsWanted,
+  getWantedBooks,
+  removeFromWanted,
+  updateWanted,
+} from '../../../src/services/api/wanted';
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -81,6 +95,54 @@ describe('addToWanted', () => {
       success: false,
       error: 'Book is already on wanted list',
     });
+  });
+});
+
+describe('getWantedBooks', () => {
+  it('GETs /api/wanted and returns the list', async () => {
+    const payload = { success: true, books: [{ id: 1, title: 'Dune' }] };
+    mockGet.mockResolvedValue({ data: payload });
+
+    const res = await getWantedBooks();
+
+    expect(mockGet).toHaveBeenCalledWith('/api/wanted', { params: undefined });
+    expect(res).toEqual(payload);
+  });
+
+  it('forwards the status filter', async () => {
+    mockGet.mockResolvedValue({ data: { success: true, books: [] } });
+    await getWantedBooks('searching');
+    expect(mockGet).toHaveBeenCalledWith('/api/wanted', { params: { status: 'searching' } });
+  });
+
+  it('returns a failure response when the request throws', async () => {
+    mockGet.mockRejectedValue(new Error('Network down'));
+    const res = await getWantedBooks();
+    expect(res).toEqual({ success: false, error: 'Network down' });
+  });
+});
+
+describe('removeFromWanted', () => {
+  it('DELETEs /api/wanted/:id', async () => {
+    mockDelete.mockResolvedValue({ data: { success: true } });
+    const res = await removeFromWanted(5);
+    expect(mockDelete).toHaveBeenCalledWith('/api/wanted/5');
+    expect(res).toEqual({ success: true });
+  });
+
+  it('returns the server error message on failure', async () => {
+    mockDelete.mockRejectedValue({ response: { data: { error: 'Book not found' } } });
+    const res = await removeFromWanted(5);
+    expect(res).toEqual({ success: false, error: 'Book not found' });
+  });
+});
+
+describe('updateWanted', () => {
+  it('PATCHes /api/wanted/:id with the changes', async () => {
+    mockPatch.mockResolvedValue({ data: { success: true, book: { id: 1, status: 'searching' } } });
+    const res = await updateWanted(1, { status: 'searching' });
+    expect(mockPatch).toHaveBeenCalledWith('/api/wanted/1', { status: 'searching' });
+    expect(res).toEqual({ success: true, book: { id: 1, status: 'searching' } });
   });
 });
 

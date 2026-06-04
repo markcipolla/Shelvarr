@@ -67,18 +67,22 @@ function setupLoadedState() {
   mockFetchRecent.mockResolvedValue({ content: [] });
 }
 
+// The search input is rendered inline in the screen body (not via
+// navigation.setOptions). We locate it by its placeholder and drive its
+// onChangeText handler directly.
+const SEARCH_PLACEHOLDER = /Search all books/;
+
+let currentScreen: ReturnType<typeof render> | null = null;
+
+function renderHome() {
+  currentScreen = render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+  return currentScreen;
+}
+
 function getOnChangeText(): ((text: string) => void) | null {
-  const calls = mockNavigation.setOptions.mock.calls;
-  for (let i = calls.length - 1; i >= 0; i--) {
-    const opts = calls[i][0];
-    if (opts?.headerTitle) {
-      const element = opts.headerTitle();
-      if (element?.props?.onChangeText) {
-        return element.props.onChangeText;
-      }
-    }
-  }
-  return null;
+  if (!currentScreen) return null;
+  const input = currentScreen.getByPlaceholderText(SEARCH_PLACEHOLDER);
+  return input.props.onChangeText ?? null;
 }
 
 describe('HomeScreen', () => {
@@ -195,10 +199,10 @@ describe('HomeScreen', () => {
       last: true,
     });
 
-    render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+    renderHome();
 
     await waitFor(() => {
-      expect(mockNavigation.setOptions).toHaveBeenCalled();
+      expect(getOnChangeText()).toBeTruthy();
     });
 
     await act(async () => {
@@ -221,10 +225,10 @@ describe('HomeScreen', () => {
       last: true,
     });
 
-    const { getByText } = render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+    const { getByText } = renderHome();
 
     await waitFor(() => {
-      expect(mockNavigation.setOptions).toHaveBeenCalled();
+      expect(getOnChangeText()).toBeTruthy();
     });
 
     await act(async () => {
@@ -250,10 +254,10 @@ describe('HomeScreen', () => {
       last: true,
     });
 
-    render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+    renderHome();
 
     await waitFor(() => {
-      expect(mockNavigation.setOptions).toHaveBeenCalled();
+      expect(getOnChangeText()).toBeTruthy();
     });
 
     await act(async () => {
@@ -272,10 +276,10 @@ describe('HomeScreen', () => {
     setupLoadedState();
     mockSearchBooks.mockRejectedValue(new Error('search fail'));
 
-    render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+    renderHome();
 
     await waitFor(() => {
-      expect(mockNavigation.setOptions).toHaveBeenCalled();
+      expect(getOnChangeText()).toBeTruthy();
     });
 
     await act(async () => {
@@ -297,10 +301,10 @@ describe('HomeScreen', () => {
       last: true,
     });
 
-    render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+    renderHome();
 
     await waitFor(() => {
-      expect(mockNavigation.setOptions).toHaveBeenCalled();
+      expect(getOnChangeText()).toBeTruthy();
     });
 
     await act(async () => {
@@ -330,12 +334,10 @@ describe('HomeScreen', () => {
         last: true,
       });
 
-    const { UNSAFE_getAllByType } = render(
-      <HomeScreen navigation={mockNavigation} route={mockRoute} />
-    );
+    const { UNSAFE_getAllByType } = renderHome();
 
     await waitFor(() => {
-      expect(mockNavigation.setOptions).toHaveBeenCalled();
+      expect(getOnChangeText()).toBeTruthy();
     });
 
     await act(async () => {
@@ -394,10 +396,10 @@ describe('HomeScreen', () => {
     setupLoadedState();
     mockSearchBooks.mockReturnValue(new Promise(() => {}));
 
-    render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+    renderHome();
 
     await waitFor(() => {
-      expect(mockNavigation.setOptions).toHaveBeenCalled();
+      expect(getOnChangeText()).toBeTruthy();
     });
 
     await act(async () => {
@@ -413,10 +415,10 @@ describe('HomeScreen', () => {
   it('performSearch returns early for empty trimmed query', async () => {
     setupLoadedState();
 
-    render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+    renderHome();
 
     await waitFor(() => {
-      expect(mockNavigation.setOptions).toHaveBeenCalled();
+      expect(getOnChangeText()).toBeTruthy();
     });
 
     await act(async () => {

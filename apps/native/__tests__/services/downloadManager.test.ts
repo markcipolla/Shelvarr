@@ -14,7 +14,13 @@ jest.mock('expo-file-system/legacy', () => ({
 
 jest.mock('../../src/services/fileManager');
 
-import { useAuthStore } from '../../src/stores/useAuthStore';
+jest.mock('../../src/stores/useSettingsStore', () => ({
+  useSettingsStore: {
+    getState: jest.fn().mockReturnValue({ shelvarrUrl: 'http://example.com' }),
+  },
+}));
+
+import { useSettingsStore } from '../../src/stores/useSettingsStore';
 import { useDownloadStore } from '../../src/stores/useDownloadStore';
 import { downloadBookFile } from '../../src/services/fileManager';
 import { prepareBookForReading } from '../../src/services/downloadManager';
@@ -26,6 +32,7 @@ const mockedMakeDir = fsMock.makeDirectoryAsync as jest.Mock;
 const mockedCreateDl = fsMock.createDownloadResumable as jest.Mock;
 const mockedReadDir = fsMock.readDirectoryAsync as jest.Mock;
 const mockedDownloadBookFile = downloadBookFile as jest.Mock;
+const mockedSettingsGetState = useSettingsStore.getState as jest.Mock;
 
 function makeBook(overrides: Partial<Book> = {}): Book {
   return {
@@ -41,13 +48,6 @@ function makeBook(overrides: Partial<Book> = {}): Book {
   };
 }
 
-const basicCreds = {
-  serverUrl: 'http://example.com',
-  authType: 'basic' as const,
-  username: 'user',
-  password: 'pass',
-};
-
 const initialDownloadState = useDownloadStore.getState();
 
 beforeEach(() => {
@@ -57,7 +57,7 @@ beforeEach(() => {
   mockedReadDir.mockReset();
   mockedDownloadBookFile.mockReset();
 
-  useAuthStore.setState({ credentials: basicCreds, sessionCookie: null });
+  mockedSettingsGetState.mockReturnValue({ shelvarrUrl: 'http://example.com' });
   useDownloadStore.setState({ ...initialDownloadState, downloads: {} });
   mockedGetInfo.mockResolvedValue({ exists: false });
   mockedMakeDir.mockResolvedValue(undefined);
@@ -173,9 +173,9 @@ describe('prepareBookForReading', () => {
       expect(useDownloadStore.getState().activeDownloadId).toBeNull();
     });
 
-    it('throws when not authenticated', async () => {
-      useAuthStore.setState({ credentials: null });
-      await expect(prepareBookForReading(comicBook)).rejects.toThrow('Not authenticated');
+    it('throws when server URL not configured', async () => {
+      mockedSettingsGetState.mockReturnValue({ shelvarrUrl: '' });
+      await expect(prepareBookForReading(comicBook)).rejects.toThrow('Server URL not configured');
     });
   });
 
@@ -247,45 +247,20 @@ describe('prepareBookForReading', () => {
       expect(useDownloadStore.getState().activeDownloadId).toBeNull();
     });
 
-    it('throws when not authenticated', async () => {
-      useAuthStore.setState({ credentials: null });
-      await expect(prepareBookForReading(epubBook)).rejects.toThrow('Not authenticated');
+    it('throws when server URL not configured', async () => {
+      mockedSettingsGetState.mockReturnValue({ shelvarrUrl: '' });
+      await expect(prepareBookForReading(epubBook)).rejects.toThrow('Server URL not configured');
     });
   });
 
-  describe('getAuthHeaders (internal)', () => {
-    it('uses basic auth headers', async () => {
-      useAuthStore.setState({ credentials: basicCreds, sessionCookie: null });
+  describe('download headers', () => {
+    it('passes empty headers (no auth layer)', async () => {
       mockedGetInfo.mockResolvedValue({ exists: false });
       mockedDownloadBookFile.mockResolvedValue('/dl/b1.epub');
 
       await prepareBookForReading(makeBook());
       const headers = mockedDownloadBookFile.mock.calls[0][3];
-      expect(headers).toHaveProperty('Authorization');
-      expect(headers.Authorization).toMatch(/^Basic /);
-    });
-
-    it('uses apikey headers', async () => {
-      useAuthStore.setState({
-        credentials: { serverUrl: 'http://example.com', authType: 'apikey', apiKey: 'key123' },
-        sessionCookie: null,
-      });
-      mockedGetInfo.mockResolvedValue({ exists: false });
-      mockedDownloadBookFile.mockResolvedValue('/dl/b1.epub');
-
-      await prepareBookForReading(makeBook());
-      const headers = mockedDownloadBookFile.mock.calls[0][3];
-      expect(headers).toHaveProperty('X-API-Key', 'key123');
-    });
-
-    it('includes session cookie when available', async () => {
-      useAuthStore.setState({ credentials: basicCreds, sessionCookie: 'sess123' });
-      mockedGetInfo.mockResolvedValue({ exists: false });
-      mockedDownloadBookFile.mockResolvedValue('/dl/b1.epub');
-
-      await prepareBookForReading(makeBook());
-      const headers = mockedDownloadBookFile.mock.calls[0][3];
-      expect(headers).toHaveProperty('Cookie', 'KOMGA-SESSION=sess123');
+      expect(headers).toEqual({});
     });
   });
 

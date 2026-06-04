@@ -1,3 +1,8 @@
+jest.mock('../../../src/services/api/client', () => ({
+  getApiClient: jest.fn(),
+  resetApiClient: jest.fn(),
+}));
+
 import { useSettingsStore } from '../../../src/stores/useSettingsStore';
 import { updateReadingStatus, testShelvarrConnection } from '../../../src/services/api/shelvarr';
 

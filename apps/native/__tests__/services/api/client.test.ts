@@ -12,18 +12,27 @@ jest.mock('axios', () => ({
   default: { create: jest.fn() },
 }));
 
+jest.mock('../../../src/stores/useSettingsStore', () => ({
+  useSettingsStore: {
+    getState: jest.fn().mockReturnValue({ shelvarrUrl: '' }),
+  },
+}));
+
 const mockAxios = jest.requireMock('axios').default;
 const mockCreate = mockAxios.create as jest.Mock;
 mockCreate.mockReturnValue(mockAxiosInstance);
 
-import { useAuthStore } from '../../../src/stores/useAuthStore';
+import { useSettingsStore } from '../../../src/stores/useSettingsStore';
 import { getApiClient, resetApiClient } from '../../../src/services/api/client';
+
+const mockGetState = useSettingsStore.getState as jest.Mock;
 
 beforeEach(() => {
   mockInterceptorRequest.use.mockClear();
   mockInterceptorResponse.use.mockClear();
   mockCreate.mockClear();
   mockCreate.mockReturnValue(mockAxiosInstance);
+  mockGetState.mockReturnValue({ shelvarrUrl: '' });
   resetApiClient();
 });
 
@@ -43,10 +52,9 @@ describe('getApiClient', () => {
     expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 
-  it('registers request and response interceptors', () => {
+  it('registers a request interceptor', () => {
     getApiClient();
     expect(mockInterceptorRequest.use).toHaveBeenCalledTimes(1);
-    expect(mockInterceptorResponse.use).toHaveBeenCalledTimes(1);
   });
 
   describe('request interceptor', () => {
@@ -57,129 +65,26 @@ describe('getApiClient', () => {
       requestInterceptor = mockInterceptorRequest.use.mock.calls[0][0];
     });
 
-    it('returns config unchanged when no credentials', () => {
-      useAuthStore.setState({ credentials: null, sessionCookie: null });
-      const config = { headers: { set: jest.fn() } };
+    it('leaves baseURL unset when no shelvarrUrl is configured', () => {
+      mockGetState.mockReturnValue({ shelvarrUrl: '' });
+      const config = { headers: {} } as any;
       const result = requestInterceptor(config);
       expect(result).toBe(config);
-      expect(config.headers.set).not.toHaveBeenCalled();
+      expect(result.baseURL).toBeUndefined();
     });
 
-    it('sets basic auth header', () => {
-      useAuthStore.setState({
-        credentials: {
-          serverUrl: 'http://example.com',
-          authType: 'basic',
-          username: 'user',
-          password: 'pass',
-        },
-        sessionCookie: null,
-      });
-      const config = { headers: { set: jest.fn() } } as any;
+    it('sets baseURL from settings store', () => {
+      mockGetState.mockReturnValue({ shelvarrUrl: 'http://example.com' });
+      const config = { headers: {} } as any;
       const result = requestInterceptor(config);
       expect(result.baseURL).toBe('http://example.com');
-      expect(config.headers.set).toHaveBeenCalledWith(
-        'Authorization',
-        expect.stringMatching(/^Basic /)
-      );
     });
 
-    it('sets apikey header', () => {
-      useAuthStore.setState({
-        credentials: {
-          serverUrl: 'http://example.com',
-          authType: 'apikey',
-          apiKey: 'my-key',
-        },
-        sessionCookie: null,
-      });
-      const config = { headers: { set: jest.fn() } } as any;
-      requestInterceptor(config);
-      expect(config.headers.set).toHaveBeenCalledWith('X-API-Key', 'my-key');
-    });
-
-    it('does not set auth header when basic creds have no username', () => {
-      useAuthStore.setState({
-        credentials: {
-          serverUrl: 'http://example.com',
-          authType: 'basic',
-        },
-        sessionCookie: null,
-      });
-      const config = { headers: { set: jest.fn() } } as any;
-      requestInterceptor(config);
-      expect(config.headers.set).not.toHaveBeenCalledWith('Authorization', expect.anything());
-      expect(config.headers.set).not.toHaveBeenCalledWith('X-API-Key', expect.anything());
-    });
-
-    it('does not set auth header when apikey creds have no apiKey', () => {
-      useAuthStore.setState({
-        credentials: {
-          serverUrl: 'http://example.com',
-          authType: 'apikey',
-        },
-        sessionCookie: null,
-      });
-      const config = { headers: { set: jest.fn() } } as any;
-      requestInterceptor(config);
-      expect(config.headers.set).not.toHaveBeenCalledWith('Authorization', expect.anything());
-      expect(config.headers.set).not.toHaveBeenCalledWith('X-API-Key', expect.anything());
-    });
-
-    it('sets session cookie when available', () => {
-      useAuthStore.setState({
-        credentials: {
-          serverUrl: 'http://example.com',
-          authType: 'basic',
-          username: 'user',
-          password: 'pass',
-        },
-        sessionCookie: 'abc123',
-      });
-      const config = { headers: { set: jest.fn() } } as any;
-      requestInterceptor(config);
-      expect(config.headers.set).toHaveBeenCalledWith(
-        'Cookie',
-        'KOMGA-SESSION=abc123'
-      );
-    });
-  });
-
-  describe('response interceptor', () => {
-    let responseInterceptor: (response: any) => any;
-
-    beforeEach(() => {
-      getApiClient();
-      responseInterceptor = mockInterceptorResponse.use.mock.calls[0][0];
-    });
-
-    it('captures session cookie from set-cookie header', () => {
-      const setSessionCookie = jest.fn();
-      useAuthStore.setState({ setSessionCookie } as any);
-      const response = {
-        headers: { 'set-cookie': 'KOMGA-SESSION=xyz789; Path=/' },
-      };
-      const result = responseInterceptor(response);
-      expect(result).toBe(response);
-      expect(setSessionCookie).toHaveBeenCalledWith('xyz789');
-    });
-
-    it('does nothing when no set-cookie header', () => {
-      const setSessionCookie = jest.fn();
-      useAuthStore.setState({ setSessionCookie } as any);
-      const response = { headers: {} };
-      responseInterceptor(response);
-      expect(setSessionCookie).not.toHaveBeenCalled();
-    });
-
-    it('does nothing when set-cookie has no KOMGA-SESSION', () => {
-      const setSessionCookie = jest.fn();
-      useAuthStore.setState({ setSessionCookie } as any);
-      const response = {
-        headers: { 'set-cookie': 'OTHER=value; Path=/' },
-      };
-      responseInterceptor(response);
-      expect(setSessionCookie).not.toHaveBeenCalled();
+    it('does not set any auth headers', () => {
+      mockGetState.mockReturnValue({ shelvarrUrl: 'http://example.com' });
+      const config = { headers: {} } as any;
+      const result = requestInterceptor(config);
+      expect(result.headers).toEqual({});
     });
   });
 });
