@@ -77,19 +77,29 @@ jobs:
 
       - name: Free up disk space
         run: |
-          # This is a persistent self-hosted runner, so reclaim space that
-          # accumulates between runs before downloading the browser.
+          # The self-hosted runner is tight on disk, so reclaim what we can
+          # before pulling the browser and its libraries.
           sudo apt-get clean || true
           pnpm store prune || true
           # Drop stale Playwright browser builds; the version we need is
-          # re-downloaded in the next step.
+          # re-downloaded below.
           rm -rf ~/.cache/ms-playwright || true
-          df -h || true
+          df -h / || true
 
-      - name: Install Playwright browsers
-        # No --with-deps: the OS-level libraries are provisioned once on the
-        # self-hosted runner. Re-installing them every run apt-fetches ~650MB
-        # and fills the runner's disk.
+      - name: Install Playwright system libraries
+        # `playwright install --with-deps` pulls ~650MB (fonts, xvfb, mesa, an
+        # X server) which does not fit on this runner. The headless Chromium
+        # shell only needs this handful of shared libraries, and
+        # --no-install-recommends keeps the footprint minimal.
+        run: |
+          sudo apt-get update || true
+          sudo apt-get install -y --no-install-recommends \
+            libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+            libdrm2 libgbm1 libxkbcommon0 libxcomposite1 libxdamage1 \
+            libxfixes3 libxrandr2 libxext6 libxcb1 libx11-6 \
+            libpango-1.0-0 libcairo2 libasound2 libatspi2.0-0
+
+      - name: Install Playwright browser
         run: npx playwright install chromium
 
       - name: Run E2E tests
