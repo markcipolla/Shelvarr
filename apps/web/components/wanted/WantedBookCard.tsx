@@ -47,18 +47,21 @@ export function WantedBookCard({ book, onFindDownloads }: WantedBookCardProps) {
 
   return (
     <div className="group bg-shelvarr-surface border border-shelvarr-border rounded-lg hover:border-shelvarr-primary transition-colors">
-      <div className="aspect-[2/3] bg-shelvarr-bg relative overflow-hidden rounded-t-lg">
-        {book.cover_url ? (
-          <img
-            src={book.cover_url}
-            alt={book.title}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center p-2">
-            <BookIcon className="w-12 h-12 text-shelvarr-text-muted" />
-          </div>
-        )}
+      <div className="aspect-[2/3] bg-shelvarr-bg relative rounded-t-lg">
+        {/* Cover image (clipped to rounded corners) */}
+        <div className="absolute inset-0 overflow-hidden rounded-t-lg">
+          {book.cover_url ? (
+            <img
+              src={book.cover_url}
+              alt={book.title}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center p-2">
+              <BookIcon className="w-12 h-12 text-shelvarr-text-muted" />
+            </div>
+          )}
+        </div>
 
         {/* Priority badge */}
         {book.priority === 1 && (
@@ -73,7 +76,7 @@ export function WantedBookCard({ book, onFindDownloads }: WantedBookCardProps) {
         </div>
 
         {/* Hover overlay with actions */}
-        <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+        <div className="absolute inset-0 rounded-t-lg bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
           <button
             onClick={() => onFindDownloads?.(book)}
             className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm font-medium transition-colors"
