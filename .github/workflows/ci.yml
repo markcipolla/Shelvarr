@@ -77,11 +77,20 @@ jobs:
 
       - name: Free up disk space
         run: |
+          # This is a persistent self-hosted runner, so reclaim space that
+          # accumulates between runs before downloading the browser.
           sudo apt-get clean || true
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc || true
+          pnpm store prune || true
+          # Drop stale Playwright browser builds; the version we need is
+          # re-downloaded in the next step.
+          rm -rf ~/.cache/ms-playwright || true
+          df -h || true
 
       - name: Install Playwright browsers
-        run: npx playwright install chromium --with-deps
+        # No --with-deps: the OS-level libraries are provisioned once on the
+        # self-hosted runner. Re-installing them every run apt-fetches ~650MB
+        # and fills the runner's disk.
+        run: npx playwright install chromium
 
       - name: Run E2E tests
         run: pnpm --filter @shelvarr/web test:e2e
