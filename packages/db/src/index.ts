@@ -63,6 +63,12 @@ export function initDatabase(dbPath: string): Database.Database {
     db = new Database(dbPath);
     console.log('Database connection created');
 
+    // Wait for locks instead of failing immediately. During `next build`,
+    // page-data collection runs many worker processes that each open this
+    // file and run the schema/migrations (writes), which otherwise race and
+    // throw SQLITE_BUSY ("database is locked").
+    db.pragma('busy_timeout = 10000');
+
     // Enable foreign keys and WAL mode for better performance
     db.pragma('journal_mode = WAL');
     console.log('WAL mode enabled');
