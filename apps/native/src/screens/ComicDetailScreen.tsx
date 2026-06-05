@@ -7,7 +7,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
@@ -28,7 +27,7 @@ function formatSize(bytes: number | null | undefined): string | null {
   return `${(mb / 1024).toFixed(2)} GB`;
 }
 
-export default function ComicDetailScreen({ route }: Props) {
+export default function ComicDetailScreen({ navigation, route }: Props) {
   const { volumeId } = route.params;
   const [volume, setVolume] = useState<KapowarrVolumeDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -52,15 +51,12 @@ export default function ComicDetailScreen({ route }: Props) {
       .finally(() => setLoading(false));
   }, [volumeId]);
 
-  const handleReadIssue = (issue: KapowarrIssue) => {
-    if (issue.files.length === 0) {
-      Alert.alert('Not downloaded', 'This issue has not been downloaded by Kapowarr yet.');
-      return;
-    }
-    Alert.alert(
-      'Coming soon',
-      'Reading Kapowarr issues directly from the app is not yet supported.'
-    );
+  const handleOpenIssue = (issue: KapowarrIssue) => {
+    navigation.navigate('IssueDetail', {
+      volumeId,
+      issueId: issue.id,
+      volumeTitle: volume?.title,
+    });
   };
 
   if (loading) {
@@ -117,7 +113,7 @@ export default function ComicDetailScreen({ route }: Props) {
               <TouchableOpacity
                 key={issue.id}
                 style={styles.issueRow}
-                onPress={() => handleReadIssue(issue)}
+                onPress={() => handleOpenIssue(issue)}
                 activeOpacity={0.7}
               >
                 <View style={styles.issueMain}>

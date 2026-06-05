@@ -24,6 +24,7 @@ export type RootStackParamList = {
   Series: { seriesId: string; seriesName: string };
   BookDetail: { bookId: string };
   ComicDetail: { volumeId: number };
+  IssueDetail: { volumeId: number; issueId: number; volumeTitle?: string };
   EpubReader: { bookId: string; filePath: string; totalPages: number };
   PdfReader: { bookId: string; filePath: string; startPage: number; totalPages: number };
   ComicReader: {

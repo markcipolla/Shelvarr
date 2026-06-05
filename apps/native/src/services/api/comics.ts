@@ -5,9 +5,9 @@ import {
   upsertComicDetail,
   upsertComicVolumes,
 } from '../db/comics';
-import type { KapowarrVolume, KapowarrVolumeDetail } from '@shelvarr/types';
+import type { KapowarrVolume, KapowarrVolumeDetail, KapowarrIssue } from '@shelvarr/types';
 
-export type { KapowarrVolume, KapowarrVolumeDetail };
+export type { KapowarrVolume, KapowarrVolumeDetail, KapowarrIssue };
 
 export interface ComicsListResponse {
   configured: boolean;
@@ -19,6 +19,13 @@ export interface ComicsListResponse {
 export interface ComicDetailResponse {
   configured: boolean;
   volume?: KapowarrVolumeDetail;
+  cached?: boolean;
+  error?: string;
+}
+
+export interface ComicIssueResponse {
+  configured: boolean;
+  issue?: KapowarrIssue;
   cached?: boolean;
   error?: string;
 }
@@ -67,6 +74,50 @@ export async function fetchComicDetail(volumeId: number): Promise<ComicDetailRes
     }
     throw err;
   }
+}
+
+/**
+ * Fetch a single issue. Falls back to locating the issue inside the cached
+ * volume detail (volumeId) when the network request fails, so the issue
+ * screen still works offline.
+ */
+export async function fetchComicIssue(
+  issueId: number,
+  volumeId?: number
+): Promise<ComicIssueResponse> {
+  try {
+    const { data } = await getApiClient().get<ComicIssueResponse>(
+      `/api/comics/issues/${issueId}`
+    );
+    if (data.configured && data.issue) {
+      return data;
+    }
+    if (data.error || !data.configured) {
+      const cached = await cachedIssue(issueId, volumeId);
+      if (cached) return { configured: true, issue: cached, cached: true, error: data.error };
+    }
+    return data;
+  } catch (err) {
+    const cached = await cachedIssue(issueId, volumeId);
+    if (cached) {
+      return {
+        configured: true,
+        issue: cached,
+        cached: true,
+        error: err instanceof Error ? err.message : 'Network error',
+      };
+    }
+    throw err;
+  }
+}
+
+async function cachedIssue(
+  issueId: number,
+  volumeId?: number
+): Promise<KapowarrIssue | undefined> {
+  if (volumeId === undefined) return undefined;
+  const volume = await getCachedComicDetail(volumeId);
+  return volume?.issues.find((i) => i.id === issueId);
 }
 
 export function getVolumeCoverUrl(volumeId: number): string {

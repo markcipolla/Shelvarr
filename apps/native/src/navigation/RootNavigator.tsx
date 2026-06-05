@@ -7,6 +7,7 @@ import LibraryScreen from '../screens/LibraryScreen';
 import SeriesScreen from '../screens/SeriesScreen';
 import BookDetailScreen from '../screens/BookDetailScreen';
 import ComicDetailScreen from '../screens/ComicDetailScreen';
+import IssueDetailScreen from '../screens/IssueDetailScreen';
 import EpubReaderScreen from '../screens/EpubReaderScreen';
 import PdfReaderScreen from '../screens/PdfReaderScreen';
 import ComicReaderScreen from '../screens/ComicReaderScreen';
@@ -44,6 +45,11 @@ export default function RootNavigator() {
         name="ComicDetail"
         component={ComicDetailScreen}
         options={{ title: 'Comic' }}
+      />
+      <Stack.Screen
+        name="IssueDetail"
+        component={IssueDetailScreen}
+        options={{ title: 'Issue' }}
       />
       <Stack.Screen
         name="EpubReader"
