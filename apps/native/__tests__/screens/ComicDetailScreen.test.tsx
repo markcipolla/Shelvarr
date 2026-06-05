@@ -98,7 +98,7 @@ describe('ComicDetailScreen', () => {
     expect(getByText('Missing')).toBeTruthy();
   });
 
-  it('alerts when tapping an undownloaded issue', async () => {
+  it('navigates to IssueDetail when tapping an undownloaded issue', async () => {
     mockFetchComicDetail.mockResolvedValue({ configured: true, volume: makeVolume() });
 
     const { getByText } = render(<ComicDetailScreen navigation={mockNavigation} route={mockRoute} />);
@@ -106,10 +106,14 @@ describe('ComicDetailScreen', () => {
     await waitFor(() => expect(getByText('Missing')).toBeTruthy());
 
     fireEvent.press(getByText('Missing'));
-    expect(Alert.alert).toHaveBeenCalledWith('Not downloaded', expect.any(String));
+    expect(mockNavigation.navigate).toHaveBeenCalledWith('IssueDetail', {
+      volumeId: 42,
+      issueId: 2,
+      volumeTitle: 'Batman',
+    });
   });
 
-  it('alerts with coming-soon when tapping a downloaded issue', async () => {
+  it('navigates to IssueDetail when tapping a downloaded issue', async () => {
     mockFetchComicDetail.mockResolvedValue({ configured: true, volume: makeVolume() });
 
     const { getByText } = render(<ComicDetailScreen navigation={mockNavigation} route={mockRoute} />);
@@ -117,7 +121,11 @@ describe('ComicDetailScreen', () => {
     await waitFor(() => expect(getByText('Read')).toBeTruthy());
 
     fireEvent.press(getByText('Read'));
-    expect(Alert.alert).toHaveBeenCalledWith('Coming soon', expect.any(String));
+    expect(mockNavigation.navigate).toHaveBeenCalledWith('IssueDetail', {
+      volumeId: 42,
+      issueId: 1,
+      volumeTitle: 'Batman',
+    });
   });
 
   it('shows kapowarr-not-configured error', async () => {

@@ -24,7 +24,9 @@ jest.mock('../../../src/stores/useSettingsStore', () => ({
 import {
   fetchComics,
   fetchComicDetail,
+  fetchComicIssue,
   getVolumeCoverUrl,
+  getIssueCoverUrl,
 } from '../../../src/services/api/comics';
 
 beforeEach(() => {
@@ -173,8 +175,46 @@ describe('fetchComicDetail', () => {
   });
 });
 
+describe('fetchComicIssue', () => {
+  it('fetches a single issue from /api/comics/issues/:id', async () => {
+    const issue = { id: 7, issue_number: '7', files: [] };
+    mockGet.mockResolvedValue({ data: { configured: true, issue } });
+
+    const result = await fetchComicIssue(7, 42);
+
+    expect(mockGet).toHaveBeenCalledWith('/api/comics/issues/7');
+    expect(result).toEqual({ configured: true, issue });
+  });
+
+  it('falls back to the cached volume issue on network error', async () => {
+    mockGet.mockRejectedValue(new Error('offline'));
+    mockGetCachedDetail.mockResolvedValue({
+      id: 42,
+      issues: [{ id: 7, issue_number: '7', files: [] }],
+    });
+
+    const result = await fetchComicIssue(7, 42);
+
+    expect(result.cached).toBe(true);
+    expect(result.issue).toEqual({ id: 7, issue_number: '7', files: [] });
+  });
+
+  it('rethrows when no cached fallback is available', async () => {
+    mockGet.mockRejectedValue(new Error('offline'));
+    mockGetCachedDetail.mockResolvedValue(null);
+
+    await expect(fetchComicIssue(7, 42)).rejects.toThrow('offline');
+  });
+});
+
 describe('getVolumeCoverUrl', () => {
   it('builds a cover URL from the configured shelvarrUrl', () => {
     expect(getVolumeCoverUrl(42)).toBe('http://shelvarr:3000/api/comics/42/cover');
+  });
+});
+
+describe('getIssueCoverUrl', () => {
+  it('builds an issue cover URL from the configured shelvarrUrl', () => {
+    expect(getIssueCoverUrl(7)).toBe('http://shelvarr:3000/api/comics/issues/7/cover');
   });
 });
