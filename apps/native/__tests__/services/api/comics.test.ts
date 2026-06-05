@@ -26,7 +26,6 @@ import {
   fetchComicDetail,
   fetchComicIssue,
   getVolumeCoverUrl,
-  getIssueCoverUrl,
 } from '../../../src/services/api/comics';
 
 beforeEach(() => {
@@ -210,11 +209,5 @@ describe('fetchComicIssue', () => {
 describe('getVolumeCoverUrl', () => {
   it('builds a cover URL from the configured shelvarrUrl', () => {
     expect(getVolumeCoverUrl(42)).toBe('http://shelvarr:3000/api/comics/42/cover');
-  });
-});
-
-describe('getIssueCoverUrl', () => {
-  it('builds an issue cover URL from the configured shelvarrUrl', () => {
-    expect(getIssueCoverUrl(7)).toBe('http://shelvarr:3000/api/comics/issues/7/cover');
   });
 });

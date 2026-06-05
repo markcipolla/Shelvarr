@@ -10,7 +10,7 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import type { KapowarrIssue } from '@shelvarr/types';
-import { fetchComicIssue, getIssueCoverUrl, getVolumeCoverUrl } from '../services/api/comics';
+import { fetchComicIssue, getVolumeCoverUrl } from '../services/api/comics';
 import { useAuthHeaders } from '../hooks/useAuthHeaders';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'IssueDetail'>;
@@ -31,7 +31,6 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
   const [issue, setIssue] = useState<KapowarrIssue | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [coverFailed, setCoverFailed] = useState(false);
   const headers = useAuthHeaders();
 
   useEffect(() => {
@@ -71,7 +70,8 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
   const downloaded = issue.files.length > 0;
   const description = issue.description ? stripHtml(issue.description) : '';
   const fileSize = formatSize(issue.files.reduce((sum, f) => sum + (f.size || 0), 0));
-  const coverUri = coverFailed ? getVolumeCoverUrl(volumeId) : getIssueCoverUrl(issue.id);
+  // Kapowarr has no per-issue cover endpoint; issues share the volume cover.
+  const coverUri = getVolumeCoverUrl(volumeId);
 
   return (
     <ScrollView style={styles.container}>
@@ -80,7 +80,6 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
           source={{ uri: coverUri, headers }}
           style={styles.cover}
           resizeMode="cover"
-          onError={() => setCoverFailed(true)}
         />
         <View style={styles.meta}>
           <Text style={styles.issueNumber}>#{issue.issue_number}</Text>

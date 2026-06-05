@@ -124,8 +124,3 @@ export function getVolumeCoverUrl(volumeId: number): string {
   const { shelvarrUrl } = require('../../stores/useSettingsStore').useSettingsStore.getState();
   return `${shelvarrUrl}/api/comics/${volumeId}/cover`;
 }
-
-export function getIssueCoverUrl(issueId: number): string {
-  const { shelvarrUrl } = require('../../stores/useSettingsStore').useSettingsStore.getState();
-  return `${shelvarrUrl}/api/comics/issues/${issueId}/cover`;
-}
