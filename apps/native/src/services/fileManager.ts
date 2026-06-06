@@ -4,7 +4,11 @@ import {
   deleteAsync,
   readDirectoryAsync,
   createDownloadResumable,
+  readAsStringAsync,
+  writeAsStringAsync,
+  EncodingType,
 } from 'expo-file-system/legacy';
+import JSZip from 'jszip';
 import { getDownloadsDir, getExtractedDir, getBookDownloadPath, getBookExtractDir } from '../utils/paths';
 
 export async function ensureDirectories(): Promise<void> {
@@ -78,4 +82,36 @@ export async function cleanAllDownloads(): Promise<void> {
     await deleteAsync(getDownloadsDir(), { idempotent: true });
     await deleteAsync(getExtractedDir(), { idempotent: true });
   } catch {}
+}
+
+export async function extractComicArchive(
+  filePath: string,
+  key: string
+): Promise<{ dir: string; pageCount: number }> {
+  const base64 = await readAsStringAsync(filePath, { encoding: EncodingType.Base64 });
+  const zip = await JSZip.loadAsync(base64, { base64: true });
+
+  const imageEntries = Object.values(zip.files).filter(
+    (entry) => !entry.dir && /\.(jpe?g|png|gif|webp)$/i.test(entry.name)
+  );
+  imageEntries.sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { numeric: true })
+  );
+
+  const dir = getBookExtractDir(key);
+  const dirInfo = await getInfoAsync(dir);
+  if (!dirInfo.exists) {
+    await makeDirectoryAsync(dir, { intermediates: true });
+  }
+
+  for (let i = 0; i < imageEntries.length; i++) {
+    const entry = imageEntries[i];
+    const ext = entry.name.match(/\.(jpe?g|png|gif|webp)$/i)?.[0] ?? '.jpg';
+    const padded = String(i).padStart(5, '0');
+    const destPath = `${dir}${padded}${ext}`;
+    const imgBase64 = await entry.async('base64');
+    await writeAsStringAsync(destPath, imgBase64, { encoding: EncodingType.Base64 });
+  }
+
+  return { dir, pageCount: imageEntries.length };
 }

@@ -26,13 +26,22 @@ export type RootStackParamList = {
   ComicDetail: { volumeId: number };
   IssueDetail: { volumeId: number; issueId: number; volumeTitle?: string };
   EpubReader: { bookId: string; filePath: string; totalPages: number };
-  PdfReader: { bookId: string; filePath: string; startPage: number; totalPages: number };
+  PdfReader: {
+    bookId: string;
+    filePath: string;
+    startPage: number;
+    totalPages: number;
+    kind?: 'comic';
+    issueId?: number;
+  };
   ComicReader: {
     bookId: string;
     extractedDir?: string;
     startPage: number;
     totalPages: number;
     streaming: boolean;
+    kind?: 'comic';
+    issueId?: number;
   };
   Settings: undefined;
 };

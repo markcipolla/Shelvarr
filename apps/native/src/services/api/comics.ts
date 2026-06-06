@@ -124,3 +124,33 @@ export function getVolumeCoverUrl(volumeId: number): string {
   const { shelvarrUrl } = require('../../stores/useSettingsStore').useSettingsStore.getState();
   return `${shelvarrUrl}/api/comics/${volumeId}/cover`;
 }
+
+export function getComicIssueFileUrl(issueId: number): string {
+  const { shelvarrUrl } = require('../../stores/useSettingsStore').useSettingsStore.getState();
+  return `${shelvarrUrl}/api/comics/issues/${issueId}/file`;
+}
+
+export interface ComicProgress {
+  page: number;
+  completed: boolean;
+  total?: number;
+}
+
+export async function fetchComicProgress(issueId: number): Promise<ComicProgress | null> {
+  try {
+    const { data } = await getApiClient().get<ComicProgress | null>(
+      `/api/comics/issues/${issueId}/progress`
+    );
+    return data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function updateComicProgress(
+  issueId: number,
+  page: number,
+  completed: boolean
+): Promise<void> {
+  await getApiClient().patch(`/api/comics/issues/${issueId}/progress`, { page, completed });
+}

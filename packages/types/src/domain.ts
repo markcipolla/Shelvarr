@@ -139,6 +139,7 @@ export interface KomgaConfig {
 export interface KapowarrConfig {
   url: string | null;
   apiKey: string | null;
+  pathMap?: string | null;
 }
 
 export interface AppConfig {
@@ -273,6 +274,16 @@ export interface ReadProgress {
   bookId: number;
   page: number;
   completed: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ComicReadProgress {
+  id: number;
+  issueId: number;
+  page: number;
+  completed: boolean;
+  total: number | null;
   createdAt: string;
   updatedAt: string;
 }

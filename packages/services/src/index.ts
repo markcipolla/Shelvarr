@@ -1,6 +1,10 @@
 // Config initialization
 export { initServiceConfig, getServiceConfig } from './config';
 
+// Comics
+export { openComicArchive, remapComicPath } from './comics/archive';
+export type { ComicArchiveResult } from './comics/archive';
+
 // Services
 export * as scanner from './scanner/index';
 export * as library from './library/index';

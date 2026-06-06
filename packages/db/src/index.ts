@@ -555,6 +555,36 @@ export function upsertEpubProgression(bookId: number, deviceId: string, locator:
   );
 }
 
+// ============ Comic Read Progress Functions ============
+
+export interface ComicReadProgressRow {
+  id: number;
+  issue_id: number;
+  page: number;
+  completed: number;
+  total: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function getComicReadProgress(issueId: number): ComicReadProgressRow | null {
+  return queryOne<ComicReadProgressRow>('SELECT * FROM comic_read_progress WHERE issue_id = ?', [issueId]);
+}
+
+export function upsertComicReadProgress(issueId: number, page: number, completed: boolean, total?: number | null): void {
+  execute(
+    `INSERT INTO comic_read_progress (issue_id, page, completed, total, updated_at)
+     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT (issue_id) DO UPDATE SET page = ?, completed = ?, total = COALESCE(?, total), updated_at = CURRENT_TIMESTAMP`,
+    [issueId, page, completed ? 1 : 0, total ?? null, page, completed ? 1 : 0, total ?? null]
+  );
+}
+
+export function deleteComicReadProgress(issueId: number): boolean {
+  const result = execute('DELETE FROM comic_read_progress WHERE issue_id = ?', [issueId]);
+  return result.rowCount > 0;
+}
+
 // ============ Comics Cache Functions ============
 
 interface ComicRow {

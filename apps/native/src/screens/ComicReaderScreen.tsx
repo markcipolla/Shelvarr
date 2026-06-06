@@ -28,8 +28,11 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const DRAWER_HEIGHT = 80;
 
 export default function ComicReaderScreen({ route, navigation }: Props) {
-  const { bookId, extractedDir, startPage, totalPages, streaming } = route.params;
-  const { onPageChange, onReaderExit, startReading } = useBookReader(bookId);
+  const { bookId, extractedDir, startPage, totalPages, streaming, kind, issueId } = route.params;
+  const { onPageChange, onReaderExit, startReading } = useBookReader(
+    bookId,
+    kind === 'comic' && issueId !== undefined ? { kind: 'comic', issueId } : undefined
+  );
   const headers = useAuthHeaders();
   const [pages, setPages] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(startPage);
