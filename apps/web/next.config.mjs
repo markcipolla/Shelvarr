@@ -27,7 +27,7 @@ const nextConfig = {
   transpilePackages: ['@shelvarr/types', '@shelvarr/db', '@shelvarr/services'],
 
   // External packages that shouldn't be bundled
-  serverExternalPackages: ['better-sqlite3'],
+  serverExternalPackages: ['better-sqlite3', 'node-unrar-js'],
 
   // Image domains for book covers
   images: {

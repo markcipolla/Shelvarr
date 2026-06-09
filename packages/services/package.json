@@ -14,7 +14,9 @@
   },
   "dependencies": {
     "@shelvarr/db": "workspace:*",
-    "@shelvarr/types": "workspace:*"
+    "@shelvarr/types": "workspace:*",
+    "fflate": "^0.8.3",
+    "node-unrar-js": "^2.0.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

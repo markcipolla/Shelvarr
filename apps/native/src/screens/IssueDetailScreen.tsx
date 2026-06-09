@@ -6,11 +6,14 @@ import {
   ScrollView,
   StyleSheet,
   ActivityIndicator,
+  TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import type { KapowarrIssue } from '@shelvarr/types';
-import { fetchComicIssue, getVolumeCoverUrl } from '../services/api/comics';
+import { fetchComicIssue, getVolumeCoverUrl, fetchComicProgress } from '../services/api/comics';
+import { prepareComicForReading } from '../services/comicReader';
 import { useAuthHeaders } from '../hooks/useAuthHeaders';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'IssueDetail'>;
@@ -31,6 +34,8 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
   const [issue, setIssue] = useState<KapowarrIssue | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [readLoading, setReadLoading] = useState(false);
+  const [readProgress, setReadProgress] = useState<number | null>(null);
   const headers = useAuthHeaders();
 
   useEffect(() => {
@@ -50,6 +55,43 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
       .catch(() => setError('Failed to load issue details'))
       .finally(() => setLoading(false));
   }, [volumeId, issueId, navigation]);
+
+  const handleRead = async () => {
+    if (!issue) return;
+    setReadLoading(true);
+    setReadProgress(0);
+    try {
+      const result = await prepareComicForReading(issue, headers, setReadProgress);
+      const progress = await fetchComicProgress(issueId);
+      const startPage = progress?.page ?? 1;
+
+      if (result.kind === 'pdf') {
+        navigation.navigate('PdfReader', {
+          bookId: `comic-${issueId}`,
+          filePath: result.filePath,
+          startPage,
+          totalPages: progress?.total ?? 1,
+          kind: 'comic',
+          issueId,
+        });
+      } else {
+        navigation.navigate('ComicReader', {
+          bookId: `comic-${issueId}`,
+          extractedDir: result.extractedDir,
+          startPage,
+          totalPages: result.totalPages,
+          streaming: false,
+          kind: 'comic',
+          issueId,
+        });
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Failed to prepare comic for reading. Please try again.');
+    } finally {
+      setReadLoading(false);
+      setReadProgress(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -92,6 +134,27 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
               {downloaded ? 'Downloaded' : 'Missing'}
             </Text>
           </View>
+          {downloaded && (
+            <TouchableOpacity
+              style={[styles.readButton, readLoading && styles.readButtonDisabled]}
+              onPress={handleRead}
+              disabled={readLoading}
+              accessibilityLabel="Read comic issue"
+            >
+              {readLoading ? (
+                <View style={styles.readButtonInner}>
+                  <ActivityIndicator size="small" color="#fff" />
+                  {readProgress !== null && (
+                    <Text style={styles.readButtonText}>
+                      {Math.round(readProgress * 100)}%
+                    </Text>
+                  )}
+                </View>
+              ) : (
+                <Text style={styles.readButtonText}>Read</Text>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -124,4 +187,17 @@ const styles = StyleSheet.create({
   badgeTextDownloaded: { color: '#fff' },
   badgeTextMissing: { color: '#999' },
   summary: { fontSize: 21, color: '#444', lineHeight: 30, padding: 16, paddingTop: 0 },
+  readButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#8b5e3c',
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 12,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  readButtonDisabled: { opacity: 0.7 },
+  readButtonInner: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  readButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
