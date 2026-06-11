@@ -3,7 +3,7 @@ import { render, waitFor, fireEvent, act } from '@testing-library/react-native';
 import { FlatList } from 'react-native';
 import HomeScreen from '../../src/screens/HomeScreen';
 import { searchBooks, fetchInProgressBooks, fetchRecentlyAdded } from '../../src/services/api/books';
-import { fetchRecentComics } from '../../src/services/api/comics';
+import { fetchComics, fetchRecentComics } from '../../src/services/api/comics';
 import { useColumns } from '../../src/hooks/useColumns';
 import { useSettingsStore } from '../../src/stores/useSettingsStore';
 
@@ -53,6 +53,7 @@ const mockSearchBooks = searchBooks as jest.Mock;
 const mockFetchInProgress = fetchInProgressBooks as jest.Mock;
 const mockFetchRecent = fetchRecentlyAdded as jest.Mock;
 const mockFetchRecentComics = fetchRecentComics as jest.Mock;
+const mockFetchComics = fetchComics as jest.Mock;
 const mockUseColumns = useColumns as jest.Mock;
 const mockUseSettingsStore = useSettingsStore as unknown as jest.Mock;
 
@@ -111,6 +112,7 @@ describe('HomeScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFetchRecentComics.mockResolvedValue({ configured: true, volumes: [] });
+    mockFetchComics.mockResolvedValue({ configured: true, volumes: [] });
     mockUseColumns.mockReturnValue(2);
     mockUseSettingsStore.mockImplementation((selector: any) =>
       selector({ shelvarrUrl: 'http://shelvarr:3000' })
@@ -331,6 +333,87 @@ describe('HomeScreen', () => {
 
     fireEvent.press(getByText('Found Book'));
     expect(mockNavigation.navigate).toHaveBeenCalledWith('BookDetail', { bookId: 'sr1' });
+  });
+
+  it('shows comic results in search', async () => {
+    setupLoadedState();
+    mockSearchBooks.mockResolvedValue({ content: [], last: true });
+    mockFetchComics.mockResolvedValue({
+      configured: true,
+      volumes: [makeVolume(3, 'Spawn')],
+    });
+
+    const { getByText } = renderHome();
+
+    await waitFor(() => {
+      expect(getOnChangeText()).toBeTruthy();
+    });
+
+    await act(async () => {
+      getOnChangeText()!('spawn');
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+
+    await waitFor(() => {
+      expect(mockFetchComics).toHaveBeenCalledWith('spawn');
+      expect(getByText('Comics')).toBeTruthy();
+      expect(getByText('Spawn')).toBeTruthy();
+    });
+  });
+
+  it('navigates to comic detail from search results', async () => {
+    setupLoadedState();
+    mockSearchBooks.mockResolvedValue({ content: [], last: true });
+    mockFetchComics.mockResolvedValue({
+      configured: true,
+      volumes: [makeVolume(8, 'Hellboy')],
+    });
+
+    const { getByText } = renderHome();
+
+    await waitFor(() => {
+      expect(getOnChangeText()).toBeTruthy();
+    });
+
+    await act(async () => {
+      getOnChangeText()!('hellboy');
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+
+    await waitFor(() => {
+      expect(getByText('Hellboy')).toBeTruthy();
+    });
+
+    fireEvent.press(getByText('Hellboy'));
+    expect(mockNavigation.navigate).toHaveBeenCalledWith('ComicDetail', { volumeId: 8 });
+  });
+
+  it('still shows book results when comic search fails', async () => {
+    setupLoadedState();
+    mockSearchBooks.mockResolvedValue({ content: [makeBook('sr1', 'A Book')], last: true });
+    mockFetchComics.mockRejectedValue(new Error('kapowarr down'));
+
+    const { getByText, queryByText } = renderHome();
+
+    await waitFor(() => {
+      expect(getOnChangeText()).toBeTruthy();
+    });
+
+    await act(async () => {
+      getOnChangeText()!('book');
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+
+    await waitFor(() => {
+      expect(getByText('A Book')).toBeTruthy();
+    });
+    expect(queryByText('Comics')).toBeNull();
   });
 
   it('shows no results text when search returns empty', async () => {
