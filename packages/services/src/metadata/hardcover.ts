@@ -342,26 +342,32 @@ interface UserBookIdResult {
 }
 
 /**
- * Search for a user's existing tracking of a book
+ * Search for the current user's existing tracking of a book.
+ *
+ * Must be scoped via `me` — the top-level `user_books` table is NOT filtered to
+ * the authenticated user and returns other users' public reading records, which
+ * would cause us to read/update a record we don't own.
  */
 export async function searchUserBook(hardcoverId: string): Promise<UserBook | null> {
   const query = `
     query GetUserBook($bookId: Int!) {
-      user_books(where: { book_id: { _eq: $bookId } }) {
-        id
-        status_id
-        book_id
-        first_started_reading_date
-        last_read_date
+      me {
+        user_books(where: { book_id: { _eq: $bookId } }) {
+          id
+          status_id
+          book_id
+          first_started_reading_date
+          last_read_date
+        }
       }
     }
   `;
 
-  const data = await graphqlFetch<{ user_books?: UserBook[] }>(query, {
+  const data = await graphqlFetch<{ me?: Array<{ user_books?: UserBook[] }> }>(query, {
     bookId: parseInt(hardcoverId, 10),
   });
 
-  return data?.user_books?.[0] ?? null;
+  return data?.me?.[0]?.user_books?.[0] ?? null;
 }
 
 /**
