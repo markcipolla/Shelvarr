@@ -15,7 +15,9 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { Book } from '../types/komga';
 import { searchBooks, fetchInProgressBooks, fetchRecentlyAdded } from '../services/api/books';
+import { fetchRecentComics, KapowarrVolume } from '../services/api/comics';
 import BookCard from '../components/BookCard';
+import ComicCard from '../components/ComicCard';
 import { useColumns } from '../hooks/useColumns';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useDownloadStore } from '../stores/useDownloadStore';
@@ -35,6 +37,7 @@ export default function HomeScreen({ navigation }: Props) {
   );
   const [inProgress, setInProgress] = useState<Book[]>([]);
   const [recentlyAdded, setRecentlyAdded] = useState<Book[]>([]);
+  const [recentComics, setRecentComics] = useState<KapowarrVolume[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
@@ -54,13 +57,18 @@ export default function HomeScreen({ navigation }: Props) {
       return;
     }
     try {
-      const [inProgressRes, recentRes] = await Promise.all([
+      const [inProgressRes, recentRes, comicsRes] = await Promise.all([
         fetchInProgressBooks(),
         fetchRecentlyAdded(),
+        fetchRecentComics(10).catch((err) => {
+          console.error('Failed to load recent comics:', err);
+          return null;
+        }),
       ]);
       const inProgressIds = new Set(inProgressRes.content.map((b) => b.id));
       setInProgress(inProgressRes.content);
       setRecentlyAdded(recentRes.content.filter((b) => !inProgressIds.has(b.id)));
+      setRecentComics(comicsRes?.configured ? comicsRes.volumes : []);
     } catch (err) {
       console.error('Failed to load home data:', err);
     } finally {
@@ -287,7 +295,11 @@ export default function HomeScreen({ navigation }: Props) {
     );
   }
 
-  const hasAny = inProgress.length > 0 || recentlyAdded.length > 0 || downloadedBooks.length > 0;
+  const hasAny =
+    inProgress.length > 0 ||
+    recentlyAdded.length > 0 ||
+    downloadedBooks.length > 0 ||
+    recentComics.length > 0;
 
   return (
     <View style={styles.container}>
@@ -354,6 +366,28 @@ export default function HomeScreen({ navigation }: Props) {
                     book={item}
                     fill
                     onPress={() => navigation.navigate('BookDetail', { bookId: item.id })}
+                  />
+                </View>
+              )}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+            />
+          </View>
+        )}
+
+        {recentComics.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Recently Added Comics</Text>
+            <FlatList
+              horizontal
+              data={recentComics}
+              keyExtractor={(item) => String(item.id)}
+              renderItem={({ item }) => (
+                <View style={{ width: cardWidth, marginRight: 12 }}>
+                  <ComicCard
+                    volume={item}
+                    fill
+                    onPress={() => navigation.navigate('ComicDetail', { volumeId: item.id })}
                   />
                 </View>
               )}

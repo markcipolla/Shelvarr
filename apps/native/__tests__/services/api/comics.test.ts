@@ -23,6 +23,7 @@ jest.mock('../../../src/stores/useSettingsStore', () => ({
 
 import {
   fetchComics,
+  fetchRecentComics,
   fetchComicDetail,
   fetchComicIssue,
   getVolumeCoverUrl,
@@ -34,6 +35,37 @@ beforeEach(() => {
   mockUpsertDetail.mockResolvedValue(undefined);
   mockGetCachedComics.mockResolvedValue([]);
   mockGetCachedDetail.mockResolvedValue(null);
+});
+
+describe('fetchRecentComics', () => {
+  it('requests the recently_added sort and limits results', async () => {
+    const volumes = [{ id: 1 }, { id: 2 }, { id: 3 }];
+    mockGet.mockResolvedValue({ data: { configured: true, volumes } });
+
+    const result = await fetchRecentComics(2);
+
+    expect(mockGet).toHaveBeenCalledWith('/api/comics', {
+      params: { sort: 'recently_added' },
+    });
+    expect(result.volumes).toEqual([{ id: 1 }, { id: 2 }]);
+  });
+
+  it('falls back to cached comics on error', async () => {
+    mockGet.mockRejectedValue(new Error('network'));
+    mockGetCachedComics.mockResolvedValue([{ id: 9 }, { id: 10 }]);
+
+    const result = await fetchRecentComics(1);
+
+    expect(result.cached).toBe(true);
+    expect(result.volumes).toEqual([{ id: 9 }]);
+  });
+
+  it('rethrows when no cache is available on error', async () => {
+    mockGet.mockRejectedValue(new Error('network'));
+    mockGetCachedComics.mockResolvedValue([]);
+
+    await expect(fetchRecentComics(5)).rejects.toThrow('network');
+  });
 });
 
 describe('fetchComics', () => {

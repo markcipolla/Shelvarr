@@ -3,6 +3,7 @@ import { render, waitFor, fireEvent, act } from '@testing-library/react-native';
 import { FlatList } from 'react-native';
 import HomeScreen from '../../src/screens/HomeScreen';
 import { searchBooks, fetchInProgressBooks, fetchRecentlyAdded } from '../../src/services/api/books';
+import { fetchRecentComics } from '../../src/services/api/comics';
 import { useColumns } from '../../src/hooks/useColumns';
 import { useSettingsStore } from '../../src/stores/useSettingsStore';
 
@@ -11,6 +12,7 @@ jest.mock('../../src/services/api/client', () => ({
   resetApiClient: jest.fn(),
 }));
 jest.mock('../../src/services/api/books');
+jest.mock('../../src/services/api/comics');
 jest.mock('../../src/hooks/useColumns');
 jest.mock('../../src/stores/useSettingsStore');
 jest.mock('../../src/hooks/useAuthHeaders', () => ({
@@ -32,6 +34,16 @@ jest.mock('../../src/components/BookCard', () => {
     );
   };
 });
+jest.mock('../../src/components/ComicCard', () => {
+  const { Text, TouchableOpacity } = require('react-native');
+  return function MockComicCard({ volume, onPress }: any) {
+    return (
+      <TouchableOpacity testID={`comic-${volume.id}`} onPress={onPress}>
+        <Text>{volume.title}</Text>
+      </TouchableOpacity>
+    );
+  };
+});
 jest.mock('../../src/utils/gridHelpers', () => ({
   padDataForGrid: (data: any[], _cols: number) => data,
   isPlaceholder: (item: any) => item._placeholder === true,
@@ -40,6 +52,7 @@ jest.mock('../../src/utils/gridHelpers', () => ({
 const mockSearchBooks = searchBooks as jest.Mock;
 const mockFetchInProgress = fetchInProgressBooks as jest.Mock;
 const mockFetchRecent = fetchRecentlyAdded as jest.Mock;
+const mockFetchRecentComics = fetchRecentComics as jest.Mock;
 const mockUseColumns = useColumns as jest.Mock;
 const mockUseSettingsStore = useSettingsStore as unknown as jest.Mock;
 
@@ -60,6 +73,15 @@ const makeBook = (id: string, title = '') => ({
   media: { status: 'READY', mediaType: '', pagesCount: 10 },
   metadata: { title, summary: '', number: '1', authors: [] },
   readProgress: null,
+});
+
+const makeVolume = (id: number, title = `Volume ${id}`) => ({
+  id,
+  title,
+  publisher: 'DC',
+  year: 2020,
+  issue_count: 5,
+  issues_downloaded: 2,
 });
 
 function setupLoadedState() {
@@ -88,6 +110,7 @@ function getOnChangeText(): ((text: string) => void) | null {
 describe('HomeScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockFetchRecentComics.mockResolvedValue({ configured: true, volumes: [] });
     mockUseColumns.mockReturnValue(2);
     mockUseSettingsStore.mockImplementation((selector: any) =>
       selector({ shelvarrUrl: 'http://shelvarr:3000' })
@@ -190,6 +213,69 @@ describe('HomeScreen', () => {
 
     fireEvent.press(getByText('New Book'));
     expect(mockNavigation.navigate).toHaveBeenCalledWith('BookDetail', { bookId: 'b3' });
+  });
+
+  it('renders recently added comics section', async () => {
+    setupLoadedState();
+    mockFetchRecentComics.mockResolvedValue({
+      configured: true,
+      volumes: [makeVolume(1, 'Batman'), makeVolume(2, 'Superman')],
+    });
+
+    const { getByText } = render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => {
+      expect(getByText('Recently Added Comics')).toBeTruthy();
+      expect(getByText('Batman')).toBeTruthy();
+      expect(getByText('Superman')).toBeTruthy();
+    });
+  });
+
+  it('navigates to comic detail from comics row', async () => {
+    setupLoadedState();
+    mockFetchRecentComics.mockResolvedValue({
+      configured: true,
+      volumes: [makeVolume(7, 'Watchmen')],
+    });
+
+    const { getByText } = render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => {
+      expect(getByText('Watchmen')).toBeTruthy();
+    });
+
+    fireEvent.press(getByText('Watchmen'));
+    expect(mockNavigation.navigate).toHaveBeenCalledWith('ComicDetail', { volumeId: 7 });
+  });
+
+  it('omits comics section when Kapowarr not configured', async () => {
+    setupLoadedState();
+    mockFetchInProgress.mockResolvedValue({ content: [makeBook('b1', 'Book One')] });
+    mockFetchRecentComics.mockResolvedValue({ configured: false, volumes: [] });
+
+    const { getByText, queryByText } = render(
+      <HomeScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    await waitFor(() => {
+      expect(getByText('Book One')).toBeTruthy();
+    });
+    expect(queryByText('Recently Added Comics')).toBeNull();
+  });
+
+  it('still renders books when comics fetch fails', async () => {
+    mockFetchInProgress.mockResolvedValue({ content: [makeBook('b1', 'Book One')] });
+    mockFetchRecent.mockResolvedValue({ content: [] });
+    mockFetchRecentComics.mockRejectedValue(new Error('comics down'));
+
+    const { getByText, queryByText } = render(
+      <HomeScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    await waitFor(() => {
+      expect(getByText('Book One')).toBeTruthy();
+    });
+    expect(queryByText('Recently Added Comics')).toBeNull();
   });
 
   it('performs search and shows results', async () => {
