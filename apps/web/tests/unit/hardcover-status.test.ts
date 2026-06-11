@@ -65,11 +65,13 @@ describe('Hardcover Reading Status', () => {
     it('should return user book when found', async () => {
       mockFetchResponses.push({
         data: {
-          user_books: [{
-            id: 42,
-            status_id: 2,
-            book_id: 100,
-            first_started_reading_date: '2025-01-01',
+          me: [{
+            user_books: [{
+              id: 42,
+              status_id: 2,
+              book_id: 100,
+              first_started_reading_date: '2025-01-01',
+            }],
           }],
         },
       });
@@ -83,7 +85,7 @@ describe('Hardcover Reading Status', () => {
 
     it('should return null when no user book found', async () => {
       mockFetchResponses.push({
-        data: { user_books: [] },
+        data: { me: [{ user_books: [] }] },
       });
 
       const result = await searchUserBook('999');
@@ -182,7 +184,7 @@ describe('Hardcover Reading Status', () => {
   describe('upsertReadingStatus', () => {
     it('should insert when no existing entry', async () => {
       // First call: searchUserBook returns empty
-      mockFetchResponses.push({ data: { user_books: [] } });
+      mockFetchResponses.push({ data: { me: [{ user_books: [] }] } });
       // Second call: insertUserBook succeeds
       mockFetchResponses.push({
         data: {
@@ -208,11 +210,13 @@ describe('Hardcover Reading Status', () => {
       // First call: searchUserBook returns existing
       mockFetchResponses.push({
         data: {
-          user_books: [{
-            id: 42,
-            status_id: 2,
-            book_id: 100,
-            first_started_reading_date: '2025-06-01',
+          me: [{
+            user_books: [{
+              id: 42,
+              status_id: 2,
+              book_id: 100,
+              first_started_reading_date: '2025-06-01',
+            }],
           }],
         },
       });
@@ -242,12 +246,14 @@ describe('Hardcover Reading Status', () => {
       // searchUserBook returns book already marked as "read" (3)
       mockFetchResponses.push({
         data: {
-          user_books: [{
-            id: 42,
-            status_id: 3,
-            book_id: 100,
-            first_started_reading_date: '2025-06-01',
-            last_read_date: '2025-06-10',
+          me: [{
+            user_books: [{
+              id: 42,
+              status_id: 3,
+              book_id: 100,
+              first_started_reading_date: '2025-06-01',
+              last_read_date: '2025-06-10',
+            }],
           }],
         },
       });
@@ -260,7 +266,7 @@ describe('Hardcover Reading Status', () => {
     });
 
     it('should return error when insert fails', async () => {
-      mockFetchResponses.push({ data: { user_books: [] } });
+      mockFetchResponses.push({ data: { me: [{ user_books: [] }] } });
       mockFetchResponses.push({ data: {} }); // insert returns no data
 
       const result = await upsertReadingStatus('100', 2);
