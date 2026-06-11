@@ -55,6 +55,26 @@ export async function fetchComics(search?: string): Promise<ComicsListResponse> 
   }
 }
 
+export async function fetchRecentComics(limit: number): Promise<ComicsListResponse> {
+  try {
+    const { data } = await getApiClient().get<ComicsListResponse>('/api/comics', {
+      params: { sort: 'recently_added' },
+    });
+    return { ...data, volumes: data.volumes.slice(0, limit) };
+  } catch (err) {
+    const cached = await getCachedComics();
+    if (cached.length > 0) {
+      return {
+        configured: true,
+        volumes: cached.slice(0, limit),
+        cached: true,
+        error: err instanceof Error ? err.message : 'Network error',
+      };
+    }
+    throw err;
+  }
+}
+
 export async function fetchComicDetail(volumeId: number): Promise<ComicDetailResponse> {
   try {
     const { data } = await getApiClient().get<ComicDetailResponse>(`/api/comics/${volumeId}`);
