@@ -80,7 +80,9 @@ export default function HomeScreen({ navigation }: Props) {
 
   useFocusEffect(
     useCallback(() => {
-      setRefreshing(true);
+      // Reload silently on focus. `refreshing` is reserved for user-initiated
+      // pull-to-refresh so the RefreshControl spinner doesn't show alongside
+      // the initial `loading` / empty-state indicators.
       loadData();
     }, [loadData])
   );
@@ -420,13 +422,7 @@ export default function HomeScreen({ navigation }: Props) {
           </View>
         )}
 
-        {!hasAny && (
-          refreshing ? (
-            <ActivityIndicator size="large" color="#8b5e3c" style={styles.inlineSpinner} />
-          ) : (
-            <Text style={styles.emptyText}>No books yet</Text>
-          )
-        )}
+        {!hasAny && <Text style={styles.emptyText}>No books yet</Text>}
       </ScrollView>
     </View>
   );
@@ -466,7 +462,6 @@ const styles = StyleSheet.create({
     borderColor: '#d5d0c8',
   },
   searchSpinner: { marginTop: 20, marginBottom: 20 },
-  inlineSpinner: { marginTop: 40 },
   noResults: { color: '#888', fontSize: 22, textAlign: 'center' },
   pill: {
     backgroundColor: '#fff',
