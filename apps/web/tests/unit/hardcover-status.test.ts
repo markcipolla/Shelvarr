@@ -265,6 +265,48 @@ describe('Hardcover Reading Status', () => {
       assert.strictEqual(result.userBook.status_id, 3); // stays as "read"
     });
 
+    it('should re-insert when the existing record was deleted on Hardcover', async () => {
+      // searchUserBook returns an existing entry
+      mockFetchResponses.push({
+        data: {
+          me: [{
+            user_books: [{
+              id: 42,
+              status_id: 2,
+              book_id: 100,
+              first_started_reading_date: '2025-06-01',
+            }],
+          }],
+        },
+      });
+      // updateUserBook fails because the record is gone
+      mockFetchResponses.push({
+        data: {
+          update_user_book: { id: 42, error: 'Record not found. Was it deleted?' },
+        },
+      });
+      // insertUserBook recreates the tracking entry
+      mockFetchResponses.push({
+        data: {
+          insert_user_book: {
+            id: 99,
+            user_book: {
+              id: 99,
+              status_id: 3,
+              book_id: 100,
+              last_read_date: '2025-06-15',
+            },
+          },
+        },
+      });
+
+      const result = await upsertReadingStatus('100', 3, undefined, '2025-06-15');
+      assert.strictEqual(result.success, true);
+      assert.ok(result.userBook);
+      assert.strictEqual(result.userBook.id, 99);
+      assert.strictEqual(result.userBook.status_id, 3);
+    });
+
     it('should return error when insert fails', async () => {
       mockFetchResponses.push({ data: { me: [{ user_books: [] }] } });
       mockFetchResponses.push({ data: {} }); // insert returns no data

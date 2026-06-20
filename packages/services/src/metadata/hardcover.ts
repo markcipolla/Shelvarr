@@ -472,15 +472,24 @@ export async function upsertReadingStatus(
         return { success: true, userBook: existing };
       }
 
-      const updated = await updateUserBook(
-        existing.id,
-        statusId,
-        startedAt ?? existing.first_started_reading_date,
-        finishedAt,
-      );
-      return updated
-        ? { success: true, userBook: updated }
-        : { success: false, error: 'Failed to update user book' };
+      try {
+        const updated = await updateUserBook(
+          existing.id,
+          statusId,
+          startedAt ?? existing.first_started_reading_date,
+          finishedAt,
+        );
+        return updated
+          ? { success: true, userBook: updated }
+          : { success: false, error: 'Failed to update user book' };
+      } catch (error) {
+        // The record can be deleted on Hardcover's side between our search and
+        // this update (e.g. removed in their app, or a concurrent sync). Hardcover
+        // reports this as "Record not found. Was it deleted?" — recover by
+        // re-inserting the tracking entry instead of failing the request.
+        const message = error instanceof Error ? error.message : '';
+        if (!/record not found/i.test(message)) throw error;
+      }
     }
 
     const inserted = await insertUserBook(hardcoverId, statusId, startedAt, finishedAt);
