@@ -78,10 +78,10 @@ export default function EpubReaderScreen({ route, navigation }: Props) {
           setCurrentPage(resumePage);
         }
 
-        // Sync current position
-        /* istanbul ignore next */
-        syncEpubProgress(bookId, 0, false, parsed.chapters[0]?.href ?? '');
-        await flushProgress(bookId);
+        // NOTE: do not sync progress here. All native devices share the same
+        // epub_progression device id, so flushing progress 0 on open would
+        // clobber a position saved on another device before the restore above
+        // takes effect. The sync effect below persists the restored position.
 
         // Fire-and-forget: mark as "currently reading" on Hardcover
         updateReadingStatus(bookId, 'reading');

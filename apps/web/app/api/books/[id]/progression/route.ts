@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
-import { queryOne, getEpubProgression, upsertEpubProgression, upsertReadProgress } from '@/lib/db';
+import { queryOne, getEpubProgression, getLatestEpubProgression, upsertEpubProgression, upsertReadProgress } from '@/lib/db';
 import { validateApiAuth } from '@shelvarr/services';
 import { toEpubProgression } from '@shelvarr/services/komga-response';
 import { syncReadingProgress } from '@/lib/services/metadata/hardcover';
@@ -17,9 +17,14 @@ export async function GET(
 
   const { id } = await params;
   const bookId = parseInt(id);
-  const deviceId = request.nextUrl.searchParams.get('device_id') || 'default';
+  const deviceId = request.nextUrl.searchParams.get('device_id');
 
-  const progression = getEpubProgression(bookId, deviceId);
+  // With an explicit device_id, return that device's progression; otherwise
+  // return the latest progression across devices so reading resumes wherever
+  // it was last left off, even on a device that's never opened this book.
+  const progression = deviceId
+    ? getEpubProgression(bookId, deviceId)
+    : getLatestEpubProgression(bookId);
   if (!progression) {
     return NextResponse.json(null);
   }
