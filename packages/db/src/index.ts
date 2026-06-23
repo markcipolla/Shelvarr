@@ -546,6 +546,15 @@ export function getEpubProgression(bookId: number, deviceId: string = 'default')
   return queryOne<EpubProgressionRow>('SELECT * FROM epub_progression WHERE book_id = ? AND device_id = ?', [bookId, deviceId]);
 }
 
+// Latest progression across all devices — used when resuming on a device that
+// hasn't recorded its own progress yet, so reading position roams cross-device.
+export function getLatestEpubProgression(bookId: number): EpubProgressionRow | null {
+  return queryOne<EpubProgressionRow>(
+    'SELECT * FROM epub_progression WHERE book_id = ? ORDER BY updated_at DESC LIMIT 1',
+    [bookId]
+  );
+}
+
 export function upsertEpubProgression(bookId: number, deviceId: string, locator: string, progression: number): void {
   execute(
     `INSERT INTO epub_progression (book_id, device_id, locator, progression, updated_at)

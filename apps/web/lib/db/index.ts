@@ -36,6 +36,7 @@ export {
   upsertComicReadProgress,
   deleteComicReadProgress,
   getEpubProgression,
+  getLatestEpubProgression,
   upsertEpubProgression,
   getCachedComic,
   getCachedComicDetail,
