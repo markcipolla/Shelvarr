@@ -13,7 +13,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import type { KapowarrIssue } from '@shelvarr/types';
 import { fetchComicIssue, getVolumeCoverUrl, fetchComicProgress } from '../services/api/comics';
-import { prepareComicForReading } from '../services/comicReader';
+import { prepareComicForReading, describeComicReadError } from '../services/comicReader';
 import { useAuthHeaders } from '../hooks/useAuthHeaders';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'IssueDetail'>;
@@ -86,7 +86,7 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
         });
       }
     } catch (err) {
-      Alert.alert('Error', 'Failed to prepare comic for reading. Please try again.');
+      Alert.alert("Can't open comic", describeComicReadError(err));
     } finally {
       setReadLoading(false);
       setReadProgress(null);

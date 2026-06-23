@@ -11,6 +11,18 @@ import {
 import JSZip from 'jszip';
 import { getDownloadsDir, getExtractedDir, getBookDownloadPath, getBookExtractDir } from '../utils/paths';
 
+/** Thrown when a file download completes with a non-2xx HTTP status. */
+export class DownloadHttpError extends Error {
+  status: number;
+  detail: string;
+  constructor(status: number, detail: string) {
+    super(`Server returned ${status}${detail ? `: ${detail}` : ''}`);
+    this.name = 'DownloadHttpError';
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
 export async function ensureDirectories(): Promise<void> {
   const dirs = [getDownloadsDir(), getExtractedDir()];
   for (const dir of dirs) {
@@ -44,6 +56,25 @@ export async function downloadBookFile(
 
   const result = await downloadResumable.downloadAsync();
   if (!result) throw new Error('Download failed');
+
+  // createDownloadResumable resolves even on HTTP errors, writing the error
+  // response body to the file. Detect non-2xx and surface the server's message
+  // instead of letting extraction later fail on the garbage body.
+  if (result.status < 200 || result.status >= 300) {
+    let detail = '';
+    try {
+      const body = await readAsStringAsync(result.uri);
+      try {
+        const parsed = JSON.parse(body);
+        detail = parsed.error || body;
+      } catch {
+        detail = body;
+      }
+    } catch {}
+    await deleteAsync(result.uri, { idempotent: true }).catch(() => {});
+    throw new DownloadHttpError(result.status, detail.trim().slice(0, 300));
+  }
+
   return result.uri;
 }
 
