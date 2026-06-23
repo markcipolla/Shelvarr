@@ -29,6 +29,7 @@ const config: AppConfig = {
   kapowarr: {
     url: process.env['KAPOWARR_URL'] || null,
     apiKey: process.env['KAPOWARR_API_KEY'] || null,
+    pathMap: process.env['KAPOWARR_PATH_MAP'] || null,
   },
 
   // Supported file extensions

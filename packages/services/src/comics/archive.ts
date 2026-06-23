@@ -5,12 +5,7 @@
 import { createReadStream, readFileSync, statSync } from 'fs';
 import { extname } from 'path';
 import { Readable } from 'stream';
-import { createRequire } from 'module';
 import { getServiceConfig } from '../config';
-
-// Use createRequire to resolve native/CJS packages from this module's location.
-// import.meta.url is available in ESM (Node.js and Next.js App Router server).
-const _require = createRequire(import.meta.url);
 
 export interface ComicArchiveResult {
   contentType: string;
@@ -76,17 +71,13 @@ export async function openComicArchive(filepath: string): Promise<ComicArchiveRe
     // Read the RAR file and extract images, then re-zip as CBZ
     const rarData = readFileSync(real);
 
-    // Load wasm binary from node-unrar-js distribution
-    // resolve('node-unrar-js') → .../node-unrar-js/dist/index.js
-    const unrarPkg = _require.resolve('node-unrar-js');
-    const unrarDistDir = unrarPkg.slice(0, unrarPkg.lastIndexOf('/'));
-    const wasmPath = unrarDistDir + '/js/unrar.wasm';
-    const wasmBinary = readFileSync(wasmPath).buffer as ArrayBuffer;
-
-    // Import dynamically since it's a CommonJS module re-exported
+    // node-unrar-js is kept external (serverExternalPackages in next.config),
+    // so let it self-load its bundled unrar.wasm via its own __dirname. Do NOT
+    // resolve the wasm path with require.resolve here: Next's bundler rewrites
+    // require.resolve to a numeric webpack module id, which then breaks (e.g.
+    // "<id>.lastIndexOf is not a function").
     const { createExtractorFromData } = await import('node-unrar-js');
     const extractor = await createExtractorFromData({
-      wasmBinary,
       data: rarData.buffer as ArrayBuffer,
     });
 
