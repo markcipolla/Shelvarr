@@ -49,7 +49,7 @@ export async function PUT(
     // Komga/Readium nested shape (native client).
     device?: { id?: string; name?: string };
     modified?: string;
-    locator: any;
+    locator: string | { locations?: { totalProgression?: number; progression?: number } };
   };
 
   const book = queryOne<{ id: number; metadata_id: string | null; metadata_source: string | null }>(
@@ -61,10 +61,11 @@ export async function PUT(
   }
 
   const deviceId = body.device?.id ?? body.deviceId ?? 'default';
+  const locations = typeof body.locator === 'object' ? body.locator?.locations : undefined;
   const progression =
     body.progression
-    ?? body.locator?.locations?.totalProgression
-    ?? body.locator?.locations?.progression
+    ?? locations?.totalProgression
+    ?? locations?.progression
     ?? 0;
   const locator = typeof body.locator === 'string' ? body.locator : JSON.stringify(body.locator);
 
