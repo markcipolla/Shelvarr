@@ -195,13 +195,19 @@ describe('syncComicProgress', () => {
     syncComicProgress(7, 5, false);
     jest.advanceTimersByTime(PROGRESS_SYNC_DEBOUNCE_MS);
     await Promise.resolve();
-    expect(mockedUpdateComic).toHaveBeenCalledWith(7, 5, false);
+    expect(mockedUpdateComic).toHaveBeenCalledWith(7, 5, false, undefined);
   });
 
   it('flushes comic progress directly', async () => {
     syncComicProgress(7, 10, true);
     await flushProgress('comic-7');
-    expect(mockedUpdateComic).toHaveBeenCalledWith(7, 10, true);
+    expect(mockedUpdateComic).toHaveBeenCalledWith(7, 10, true, undefined);
+  });
+
+  it('forwards total page count when provided', async () => {
+    syncComicProgress(7, 10, true, 24);
+    await flushProgress('comic-7');
+    expect(mockedUpdateComic).toHaveBeenCalledWith(7, 10, true, 24);
   });
 
   it('debounces multiple calls for same issue', async () => {
@@ -213,7 +219,7 @@ describe('syncComicProgress', () => {
     await Promise.resolve();
 
     expect(mockedUpdateComic).toHaveBeenCalledTimes(1);
-    expect(mockedUpdateComic).toHaveBeenCalledWith(7, 3, false);
+    expect(mockedUpdateComic).toHaveBeenCalledWith(7, 3, false, undefined);
   });
 
   it('queues failed comic progress for retry', async () => {

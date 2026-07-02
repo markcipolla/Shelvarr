@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -11,7 +12,12 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import type { KapowarrVolumeDetail, KapowarrIssue } from '@shelvarr/types';
-import { fetchComicDetail, getVolumeCoverUrl } from '../services/api/comics';
+import {
+  fetchComicDetail,
+  getVolumeCoverUrl,
+  fetchVolumeProgress,
+  ComicIssueProgress,
+} from '../services/api/comics';
 import { useAuthHeaders } from '../hooks/useAuthHeaders';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ComicDetail'>;
@@ -27,12 +33,40 @@ function formatSize(bytes: number | null | undefined): string | null {
   return `${(mb / 1024).toFixed(2)} GB`;
 }
 
+function getIssueBadge(issue: KapowarrIssue, progress?: ComicIssueProgress) {
+  if (progress?.completed) {
+    return { label: 'Read', container: styles.badgeRead, text: styles.badgeTextOnColor };
+  }
+  if (progress && progress.page > 0) {
+    return { label: 'Reading', container: styles.badgeReading, text: styles.badgeTextOnColor };
+  }
+  if (issue.files.length > 0) {
+    return { label: 'Downloaded', container: styles.badgeDownloaded, text: styles.badgeTextDownloaded };
+  }
+  return { label: 'Missing', container: styles.badgeMissing, text: styles.badgeTextMissing };
+}
+
 export default function ComicDetailScreen({ navigation, route }: Props) {
   const { volumeId } = route.params;
   const [volume, setVolume] = useState<KapowarrVolumeDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<Map<number, ComicIssueProgress>>(new Map());
   const headers = useAuthHeaders();
+
+  // Reload read progress whenever the screen regains focus (e.g. after reading
+  // an issue), so the per-issue badges stay current.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      fetchVolumeProgress(volumeId).then((p) => {
+        if (active) setProgress(p);
+      });
+      return () => {
+        active = false;
+      };
+    }, [volumeId])
+  );
 
   useEffect(() => {
     fetchComicDetail(volumeId)
@@ -108,7 +142,7 @@ export default function ComicDetailScreen({ navigation, route }: Props) {
         <View style={styles.issuesSection}>
           <Text style={styles.issuesHeading}>Issues</Text>
           {volume.issues.map((issue) => {
-            const downloaded = issue.files.length > 0;
+            const badge = getIssueBadge(issue, progress.get(issue.id));
             return (
               <TouchableOpacity
                 key={issue.id}
@@ -125,10 +159,8 @@ export default function ComicDetailScreen({ navigation, route }: Props) {
                     {issue.date ? <Text style={styles.issueDate}>{issue.date}</Text> : null}
                   </View>
                 </View>
-                <View style={[styles.issueBadge, downloaded ? styles.badgeDownloaded : styles.badgeMissing]}>
-                  <Text style={[styles.badgeText, downloaded ? styles.badgeTextDownloaded : styles.badgeTextMissing]}>
-                    {downloaded ? 'Read' : 'Missing'}
-                  </Text>
+                <View style={[styles.issueBadge, badge.container]}>
+                  <Text style={[styles.badgeText, badge.text]}>{badge.label}</Text>
                 </View>
               </TouchableOpacity>
             );
@@ -172,7 +204,10 @@ const styles = StyleSheet.create({
   },
   badgeDownloaded: { backgroundColor: '#8b5e3c' },
   badgeMissing: { backgroundColor: '#e8e4de' },
+  badgeRead: { backgroundColor: '#4a7c59' },
+  badgeReading: { backgroundColor: '#c78a3b' },
   badgeText: { fontSize: 14, fontWeight: '600' },
   badgeTextDownloaded: { color: '#fff' },
   badgeTextMissing: { color: '#999' },
+  badgeTextOnColor: { color: '#fff' },
 });

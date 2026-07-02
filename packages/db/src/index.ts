@@ -594,6 +594,94 @@ export function deleteComicReadProgress(issueId: number): boolean {
   return result.rowCount > 0;
 }
 
+export interface ComicIssueProgress {
+  issueId: number;
+  page: number;
+  completed: boolean;
+  total: number | null;
+  updatedAt: string;
+}
+
+/** Read progress for every tracked issue of a volume, keyed by issue id. */
+export function getComicReadProgressForVolume(volumeId: number): ComicIssueProgress[] {
+  const rows = query<{
+    issue_id: number;
+    page: number;
+    completed: number;
+    total: number | null;
+    updated_at: string;
+  }>(
+    `SELECT crp.issue_id, crp.page, crp.completed, crp.total, crp.updated_at
+       FROM comic_read_progress crp
+       JOIN comic_issues ci ON ci.id = crp.issue_id
+      WHERE ci.volume_id = ?`,
+    [volumeId]
+  );
+  return rows.map((r) => ({
+    issueId: r.issue_id,
+    page: r.page,
+    completed: Boolean(r.completed),
+    total: r.total,
+    updatedAt: r.updated_at,
+  }));
+}
+
+export interface InProgressComic {
+  volume: KapowarrVolume;
+  issueId: number;
+  issueNumber: string | null;
+  page: number;
+  total: number | null;
+  updatedAt: string;
+}
+
+/**
+ * Volumes with at least one partially-read (not completed) issue, most
+ * recently read first. One entry per volume, carrying the volume's most
+ * recently touched in-progress issue so the reader can resume it.
+ */
+export function getInProgressComics(limit: number): InProgressComic[] {
+  const capped = Math.max(1, Math.min(100, limit));
+  const rows = query<
+    ComicRow & {
+      crp_issue_id: number;
+      crp_page: number;
+      crp_total: number | null;
+      crp_updated_at: string;
+      issue_number: string | null;
+    }
+  >(
+    `SELECT c.*,
+            crp.issue_id AS crp_issue_id,
+            crp.page AS crp_page,
+            crp.total AS crp_total,
+            crp.updated_at AS crp_updated_at,
+            ci.issue_number AS issue_number
+       FROM comic_read_progress crp
+       JOIN comic_issues ci ON ci.id = crp.issue_id AND ci.deleted_at IS NULL
+       JOIN comics c ON c.id = ci.volume_id AND c.deleted_at IS NULL
+      WHERE crp.completed = 0 AND crp.page > 0
+        AND crp.updated_at = (
+          SELECT MAX(crp2.updated_at)
+            FROM comic_read_progress crp2
+            JOIN comic_issues ci2 ON ci2.id = crp2.issue_id AND ci2.deleted_at IS NULL
+           WHERE ci2.volume_id = c.id AND crp2.completed = 0 AND crp2.page > 0
+        )
+      GROUP BY c.id
+      ORDER BY crp.updated_at DESC
+      LIMIT ?`,
+    [capped]
+  );
+  return rows.map((r) => ({
+    volume: rowToVolume(r),
+    issueId: r.crp_issue_id,
+    issueNumber: r.issue_number,
+    page: r.crp_page,
+    total: r.crp_total,
+    updatedAt: r.crp_updated_at,
+  }));
+}
+
 // ============ Comics Cache Functions ============
 
 interface ComicRow {

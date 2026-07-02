@@ -27,6 +27,8 @@ import {
   fetchComicDetail,
   fetchComicIssue,
   getVolumeCoverUrl,
+  fetchInProgressComics,
+  fetchVolumeProgress,
 } from '../../../src/services/api/comics';
 
 beforeEach(() => {
@@ -241,5 +243,62 @@ describe('fetchComicIssue', () => {
 describe('getVolumeCoverUrl', () => {
   it('builds a cover URL from the configured shelvarrUrl', () => {
     expect(getVolumeCoverUrl(42)).toBe('http://shelvarr:3000/api/comics/42/cover');
+  });
+});
+
+describe('fetchInProgressComics', () => {
+  it('returns the in-progress comics list from the API', async () => {
+    const comics = [
+      { volume: { id: 9 }, issueId: 11, issueNumber: '3', page: 5, total: 20, updatedAt: 'x' },
+    ];
+    mockGet.mockResolvedValue({ data: { comics } });
+
+    const result = await fetchInProgressComics(10);
+
+    expect(mockGet).toHaveBeenCalledWith('/api/comics/in-progress', { params: { limit: 10 } });
+    expect(result).toEqual(comics);
+  });
+
+  it('defaults the limit to 20', async () => {
+    mockGet.mockResolvedValue({ data: { comics: [] } });
+    await fetchInProgressComics();
+    expect(mockGet).toHaveBeenCalledWith('/api/comics/in-progress', { params: { limit: 20 } });
+  });
+
+  it('returns an empty array when the response has no comics', async () => {
+    mockGet.mockResolvedValue({ data: {} });
+    expect(await fetchInProgressComics()).toEqual([]);
+  });
+
+  it('returns an empty array on error', async () => {
+    mockGet.mockRejectedValue(new Error('offline'));
+    expect(await fetchInProgressComics()).toEqual([]);
+  });
+});
+
+describe('fetchVolumeProgress', () => {
+  it('maps per-issue progress by issue id', async () => {
+    const progress = [
+      { issueId: 1, page: 5, completed: false, total: 20, updatedAt: 'x' },
+      { issueId: 2, page: 20, completed: true, total: 20, updatedAt: 'y' },
+    ];
+    mockGet.mockResolvedValue({ data: { progress } });
+
+    const map = await fetchVolumeProgress(42);
+
+    expect(mockGet).toHaveBeenCalledWith('/api/comics/42/progress');
+    expect(map.get(1)?.page).toBe(5);
+    expect(map.get(2)?.completed).toBe(true);
+    expect(map.size).toBe(2);
+  });
+
+  it('returns an empty map when the response has no progress', async () => {
+    mockGet.mockResolvedValue({ data: {} });
+    expect((await fetchVolumeProgress(42)).size).toBe(0);
+  });
+
+  it('returns an empty map on error', async () => {
+    mockGet.mockRejectedValue(new Error('offline'));
+    expect((await fetchVolumeProgress(42)).size).toBe(0);
   });
 });

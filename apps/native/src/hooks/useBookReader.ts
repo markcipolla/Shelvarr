@@ -27,10 +27,10 @@ export function useBookReader(bookId: string, opts?: BookReaderOpts) {
         const issueId = opts!.issueId!;
         if (completed) {
           flushProgress(bookId);
-          syncComicProgress(issueId, page, true);
+          syncComicProgress(issueId, page, true, totalPages);
           flushProgress(bookId);
         } else {
-          syncComicProgress(issueId, page, false);
+          syncComicProgress(issueId, page, false, totalPages);
         }
       } else {
         if (completed) {

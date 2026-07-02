@@ -1,6 +1,12 @@
 'use server';
 
 import { kapowarrClient, configureKapowarrFromDb } from '@/lib/services/kapowarr';
+import {
+  getInProgressComics as dbGetInProgressComics,
+  getComicReadProgressForVolume as dbGetComicReadProgressForVolume,
+  type InProgressComic,
+  type ComicIssueProgress,
+} from '@/lib/db';
 import type { KapowarrVolume, KapowarrVolumeDetail } from '@shelvarr/types';
 
 export interface ComicsListResult {
@@ -50,6 +56,20 @@ export async function getRecentComics(limit: number): Promise<ComicsListResult> 
       error: error instanceof Error ? error.message : 'Failed to load comics',
     };
   }
+}
+
+/**
+ * Volumes the user is partway through reading, most recent first. Sourced
+ * from locally cached progress + volume metadata, so it works even when
+ * Kapowarr is temporarily unreachable.
+ */
+export async function getInProgressComics(limit: number): Promise<InProgressComic[]> {
+  return dbGetInProgressComics(limit);
+}
+
+/** Per-issue read progress for a volume, keyed by issue id. */
+export async function getComicProgress(volumeId: number): Promise<ComicIssueProgress[]> {
+  return dbGetComicReadProgressForVolume(volumeId);
 }
 
 export async function getComic(id: number): Promise<ComicDetailResult> {

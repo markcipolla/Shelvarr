@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getComic } from '@/lib/actions/comics';
+import { getComic, getComicProgress } from '@/lib/actions/comics';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +13,11 @@ export default async function ComicDetailPage({ params }: PageProps) {
   const volumeId = parseInt(id, 10);
   if (!Number.isFinite(volumeId)) notFound();
 
-  const result = await getComic(volumeId);
+  const [result, progressRows] = await Promise.all([
+    getComic(volumeId),
+    getComicProgress(volumeId),
+  ]);
+  const progressByIssue = new Map(progressRows.map((p) => [p.issueId, p]));
 
   if (!result.configured) {
     return (
@@ -112,15 +116,38 @@ export default async function ComicDetailPage({ params }: PageProps) {
                   )}
                 </div>
                 <div className="flex items-center gap-2 text-xs">
-                  {issue.files.length > 0 ? (
-                    <span className="bg-green-600/20 text-green-400 px-2 py-1 rounded">
-                      Downloaded
-                    </span>
-                  ) : (
-                    <span className="bg-shelvarr-bg text-shelvarr-text-muted px-2 py-1 rounded">
-                      Missing
-                    </span>
-                  )}
+                  {(() => {
+                    const progress = progressByIssue.get(issue.id);
+                    if (progress?.completed) {
+                      return (
+                        <span className="bg-blue-600/20 text-blue-400 px-2 py-1 rounded">
+                          Read
+                        </span>
+                      );
+                    }
+                    if (progress && progress.page > 0) {
+                      const label = progress.total
+                        ? `Reading ${progress.page}/${progress.total}`
+                        : `Reading p.${progress.page}`;
+                      return (
+                        <span className="bg-amber-600/20 text-amber-400 px-2 py-1 rounded">
+                          {label}
+                        </span>
+                      );
+                    }
+                    if (issue.files.length > 0) {
+                      return (
+                        <span className="bg-green-600/20 text-green-400 px-2 py-1 rounded">
+                          Downloaded
+                        </span>
+                      );
+                    }
+                    return (
+                      <span className="bg-shelvarr-bg text-shelvarr-text-muted px-2 py-1 rounded">
+                        Missing
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
             ))}

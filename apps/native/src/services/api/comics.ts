@@ -167,10 +167,57 @@ export async function fetchComicProgress(issueId: number): Promise<ComicProgress
   }
 }
 
+export interface InProgressComic {
+  volume: KapowarrVolume;
+  issueId: number;
+  issueNumber: string | null;
+  page: number;
+  total: number | null;
+  updatedAt: string;
+}
+
+/** Volumes the user is partway through, most recently read first. */
+export async function fetchInProgressComics(limit = 20): Promise<InProgressComic[]> {
+  try {
+    const { data } = await getApiClient().get<{ comics: InProgressComic[] }>(
+      '/api/comics/in-progress',
+      { params: { limit } }
+    );
+    return data?.comics ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export interface ComicIssueProgress {
+  issueId: number;
+  page: number;
+  completed: boolean;
+  total: number | null;
+  updatedAt: string;
+}
+
+/** Per-issue read progress for a volume, keyed by issue id. */
+export async function fetchVolumeProgress(volumeId: number): Promise<Map<number, ComicIssueProgress>> {
+  try {
+    const { data } = await getApiClient().get<{ progress: ComicIssueProgress[] }>(
+      `/api/comics/${volumeId}/progress`
+    );
+    return new Map((data?.progress ?? []).map((p) => [p.issueId, p]));
+  } catch {
+    return new Map();
+  }
+}
+
 export async function updateComicProgress(
   issueId: number,
   page: number,
-  completed: boolean
+  completed: boolean,
+  total?: number
 ): Promise<void> {
-  await getApiClient().patch(`/api/comics/issues/${issueId}/progress`, { page, completed });
+  await getApiClient().patch(`/api/comics/issues/${issueId}/progress`, {
+    page,
+    completed,
+    ...(total !== undefined ? { total } : {}),
+  });
 }
