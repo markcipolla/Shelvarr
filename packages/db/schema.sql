@@ -161,6 +161,17 @@ CREATE TABLE IF NOT EXISTS read_progress (
   UNIQUE(book_id)
 );
 
+-- Comic read progress (Kapowarr issues; not in books table, so no FK)
+CREATE TABLE IF NOT EXISTS comic_read_progress (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  issue_id INTEGER NOT NULL UNIQUE,
+  page INTEGER NOT NULL DEFAULT 0,
+  completed INTEGER NOT NULL DEFAULT 0,
+  total INTEGER,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Comics (cached Kapowarr volumes)
 -- id is the Kapowarr volume id (natural key)
 CREATE TABLE IF NOT EXISTS comics (
@@ -235,6 +246,7 @@ CREATE INDEX IF NOT EXISTS idx_wanted_books_status ON wanted_books(status);
 CREATE INDEX IF NOT EXISTS idx_wanted_books_title ON wanted_books(title);
 CREATE INDEX IF NOT EXISTS idx_source_status_cache_source ON source_status_cache(source);
 CREATE INDEX IF NOT EXISTS idx_read_progress_book ON read_progress(book_id);
+CREATE INDEX IF NOT EXISTS idx_comic_read_progress_issue ON comic_read_progress(issue_id);
 CREATE INDEX IF NOT EXISTS idx_epub_progression_book ON epub_progression(book_id);
 CREATE INDEX IF NOT EXISTS idx_books_komga_book_id ON books(komga_book_id);
 CREATE INDEX IF NOT EXISTS idx_comics_title ON comics(title);

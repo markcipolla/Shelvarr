@@ -231,9 +231,15 @@ describe('SearchPage Component', () => {
     });
 
     it('should show "Adding..." while adding to wanted', async () => {
-      // Make addToWanted slow
+      // Hold addToWanted open with a manually-controlled promise so we can
+      // observe the pending state, then settle it before the test ends. Using a
+      // timer here would leave a deferred router.refresh() firing after cleanup,
+      // leaking into later tests (e.g. "should refresh router after successful add").
+      let resolveAdd!: (value: { success: boolean; id: number }) => void;
       mockAddToWanted.mock.mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve({ success: true, id: 1 }), 500))
+        () => new Promise(resolve => {
+          resolveAdd = resolve;
+        })
       );
 
       render(<SearchPage initialQuery="test" initialResults={mockResults} isConfigured={true} />);
@@ -244,6 +250,13 @@ describe('SearchPage Component', () => {
 
       await waitFor(() => {
         assert.ok(screen.getByText('Adding...'));
+      });
+
+      // Settle the add and wait for the component to finish so no pending work
+      // (including router.refresh) leaks past cleanup into subsequent tests.
+      resolveAdd({ success: true, id: 1 });
+      await waitFor(() => {
+        assert.ok(screen.getAllByText('Already Wanted').length >= 1);
       });
     });
 

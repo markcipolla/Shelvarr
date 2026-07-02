@@ -238,52 +238,52 @@ describe('Organizer Service - Pure Functions', () => {
     it('should handle Author/Series/Filename pattern', () => {
       const book = makeBook('/libraries/ebooks/Aaron Dembski-Bowden/Betrayer/Betrayer - Aaron Dembski-Bowden.epub');
       const result = generateNewPath(book, libraryPath);
-      // Betrayer folder is same as title, so no series detected -> Author/Title
-      assert.strictEqual(result, '/libraries/ebooks/Aaron Dembski-Bowden/Betrayer.epub');
+      // Betrayer folder is same as title, so no series detected -> Author/Book - Title
+      assert.strictEqual(result, '/libraries/ebooks/Aaron Dembski-Bowden/Book - Betrayer.epub');
     });
 
     it('should handle [Series Book N] filename pattern', () => {
       const book = makeBook('/libraries/ebooks/Ada Palmer/[Terra Ignota Book 1] Ada Palmer - Too Like the Lightning (2016).epub');
       const result = generateNewPath(book, libraryPath);
-      // Series detected from filename -> Series/Book N - Title
-      assert.strictEqual(result, '/libraries/ebooks/Terra Ignota/Book 001 - Too Like the Lightning.epub');
+      // Hierarchical default: Author/Series/Book NNN - Title
+      assert.strictEqual(result, '/libraries/ebooks/Ada Palmer/Terra Ignota/Book 001 - Too Like the Lightning.epub');
     });
 
     it('should handle [Series Book N] with Book 2', () => {
       const book = makeBook('/libraries/ebooks/Ada Palmer/[Terra Ignota Book 2] Ada Palmer - Seven Surrenders (2017).epub');
       const result = generateNewPath(book, libraryPath);
-      assert.strictEqual(result, '/libraries/ebooks/Terra Ignota/Book 002 - Seven Surrenders.epub');
+      assert.strictEqual(result, '/libraries/ebooks/Ada Palmer/Terra Ignota/Book 002 - Seven Surrenders.epub');
     });
 
     it('should handle series number in directory name', () => {
       const book = makeBook('/libraries/ebooks/Aaron Dembski-Bowden/War Without End (33)/Aaron Dembski-Bowden - War Without End (33).epub');
       const result = generateNewPath(book, libraryPath);
-      // Series number from directory (33) -> Series/Book 033 - Title
-      assert.strictEqual(result, '/libraries/ebooks/War Without End/Book 033 - War Without End.epub');
+      // Hierarchical default: Author/Series/Book NNN - Title
+      assert.strictEqual(result, '/libraries/ebooks/Aaron Dembski-Bowden/War Without End/Book 033 - War Without End.epub');
     });
 
     it('should handle simple Author/Title pattern', () => {
       const book = makeBook('/libraries/ebooks/Adrian Tchaikovsky/Alien Clay.epub');
       const result = generateNewPath(book, libraryPath);
-      assert.strictEqual(result, '/libraries/ebooks/Adrian Tchaikovsky/Alien Clay.epub');
+      assert.strictEqual(result, '/libraries/ebooks/Adrian Tchaikovsky/Book - Alien Clay.epub');
     });
 
     it('should handle Author/Title/Filename pattern with dash', () => {
       const book = makeBook('/libraries/ebooks/Adrian Tchaikovsky/Dogs of War/Dogs of War - Adrian Tchaikovsky.epub');
       const result = generateNewPath(book, libraryPath);
-      assert.strictEqual(result, '/libraries/ebooks/Adrian Tchaikovsky/Dogs of War.epub');
+      assert.strictEqual(result, '/libraries/ebooks/Adrian Tchaikovsky/Book - Dogs of War.epub');
     });
 
     it('should handle [Series] without number in filename', () => {
       const book = makeBook('/libraries/ebooks/Author Name/[Series Name] Some Title.epub');
       const result = generateNewPath(book, libraryPath);
-      assert.strictEqual(result, '/libraries/ebooks/Series Name/Some Title.epub');
+      assert.strictEqual(result, '/libraries/ebooks/Author Name/Series Name/Book - Some Title.epub');
     });
 
     it('should handle [Series] with Author - Title pattern', () => {
       const book = makeBook('/libraries/ebooks/[Series Name] Author Name - Book Title.epub');
       const result = generateNewPath(book, libraryPath);
-      assert.strictEqual(result, '/libraries/ebooks/Series Name/Book Title.epub');
+      assert.strictEqual(result, '/libraries/ebooks/Author Name/Series Name/Book - Book Title.epub');
     });
 
     it('should handle path not starting with library path', () => {
@@ -303,34 +303,34 @@ describe('Organizer Service - Pure Functions', () => {
     it('should handle 3+ level directory with series detection', () => {
       const book = makeBook('/libraries/ebooks/Author/Series Name/Book Title.epub');
       const result = generateNewPath(book, libraryPath);
-      // Middle directory should be detected as series
-      assert.strictEqual(result, '/libraries/ebooks/Series Name/Book Title.epub');
+      // Author/Series detected; hierarchical default adds Book prefix
+      assert.strictEqual(result, '/libraries/ebooks/Author/Series Name/Book - Book Title.epub');
     });
 
     it('should handle Author - Title pattern with year in parentheses', () => {
       const book = makeBook('/libraries/ebooks/Author Name - Book Title (2023).epub');
       const result = generateNewPath(book, libraryPath);
-      assert.strictEqual(result, '/libraries/ebooks/Author Name/Book Title.epub');
+      assert.strictEqual(result, '/libraries/ebooks/Author Name/Book - Book Title.epub');
     });
 
     it('should handle series without number', () => {
       const book = makeBook('/libraries/ebooks/Author/Series/Title.epub');
       const result = generateNewPath(book, libraryPath);
-      assert.strictEqual(result, '/libraries/ebooks/Series/Title.epub');
+      assert.strictEqual(result, '/libraries/ebooks/Author/Series/Book - Title.epub');
     });
 
     it('should handle [Series Book N] with year in rest part', () => {
       const book = makeBook('/libraries/ebooks/[Series Book 1] Title (2023).epub');
       const result = generateNewPath(book, libraryPath);
-      // Year should be stripped from title
-      assert.strictEqual(result, '/libraries/ebooks/Series/Book 001 - Title.epub');
+      // Year should be stripped from title; author=Unknown Author fallback
+      assert.strictEqual(result, '/libraries/ebooks/Unknown Author/Series/Book 001 - Title.epub');
     });
 
     it('should handle [Series] with Author - Title (Year) pattern', () => {
       const book = makeBook('/libraries/ebooks/[Series] Author - Title (2023).epub');
       const result = generateNewPath(book, libraryPath);
       // Year should be stripped from title
-      assert.strictEqual(result, '/libraries/ebooks/Series/Title.epub');
+      assert.strictEqual(result, '/libraries/ebooks/Author/Series/Book - Title.epub');
     });
   });
 
@@ -703,7 +703,7 @@ describe('Organizer Service - Database Functions', () => {
       const filePath = join(libraryPath, 'Author', 'OldBook.epub');
       database.prepare('INSERT INTO books (library_id, file_path, title) VALUES (?, ?, ?)').run(libraryId, filePath, 'Book');
 
-      const result = await applyReorganization(libraryId, true);
+      const result = await applyReorganization(libraryId, { dryRun: true });
 
       assert.strictEqual(result.success, true);
       assert.strictEqual(typeof result.moved, 'number');
@@ -717,7 +717,7 @@ describe('Organizer Service - Database Functions', () => {
       const filePath = join(libraryPath, 'Author', 'Book.epub');
       database.prepare('INSERT INTO books (library_id, file_path, title) VALUES (?, ?, ?)').run(libraryId, filePath, 'Book');
 
-      const result = await applyReorganization(libraryId, true);
+      const result = await applyReorganization(libraryId, { dryRun: true });
 
       // If the path is already correct, moved should be 0
       assert.ok(result.moved >= 0);
@@ -728,7 +728,7 @@ describe('Organizer Service - Database Functions', () => {
       const invalidPath = ''; // Empty path
       database.prepare('INSERT INTO books (library_id, file_path, title) VALUES (?, ?, ?)').run(libraryId, invalidPath, 'Test');
 
-      const result = await applyReorganization(libraryId, true);
+      const result = await applyReorganization(libraryId, { dryRun: true });
 
       assert.ok(result.errors.length >= 0 && result.moved >= 0);
     });
@@ -744,7 +744,7 @@ describe('Organizer Service - Database Functions', () => {
 
       database.prepare('INSERT INTO books (library_id, file_path, title) VALUES (?, ?, ?)').run(libraryId, sourcePath, 'Book Title');
 
-      const result = await applyReorganization(libraryId, false);
+      const result = await applyReorganization(libraryId, { dryRun: false });
 
       // Should have details
       assert.ok(result.details.length > 0);
@@ -768,7 +768,7 @@ describe('Organizer Service - Database Functions', () => {
       database.prepare('INSERT INTO books (library_id, file_path, title) VALUES (?, ?, ?)').run(libraryId, source1Path, 'Book');
       database.prepare('INSERT INTO books (library_id, file_path, title) VALUES (?, ?, ?)').run(libraryId, source2Path, 'Book');
 
-      const result = await applyReorganization(libraryId, false);
+      const result = await applyReorganization(libraryId, { dryRun: false });
 
       // Both books match Author/Title pattern already (Source1/book.epub, Source2/book.epub)
       // so neither needs to move — details may be empty or contain moves depending on path parsing

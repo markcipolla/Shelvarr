@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { query, execute, addWantedBook, deleteWantedBook, queryOne } from '@/lib/db';
+import { query, execute, addWantedBook, deleteWantedBook, queryOne, isBookWanted } from '@/lib/db';
 import type { Author, AuthorWork } from '@/types';
 
 /**
@@ -463,12 +463,16 @@ export async function toggleWorkWanted(workId: number): Promise<{ success: boole
   const authorName = author?.name || 'Unknown';
 
   if (newWanted === 1) {
-    // Add to wanted_books table
-    addWantedBook({
-      title: work.title,
-      author: authorName,
-      isbn: work.isbn || undefined,
-    });
+    // Add to wanted_books table (skip if an equivalent row already exists,
+    // otherwise the bibliography toggle creates duplicate wanted entries that
+    // can't all be cleared from the wanted list).
+    if (!isBookWanted(undefined, work.isbn || undefined, work.title)) {
+      addWantedBook({
+        title: work.title,
+        author: authorName,
+        isbn: work.isbn || undefined,
+      });
+    }
   } else {
     // Remove from wanted_books table (find by title and author)
     const wantedBook = queryOne<{ id: number }>(

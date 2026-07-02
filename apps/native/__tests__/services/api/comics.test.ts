@@ -23,8 +23,12 @@ jest.mock('../../../src/stores/useSettingsStore', () => ({
 
 import {
   fetchComics,
+  fetchRecentComics,
   fetchComicDetail,
+  fetchComicIssue,
   getVolumeCoverUrl,
+  fetchInProgressComics,
+  fetchVolumeProgress,
 } from '../../../src/services/api/comics';
 
 beforeEach(() => {
@@ -33,6 +37,37 @@ beforeEach(() => {
   mockUpsertDetail.mockResolvedValue(undefined);
   mockGetCachedComics.mockResolvedValue([]);
   mockGetCachedDetail.mockResolvedValue(null);
+});
+
+describe('fetchRecentComics', () => {
+  it('requests the recently_added sort and limits results', async () => {
+    const volumes = [{ id: 1 }, { id: 2 }, { id: 3 }];
+    mockGet.mockResolvedValue({ data: { configured: true, volumes } });
+
+    const result = await fetchRecentComics(2);
+
+    expect(mockGet).toHaveBeenCalledWith('/api/comics', {
+      params: { sort: 'recently_added' },
+    });
+    expect(result.volumes).toEqual([{ id: 1 }, { id: 2 }]);
+  });
+
+  it('falls back to cached comics on error', async () => {
+    mockGet.mockRejectedValue(new Error('network'));
+    mockGetCachedComics.mockResolvedValue([{ id: 9 }, { id: 10 }]);
+
+    const result = await fetchRecentComics(1);
+
+    expect(result.cached).toBe(true);
+    expect(result.volumes).toEqual([{ id: 9 }]);
+  });
+
+  it('rethrows when no cache is available on error', async () => {
+    mockGet.mockRejectedValue(new Error('network'));
+    mockGetCachedComics.mockResolvedValue([]);
+
+    await expect(fetchRecentComics(5)).rejects.toThrow('network');
+  });
 });
 
 describe('fetchComics', () => {
@@ -173,8 +208,97 @@ describe('fetchComicDetail', () => {
   });
 });
 
+describe('fetchComicIssue', () => {
+  it('fetches a single issue from /api/comics/issues/:id', async () => {
+    const issue = { id: 7, issue_number: '7', files: [] };
+    mockGet.mockResolvedValue({ data: { configured: true, issue } });
+
+    const result = await fetchComicIssue(7, 42);
+
+    expect(mockGet).toHaveBeenCalledWith('/api/comics/issues/7');
+    expect(result).toEqual({ configured: true, issue });
+  });
+
+  it('falls back to the cached volume issue on network error', async () => {
+    mockGet.mockRejectedValue(new Error('offline'));
+    mockGetCachedDetail.mockResolvedValue({
+      id: 42,
+      issues: [{ id: 7, issue_number: '7', files: [] }],
+    });
+
+    const result = await fetchComicIssue(7, 42);
+
+    expect(result.cached).toBe(true);
+    expect(result.issue).toEqual({ id: 7, issue_number: '7', files: [] });
+  });
+
+  it('rethrows when no cached fallback is available', async () => {
+    mockGet.mockRejectedValue(new Error('offline'));
+    mockGetCachedDetail.mockResolvedValue(null);
+
+    await expect(fetchComicIssue(7, 42)).rejects.toThrow('offline');
+  });
+});
+
 describe('getVolumeCoverUrl', () => {
   it('builds a cover URL from the configured shelvarrUrl', () => {
     expect(getVolumeCoverUrl(42)).toBe('http://shelvarr:3000/api/comics/42/cover');
+  });
+});
+
+describe('fetchInProgressComics', () => {
+  it('returns the in-progress comics list from the API', async () => {
+    const comics = [
+      { volume: { id: 9 }, issueId: 11, issueNumber: '3', page: 5, total: 20, updatedAt: 'x' },
+    ];
+    mockGet.mockResolvedValue({ data: { comics } });
+
+    const result = await fetchInProgressComics(10);
+
+    expect(mockGet).toHaveBeenCalledWith('/api/comics/in-progress', { params: { limit: 10 } });
+    expect(result).toEqual(comics);
+  });
+
+  it('defaults the limit to 20', async () => {
+    mockGet.mockResolvedValue({ data: { comics: [] } });
+    await fetchInProgressComics();
+    expect(mockGet).toHaveBeenCalledWith('/api/comics/in-progress', { params: { limit: 20 } });
+  });
+
+  it('returns an empty array when the response has no comics', async () => {
+    mockGet.mockResolvedValue({ data: {} });
+    expect(await fetchInProgressComics()).toEqual([]);
+  });
+
+  it('returns an empty array on error', async () => {
+    mockGet.mockRejectedValue(new Error('offline'));
+    expect(await fetchInProgressComics()).toEqual([]);
+  });
+});
+
+describe('fetchVolumeProgress', () => {
+  it('maps per-issue progress by issue id', async () => {
+    const progress = [
+      { issueId: 1, page: 5, completed: false, total: 20, updatedAt: 'x' },
+      { issueId: 2, page: 20, completed: true, total: 20, updatedAt: 'y' },
+    ];
+    mockGet.mockResolvedValue({ data: { progress } });
+
+    const map = await fetchVolumeProgress(42);
+
+    expect(mockGet).toHaveBeenCalledWith('/api/comics/42/progress');
+    expect(map.get(1)?.page).toBe(5);
+    expect(map.get(2)?.completed).toBe(true);
+    expect(map.size).toBe(2);
+  });
+
+  it('returns an empty map when the response has no progress', async () => {
+    mockGet.mockResolvedValue({ data: {} });
+    expect((await fetchVolumeProgress(42)).size).toBe(0);
+  });
+
+  it('returns an empty map on error', async () => {
+    mockGet.mockRejectedValue(new Error('offline'));
+    expect((await fetchVolumeProgress(42)).size).toBe(0);
   });
 });

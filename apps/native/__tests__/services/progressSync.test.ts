@@ -5,10 +5,16 @@ jest.mock('../../src/services/api/books', () => ({
   updateEpubProgression: jest.fn().mockResolvedValue(undefined),
 }));
 
+jest.mock('../../src/services/api/comics', () => ({
+  updateComicProgress: jest.fn().mockResolvedValue(undefined),
+}));
+
 import { updateReadProgress, updateEpubProgression } from '../../src/services/api/books';
+import { updateComicProgress } from '../../src/services/api/comics';
 import {
   syncProgress,
   syncEpubProgress,
+  syncComicProgress,
   flushProgress,
   flushAllProgress,
   retryOfflineQueue,
@@ -16,6 +22,7 @@ import {
 
 const mockedUpdateRead = updateReadProgress as jest.Mock;
 const mockedUpdateEpub = updateEpubProgression as jest.Mock;
+const mockedUpdateComic = updateComicProgress as jest.Mock;
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -170,5 +177,58 @@ describe('retryOfflineQueue', () => {
     mockedUpdateEpub.mockResolvedValueOnce(undefined);
     await retryOfflineQueue();
     expect(mockedUpdateEpub).toHaveBeenCalledTimes(3);
+  });
+
+  it('retries comic progress items', async () => {
+    mockedUpdateComic.mockRejectedValueOnce(new Error('fail'));
+    syncComicProgress(7, 3, false);
+    await flushProgress('comic-7');
+
+    mockedUpdateComic.mockResolvedValueOnce(undefined);
+    await retryOfflineQueue();
+    expect(mockedUpdateComic).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('syncComicProgress', () => {
+  it('debounces and flushes using updateComicProgress', async () => {
+    syncComicProgress(7, 5, false);
+    jest.advanceTimersByTime(PROGRESS_SYNC_DEBOUNCE_MS);
+    await Promise.resolve();
+    expect(mockedUpdateComic).toHaveBeenCalledWith(7, 5, false, undefined);
+  });
+
+  it('flushes comic progress directly', async () => {
+    syncComicProgress(7, 10, true);
+    await flushProgress('comic-7');
+    expect(mockedUpdateComic).toHaveBeenCalledWith(7, 10, true, undefined);
+  });
+
+  it('forwards total page count when provided', async () => {
+    syncComicProgress(7, 10, true, 24);
+    await flushProgress('comic-7');
+    expect(mockedUpdateComic).toHaveBeenCalledWith(7, 10, true, 24);
+  });
+
+  it('debounces multiple calls for same issue', async () => {
+    syncComicProgress(7, 1);
+    syncComicProgress(7, 2);
+    syncComicProgress(7, 3);
+
+    jest.advanceTimersByTime(PROGRESS_SYNC_DEBOUNCE_MS);
+    await Promise.resolve();
+
+    expect(mockedUpdateComic).toHaveBeenCalledTimes(1);
+    expect(mockedUpdateComic).toHaveBeenCalledWith(7, 3, false, undefined);
+  });
+
+  it('queues failed comic progress for retry', async () => {
+    mockedUpdateComic.mockRejectedValueOnce(new Error('Network error'));
+    syncComicProgress(7, 5);
+    await flushProgress('comic-7');
+
+    mockedUpdateComic.mockResolvedValueOnce(undefined);
+    await retryOfflineQueue();
+    expect(mockedUpdateComic).toHaveBeenCalledTimes(2);
   });
 });

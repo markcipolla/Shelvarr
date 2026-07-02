@@ -93,6 +93,7 @@ export async function searchLibGen(
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'text/html,application/xhtml+xml',
       },
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!response.ok) {
@@ -243,6 +244,7 @@ export async function getActualDownloadUrl(md5: string): Promise<string | null> 
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'text/html,application/xhtml+xml',
       },
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!response.ok) {

@@ -18,8 +18,29 @@ import { getMediaFormat, getFormatFromName } from '../utils/fileTypes';
 import { useAuthHeaders } from '../hooks/useAuthHeaders';
 import { useDownloadStore } from '../stores/useDownloadStore';
 import { prepareBookForReading, downloadBook, removeDownloadedBook } from '../services/downloadManager';
+import { updateReadingStatus, ReadingStatus } from '../services/api/shelvarr';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BookDetail'>;
+
+/**
+ * Download button label. Shows a percentage once progress advances, but falls
+ * back to an indeterminate "Downloading…" when the total size is unknown (the
+ * server sent no Content-Length, so progress stays at 0).
+ */
+function DownloadingLabel({ progress, textStyle, color }: {
+  progress: number;
+  textStyle: object;
+  color: string;
+}) {
+  return (
+    <View style={styles.downloadingRow}>
+      <ActivityIndicator color={color} />
+      <Text style={textStyle}>
+        {progress > 0 ? `Downloading... ${Math.round(progress * 100)}%` : 'Downloading...'}
+      </Text>
+    </View>
+  );
+}
 
 export default function BookDetailScreen({ route, navigation }: Props) {
   const { bookId } = route.params;
@@ -123,6 +144,16 @@ export default function BookDetailScreen({ route, navigation }: Props) {
     }
   };
 
+  const handleSetStatus = async (status: ReadingStatus, label: string) => {
+    if (!book) return;
+    try {
+      await updateReadingStatus(book.id, status);
+      Alert.alert('Hardcover', `Marked as ${label}`);
+    } catch {
+      Alert.alert('Error', 'Failed to sync to Hardcover');
+    }
+  };
+
   const handleMarkUnread = async () => {
     /* istanbul ignore next */
     if (!book) return;
@@ -196,9 +227,7 @@ export default function BookDetailScreen({ route, navigation }: Props) {
         disabled={preparing}
       >
         {isDownloading ? (
-          <Text style={styles.readButtonText}>
-            Downloading... {Math.round(downloadProgress * 100)}%
-          </Text>
+          <DownloadingLabel progress={downloadProgress} textStyle={styles.readButtonText} color="#fff" />
         ) : preparing ? (
           <ActivityIndicator color="#fff" />
         ) : (
@@ -219,9 +248,7 @@ export default function BookDetailScreen({ route, navigation }: Props) {
           disabled={downloading || isDownloading}
         >
           {downloading && activeDownloadId === bookId ? (
-            <Text style={styles.secondaryButtonText}>
-              Downloading... {Math.round(downloadProgress * 100)}%
-            </Text>
+            <DownloadingLabel progress={downloadProgress} textStyle={styles.secondaryButtonText} color="#333" />
           ) : downloading ? (
             <ActivityIndicator color="#333" />
           ) : (
@@ -235,6 +262,34 @@ export default function BookDetailScreen({ route, navigation }: Props) {
           <Text style={styles.secondaryButtonText}>Mark as Unread</Text>
         </TouchableOpacity>
       )}
+
+      <Text style={styles.statusLabel}>Hardcover status</Text>
+      <View style={styles.statusGrid}>
+        <TouchableOpacity
+          style={styles.statusButton}
+          onPress={() => handleSetStatus('want-to-read', 'Want to Read')}
+        >
+          <Text style={styles.statusButtonText}>Want to Read</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.statusButton}
+          onPress={() => handleSetStatus('reading', 'Reading')}
+        >
+          <Text style={styles.statusButtonText}>Reading</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.statusButton}
+          onPress={() => handleSetStatus('read', 'Read')}
+        >
+          <Text style={styles.statusButtonText}>Read</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.statusButton}
+          onPress={() => handleSetStatus('dnf', 'Did Not Finish')}
+        >
+          <Text style={styles.statusButtonText}>Did Not Finish</Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
@@ -259,6 +314,7 @@ const styles = StyleSheet.create({
   },
   readButtonDisabled: { opacity: 0.6 },
   readButtonText: { color: '#fff', fontSize: 24, fontWeight: '600' },
+  downloadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   secondaryButton: {
     backgroundColor: '#e8e4de',
     borderRadius: 8,
@@ -270,4 +326,29 @@ const styles = StyleSheet.create({
     borderColor: '#d5d0c8',
   },
   secondaryButtonText: { color: '#333', fontSize: 22 },
+  statusLabel: {
+    fontSize: 18,
+    color: '#777',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    fontWeight: '600',
+  },
+  statusGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    gap: 8,
+  },
+  statusButton: {
+    flexGrow: 1,
+    flexBasis: '45%',
+    backgroundColor: '#e8e4de',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#d5d0c8',
+  },
+  statusButtonText: { color: '#333', fontSize: 18, fontWeight: '500' },
 });

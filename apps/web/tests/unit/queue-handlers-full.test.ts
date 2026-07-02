@@ -417,33 +417,18 @@ if (canRunTests) {
         assert.ok(existsSync(oldDir));
       });
 
-      it('should handle organizing all books without filter', async () => {
+      it('should fail organize when no library or bookIds provided', async () => {
         const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
         registerAllHandlers();
 
-        // Add books without specifying library or bookIds
-        const file1 = join(testLibPath, 'book1.epub');
-        const file2 = join(testLibPath, 'book2.epub');
-        writeFileSync(file1, 'content1');
-        writeFileSync(file2, 'content2');
-
-        execute(
-          'INSERT INTO books (id, library_id, file_path, title, authors, extension, file_size) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [1, 1, file1, 'Book 1', '["Author 1"]', 'epub', 100]
-        );
-        execute(
-          'INSERT INTO books (id, library_id, file_path, title, authors, extension, file_size) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [2, 1, file2, 'Book 2', '["Author 2"]', 'epub', 100]
-        );
-
+        // No libraryId and no bookIds — handler can't resolve a library.
         const task = createTask('organize', {});
         await runTask(task.id);
 
         const updated = getTask(task.id);
         assert.ok(updated);
-        assert.strictEqual(updated.status, 'completed');
-        const data = updated.data as { total: number };
-        assert.strictEqual(data.total, 2);
+        assert.strictEqual(updated.status, 'failed');
+        assert.ok(updated.error?.toLowerCase().includes('library id'));
       });
 
       it('should handle series without series number', async () => {
@@ -465,12 +450,13 @@ if (canRunTests) {
         assert.ok(updated);
         assert.strictEqual(updated.status, 'completed');
 
-        // Should include series name without number
-        const expectedPath = join(testLibPath, 'Author', 'Book Title - Series Name.epub');
+        // Default template: {author}/{series}/Book {number} - {title}.{ext}
+        // No series_number → "Book " collapses to "Book - Title".
+        const expectedPath = join(testLibPath, 'Author', 'Series Name', 'Book - Book Title.epub');
         assert.ok(existsSync(expectedPath));
       });
 
-      it('should skip books with null library_id lookup', async () => {
+      it('should fail books with missing library', async () => {
         const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
         registerAllHandlers();
 
@@ -491,9 +477,8 @@ if (canRunTests) {
 
         const updated = getTask(task.id);
         assert.ok(updated);
-        assert.strictEqual(updated.status, 'completed');
-        const data = updated.data as { skipped: number };
-        assert.strictEqual(data.skipped, 1);
+        // Library 99 doesn't exist — applyReorganization throws, handler marks task failed.
+        assert.strictEqual(updated.status, 'failed');
       });
 
       it('should handle unknown author in book', async () => {
@@ -515,8 +500,8 @@ if (canRunTests) {
         assert.ok(updated);
         assert.strictEqual(updated.status, 'completed');
 
-        // Should use "Unknown" as author
-        const expectedPath = join(testLibPath, 'Unknown', 'Book Title.epub');
+        // No author → "Unknown Author" fallback; standalone → "Book - Title".
+        const expectedPath = join(testLibPath, 'Unknown Author', 'Book - Book Title.epub');
         assert.ok(existsSync(expectedPath));
       });
 

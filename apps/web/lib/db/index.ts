@@ -32,7 +32,13 @@ export {
   getReadProgress,
   upsertReadProgress,
   deleteReadProgress,
+  getComicReadProgress,
+  upsertComicReadProgress,
+  deleteComicReadProgress,
+  getComicReadProgressForVolume,
+  getInProgressComics,
   getEpubProgression,
+  getLatestEpubProgression,
   upsertEpubProgression,
   getCachedComic,
   getCachedComicDetail,
@@ -52,6 +58,9 @@ export {
 
 export type {
   ReadProgressRow,
+  ComicReadProgressRow,
+  ComicIssueProgress,
+  InProgressComic,
   EpubProgressionRow,
   BookSearchRow,
   ComicSearchRow,

@@ -161,3 +161,63 @@ export async function isKapowarrConfigured(): Promise<boolean> {
   const apiKey = await getSetting<string>('kapowarr_api_key', null);
   return !!(url && apiKey);
 }
+
+// Organize settings
+import { DEFAULT_ORGANIZE_TEMPLATE, previewReorganization } from '@/lib/services/organizer';
+import type { ReorgPreviewItem } from '@/lib/services/organizer';
+
+export async function getOrganizeSettings(): Promise<{ template: string; autoRun: boolean }> {
+  const template = await getSetting<string>('organize_template', DEFAULT_ORGANIZE_TEMPLATE);
+  const autoRun = await getSetting<boolean>('organize_auto_run', true);
+  return {
+    template: template ?? DEFAULT_ORGANIZE_TEMPLATE,
+    autoRun: autoRun ?? true,
+  };
+}
+
+function validateTemplate(template: string): string | null {
+  if (!template || template.trim().length === 0) {
+    return 'Template cannot be empty';
+  }
+  const normalized = template
+    .replace(/\{\{(\w+)\}\}/g, '{$1}')
+    .replace(/\{series_name\}/g, '{series}')
+    .replace(/\{series_number\}/g, '{number}')
+    .replace(/\{extension\}/g, '{ext}');
+
+  if (!/\{title\}/.test(normalized)) {
+    return 'Template must contain {title}';
+  }
+  if (!/\{ext\}/.test(normalized) && !/\.[a-z0-9]+$/i.test(template.trim())) {
+    return 'Template must contain {ext} or end with a literal extension';
+  }
+  if (template.startsWith('/')) {
+    return 'Template must not start with /';
+  }
+  if (template.includes('..')) {
+    return 'Template must not contain ..';
+  }
+  return null;
+}
+
+export async function setOrganizeSettings(
+  template: string,
+  autoRun: boolean,
+): Promise<{ success: true } | { error: string }> {
+  const error = validateTemplate(template);
+  if (error) return { error };
+
+  setSetting('organize_template', template);
+  setSetting('organize_auto_run', autoRun);
+
+  revalidatePath('/settings');
+  revalidatePath('/settings/organize');
+  return { success: true };
+}
+
+export async function previewOrganizeForLibrary(
+  libraryId: number,
+): Promise<ReorgPreviewItem[]> {
+  const { template } = await getOrganizeSettings();
+  return previewReorganization(libraryId, { template });
+}

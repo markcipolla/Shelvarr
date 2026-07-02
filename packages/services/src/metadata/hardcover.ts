@@ -331,31 +331,43 @@ interface UserBook {
   id: number;
   status_id: number;
   book_id: number;
-  started_reading_at?: string;
-  finished_reading_at?: string;
+  first_started_reading_date?: string;
+  last_read_date?: string;
+}
+
+interface UserBookIdResult {
+  id?: number;
+  error?: string;
+  user_book?: UserBook;
 }
 
 /**
- * Search for a user's existing tracking of a book
+ * Search for the current user's existing tracking of a book.
+ *
+ * Must be scoped via `me` — the top-level `user_books` table is NOT filtered to
+ * the authenticated user and returns other users' public reading records, which
+ * would cause us to read/update a record we don't own.
  */
 export async function searchUserBook(hardcoverId: string): Promise<UserBook | null> {
   const query = `
     query GetUserBook($bookId: Int!) {
-      user_books(where: { book_id: { _eq: $bookId } }) {
-        id
-        status_id
-        book_id
-        started_reading_at
-        finished_reading_at
+      me {
+        user_books(where: { book_id: { _eq: $bookId } }) {
+          id
+          status_id
+          book_id
+          first_started_reading_date
+          last_read_date
+        }
       }
     }
   `;
 
-  const data = await graphqlFetch<{ user_books?: UserBook[] }>(query, {
+  const data = await graphqlFetch<{ me?: Array<{ user_books?: UserBook[] }> }>(query, {
     bookId: parseInt(hardcoverId, 10),
   });
 
-  return data?.user_books?.[0] ?? null;
+  return data?.me?.[0]?.user_books?.[0] ?? null;
 }
 
 /**
@@ -368,30 +380,35 @@ export async function insertUserBook(
   finishedAt?: string,
 ): Promise<UserBook | null> {
   const mutation = `
-    mutation InsertUserBook($bookId: Int!, $statusId: Int!, $startedAt: date, $finishedAt: date) {
-      insert_user_books_one(object: {
-        book_id: $bookId,
-        status_id: $statusId,
-        started_reading_at: $startedAt,
-        finished_reading_at: $finishedAt
-      }) {
+    mutation InsertUserBook($object: UserBookCreateInput!) {
+      insert_user_book(object: $object) {
         id
-        status_id
-        book_id
-        started_reading_at
-        finished_reading_at
+        error
+        user_book {
+          id
+          status_id
+          book_id
+          first_started_reading_date
+          last_read_date
+        }
       }
     }
   `;
 
-  const data = await graphqlFetch<{ insert_user_books_one?: UserBook }>(mutation, {
-    bookId: parseInt(hardcoverId, 10),
-    statusId,
-    startedAt: startedAt ?? null,
-    finishedAt: finishedAt ?? null,
-  });
+  const object: Record<string, unknown> = {
+    book_id: parseInt(hardcoverId, 10),
+    status_id: statusId,
+  };
+  if (startedAt) object.first_started_reading_date = startedAt;
+  if (finishedAt) object.last_read_date = finishedAt;
 
-  return data?.insert_user_books_one ?? null;
+  const data = await graphqlFetch<{ insert_user_book?: UserBookIdResult }>(mutation, { object });
+
+  const result = data?.insert_user_book;
+  if (result?.error) {
+    throw new Error(`Hardcover insert_user_book error: ${result.error}`);
+  }
+  return result?.user_book ?? null;
 }
 
 /**
@@ -404,32 +421,37 @@ export async function updateUserBook(
   finishedAt?: string,
 ): Promise<UserBook | null> {
   const mutation = `
-    mutation UpdateUserBook($id: Int!, $statusId: Int!, $startedAt: date, $finishedAt: date) {
-      update_user_books_by_pk(
-        pk_columns: { id: $id },
-        _set: {
-          status_id: $statusId,
-          started_reading_at: $startedAt,
-          finished_reading_at: $finishedAt
-        }
-      ) {
+    mutation UpdateUserBook($id: Int!, $object: UserBookUpdateInput!) {
+      update_user_book(id: $id, object: $object) {
         id
-        status_id
-        book_id
-        started_reading_at
-        finished_reading_at
+        error
+        user_book {
+          id
+          status_id
+          book_id
+          first_started_reading_date
+          last_read_date
+        }
       }
     }
   `;
 
-  const data = await graphqlFetch<{ update_user_books_by_pk?: UserBook }>(mutation, {
+  const object: Record<string, unknown> = {
+    status_id: statusId,
+  };
+  if (startedAt) object.first_started_reading_date = startedAt;
+  if (finishedAt) object.last_read_date = finishedAt;
+
+  const data = await graphqlFetch<{ update_user_book?: UserBookIdResult }>(mutation, {
     id: userBookId,
-    statusId,
-    startedAt: startedAt ?? null,
-    finishedAt: finishedAt ?? null,
+    object,
   });
 
-  return data?.update_user_books_by_pk ?? null;
+  const result = data?.update_user_book;
+  if (result?.error) {
+    throw new Error(`Hardcover update_user_book error: ${result.error}`);
+  }
+  return result?.user_book ?? null;
 }
 
 /**
@@ -450,15 +472,24 @@ export async function upsertReadingStatus(
         return { success: true, userBook: existing };
       }
 
-      const updated = await updateUserBook(
-        existing.id,
-        statusId,
-        startedAt ?? existing.started_reading_at,
-        finishedAt,
-      );
-      return updated
-        ? { success: true, userBook: updated }
-        : { success: false, error: 'Failed to update user book' };
+      try {
+        const updated = await updateUserBook(
+          existing.id,
+          statusId,
+          startedAt ?? existing.first_started_reading_date,
+          finishedAt,
+        );
+        return updated
+          ? { success: true, userBook: updated }
+          : { success: false, error: 'Failed to update user book' };
+      } catch (error) {
+        // The record can be deleted on Hardcover's side between our search and
+        // this update (e.g. removed in their app, or a concurrent sync). Hardcover
+        // reports this as "Record not found. Was it deleted?" — recover by
+        // re-inserting the tracking entry instead of failing the request.
+        const message = error instanceof Error ? error.message : '';
+        if (!/record not found/i.test(message)) throw error;
+      }
     }
 
     const inserted = await insertUserBook(hardcoverId, statusId, startedAt, finishedAt);

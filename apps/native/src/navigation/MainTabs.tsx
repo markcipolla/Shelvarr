@@ -7,7 +7,7 @@ import { MainTabParamList, RootStackParamList } from './types';
 import HomeScreen from '../screens/HomeScreen';
 import BooksScreen from '../screens/BooksScreen';
 import ComicsScreen from '../screens/ComicsScreen';
-import WantedSearchScreen from '../screens/WantedSearchScreen';
+import WantedListScreen from '../screens/WantedListScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -65,8 +65,8 @@ export default function MainTabs() {
         }}
       />
       <Tab.Screen
-        name="WantedSearch"
-        component={WantedSearchScreen as any}
+        name="Wanted"
+        component={WantedListScreen as any}
         options={{
           title: 'Wanted',
           tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>✨</Text>,

@@ -2,30 +2,48 @@ import { useCallback } from 'react';
 import { useReaderStore } from '../stores/useReaderStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useDownloadStore } from '../stores/useDownloadStore';
-import { syncProgress, flushProgress } from '../services/progressSync';
+import { syncProgress, syncComicProgress, flushProgress } from '../services/progressSync';
 import { deleteBookFiles } from '../services/fileManager';
 import { getFileExtension } from '../utils/fileTypes';
 
-export function useBookReader(bookId: string) {
+export interface BookReaderOpts {
+  kind?: 'comic';
+  issueId?: number;
+}
+
+export function useBookReader(bookId: string, opts?: BookReaderOpts) {
   const { setPage: setStorePage, startReading, stopReading } = useReaderStore();
   const autoDelete = useSettingsStore((s) => s.autoDeleteAfterReading);
   const download = useDownloadStore((s) => s.downloads[bookId]);
   const removeDownload = useDownloadStore((s) => s.removeDownload);
 
+  const isComic = opts?.kind === 'comic' && opts.issueId !== undefined;
+
   const onPageChange = useCallback(
     (page: number, totalPages: number) => {
       setStorePage(page);
       const completed = page >= totalPages;
-      if (completed) {
-        // Flush immediately on completion so server updates on-deck
-        flushProgress(bookId);
-        syncProgress(bookId, page, true);
-        flushProgress(bookId);
+      if (isComic) {
+        const issueId = opts!.issueId!;
+        if (completed) {
+          flushProgress(bookId);
+          syncComicProgress(issueId, page, true, totalPages);
+          flushProgress(bookId);
+        } else {
+          syncComicProgress(issueId, page, false, totalPages);
+        }
       } else {
-        syncProgress(bookId, page, false);
+        if (completed) {
+          // Flush immediately on completion so server updates on-deck
+          flushProgress(bookId);
+          syncProgress(bookId, page, true);
+          flushProgress(bookId);
+        } else {
+          syncProgress(bookId, page, false);
+        }
       }
     },
-    [bookId, setStorePage]
+    [bookId, isComic, opts, setStorePage]
   );
 
   const onReaderExit = useCallback(async () => {

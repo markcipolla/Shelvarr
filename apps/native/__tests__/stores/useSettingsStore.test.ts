@@ -1,3 +1,10 @@
+// Mock api/client to prevent axios module side-effects at test boot
+// (useSettingsStore imports resetApiClient from api/client → axios fetch adapter).
+jest.mock('../../src/services/api/client', () => ({
+  getApiClient: jest.fn(),
+  resetApiClient: jest.fn(),
+}));
+
 import { useSettingsStore } from '../../src/stores/useSettingsStore';
 import * as SecureStore from 'expo-secure-store';
 import { _reset } from 'expo-secure-store';
@@ -35,26 +42,15 @@ describe('useSettingsStore', () => {
     });
   });
 
-  describe('setKapowarrUrl', () => {
-    it('updates state and persists to SecureStore, trimming trailing slashes', async () => {
-      useSettingsStore.getState().setKapowarrUrl('http://kapowarr.local/');
-      expect(useSettingsStore.getState().kapowarrUrl).toBe('http://kapowarr.local');
-      await new Promise((r) => setTimeout(r, 0));
-      expect(await SecureStore.getItemAsync('settings_kapowarrUrl')).toBe('http://kapowarr.local');
-    });
-  });
-
   describe('loadSettings', () => {
     it('parses stored values', async () => {
       await SecureStore.setItemAsync('settings_autoDelete', 'false');
       await SecureStore.setItemAsync('settings_shelvarrUrl', 'http://shelvarr.local');
-      await SecureStore.setItemAsync('settings_kapowarrUrl', 'http://kapowarr.local');
 
       await useSettingsStore.getState().loadSettings();
       const state = useSettingsStore.getState();
       expect(state.autoDeleteAfterReading).toBe(false);
       expect(state.shelvarrUrl).toBe('http://shelvarr.local');
-      expect(state.kapowarrUrl).toBe('http://kapowarr.local');
     });
 
     it('defaults autoDelete to true and URLs to empty when missing', async () => {
@@ -62,7 +58,6 @@ describe('useSettingsStore', () => {
       const state = useSettingsStore.getState();
       expect(state.autoDeleteAfterReading).toBe(true);
       expect(state.shelvarrUrl).toBe('');
-      expect(state.kapowarrUrl).toBe('');
     });
 
     it('handles shelvarrUrl being null', async () => {

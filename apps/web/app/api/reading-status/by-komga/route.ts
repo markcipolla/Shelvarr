@@ -5,6 +5,7 @@ import { upsertReadingStatus, HardcoverStatusId } from '@/lib/services/metadata/
 export const dynamic = 'force-dynamic';
 
 const STATUS_MAP: Record<string, HardcoverStatusId> = {
+  'want-to-read': 1,
   reading: 2,
   read: 3,
   dnf: 5,
@@ -20,7 +21,7 @@ export async function POST(request: NextRequest) {
   const statusId = body.status ? STATUS_MAP[body.status] : undefined;
   if (!statusId) {
     return NextResponse.json(
-      { error: 'Invalid status. Must be: reading, read, or dnf' },
+      { error: 'Invalid status. Must be: want-to-read, reading, read, or dnf' },
       { status: 400 }
     );
   }

@@ -49,6 +49,38 @@ function findSchemaPath(): string {
 }
 
 /**
+ * Block the current thread for `ms` milliseconds without busy-waiting.
+ * Used to back off between retries while better-sqlite3 (which is fully
+ * synchronous) holds the thread.
+ */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Run a SQLite operation, retrying on SQLITE_BUSY. busy_timeout covers most
+ * lock waits, but switching a fresh database to WAL needs an exclusive lock
+ * that SQLite can refuse outright when many connections do it at once — which
+ * is what happens during `next build`, where ~11 worker processes initialize
+ * the same database file simultaneously.
+ */
+function withBusyRetry<T>(fn: () => T): T {
+  const maxAttempts = 40;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return fn();
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if ((code === 'SQLITE_BUSY' || code === 'SQLITE_BUSY_SNAPSHOT') && attempt < maxAttempts) {
+        sleepSync(50 * attempt);
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
+/**
  * Initialize the database connection and run migrations
  */
 export function initDatabase(dbPath: string): Database.Database {
@@ -61,23 +93,39 @@ export function initDatabase(dbPath: string): Database.Database {
 
     // Create database connection
     db = new Database(dbPath);
+    const database = db;
     console.log('Database connection created');
 
-    // Enable foreign keys and WAL mode for better performance
-    db.pragma('journal_mode = WAL');
+    // Wait for locks instead of failing immediately.
+    database.pragma('busy_timeout = 15000');
+
+    // Enable WAL mode for better performance. The switch needs an exclusive
+    // lock, so retry it: when many processes initialize the same file at once
+    // (e.g. next build's page-data workers) the loser of the race otherwise
+    // gets an immediate SQLITE_BUSY that busy_timeout does not cover.
+    withBusyRetry(() => database.pragma('journal_mode = WAL'));
     console.log('WAL mode enabled');
-    db.pragma('foreign_keys = ON');
+    database.pragma('foreign_keys = ON');
     console.log('Foreign keys enabled');
 
-    // Run schema
+    // Run schema + migrations inside a single IMMEDIATE transaction so the
+    // write lock is taken up front (waitable via busy_timeout) rather than
+    // upgrading mid-statement, and retry the whole block on contention.
     const schemaPath = findSchemaPath();
     console.log(`Loading schema from: ${schemaPath}`);
     const schema = readFileSync(schemaPath, 'utf-8');
-    db.exec(schema);
+    withBusyRetry(() => {
+      database.exec('BEGIN IMMEDIATE');
+      try {
+        database.exec(schema);
+        runMigrations(database);
+        database.exec('COMMIT');
+      } catch (error) {
+        database.exec('ROLLBACK');
+        throw error;
+      }
+    });
     console.log('Schema loaded');
-
-    // Run migrations for schema updates
-    runMigrations(db);
     console.log('Migrations complete');
 
     console.log('Database initialized successfully');
@@ -498,6 +546,15 @@ export function getEpubProgression(bookId: number, deviceId: string = 'default')
   return queryOne<EpubProgressionRow>('SELECT * FROM epub_progression WHERE book_id = ? AND device_id = ?', [bookId, deviceId]);
 }
 
+// Latest progression across all devices — used when resuming on a device that
+// hasn't recorded its own progress yet, so reading position roams cross-device.
+export function getLatestEpubProgression(bookId: number): EpubProgressionRow | null {
+  return queryOne<EpubProgressionRow>(
+    'SELECT * FROM epub_progression WHERE book_id = ? ORDER BY updated_at DESC LIMIT 1',
+    [bookId]
+  );
+}
+
 export function upsertEpubProgression(bookId: number, deviceId: string, locator: string, progression: number): void {
   execute(
     `INSERT INTO epub_progression (book_id, device_id, locator, progression, updated_at)
@@ -505,6 +562,124 @@ export function upsertEpubProgression(bookId: number, deviceId: string, locator:
      ON CONFLICT (book_id, device_id) DO UPDATE SET locator = ?, progression = ?, updated_at = CURRENT_TIMESTAMP`,
     [bookId, deviceId, locator, progression, locator, progression]
   );
+}
+
+// ============ Comic Read Progress Functions ============
+
+export interface ComicReadProgressRow {
+  id: number;
+  issue_id: number;
+  page: number;
+  completed: number;
+  total: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function getComicReadProgress(issueId: number): ComicReadProgressRow | null {
+  return queryOne<ComicReadProgressRow>('SELECT * FROM comic_read_progress WHERE issue_id = ?', [issueId]);
+}
+
+export function upsertComicReadProgress(issueId: number, page: number, completed: boolean, total?: number | null): void {
+  execute(
+    `INSERT INTO comic_read_progress (issue_id, page, completed, total, updated_at)
+     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT (issue_id) DO UPDATE SET page = ?, completed = ?, total = COALESCE(?, total), updated_at = CURRENT_TIMESTAMP`,
+    [issueId, page, completed ? 1 : 0, total ?? null, page, completed ? 1 : 0, total ?? null]
+  );
+}
+
+export function deleteComicReadProgress(issueId: number): boolean {
+  const result = execute('DELETE FROM comic_read_progress WHERE issue_id = ?', [issueId]);
+  return result.rowCount > 0;
+}
+
+export interface ComicIssueProgress {
+  issueId: number;
+  page: number;
+  completed: boolean;
+  total: number | null;
+  updatedAt: string;
+}
+
+/** Read progress for every tracked issue of a volume, keyed by issue id. */
+export function getComicReadProgressForVolume(volumeId: number): ComicIssueProgress[] {
+  const rows = query<{
+    issue_id: number;
+    page: number;
+    completed: number;
+    total: number | null;
+    updated_at: string;
+  }>(
+    `SELECT crp.issue_id, crp.page, crp.completed, crp.total, crp.updated_at
+       FROM comic_read_progress crp
+       JOIN comic_issues ci ON ci.id = crp.issue_id
+      WHERE ci.volume_id = ?`,
+    [volumeId]
+  );
+  return rows.map((r) => ({
+    issueId: r.issue_id,
+    page: r.page,
+    completed: Boolean(r.completed),
+    total: r.total,
+    updatedAt: r.updated_at,
+  }));
+}
+
+export interface InProgressComic {
+  volume: KapowarrVolume;
+  issueId: number;
+  issueNumber: string | null;
+  page: number;
+  total: number | null;
+  updatedAt: string;
+}
+
+/**
+ * Volumes with at least one partially-read (not completed) issue, most
+ * recently read first. One entry per volume, carrying the volume's most
+ * recently touched in-progress issue so the reader can resume it.
+ */
+export function getInProgressComics(limit: number): InProgressComic[] {
+  const capped = Math.max(1, Math.min(100, limit));
+  const rows = query<
+    ComicRow & {
+      crp_issue_id: number;
+      crp_page: number;
+      crp_total: number | null;
+      crp_updated_at: string;
+      issue_number: string | null;
+    }
+  >(
+    `SELECT c.*,
+            crp.issue_id AS crp_issue_id,
+            crp.page AS crp_page,
+            crp.total AS crp_total,
+            crp.updated_at AS crp_updated_at,
+            ci.issue_number AS issue_number
+       FROM comic_read_progress crp
+       JOIN comic_issues ci ON ci.id = crp.issue_id AND ci.deleted_at IS NULL
+       JOIN comics c ON c.id = ci.volume_id AND c.deleted_at IS NULL
+      WHERE crp.completed = 0 AND crp.page > 0
+        AND crp.updated_at = (
+          SELECT MAX(crp2.updated_at)
+            FROM comic_read_progress crp2
+            JOIN comic_issues ci2 ON ci2.id = crp2.issue_id AND ci2.deleted_at IS NULL
+           WHERE ci2.volume_id = c.id AND crp2.completed = 0 AND crp2.page > 0
+        )
+      GROUP BY c.id
+      ORDER BY crp.updated_at DESC
+      LIMIT ?`,
+    [capped]
+  );
+  return rows.map((r) => ({
+    volume: rowToVolume(r),
+    issueId: r.crp_issue_id,
+    issueNumber: r.issue_number,
+    page: r.crp_page,
+    total: r.crp_total,
+    updatedAt: r.crp_updated_at,
+  }));
 }
 
 // ============ Comics Cache Functions ============

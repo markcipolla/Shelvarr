@@ -26,7 +26,31 @@ export function BookActions({ book }: BookActionsProps) {
   const [showReader, setShowReader] = useState(false);
 
   const hasMatch = !!book.metadataSource;
+  const hasHardcover = book.metadataSource === 'hardcover';
   const isEpub = book.filePath.toLowerCase().endsWith('.epub');
+
+  const handleStatusChange = async (
+    status: 'want-to-read' | 'reading' | 'read' | 'dnf'
+  ) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/books/${book.id}/reading-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(data?.error || 'Failed to update Hardcover status');
+      } else {
+        toast.success('Synced to Hardcover');
+      }
+    } catch {
+      toast.error('Failed to reach server');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleDelete = async () => {
     if (!confirm('Delete this book from the database? The file will not be deleted.')) {
@@ -66,6 +90,44 @@ export function BookActions({ book }: BookActionsProps) {
         >
           {hasMatch ? 'Fix Match' : 'Search Match'}
         </button>
+
+        {hasHardcover && (
+          <div className="pt-2">
+            <label className="block text-sm text-shelvarr-text-muted mb-1">
+              Hardcover status
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => handleStatusChange('want-to-read')}
+                disabled={loading}
+                className="bg-shelvarr-surface hover:bg-shelvarr-border border border-shelvarr-border text-shelvarr-text px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                Want to Read
+              </button>
+              <button
+                onClick={() => handleStatusChange('reading')}
+                disabled={loading}
+                className="bg-shelvarr-surface hover:bg-shelvarr-border border border-shelvarr-border text-shelvarr-text px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                Reading
+              </button>
+              <button
+                onClick={() => handleStatusChange('read')}
+                disabled={loading}
+                className="bg-shelvarr-surface hover:bg-shelvarr-border border border-shelvarr-border text-shelvarr-text px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                Read
+              </button>
+              <button
+                onClick={() => handleStatusChange('dnf')}
+                disabled={loading}
+                className="bg-shelvarr-surface hover:bg-shelvarr-border border border-shelvarr-border text-shelvarr-text px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                Did Not Finish
+              </button>
+            </div>
+          </div>
+        )}
 
         <button
           onClick={handleDelete}

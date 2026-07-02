@@ -9,8 +9,11 @@ import { useBookReader } from '../hooks/useBookReader';
 type Props = NativeStackScreenProps<RootStackParamList, 'PdfReader'>;
 
 export default function PdfReaderScreen({ route, navigation }: Props) {
-  const { bookId, filePath, startPage, totalPages } = route.params;
-  const { onPageChange, onReaderExit, startReading } = useBookReader(bookId);
+  const { bookId, filePath, startPage, totalPages, kind, issueId } = route.params;
+  const { onPageChange, onReaderExit, startReading } = useBookReader(
+    bookId,
+    kind === 'comic' && issueId !== undefined ? { kind: 'comic', issueId } : undefined
+  );
 
   useEffect(() => {
     startReading(bookId, startPage, totalPages);

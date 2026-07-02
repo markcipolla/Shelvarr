@@ -635,14 +635,16 @@ if (canRunTests) {
         assert.strictEqual(data.total, 0);
       });
 
-      it('should skip books without titles', async () => {
+      it('should organize books without titles using path fallback', async () => {
         const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
         registerAllHandlers();
 
-        // Add a book without a title
+        // Add a book without a title — file exists; parsePathInfo should fill in a title.
+        const filePath = join(testLibPath, 'test.epub');
+        writeFileSync(filePath, 'content');
         execute(
           'INSERT INTO books (library_id, file_path, title, authors, extension) VALUES (?, ?, ?, ?, ?)',
-          [1, join(testLibPath, 'test.epub'), null, null, 'epub']
+          [1, filePath, null, null, 'epub']
         );
 
         const task = createTask('organize', { libraryId: 1 });
@@ -651,11 +653,11 @@ if (canRunTests) {
         const updated = getTask(task.id);
         assert.ok(updated);
         assert.strictEqual(updated.status, 'completed');
-        const data = updated.data as { skipped: number };
-        assert.strictEqual(data.skipped, 1);
+        const data = updated.data as { organized: number };
+        assert.strictEqual(data.organized, 1);
       });
 
-      it('should handle books with missing files', async () => {
+      it('should report missing files as failed', async () => {
         const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
         registerAllHandlers();
 
@@ -671,8 +673,8 @@ if (canRunTests) {
         const updated = getTask(task.id);
         assert.ok(updated);
         assert.strictEqual(updated.status, 'completed');
-        const data = updated.data as { skipped: number };
-        assert.strictEqual(data.skipped, 1);
+        const data = updated.data as { failed: number };
+        assert.strictEqual(data.failed, 1);
       });
 
       it('should organize book with valid file', async () => {
@@ -697,8 +699,9 @@ if (canRunTests) {
         const data = updated.data as { organized: number };
         assert.strictEqual(data.organized, 1);
 
-        // Check that file was moved
-        const expectedPath = join(testLibPath, 'Test Author', 'Test Book.epub');
+        // Default template: {author}/{series}/Book {number} - {title}.{ext}
+        // No series → segment collapses; standalone yields: Author/Book - Title.ext
+        const expectedPath = join(testLibPath, 'Test Author', 'Book - Test Book.epub');
         assert.ok(existsSync(expectedPath));
       });
 
@@ -706,10 +709,10 @@ if (canRunTests) {
         const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
         registerAllHandlers();
 
-        // Create file in correct location
+        // Create file in default-template location
         const authorDir = join(testLibPath, 'Test Author');
         mkdirSync(authorDir, { recursive: true });
-        const correctPath = join(authorDir, 'Test Book.epub');
+        const correctPath = join(authorDir, 'Book - Test Book.epub');
         writeFileSync(correctPath, 'test content');
 
         execute(
@@ -735,10 +738,10 @@ if (canRunTests) {
         const file1 = join(testLibPath, 'book1.epub');
         writeFileSync(file1, 'content 1');
 
-        // Create target file that would conflict
+        // Create target file that would conflict (default template path)
         const authorDir = join(testLibPath, 'Test Author');
         mkdirSync(authorDir, { recursive: true });
-        const existingFile = join(authorDir, 'Test Book.epub');
+        const existingFile = join(authorDir, 'Book - Test Book.epub');
         writeFileSync(existingFile, 'existing content');
 
         execute(
@@ -754,7 +757,7 @@ if (canRunTests) {
         assert.strictEqual(updated.status, 'completed');
 
         // Should create file with (1) suffix
-        const expectedPath = join(authorDir, 'Test Book (1).epub');
+        const expectedPath = join(authorDir, 'Book - Test Book (1).epub');
         assert.ok(existsSync(expectedPath));
       });
 
@@ -777,8 +780,8 @@ if (canRunTests) {
         assert.ok(updated);
         assert.strictEqual(updated.status, 'completed');
 
-        // Should include series in filename
-        const expectedPath = join(testLibPath, 'Author Name', 'First Book - Great Series Book 1.epub');
+        // Default template hierarchical layout: Author/Series/Book NNN - Title.ext
+        const expectedPath = join(testLibPath, 'Author Name', 'Great Series', 'Book 001 - First Book.epub');
         assert.ok(existsSync(expectedPath));
       });
 
@@ -801,7 +804,7 @@ if (canRunTests) {
         assert.ok(updated);
         assert.strictEqual(updated.status, 'completed');
 
-        const expectedPath = join(testLibPath, 'Plain Author Name', 'Test Book.epub');
+        const expectedPath = join(testLibPath, 'Plain Author Name', 'Book - Test Book.epub');
         assert.ok(existsSync(expectedPath));
       });
     });

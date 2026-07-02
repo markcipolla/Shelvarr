@@ -8,6 +8,7 @@ import {
   updateWantedBook as updateWantedBookInDb,
   deleteWantedBook as deleteWantedBookFromDb,
   isBookWanted as isBookWantedInDb,
+  execute,
   type WantedBook,
 } from '@/lib/db';
 import * as metadataService from '@/lib/services/metadata';
@@ -75,8 +76,22 @@ export async function addToWanted(data: {
  */
 export async function removeFromWanted(id: number): Promise<{ success: boolean; error?: string }> {
   try {
+    // Grab the book first so we can keep the author bibliography in sync.
+    const book = getWantedBookById(id);
     const result = deleteWantedBookFromDb(id);
     if (result) {
+      // If this book came from an author's bibliography, clear the matching
+      // author_works.wanted flag so the bibliography no longer shows it as
+      // wanted (toggleWorkWanted sets both, so removal must clear both).
+      if (book?.title && book.author) {
+        execute(
+          `UPDATE author_works SET wanted = 0
+           WHERE wanted = 1
+             AND lower(title) = lower(?)
+             AND author_id IN (SELECT id FROM authors WHERE lower(name) = lower(?))`,
+          [book.title, book.author]
+        );
+      }
       revalidatePath('/wanted');
       return { success: true };
     }

@@ -9,6 +9,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
   const tabs = [
     { href: '/settings/metadata', label: 'Metadata Sources' },
     { href: '/settings/downloads', label: 'Download Sources' },
+    { href: '/settings/organize', label: 'Organize' },
     { href: '/settings/komga', label: 'Komga' },
     { href: '/settings/kapowarr', label: 'Kapowarr' },
     { href: '/settings/about', label: 'About' },

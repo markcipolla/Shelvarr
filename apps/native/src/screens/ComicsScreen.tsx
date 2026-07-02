@@ -12,7 +12,9 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { fetchComics, KapowarrVolume } from '../services/api/comics';
+import { getCachedComics } from '../services/db/comics';
 import ComicCard from '../components/ComicCard';
+import ComicGridSkeleton from '../components/ComicGridSkeleton';
 import { useColumns } from '../hooks/useColumns';
 import { padDataForGrid, isPlaceholder } from '../utils/gridHelpers';
 
@@ -33,6 +35,19 @@ export default function ComicsScreen({ navigation }: Props) {
       setRefreshing(false);
       return;
     }
+
+    // Stale-while-revalidate: paint cached comics instantly so the grid
+    // appears without waiting on the network, then refresh in the background.
+    try {
+      const cached = await getCachedComics();
+      if (cached.length > 0) {
+        setVolumes(cached);
+        setLoading(false);
+      }
+    } catch {
+      // Ignore cache-read failures; the network fetch below still runs.
+    }
+
     try {
       const res = await fetchComics();
       setConfigured(res.configured);
@@ -65,11 +80,7 @@ export default function ComicsScreen({ navigation }: Props) {
   }
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#8b5e3c" />
-      </View>
-    );
+    return <ComicGridSkeleton />;
   }
 
   if (!configured) {

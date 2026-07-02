@@ -118,6 +118,7 @@ export async function searchAnnas(
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'text/html,application/xhtml+xml',
       },
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!response.ok) {
@@ -210,6 +211,7 @@ export async function getAnnasDownloadLinks(md5: string): Promise<string[]> {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'text/html,application/xhtml+xml',
       },
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!response.ok) {

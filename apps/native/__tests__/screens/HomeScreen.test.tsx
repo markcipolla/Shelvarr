@@ -3,6 +3,7 @@ import { render, waitFor, fireEvent, act } from '@testing-library/react-native';
 import { FlatList } from 'react-native';
 import HomeScreen from '../../src/screens/HomeScreen';
 import { searchBooks, fetchInProgressBooks, fetchRecentlyAdded } from '../../src/services/api/books';
+import { fetchComics, fetchRecentComics, fetchInProgressComics } from '../../src/services/api/comics';
 import { useColumns } from '../../src/hooks/useColumns';
 import { useSettingsStore } from '../../src/stores/useSettingsStore';
 
@@ -11,6 +12,7 @@ jest.mock('../../src/services/api/client', () => ({
   resetApiClient: jest.fn(),
 }));
 jest.mock('../../src/services/api/books');
+jest.mock('../../src/services/api/comics');
 jest.mock('../../src/hooks/useColumns');
 jest.mock('../../src/stores/useSettingsStore');
 jest.mock('../../src/hooks/useAuthHeaders', () => ({
@@ -32,6 +34,16 @@ jest.mock('../../src/components/BookCard', () => {
     );
   };
 });
+jest.mock('../../src/components/ComicCard', () => {
+  const { Text, TouchableOpacity } = require('react-native');
+  return function MockComicCard({ volume, onPress }: any) {
+    return (
+      <TouchableOpacity testID={`comic-${volume.id}`} onPress={onPress}>
+        <Text>{volume.title}</Text>
+      </TouchableOpacity>
+    );
+  };
+});
 jest.mock('../../src/utils/gridHelpers', () => ({
   padDataForGrid: (data: any[], _cols: number) => data,
   isPlaceholder: (item: any) => item._placeholder === true,
@@ -40,6 +52,9 @@ jest.mock('../../src/utils/gridHelpers', () => ({
 const mockSearchBooks = searchBooks as jest.Mock;
 const mockFetchInProgress = fetchInProgressBooks as jest.Mock;
 const mockFetchRecent = fetchRecentlyAdded as jest.Mock;
+const mockFetchRecentComics = fetchRecentComics as jest.Mock;
+const mockFetchComics = fetchComics as jest.Mock;
+const mockFetchInProgressComics = fetchInProgressComics as jest.Mock;
 const mockUseColumns = useColumns as jest.Mock;
 const mockUseSettingsStore = useSettingsStore as unknown as jest.Mock;
 
@@ -62,28 +77,44 @@ const makeBook = (id: string, title = '') => ({
   readProgress: null,
 });
 
+const makeVolume = (id: number, title = `Volume ${id}`) => ({
+  id,
+  title,
+  publisher: 'DC',
+  year: 2020,
+  issue_count: 5,
+  issues_downloaded: 2,
+});
+
 function setupLoadedState() {
   mockFetchInProgress.mockResolvedValue({ content: [] });
   mockFetchRecent.mockResolvedValue({ content: [] });
 }
 
+// The search input is rendered inline in the screen body (not via
+// navigation.setOptions). We locate it by its placeholder and drive its
+// onChangeText handler directly.
+const SEARCH_PLACEHOLDER = /Search all books/;
+
+let currentScreen: ReturnType<typeof render> | null = null;
+
+function renderHome() {
+  currentScreen = render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+  return currentScreen;
+}
+
 function getOnChangeText(): ((text: string) => void) | null {
-  const calls = mockNavigation.setOptions.mock.calls;
-  for (let i = calls.length - 1; i >= 0; i--) {
-    const opts = calls[i][0];
-    if (opts?.headerTitle) {
-      const element = opts.headerTitle();
-      if (element?.props?.onChangeText) {
-        return element.props.onChangeText;
-      }
-    }
-  }
-  return null;
+  if (!currentScreen) return null;
+  const input = currentScreen.getByPlaceholderText(SEARCH_PLACEHOLDER);
+  return input.props.onChangeText ?? null;
 }
 
 describe('HomeScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockFetchRecentComics.mockResolvedValue({ configured: true, volumes: [] });
+    mockFetchComics.mockResolvedValue({ configured: true, volumes: [] });
+    mockFetchInProgressComics.mockResolvedValue([]);
     mockUseColumns.mockReturnValue(2);
     mockUseSettingsStore.mockImplementation((selector: any) =>
       selector({ shelvarrUrl: 'http://shelvarr:3000' })
@@ -188,6 +219,86 @@ describe('HomeScreen', () => {
     expect(mockNavigation.navigate).toHaveBeenCalledWith('BookDetail', { bookId: 'b3' });
   });
 
+  it('renders recently added comics section', async () => {
+    setupLoadedState();
+    mockFetchRecentComics.mockResolvedValue({
+      configured: true,
+      volumes: [makeVolume(1, 'Batman'), makeVolume(2, 'Superman')],
+    });
+
+    const { getByText } = render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => {
+      expect(getByText('Recently Added Comics')).toBeTruthy();
+      expect(getByText('Batman')).toBeTruthy();
+      expect(getByText('Superman')).toBeTruthy();
+    });
+  });
+
+  it('renders in-progress comics section and navigates to detail', async () => {
+    setupLoadedState();
+    mockFetchInProgressComics.mockResolvedValue([
+      { volume: makeVolume(9, 'Saga'), issueId: 11, issueNumber: '3', page: 5, total: 20, updatedAt: 'x' },
+    ]);
+
+    const { getByText } = render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => {
+      expect(getByText('In Progress Comics')).toBeTruthy();
+      expect(getByText('Saga')).toBeTruthy();
+    });
+
+    fireEvent.press(getByText('Saga'));
+    expect(mockNavigation.navigate).toHaveBeenCalledWith('ComicDetail', { volumeId: 9 });
+  });
+
+  it('navigates to comic detail from comics row', async () => {
+    setupLoadedState();
+    mockFetchRecentComics.mockResolvedValue({
+      configured: true,
+      volumes: [makeVolume(7, 'Watchmen')],
+    });
+
+    const { getByText } = render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => {
+      expect(getByText('Watchmen')).toBeTruthy();
+    });
+
+    fireEvent.press(getByText('Watchmen'));
+    expect(mockNavigation.navigate).toHaveBeenCalledWith('ComicDetail', { volumeId: 7 });
+  });
+
+  it('omits comics section when Kapowarr not configured', async () => {
+    setupLoadedState();
+    mockFetchInProgress.mockResolvedValue({ content: [makeBook('b1', 'Book One')] });
+    mockFetchRecentComics.mockResolvedValue({ configured: false, volumes: [] });
+
+    const { getByText, queryByText } = render(
+      <HomeScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    await waitFor(() => {
+      expect(getByText('Book One')).toBeTruthy();
+    });
+    expect(queryByText('Recently Added Comics')).toBeNull();
+  });
+
+  it('still renders books when comics fetch fails', async () => {
+    mockFetchInProgress.mockResolvedValue({ content: [makeBook('b1', 'Book One')] });
+    mockFetchRecent.mockResolvedValue({ content: [] });
+    mockFetchRecentComics.mockRejectedValue(new Error('comics down'));
+
+    const { getByText, queryByText } = render(
+      <HomeScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    await waitFor(() => {
+      expect(getByText('Book One')).toBeTruthy();
+    });
+    expect(queryByText('Recently Added Comics')).toBeNull();
+  });
+
   it('performs search and shows results', async () => {
     setupLoadedState();
     mockSearchBooks.mockResolvedValue({
@@ -195,10 +306,10 @@ describe('HomeScreen', () => {
       last: true,
     });
 
-    render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+    renderHome();
 
     await waitFor(() => {
-      expect(mockNavigation.setOptions).toHaveBeenCalled();
+      expect(getOnChangeText()).toBeTruthy();
     });
 
     await act(async () => {
@@ -221,10 +332,10 @@ describe('HomeScreen', () => {
       last: true,
     });
 
-    const { getByText } = render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+    const { getByText } = renderHome();
 
     await waitFor(() => {
-      expect(mockNavigation.setOptions).toHaveBeenCalled();
+      expect(getOnChangeText()).toBeTruthy();
     });
 
     await act(async () => {
@@ -243,6 +354,87 @@ describe('HomeScreen', () => {
     expect(mockNavigation.navigate).toHaveBeenCalledWith('BookDetail', { bookId: 'sr1' });
   });
 
+  it('shows comic results in search', async () => {
+    setupLoadedState();
+    mockSearchBooks.mockResolvedValue({ content: [], last: true });
+    mockFetchComics.mockResolvedValue({
+      configured: true,
+      volumes: [makeVolume(3, 'Spawn')],
+    });
+
+    const { getByText } = renderHome();
+
+    await waitFor(() => {
+      expect(getOnChangeText()).toBeTruthy();
+    });
+
+    await act(async () => {
+      getOnChangeText()!('spawn');
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+
+    await waitFor(() => {
+      expect(mockFetchComics).toHaveBeenCalledWith('spawn');
+      expect(getByText('Comics')).toBeTruthy();
+      expect(getByText('Spawn')).toBeTruthy();
+    });
+  });
+
+  it('navigates to comic detail from search results', async () => {
+    setupLoadedState();
+    mockSearchBooks.mockResolvedValue({ content: [], last: true });
+    mockFetchComics.mockResolvedValue({
+      configured: true,
+      volumes: [makeVolume(8, 'Hellboy')],
+    });
+
+    const { getByText } = renderHome();
+
+    await waitFor(() => {
+      expect(getOnChangeText()).toBeTruthy();
+    });
+
+    await act(async () => {
+      getOnChangeText()!('hellboy');
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+
+    await waitFor(() => {
+      expect(getByText('Hellboy')).toBeTruthy();
+    });
+
+    fireEvent.press(getByText('Hellboy'));
+    expect(mockNavigation.navigate).toHaveBeenCalledWith('ComicDetail', { volumeId: 8 });
+  });
+
+  it('still shows book results when comic search fails', async () => {
+    setupLoadedState();
+    mockSearchBooks.mockResolvedValue({ content: [makeBook('sr1', 'A Book')], last: true });
+    mockFetchComics.mockRejectedValue(new Error('kapowarr down'));
+
+    const { getByText, queryByText } = renderHome();
+
+    await waitFor(() => {
+      expect(getOnChangeText()).toBeTruthy();
+    });
+
+    await act(async () => {
+      getOnChangeText()!('book');
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+
+    await waitFor(() => {
+      expect(getByText('A Book')).toBeTruthy();
+    });
+    expect(queryByText('Comics')).toBeNull();
+  });
+
   it('shows no results text when search returns empty', async () => {
     setupLoadedState();
     mockSearchBooks.mockResolvedValue({
@@ -250,10 +442,10 @@ describe('HomeScreen', () => {
       last: true,
     });
 
-    render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+    renderHome();
 
     await waitFor(() => {
-      expect(mockNavigation.setOptions).toHaveBeenCalled();
+      expect(getOnChangeText()).toBeTruthy();
     });
 
     await act(async () => {
@@ -272,10 +464,10 @@ describe('HomeScreen', () => {
     setupLoadedState();
     mockSearchBooks.mockRejectedValue(new Error('search fail'));
 
-    render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+    renderHome();
 
     await waitFor(() => {
-      expect(mockNavigation.setOptions).toHaveBeenCalled();
+      expect(getOnChangeText()).toBeTruthy();
     });
 
     await act(async () => {
@@ -297,10 +489,10 @@ describe('HomeScreen', () => {
       last: true,
     });
 
-    render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+    renderHome();
 
     await waitFor(() => {
-      expect(mockNavigation.setOptions).toHaveBeenCalled();
+      expect(getOnChangeText()).toBeTruthy();
     });
 
     await act(async () => {
@@ -330,12 +522,10 @@ describe('HomeScreen', () => {
         last: true,
       });
 
-    const { UNSAFE_getAllByType } = render(
-      <HomeScreen navigation={mockNavigation} route={mockRoute} />
-    );
+    const { UNSAFE_getAllByType } = renderHome();
 
     await waitFor(() => {
-      expect(mockNavigation.setOptions).toHaveBeenCalled();
+      expect(getOnChangeText()).toBeTruthy();
     });
 
     await act(async () => {
@@ -394,10 +584,10 @@ describe('HomeScreen', () => {
     setupLoadedState();
     mockSearchBooks.mockReturnValue(new Promise(() => {}));
 
-    render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+    renderHome();
 
     await waitFor(() => {
-      expect(mockNavigation.setOptions).toHaveBeenCalled();
+      expect(getOnChangeText()).toBeTruthy();
     });
 
     await act(async () => {
@@ -413,10 +603,10 @@ describe('HomeScreen', () => {
   it('performSearch returns early for empty trimmed query', async () => {
     setupLoadedState();
 
-    render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+    renderHome();
 
     await waitFor(() => {
-      expect(mockNavigation.setOptions).toHaveBeenCalled();
+      expect(getOnChangeText()).toBeTruthy();
     });
 
     await act(async () => {

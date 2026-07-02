@@ -12,6 +12,12 @@ jest.mock('axios', () => ({
   default: { create: jest.fn() },
 }));
 
+jest.mock('../../../src/stores/useSettingsStore', () => ({
+  useSettingsStore: {
+    getState: jest.fn().mockReturnValue({ shelvarrUrl: '' }),
+  },
+}));
+
 const mockAxios = jest.requireMock('axios').default;
 const mockCreate = mockAxios.create as jest.Mock;
 mockCreate.mockReturnValue(mockAxiosInstance);
@@ -20,11 +26,14 @@ import { useSettingsStore } from '../../../src/stores/useSettingsStore';
 import { useConnectivityStore } from '../../../src/stores/useConnectivityStore';
 import { getApiClient, resetApiClient } from '../../../src/services/api/client';
 
+const mockGetState = useSettingsStore.getState as jest.Mock;
+
 beforeEach(() => {
   mockInterceptorRequest.use.mockClear();
   mockInterceptorResponse.use.mockClear();
   mockCreate.mockClear();
   mockCreate.mockReturnValue(mockAxiosInstance);
+  mockGetState.mockReturnValue({ shelvarrUrl: '' });
   resetApiClient();
   useConnectivityStore.setState({ online: true });
 });
@@ -59,18 +68,26 @@ describe('getApiClient', () => {
       requestInterceptor = mockInterceptorRequest.use.mock.calls[0][0];
     });
 
+    it('leaves baseURL unset when no shelvarrUrl is configured', () => {
+      mockGetState.mockReturnValue({ shelvarrUrl: '' });
+      const config = { headers: {} } as any;
+      const result = requestInterceptor(config);
+      expect(result).toBe(config);
+      expect(result.baseURL).toBeUndefined();
+    });
+
     it('sets baseURL from settings store', () => {
-      useSettingsStore.setState({ shelvarrUrl: 'http://example.com' });
-      const config: any = { headers: {} };
+      mockGetState.mockReturnValue({ shelvarrUrl: 'http://example.com' });
+      const config = { headers: {} } as any;
       const result = requestInterceptor(config);
       expect(result.baseURL).toBe('http://example.com');
     });
 
-    it('leaves baseURL unset when no shelvarrUrl configured', () => {
-      useSettingsStore.setState({ shelvarrUrl: '' });
-      const config: any = { headers: {} };
+    it('does not set any auth headers', () => {
+      mockGetState.mockReturnValue({ shelvarrUrl: 'http://example.com' });
+      const config = { headers: {} } as any;
       const result = requestInterceptor(config);
-      expect(result.baseURL).toBeUndefined();
+      expect(result.headers).toEqual({});
     });
   });
 

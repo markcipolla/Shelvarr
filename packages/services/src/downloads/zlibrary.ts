@@ -99,7 +99,7 @@ export async function searchZLibrary(
       headers['Cookie'] = `remix_userid=${config.remix_userid}; remix_userkey=${config.remix_userkey}`;
     }
 
-    const response = await fetch(searchUrl, { headers });
+    const response = await fetch(searchUrl, { headers, signal: AbortSignal.timeout(15000) });
 
     if (!response.ok) {
       console.warn(`Z-Library search failed: ${response.status}`);
@@ -187,6 +187,7 @@ export async function authenticateZLibrary(
         redirectUrl: '',
         gg_json_mode: '1',
       }),
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!response.ok) {

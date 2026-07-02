@@ -15,7 +15,15 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { Book } from '../types/komga';
 import { searchBooks, fetchInProgressBooks, fetchRecentlyAdded } from '../services/api/books';
+import {
+  fetchComics,
+  fetchRecentComics,
+  fetchInProgressComics,
+  KapowarrVolume,
+  InProgressComic,
+} from '../services/api/comics';
 import BookCard from '../components/BookCard';
+import ComicCard from '../components/ComicCard';
 import { useColumns } from '../hooks/useColumns';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useDownloadStore } from '../stores/useDownloadStore';
@@ -35,6 +43,8 @@ export default function HomeScreen({ navigation }: Props) {
   );
   const [inProgress, setInProgress] = useState<Book[]>([]);
   const [recentlyAdded, setRecentlyAdded] = useState<Book[]>([]);
+  const [recentComics, setRecentComics] = useState<KapowarrVolume[]>([]);
+  const [inProgressComics, setInProgressComics] = useState<InProgressComic[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
@@ -42,6 +52,7 @@ export default function HomeScreen({ navigation }: Props) {
   const { width: screenWidth } = useWindowDimensions();
   const cardWidth = (screenWidth - 32 - 12 * (columns - 1)) / columns;
   const [searchResults, setSearchResults] = useState<Book[]>([]);
+  const [comicSearchResults, setComicSearchResults] = useState<KapowarrVolume[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchPage, setSearchPage] = useState(0);
   const [searchHasMore, setSearchHasMore] = useState(false);
@@ -54,13 +65,23 @@ export default function HomeScreen({ navigation }: Props) {
       return;
     }
     try {
-      const [inProgressRes, recentRes] = await Promise.all([
+      const [inProgressRes, recentRes, comicsRes, inProgressComicsRes] = await Promise.all([
         fetchInProgressBooks(),
         fetchRecentlyAdded(),
+        fetchRecentComics(10).catch((err) => {
+          console.error('Failed to load recent comics:', err);
+          return null;
+        }),
+        fetchInProgressComics(10).catch((err) => {
+          console.error('Failed to load in-progress comics:', err);
+          return [];
+        }),
       ]);
       const inProgressIds = new Set(inProgressRes.content.map((b) => b.id));
       setInProgress(inProgressRes.content);
       setRecentlyAdded(recentRes.content.filter((b) => !inProgressIds.has(b.id)));
+      setRecentComics(comicsRes?.configured ? comicsRes.volumes : []);
+      setInProgressComics(inProgressComicsRes);
     } catch (err) {
       console.error('Failed to load home data:', err);
     } finally {
@@ -80,15 +101,32 @@ export default function HomeScreen({ navigation }: Props) {
     /* istanbul ignore next -- useEffect handles empty queries before calling performSearch */
     if (!query.trim()) {
       setSearchResults([]);
+      setComicSearchResults([]);
       setSearching(false);
       return;
     }
     setSearching(true);
     try {
-      const result = await searchBooks(query, page);
-      setSearchResults((prev) => (page === 0 ? result.content : [...prev, ...result.content]));
-      setSearchHasMore(!result.last);
-      setSearchPage(page);
+      if (page === 0) {
+        // Books and comics come from different sources; fetch both. A comic
+        // failure (e.g. Kapowarr unconfigured) must not break book search.
+        const [bookRes, comicRes] = await Promise.all([
+          searchBooks(query, 0),
+          fetchComics(query).catch((err) => {
+            console.error('Comic search failed:', err);
+            return null;
+          }),
+        ]);
+        setSearchResults(bookRes.content);
+        setSearchHasMore(!bookRes.last);
+        setSearchPage(0);
+        setComicSearchResults(comicRes?.configured ? comicRes.volumes : []);
+      } else {
+        const result = await searchBooks(query, page);
+        setSearchResults((prev) => [...prev, ...result.content]);
+        setSearchHasMore(!result.last);
+        setSearchPage(page);
+      }
     } catch (err) {
       console.error('Search failed:', err);
     } finally {
@@ -100,6 +138,7 @@ export default function HomeScreen({ navigation }: Props) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!search.trim()) {
       setSearchResults([]);
+      setComicSearchResults([]);
       setSearching(false);
       return;
     }
@@ -158,10 +197,9 @@ export default function HomeScreen({ navigation }: Props) {
   const isSearching = search.trim().length > 0;
 
   if (isSearching) {
-    const comicMediaTypes = new Set(['application/x-cbz', 'application/x-cbr', 'application/x-cbt']);
-    const isComic = (b: Book) => comicMediaTypes.has(b.media.mediaType);
-    const bookResults = searchResults.filter((b) => !isComic(b));
-    const comicResults = searchResults.filter(isComic);
+    const bookResults = searchResults;
+    const comicResults = comicSearchResults;
+    const hasResults = bookResults.length > 0 || comicResults.length > 0;
 
     const queryLower = search.trim().toLowerCase();
     const authorNames = new Set<string>();
@@ -191,13 +229,13 @@ export default function HomeScreen({ navigation }: Props) {
     );
 
     let searchBody;
-    if (searching && searchResults.length === 0) {
+    if (searching && !hasResults) {
       searchBody = (
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#8b5e3c" />
         </View>
       );
-    } else if (searchResults.length === 0) {
+    } else if (!hasResults) {
       searchBody = (
         <View style={styles.center}>
           <Text style={styles.noResults}>No results found</Text>
@@ -228,8 +266,13 @@ export default function HomeScreen({ navigation }: Props) {
             <FlatList
               horizontal
               data={comicResults}
-              keyExtractor={(item) => item.id}
-              renderItem={renderBookItem}
+              keyExtractor={(item) => String(item.id)}
+              renderItem={({ item }) => (
+                <ComicCard
+                  volume={item}
+                  onPress={() => navigation.navigate('ComicDetail', { volumeId: item.id })}
+                />
+              )}
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.horizontalList}
             />
@@ -287,7 +330,12 @@ export default function HomeScreen({ navigation }: Props) {
     );
   }
 
-  const hasAny = inProgress.length > 0 || recentlyAdded.length > 0 || downloadedBooks.length > 0;
+  const hasAny =
+    inProgress.length > 0 ||
+    recentlyAdded.length > 0 ||
+    downloadedBooks.length > 0 ||
+    inProgressComics.length > 0 ||
+    recentComics.length > 0;
 
   return (
     <View style={styles.container}>
@@ -310,6 +358,29 @@ export default function HomeScreen({ navigation }: Props) {
                     book={item}
                     fill
                     onPress={() => navigation.navigate('BookDetail', { bookId: item.id })}
+                  />
+                </View>
+              )}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+            />
+          </View>
+        )}
+
+        {inProgressComics.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>In Progress Comics</Text>
+            <FlatList
+              horizontal
+              data={inProgressComics}
+              keyExtractor={(item) => String(item.volume.id)}
+              renderItem={({ item }) => (
+                <View style={{ width: cardWidth, marginRight: 12 }}>
+                  <ComicCard
+                    volume={item.volume}
+                    fill
+                    progressLabel={item.issueNumber ? `#${item.issueNumber}` : 'Reading'}
+                    onPress={() => navigation.navigate('ComicDetail', { volumeId: item.volume.id })}
                   />
                 </View>
               )}
@@ -354,6 +425,28 @@ export default function HomeScreen({ navigation }: Props) {
                     book={item}
                     fill
                     onPress={() => navigation.navigate('BookDetail', { bookId: item.id })}
+                  />
+                </View>
+              )}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+            />
+          </View>
+        )}
+
+        {recentComics.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Recently Added Comics</Text>
+            <FlatList
+              horizontal
+              data={recentComics}
+              keyExtractor={(item) => String(item.id)}
+              renderItem={({ item }) => (
+                <View style={{ width: cardWidth, marginRight: 12 }}>
+                  <ComicCard
+                    volume={item}
+                    fill
+                    onPress={() => navigation.navigate('ComicDetail', { volumeId: item.id })}
                   />
                 </View>
               )}

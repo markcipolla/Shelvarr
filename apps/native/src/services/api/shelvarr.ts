@@ -28,9 +28,11 @@ export async function testShelvarrConnection(
  * Fire-and-forget: update reading status on Hardcover via Shelvarr server.
  * Never throws — silently logs errors so reading flow is never blocked.
  */
+export type ReadingStatus = 'want-to-read' | 'reading' | 'read' | 'dnf';
+
 export async function updateReadingStatus(
   bookId: string,
-  status: 'reading' | 'read' | 'dnf'
+  status: ReadingStatus
 ): Promise<void> {
   const shelvarrUrl = useSettingsStore.getState().shelvarrUrl;
   if (!shelvarrUrl) return;

@@ -65,11 +65,13 @@ describe('Hardcover Reading Status', () => {
     it('should return user book when found', async () => {
       mockFetchResponses.push({
         data: {
-          user_books: [{
-            id: 42,
-            status_id: 2,
-            book_id: 100,
-            started_reading_at: '2025-01-01',
+          me: [{
+            user_books: [{
+              id: 42,
+              status_id: 2,
+              book_id: 100,
+              first_started_reading_date: '2025-01-01',
+            }],
           }],
         },
       });
@@ -83,7 +85,7 @@ describe('Hardcover Reading Status', () => {
 
     it('should return null when no user book found', async () => {
       mockFetchResponses.push({
-        data: { user_books: [] },
+        data: { me: [{ user_books: [] }] },
       });
 
       const result = await searchUserBook('999');
@@ -104,11 +106,14 @@ describe('Hardcover Reading Status', () => {
     it('should insert a new user book with reading status', async () => {
       mockFetchResponses.push({
         data: {
-          insert_user_books_one: {
+          insert_user_book: {
             id: 1,
-            status_id: 2,
-            book_id: 100,
-            started_reading_at: '2025-06-01',
+            user_book: {
+              id: 1,
+              status_id: 2,
+              book_id: 100,
+              first_started_reading_date: '2025-06-01',
+            },
           },
         },
       });
@@ -122,11 +127,14 @@ describe('Hardcover Reading Status', () => {
     it('should insert with read status and finished date', async () => {
       mockFetchResponses.push({
         data: {
-          insert_user_books_one: {
+          insert_user_book: {
             id: 2,
-            status_id: 3,
-            book_id: 200,
-            finished_reading_at: '2025-06-15',
+            user_book: {
+              id: 2,
+              status_id: 3,
+              book_id: 200,
+              last_read_date: '2025-06-15',
+            },
           },
         },
       });
@@ -148,11 +156,14 @@ describe('Hardcover Reading Status', () => {
     it('should update status on existing entry', async () => {
       mockFetchResponses.push({
         data: {
-          update_user_books_by_pk: {
+          update_user_book: {
             id: 42,
-            status_id: 3,
-            book_id: 100,
-            finished_reading_at: '2025-06-15',
+            user_book: {
+              id: 42,
+              status_id: 3,
+              book_id: 100,
+              last_read_date: '2025-06-15',
+            },
           },
         },
       });
@@ -173,15 +184,18 @@ describe('Hardcover Reading Status', () => {
   describe('upsertReadingStatus', () => {
     it('should insert when no existing entry', async () => {
       // First call: searchUserBook returns empty
-      mockFetchResponses.push({ data: { user_books: [] } });
+      mockFetchResponses.push({ data: { me: [{ user_books: [] }] } });
       // Second call: insertUserBook succeeds
       mockFetchResponses.push({
         data: {
-          insert_user_books_one: {
+          insert_user_book: {
             id: 1,
-            status_id: 2,
-            book_id: 100,
-            started_reading_at: '2025-06-01',
+            user_book: {
+              id: 1,
+              status_id: 2,
+              book_id: 100,
+              first_started_reading_date: '2025-06-01',
+            },
           },
         },
       });
@@ -196,23 +210,28 @@ describe('Hardcover Reading Status', () => {
       // First call: searchUserBook returns existing
       mockFetchResponses.push({
         data: {
-          user_books: [{
-            id: 42,
-            status_id: 2,
-            book_id: 100,
-            started_reading_at: '2025-06-01',
+          me: [{
+            user_books: [{
+              id: 42,
+              status_id: 2,
+              book_id: 100,
+              first_started_reading_date: '2025-06-01',
+            }],
           }],
         },
       });
       // Second call: updateUserBook succeeds
       mockFetchResponses.push({
         data: {
-          update_user_books_by_pk: {
+          update_user_book: {
             id: 42,
-            status_id: 3,
-            book_id: 100,
-            started_reading_at: '2025-06-01',
-            finished_reading_at: '2025-06-15',
+            user_book: {
+              id: 42,
+              status_id: 3,
+              book_id: 100,
+              first_started_reading_date: '2025-06-01',
+              last_read_date: '2025-06-15',
+            },
           },
         },
       });
@@ -227,12 +246,14 @@ describe('Hardcover Reading Status', () => {
       // searchUserBook returns book already marked as "read" (3)
       mockFetchResponses.push({
         data: {
-          user_books: [{
-            id: 42,
-            status_id: 3,
-            book_id: 100,
-            started_reading_at: '2025-06-01',
-            finished_reading_at: '2025-06-10',
+          me: [{
+            user_books: [{
+              id: 42,
+              status_id: 3,
+              book_id: 100,
+              first_started_reading_date: '2025-06-01',
+              last_read_date: '2025-06-10',
+            }],
           }],
         },
       });
@@ -244,8 +265,50 @@ describe('Hardcover Reading Status', () => {
       assert.strictEqual(result.userBook.status_id, 3); // stays as "read"
     });
 
+    it('should re-insert when the existing record was deleted on Hardcover', async () => {
+      // searchUserBook returns an existing entry
+      mockFetchResponses.push({
+        data: {
+          me: [{
+            user_books: [{
+              id: 42,
+              status_id: 2,
+              book_id: 100,
+              first_started_reading_date: '2025-06-01',
+            }],
+          }],
+        },
+      });
+      // updateUserBook fails because the record is gone
+      mockFetchResponses.push({
+        data: {
+          update_user_book: { id: 42, error: 'Record not found. Was it deleted?' },
+        },
+      });
+      // insertUserBook recreates the tracking entry
+      mockFetchResponses.push({
+        data: {
+          insert_user_book: {
+            id: 99,
+            user_book: {
+              id: 99,
+              status_id: 3,
+              book_id: 100,
+              last_read_date: '2025-06-15',
+            },
+          },
+        },
+      });
+
+      const result = await upsertReadingStatus('100', 3, undefined, '2025-06-15');
+      assert.strictEqual(result.success, true);
+      assert.ok(result.userBook);
+      assert.strictEqual(result.userBook.id, 99);
+      assert.strictEqual(result.userBook.status_id, 3);
+    });
+
     it('should return error when insert fails', async () => {
-      mockFetchResponses.push({ data: { user_books: [] } });
+      mockFetchResponses.push({ data: { me: [{ user_books: [] }] } });
       mockFetchResponses.push({ data: {} }); // insert returns no data
 
       const result = await upsertReadingStatus('100', 2);

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
-import { queryOne, getEpubProgression, upsertEpubProgression, upsertReadProgress } from '@/lib/db';
+import { queryOne, getEpubProgression, getLatestEpubProgression, upsertEpubProgression, upsertReadProgress } from '@/lib/db';
 import { validateApiAuth } from '@shelvarr/services';
 import { toEpubProgression } from '@shelvarr/services/komga-response';
 import { syncReadingProgress } from '@/lib/services/metadata/hardcover';
@@ -17,9 +17,14 @@ export async function GET(
 
   const { id } = await params;
   const bookId = parseInt(id);
-  const deviceId = request.nextUrl.searchParams.get('device_id') || 'default';
+  const deviceId = request.nextUrl.searchParams.get('device_id');
 
-  const progression = getEpubProgression(bookId, deviceId);
+  // With an explicit device_id, return that device's progression; otherwise
+  // return the latest progression across devices so reading resumes wherever
+  // it was last left off, even on a device that's never opened this book.
+  const progression = deviceId
+    ? getEpubProgression(bookId, deviceId)
+    : getLatestEpubProgression(bookId);
   if (!progression) {
     return NextResponse.json(null);
   }
@@ -38,9 +43,13 @@ export async function PUT(
   const { id } = await params;
   const bookId = parseInt(id);
   const body = await request.json() as {
+    // Legacy flat shape (web reader).
     deviceId?: string;
-    locator: unknown;
-    progression: number;
+    progression?: number;
+    // Komga/Readium nested shape (native client).
+    device?: { id?: string; name?: string };
+    modified?: string;
+    locator: string | { locations?: { totalProgression?: number; progression?: number } };
   };
 
   const book = queryOne<{ id: number; metadata_id: string | null; metadata_source: string | null }>(
@@ -51,15 +60,23 @@ export async function PUT(
     return NextResponse.json({ error: 'Book not found' }, { status: 404 });
   }
 
-  const deviceId = body.deviceId || 'default';
+  const deviceId = body.device?.id ?? body.deviceId ?? 'default';
+  const locations = typeof body.locator === 'object' ? body.locator?.locations : undefined;
+  const progression =
+    body.progression
+    ?? locations?.totalProgression
+    ?? locations?.progression
+    ?? 0;
   const locator = typeof body.locator === 'string' ? body.locator : JSON.stringify(body.locator);
 
-  upsertEpubProgression(bookId, deviceId, locator, body.progression);
-  upsertReadProgress(bookId, 0, body.progression >= 0.98);
+  const completed = progression >= 0.98;
+  upsertEpubProgression(bookId, deviceId, locator, progression);
+  // Mirror into read_progress so Komga-style IN_PROGRESS filters (page > 0) match.
+  upsertReadProgress(bookId, completed ? 0 : 1, completed);
 
   // Fire-and-forget Hardcover sync — throttled per-book inside syncReadingProgress.
   if (book.metadata_id && book.metadata_source === 'hardcover') {
-    void syncReadingProgress(book.metadata_id, body.progression).catch((err) => {
+    void syncReadingProgress(book.metadata_id, progression).catch((err) => {
       console.error('Hardcover progress sync failed:', err);
     });
   }

@@ -57,6 +57,10 @@ function TaskRow({ task }: { task: Task }) {
   }[task.type] || task.type;
 
   const taskData = task.data || {};
+  const organizeResult =
+    task.type === 'organize' && task.status === 'completed'
+      ? (taskData as unknown as OrganizeResult)
+      : null;
 
   return (
     <div className="p-4 flex items-center justify-between">
@@ -72,6 +76,7 @@ function TaskRow({ task }: { task: Task }) {
               <span>Book ID: {String(taskData.bookId)}</span>
             ) : null}
           </div>
+          {organizeResult && <OrganizeResultSummary result={organizeResult} />}
           <div className="text-xs text-shelvarr-text-muted mt-1">
             Created: {formatDate(task.createdAt)}
             {task.completedAt && ` • Completed: ${formatDate(task.completedAt)}`}
@@ -127,6 +132,93 @@ function TaskRow({ task }: { task: Task }) {
           </span>
         )}
       </div>
+    </div>
+  );
+}
+
+interface OrganizeResult {
+  total?: number;
+  organized?: number;
+  skipped?: number;
+  failed?: number;
+  skippedReasons?: {
+    libraryMissing?: number;
+    noTitle?: number;
+    alreadyAtTarget?: number;
+    sourceMissing?: number;
+  };
+  removedMissing?: number;
+  requeuedAsWanted?: number;
+  errors?: string[];
+  errorCount?: number;
+}
+
+function OrganizeResultSummary({ result }: { result: OrganizeResult }) {
+  const [showDetails, setShowDetails] = useState(false);
+  const reasons = result.skippedReasons;
+  const errors = result.errors ?? [];
+  const errorCount = result.errorCount ?? errors.length;
+  const removedMissing = result.removedMissing ?? 0;
+  const requeuedAsWanted = result.requeuedAsWanted ?? 0;
+  const hasDetail = !!reasons || errors.length > 0 || removedMissing > 0;
+
+  return (
+    <div className="text-xs text-shelvarr-text-muted mt-1">
+      <div>
+        {result.organized ?? 0} moved · {result.skipped ?? 0} skipped ·{' '}
+        {result.failed ?? 0} failed
+        {removedMissing > 0 && (
+          <>
+            {' '}
+            · {removedMissing} removed (missing file
+            {requeuedAsWanted > 0 ? `, ${requeuedAsWanted} re-added to wanted` : ''})
+          </>
+        )}
+        {hasDetail && (
+          <button
+            onClick={() => setShowDetails((v) => !v)}
+            className="ml-2 text-blue-400 hover:text-blue-300"
+          >
+            {showDetails ? 'Hide details' : 'Show details'}
+          </button>
+        )}
+      </div>
+      {showDetails && (
+        <div className="mt-2 p-2 bg-shelvarr-bg rounded space-y-2">
+          {reasons && (
+            <div>
+              <div className="font-medium text-shelvarr-text mb-1">
+                Skipped breakdown
+              </div>
+              <ul className="ml-2 space-y-0.5">
+                <li>
+                  Already at target location: {reasons.alreadyAtTarget ?? 0}
+                </li>
+                <li>
+                  Source file not found on disk: {reasons.sourceMissing ?? 0}
+                </li>
+                <li>No title (needs metadata): {reasons.noTitle ?? 0}</li>
+                <li>Library record missing: {reasons.libraryMissing ?? 0}</li>
+              </ul>
+            </div>
+          )}
+          {errors.length > 0 && (
+            <div>
+              <div className="font-medium text-shelvarr-text mb-1">
+                Errors ({errorCount}
+                {errorCount > errors.length ? `, showing first ${errors.length}` : ''})
+              </div>
+              <ul className="ml-2 space-y-0.5 max-h-60 overflow-y-auto font-mono text-[11px]">
+                {errors.map((e, i) => (
+                  <li key={i} className="text-red-300">
+                    {e}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
