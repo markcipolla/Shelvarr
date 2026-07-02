@@ -24,6 +24,7 @@
     "base-64": "^1.0.0",
     "expo": "~54.0.33",
     "expo-file-system": "~19.0.21",
+    "expo-image": "~3.0.9",
     "expo-font": "^55.0.4",
     "expo-sqlite": "~16.0.10",
     "expo-navigation-bar": "^55.0.9",
