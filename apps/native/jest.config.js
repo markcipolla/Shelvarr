@@ -6,6 +6,7 @@ module.exports = {
   setupFiles: ['./jest.setup.ts'],
   moduleNameMapper: {
     'react-native/Libraries/Animated/NativeAnimatedHelper': '<rootDir>/__mocks__/NativeAnimatedHelper.ts',
+    '^expo-image$': '<rootDir>/__mocks__/expo-image.tsx',
     '^expo-secure-store$': '<rootDir>/__mocks__/expo-secure-store.ts',
     '^expo-sqlite$': '<rootDir>/__mocks__/expo-sqlite.ts',
     '^expo-file-system/legacy$': '<rootDir>/__mocks__/expo-file-system/legacy.ts',

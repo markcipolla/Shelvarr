@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, ViewStyle } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ViewStyle } from 'react-native';
+import { Image } from 'expo-image';
 import type { KapowarrVolume } from '@shelvarr/types';
 import { getVolumeCoverUrl } from '../services/api/comics';
 
@@ -31,7 +32,9 @@ export default function ComicCard({ volume, onPress, fill, placeholder }: Props)
         <Image
           source={{ uri: getVolumeCoverUrl(volume.id) }}
           style={fill ? styles.coverFill : styles.cover}
-          resizeMode="cover"
+          contentFit="cover"
+          transition={200}
+          cachePolicy="memory-disk"
         />
         {showBadge && (
           <View style={styles.badge}>

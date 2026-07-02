@@ -2,6 +2,7 @@ import React from 'react';
 import { render, waitFor, fireEvent } from '@testing-library/react-native';
 import ComicsScreen from '../../src/screens/ComicsScreen';
 import { fetchComics } from '../../src/services/api/comics';
+import { getCachedComics } from '../../src/services/db/comics';
 import { useColumns } from '../../src/hooks/useColumns';
 import { useSettingsStore } from '../../src/stores/useSettingsStore';
 
@@ -10,8 +11,17 @@ jest.mock('../../src/services/api/client', () => ({
   resetApiClient: jest.fn(),
 }));
 jest.mock('../../src/services/api/comics');
+jest.mock('../../src/services/db/comics', () => ({
+  getCachedComics: jest.fn(),
+}));
 jest.mock('../../src/hooks/useColumns');
 jest.mock('../../src/stores/useSettingsStore');
+jest.mock('../../src/components/ComicGridSkeleton', () => {
+  const { View } = require('react-native');
+  return function MockSkeleton() {
+    return <View testID="skeleton" />;
+  };
+});
 jest.mock('../../src/components/ComicCard', () => {
   const { View, Text, TouchableOpacity } = require('react-native');
   return function MockComicCard({ volume, placeholder, onPress }: any) {
@@ -29,6 +39,7 @@ jest.mock('../../src/utils/gridHelpers', () => ({
 }));
 
 const mockFetchComics = fetchComics as jest.Mock;
+const mockGetCachedComics = getCachedComics as jest.Mock;
 const mockUseColumns = useColumns as jest.Mock;
 const mockUseSettingsStore = useSettingsStore as unknown as jest.Mock;
 
@@ -57,6 +68,7 @@ const makeVolume = (id: number, overrides: any = {}) => ({
 describe('ComicsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetCachedComics.mockResolvedValue([]);
     mockUseColumns.mockReturnValue(2);
     mockUseSettingsStore.mockImplementation((selector: any) =>
       selector({ shelvarrUrl: 'http://shelvarr:3000' })
@@ -69,10 +81,37 @@ describe('ComicsScreen', () => {
     expect(getByText(/No Shelvarr server configured/)).toBeTruthy();
   });
 
-  it('shows initial loading spinner', () => {
+  it('shows the skeleton grid while loading with no cache', async () => {
     mockFetchComics.mockReturnValue(new Promise(() => {}));
-    const { toJSON } = render(<ComicsScreen navigation={mockNavigation} route={mockRoute} />);
-    expect(toJSON()).toBeTruthy();
+    const { getByTestId } = render(<ComicsScreen navigation={mockNavigation} route={mockRoute} />);
+    await waitFor(() => {
+      expect(getByTestId('skeleton')).toBeTruthy();
+    });
+  });
+
+  it('paints cached comics immediately before the network resolves', async () => {
+    mockGetCachedComics.mockResolvedValue([makeVolume(1, { title: 'Cached Batman' })]);
+    mockFetchComics.mockReturnValue(new Promise(() => {})); // never resolves
+
+    const { getByText } = render(<ComicsScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => {
+      expect(getByText('Cached Batman')).toBeTruthy();
+    });
+  });
+
+  it('ignores cache-read errors and still loads from the network', async () => {
+    mockGetCachedComics.mockRejectedValue(new Error('cache unavailable'));
+    mockFetchComics.mockResolvedValue({
+      configured: true,
+      volumes: [makeVolume(2, { title: 'Networked Superman' })],
+    });
+
+    const { getByText } = render(<ComicsScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => {
+      expect(getByText('Networked Superman')).toBeTruthy();
+    });
   });
 
   it('shows volumes returned by the API', async () => {
