@@ -22,6 +22,26 @@ import { updateReadingStatus, ReadingStatus } from '../services/api/shelvarr';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BookDetail'>;
 
+/**
+ * Download button label. Shows a percentage once progress advances, but falls
+ * back to an indeterminate "Downloading…" when the total size is unknown (the
+ * server sent no Content-Length, so progress stays at 0).
+ */
+function DownloadingLabel({ progress, textStyle, color }: {
+  progress: number;
+  textStyle: object;
+  color: string;
+}) {
+  return (
+    <View style={styles.downloadingRow}>
+      <ActivityIndicator color={color} />
+      <Text style={textStyle}>
+        {progress > 0 ? `Downloading... ${Math.round(progress * 100)}%` : 'Downloading...'}
+      </Text>
+    </View>
+  );
+}
+
 export default function BookDetailScreen({ route, navigation }: Props) {
   const { bookId } = route.params;
   const [book, setBook] = useState<Book | null>(null);
@@ -200,9 +220,7 @@ export default function BookDetailScreen({ route, navigation }: Props) {
         disabled={preparing}
       >
         {isDownloading ? (
-          <Text style={styles.readButtonText}>
-            Downloading... {Math.round(downloadProgress * 100)}%
-          </Text>
+          <DownloadingLabel progress={downloadProgress} textStyle={styles.readButtonText} color="#fff" />
         ) : preparing ? (
           <ActivityIndicator color="#fff" />
         ) : (
@@ -223,9 +241,7 @@ export default function BookDetailScreen({ route, navigation }: Props) {
           disabled={downloading || isDownloading}
         >
           {downloading && activeDownloadId === bookId ? (
-            <Text style={styles.secondaryButtonText}>
-              Downloading... {Math.round(downloadProgress * 100)}%
-            </Text>
+            <DownloadingLabel progress={downloadProgress} textStyle={styles.secondaryButtonText} color="#333" />
           ) : downloading ? (
             <ActivityIndicator color="#333" />
           ) : (
@@ -291,6 +307,7 @@ const styles = StyleSheet.create({
   },
   readButtonDisabled: { opacity: 0.6 },
   readButtonText: { color: '#fff', fontSize: 24, fontWeight: '600' },
+  downloadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   secondaryButton: {
     backgroundColor: '#e8e4de',
     borderRadius: 8,

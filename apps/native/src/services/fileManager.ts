@@ -48,8 +48,14 @@ export async function downloadBookFile(
     filePath,
     { headers },
     (downloadProgress) => {
+      const { totalBytesWritten, totalBytesExpectedToWrite } = downloadProgress;
+      // When the server omits Content-Length, expo reports the expected size as
+      // -1 (or 0). Dividing by that yields a nonsensical negative percentage, so
+      // treat the total as unknown and report 0 until the download completes.
       const progress =
-        downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
+        totalBytesExpectedToWrite > 0
+          ? Math.min(1, Math.max(0, totalBytesWritten / totalBytesExpectedToWrite))
+          : 0;
       onProgress?.(progress);
     }
   );

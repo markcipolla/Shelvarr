@@ -85,6 +85,23 @@ describe('downloadBookFile', () => {
     expect(onProgress).toHaveBeenCalledWith(0.5);
   });
 
+  it('reports 0 progress when the expected size is unknown (no Content-Length)', async () => {
+    mockedGetInfo.mockResolvedValue({ exists: true });
+    const onProgress = jest.fn();
+    mockedCreateDl.mockImplementation((_url: string, _path: string, _opts: any, cb: Function) => ({
+      downloadAsync: jest.fn().mockImplementation(async () => {
+        // expo reports -1 when the server omits Content-Length
+        cb({ totalBytesWritten: 12967268, totalBytesExpectedToWrite: -1 });
+        return { uri: 'file:///dl/b.epub' };
+      }),
+    }));
+
+    await downloadBookFile('http://example.com/file', 'b1', '.epub', {}, onProgress);
+    expect(onProgress).toHaveBeenCalledWith(0);
+    const reported = onProgress.mock.calls.map((c) => c[0]);
+    expect(reported.every((p) => p >= 0 && p <= 1)).toBe(true);
+  });
+
   it('throws when download returns null', async () => {
     mockedGetInfo.mockResolvedValue({ exists: true });
     const mockDl = { downloadAsync: jest.fn().mockResolvedValue(null) };
