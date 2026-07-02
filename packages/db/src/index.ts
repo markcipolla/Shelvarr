@@ -692,9 +692,10 @@ export interface NextUpComic {
 }
 
 /**
- * Volumes where the user has finished at least one issue and the *next* issue
- * (by issue number, downloaded and unread) is ready to read. Excludes volumes
- * with an issue currently in progress — those live in {@link getInProgressComics}.
+ * Volumes where the user has finished at least one issue and a later, unread
+ * *next* issue (by issue number) exists — whether or not it is downloaded yet,
+ * so the reader can jump in and grab it. Excludes volumes with an issue
+ * currently in progress — those live in {@link getInProgressComics}.
  * One entry per volume, most-recently-finished first.
  */
 export function getNextUpComics(limit: number): NextUpComic[] {
@@ -725,7 +726,6 @@ export function getNextUpComics(limit: number): NextUpComic[] {
       WHERE ci.deleted_at IS NULL
         AND ci.calculated_issue_number > done.max_done
         AND (crp.completed IS NULL OR crp.completed = 0)
-        AND ci.files IS NOT NULL AND ci.files != '' AND ci.files != '[]' AND ci.files != 'null'
         AND ci.volume_id NOT IN (
           SELECT ci3.volume_id
             FROM comic_read_progress crp3
@@ -740,7 +740,6 @@ export function getNextUpComics(limit: number): NextUpComic[] {
              AND ci4.deleted_at IS NULL
              AND ci4.calculated_issue_number > done.max_done
              AND (crp4.completed IS NULL OR crp4.completed = 0)
-             AND ci4.files IS NOT NULL AND ci4.files != '' AND ci4.files != '[]' AND ci4.files != 'null'
         )
       GROUP BY c.id
       ORDER BY done.last_done_at DESC

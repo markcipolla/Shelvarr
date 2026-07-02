@@ -239,13 +239,16 @@ describe('Comic progress queries (@shelvarr/db)', () => {
       assert.deepStrictEqual(db.getNextUpComics(10), []);
     });
 
-    it('skips the next issue when it is not downloaded', () => {
+    it('surfaces the next issue even when it is not downloaded', () => {
       db.upsertComicDetail(makeDetail(101, [
         makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
         makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2, files: [] }),
       ]));
       db.upsertComicReadProgress(1, 20, true, 20);
-      assert.deepStrictEqual(db.getNextUpComics(10), []);
+
+      const result = db.getNextUpComics(10);
+      assert.strictEqual(result.length, 1);
+      assert.strictEqual(result[0].issueId, 2);
     });
 
     it('returns nothing once every issue is finished', () => {
