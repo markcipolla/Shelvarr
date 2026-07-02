@@ -189,6 +189,26 @@ export async function fetchInProgressComics(limit = 20): Promise<InProgressComic
   }
 }
 
+export interface NextUpComic {
+  volume: KapowarrVolume;
+  issueId: number;
+  issueNumber: string | null;
+  updatedAt: string;
+}
+
+/** The next unread issue for volumes the user has partly finished. */
+export async function fetchNextUpComics(limit = 20): Promise<NextUpComic[]> {
+  try {
+    const { data } = await getApiClient().get<{ comics: NextUpComic[] }>(
+      '/api/comics/next-up',
+      { params: { limit } }
+    );
+    return data?.comics ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export interface ComicIssueProgress {
   issueId: number;
   page: number;

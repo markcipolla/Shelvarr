@@ -190,4 +190,104 @@ describe('Comic progress queries (@shelvarr/db)', () => {
       assert.deepStrictEqual(db.getInProgressComics(10), []);
     });
   });
+
+  describe('getNextUpComics', () => {
+    it('returns empty when no issue has been finished', () => {
+      db.upsertComicDetail(makeDetail(101, [
+        makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
+        makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
+      ]));
+      db.upsertComicReadProgress(1, 5, false, 20); // in progress, not finished
+      assert.deepStrictEqual(db.getNextUpComics(10), []);
+    });
+
+    it('surfaces the next downloaded unread issue after a finished one', () => {
+      db.upsertComicDetail(makeDetail(101, [
+        makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
+        makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
+      ]));
+      db.upsertComicReadProgress(1, 20, true, 20); // finished #1
+
+      const result = db.getNextUpComics(10);
+      assert.strictEqual(result.length, 1);
+      assert.strictEqual(result[0].volume.id, 101);
+      assert.strictEqual(result[0].issueId, 2, 'points at the next issue');
+      assert.strictEqual(result[0].issueNumber, '2');
+    });
+
+    it('picks the lowest-numbered unread issue above the last finished', () => {
+      db.upsertComicDetail(makeDetail(101, [
+        makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
+        makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
+        makeIssue({ id: 3, volume_id: 101, issue_number: '3', calculated_issue_number: 3 }),
+      ]));
+      db.upsertComicReadProgress(1, 20, true, 20);
+      db.upsertComicReadProgress(2, 20, true, 20); // #1 and #2 finished
+
+      const result = db.getNextUpComics(10);
+      assert.strictEqual(result.length, 1);
+      assert.strictEqual(result[0].issueId, 3);
+    });
+
+    it('excludes volumes with an issue in progress (they belong in In Progress)', () => {
+      db.upsertComicDetail(makeDetail(101, [
+        makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
+        makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
+      ]));
+      db.upsertComicReadProgress(1, 20, true, 20); // finished #1
+      db.upsertComicReadProgress(2, 4, false, 20); // mid-read #2
+      assert.deepStrictEqual(db.getNextUpComics(10), []);
+    });
+
+    it('surfaces the next issue even when it is not downloaded', () => {
+      db.upsertComicDetail(makeDetail(101, [
+        makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
+        makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2, files: [] }),
+      ]));
+      db.upsertComicReadProgress(1, 20, true, 20);
+
+      const result = db.getNextUpComics(10);
+      assert.strictEqual(result.length, 1);
+      assert.strictEqual(result[0].issueId, 2);
+    });
+
+    it('returns nothing once every issue is finished', () => {
+      db.upsertComicDetail(makeDetail(101, [
+        makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
+      ]));
+      db.upsertComicReadProgress(1, 20, true, 20);
+      assert.deepStrictEqual(db.getNextUpComics(10), []);
+    });
+
+    it('orders by most-recently-finished and respects the limit', () => {
+      db.upsertComicDetail(makeDetail(101, [
+        makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
+        makeIssue({ id: 11, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
+      ]));
+      db.upsertComicDetail(makeDetail(202, [
+        makeIssue({ id: 2, volume_id: 202, issue_number: '1', calculated_issue_number: 1 }),
+        makeIssue({ id: 22, volume_id: 202, issue_number: '2', calculated_issue_number: 2 }),
+      ]));
+      db.upsertComicReadProgress(1, 20, true, 20);
+      db.upsertComicReadProgress(2, 20, true, 20);
+      setProgressTime(1, '2024-01-01 10:00:00');
+      setProgressTime(2, '2024-01-05 10:00:00'); // 202 finished more recently
+
+      const ordered = db.getNextUpComics(10).map((c) => c.volume.id);
+      assert.deepStrictEqual(ordered, [202, 101]);
+
+      const limited = db.getNextUpComics(1).map((c) => c.volume.id);
+      assert.deepStrictEqual(limited, [202]);
+    });
+
+    it('excludes soft-deleted volumes', () => {
+      db.upsertComicDetail(makeDetail(101, [
+        makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
+        makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
+      ]));
+      db.upsertComicReadProgress(1, 20, true, 20);
+      db.softDeleteComic(101);
+      assert.deepStrictEqual(db.getNextUpComics(10), []);
+    });
+  });
 });
