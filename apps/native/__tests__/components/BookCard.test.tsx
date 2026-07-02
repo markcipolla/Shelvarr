@@ -3,6 +3,8 @@ import { render, fireEvent } from '@testing-library/react-native';
 import BookCard from '../../src/components/BookCard';
 import { useAuthHeaders } from '../../src/hooks/useAuthHeaders';
 import { getBookThumbnailUrl } from '../../src/services/api/books';
+import { useConnectivityStore } from '../../src/stores/useConnectivityStore';
+import { useDownloadStore } from '../../src/stores/useDownloadStore';
 import { Book } from '../../src/types/komga';
 
 jest.mock('../../src/hooks/useAuthHeaders');
@@ -28,6 +30,8 @@ describe('BookCard', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUseAuthHeaders.mockReturnValue({ Authorization: 'Basic abc' });
+    useConnectivityStore.setState({ online: true });
+    useDownloadStore.setState({ downloads: {}, activeDownloadId: null, progress: 0, hydrated: true });
   });
 
   it('renders placeholder when placeholder prop is true', () => {
@@ -91,6 +95,37 @@ describe('BookCard', () => {
       <BookCard book={makeBook()} onPress={jest.fn()} fill />
     );
     expect(getByText('Book Title')).toBeTruthy();
+  });
+
+  it('disables tap and dims when offline and book is not downloaded', () => {
+    useConnectivityStore.setState({ online: false });
+    const onPress = jest.fn();
+    const { getByText } = render(<BookCard book={makeBook()} onPress={onPress} />);
+    fireEvent.press(getByText('Book Title'));
+    expect(onPress).not.toHaveBeenCalled();
+  });
+
+  it('remains tappable when offline but book is downloaded', () => {
+    useConnectivityStore.setState({ online: false });
+    useDownloadStore.setState({
+      downloads: {
+        b1: {
+          bookId: 'b1',
+          filePath: '/p',
+          format: 'epub',
+          downloadedAt: 1,
+          persisted: true,
+          book: makeBook(),
+        },
+      },
+      activeDownloadId: null,
+      progress: 0,
+      hydrated: true,
+    });
+    const onPress = jest.fn();
+    const { getByText } = render(<BookCard book={makeBook()} onPress={onPress} />);
+    fireEvent.press(getByText('Book Title'));
+    expect(onPress).toHaveBeenCalled();
   });
 
   it('handles pagesCount of 0 gracefully', () => {

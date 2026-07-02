@@ -61,7 +61,14 @@ export default function BookDetailScreen({ route, navigation }: Props) {
         setBook(b);
         return fetchSeries(b.seriesId).then(setSeries).catch(() => {});
       })
-      .catch(() => Alert.alert('Error', 'Failed to load book details'))
+      .catch(() => {
+        // Offline fallback: use the cached book stored alongside the download.
+        if (downloadedEntry?.book) {
+          setBook(downloadedEntry.book);
+        } else {
+          Alert.alert('Error', 'Failed to load book details');
+        }
+      })
       .finally(() => setLoading(false));
   }, [bookId]);
 

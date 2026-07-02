@@ -23,6 +23,7 @@ const mockCreate = mockAxios.create as jest.Mock;
 mockCreate.mockReturnValue(mockAxiosInstance);
 
 import { useSettingsStore } from '../../../src/stores/useSettingsStore';
+import { useConnectivityStore } from '../../../src/stores/useConnectivityStore';
 import { getApiClient, resetApiClient } from '../../../src/services/api/client';
 
 const mockGetState = useSettingsStore.getState as jest.Mock;
@@ -34,6 +35,7 @@ beforeEach(() => {
   mockCreate.mockReturnValue(mockAxiosInstance);
   mockGetState.mockReturnValue({ shelvarrUrl: '' });
   resetApiClient();
+  useConnectivityStore.setState({ online: true });
 });
 
 describe('getApiClient', () => {
@@ -52,9 +54,10 @@ describe('getApiClient', () => {
     expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 
-  it('registers a request interceptor', () => {
+  it('registers request and response interceptors', () => {
     getApiClient();
     expect(mockInterceptorRequest.use).toHaveBeenCalledTimes(1);
+    expect(mockInterceptorResponse.use).toHaveBeenCalledTimes(1);
   });
 
   describe('request interceptor', () => {
@@ -85,6 +88,36 @@ describe('getApiClient', () => {
       const config = { headers: {} } as any;
       const result = requestInterceptor(config);
       expect(result.headers).toEqual({});
+    });
+  });
+
+  describe('response interceptor', () => {
+    let onSuccess: (response: any) => any;
+    let onError: (err: any) => any;
+
+    beforeEach(() => {
+      getApiClient();
+      onSuccess = mockInterceptorResponse.use.mock.calls[0][0];
+      onError = mockInterceptorResponse.use.mock.calls[0][1];
+    });
+
+    it('marks connectivity online on a successful response', () => {
+      useConnectivityStore.setState({ online: false });
+      const response = { data: {} };
+      expect(onSuccess(response)).toBe(response);
+      expect(useConnectivityStore.getState().online).toBe(true);
+    });
+
+    it('marks connectivity offline on a network error (no response)', async () => {
+      const err: any = { message: 'Network Error' };
+      await expect(onError(err)).rejects.toBe(err);
+      expect(useConnectivityStore.getState().online).toBe(false);
+    });
+
+    it('keeps connectivity online on an HTTP error response', async () => {
+      const err: any = { response: { status: 500 } };
+      await expect(onError(err)).rejects.toBe(err);
+      expect(useConnectivityStore.getState().online).toBe(true);
     });
   });
 });

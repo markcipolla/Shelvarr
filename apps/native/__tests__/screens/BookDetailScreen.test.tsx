@@ -274,6 +274,34 @@ describe('BookDetailScreen', () => {
     });
   });
 
+  it('falls back to cached downloaded book when offline', async () => {
+    const cachedBook = makeBook();
+    mockUseDownloadStore.mockImplementation((selector: any) =>
+      selector({
+        progress: 0,
+        activeDownloadId: null,
+        downloads: {
+          b1: {
+            bookId: 'b1',
+            filePath: '/path/to/book.epub',
+            format: 'epub',
+            downloadedAt: 1,
+            persisted: true,
+            book: cachedBook,
+          },
+        },
+      })
+    );
+    mockFetchBook.mockRejectedValue(new Error('Network error'));
+
+    const { getByText } = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => {
+      expect(getByText('Book Title')).toBeTruthy();
+    });
+    expect(Alert.alert).not.toHaveBeenCalledWith('Error', 'Failed to load book details');
+  });
+
   it('navigates to series on press', async () => {
     mockFetchBook.mockResolvedValue(makeBook());
     mockFetchSeries.mockResolvedValue(makeSeries());
