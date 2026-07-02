@@ -2,7 +2,7 @@ import React from 'react';
 import { render, waitFor, fireEvent } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import ComicDetailScreen from '../../src/screens/ComicDetailScreen';
-import { fetchComicDetail } from '../../src/services/api/comics';
+import { fetchComicDetail, fetchVolumeProgress } from '../../src/services/api/comics';
 import { useAuthHeaders } from '../../src/hooks/useAuthHeaders';
 
 jest.mock('../../src/services/api/client', () => ({
@@ -13,6 +13,7 @@ jest.mock('../../src/services/api/comics');
 jest.mock('../../src/hooks/useAuthHeaders');
 
 const mockFetchComicDetail = fetchComicDetail as jest.Mock;
+const mockFetchVolumeProgress = fetchVolumeProgress as jest.Mock;
 const mockUseAuthHeaders = useAuthHeaders as jest.Mock;
 
 const mockNavigation = {
@@ -73,6 +74,7 @@ describe('ComicDetailScreen', () => {
     jest.clearAllMocks();
     jest.spyOn(Alert, 'alert').mockImplementation(jest.fn());
     mockUseAuthHeaders.mockReturnValue({});
+    mockFetchVolumeProgress.mockResolvedValue(new Map());
   });
 
   it('shows loading indicator initially', () => {
@@ -94,8 +96,24 @@ describe('ComicDetailScreen', () => {
     expect(getByText('An amazing comic')).toBeTruthy();
     expect(getByText('First')).toBeTruthy();
     expect(getByText('Second')).toBeTruthy();
-    expect(getByText('Read')).toBeTruthy();
+    // Downloaded but unread issue shows "Downloaded" (not "Read"); undownloaded shows "Missing".
+    expect(getByText('Downloaded')).toBeTruthy();
     expect(getByText('Missing')).toBeTruthy();
+  });
+
+  it('shows Read / Reading badges based on saved progress', async () => {
+    mockFetchComicDetail.mockResolvedValue({ configured: true, volume: makeVolume() });
+    mockFetchVolumeProgress.mockResolvedValue(
+      new Map([
+        [1, { issueId: 1, page: 20, completed: true, total: 20, updatedAt: 'x' }],
+        [2, { issueId: 2, page: 4, completed: false, total: 20, updatedAt: 'x' }],
+      ])
+    );
+
+    const { getByText } = render(<ComicDetailScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => expect(getByText('Read')).toBeTruthy());
+    expect(getByText('Reading')).toBeTruthy();
   });
 
   it('navigates to IssueDetail when tapping an undownloaded issue', async () => {
@@ -118,9 +136,9 @@ describe('ComicDetailScreen', () => {
 
     const { getByText } = render(<ComicDetailScreen navigation={mockNavigation} route={mockRoute} />);
 
-    await waitFor(() => expect(getByText('Read')).toBeTruthy());
+    await waitFor(() => expect(getByText('Downloaded')).toBeTruthy());
 
-    fireEvent.press(getByText('Read'));
+    fireEvent.press(getByText('Downloaded'));
     expect(mockNavigation.navigate).toHaveBeenCalledWith('IssueDetail', {
       volumeId: 42,
       issueId: 1,

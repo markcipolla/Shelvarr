@@ -3,7 +3,7 @@ import { useBookReader } from '../../src/hooks/useBookReader';
 import { useReaderStore } from '../../src/stores/useReaderStore';
 import { useSettingsStore } from '../../src/stores/useSettingsStore';
 import { useDownloadStore } from '../../src/stores/useDownloadStore';
-import { syncProgress, flushProgress } from '../../src/services/progressSync';
+import { syncProgress, syncComicProgress, flushProgress } from '../../src/services/progressSync';
 import { deleteBookFiles } from '../../src/services/fileManager';
 import { getFileExtension } from '../../src/utils/fileTypes';
 
@@ -27,6 +27,7 @@ const mockUseReaderStore = useReaderStore as unknown as jest.Mock;
 const mockUseSettingsStore = useSettingsStore as unknown as jest.Mock;
 const mockUseDownloadStore = useDownloadStore as unknown as jest.Mock;
 const mockSyncProgress = syncProgress as jest.Mock;
+const mockSyncComicProgress = syncComicProgress as jest.Mock;
 const mockFlushProgress = flushProgress as jest.Mock;
 const mockDeleteBookFiles = deleteBookFiles as jest.Mock;
 const mockGetFileExtension = getFileExtension as jest.Mock;
@@ -93,6 +94,37 @@ describe('useBookReader', () => {
     expect(mockFlushProgress).toHaveBeenCalledWith('book-1');
     expect(mockSyncProgress).toHaveBeenCalledWith('book-1', 100, true);
     // flushProgress called twice on completion
+    expect(mockFlushProgress).toHaveBeenCalledTimes(2);
+  });
+
+  it('onPageChange syncs comic progress (with total) for non-completed pages', () => {
+    setupMocks();
+    const { result } = renderHook(() =>
+      useBookReader('comic-11', { kind: 'comic', issueId: 11 })
+    );
+
+    act(() => {
+      result.current.onPageChange(5, 20);
+    });
+
+    expect(mockSetPage).toHaveBeenCalledWith(5);
+    expect(mockSyncComicProgress).toHaveBeenCalledWith(11, 5, false, 20);
+    expect(mockSyncProgress).not.toHaveBeenCalled();
+    expect(mockFlushProgress).not.toHaveBeenCalled();
+  });
+
+  it('onPageChange flushes and syncs comic progress on completion', () => {
+    setupMocks();
+    const { result } = renderHook(() =>
+      useBookReader('comic-11', { kind: 'comic', issueId: 11 })
+    );
+
+    act(() => {
+      result.current.onPageChange(20, 20);
+    });
+
+    expect(mockSyncComicProgress).toHaveBeenCalledWith(11, 20, true, 20);
+    expect(mockFlushProgress).toHaveBeenCalledWith('comic-11');
     expect(mockFlushProgress).toHaveBeenCalledTimes(2);
   });
 

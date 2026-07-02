@@ -12,6 +12,7 @@ interface QueuedProgress {
   epubHref?: string;
   comic?: boolean;
   issueId?: number;
+  total?: number;
 }
 
 const pendingSync: Map<string, QueuedProgress> = new Map();
@@ -44,9 +45,9 @@ export function syncEpubProgress(bookId: string, progress: number, completed: bo
   timers.set(bookId, timer);
 }
 
-export function syncComicProgress(issueId: number, page: number, completed: boolean = false): void {
+export function syncComicProgress(issueId: number, page: number, completed: boolean = false, total?: number): void {
   const bookId = `comic-${issueId}`;
-  const entry: QueuedProgress = { bookId, page, completed, timestamp: Date.now(), comic: true, issueId };
+  const entry: QueuedProgress = { bookId, page, completed, timestamp: Date.now(), comic: true, issueId, total };
   pendingSync.set(bookId, entry);
 
   const existing = timers.get(bookId);
@@ -70,7 +71,7 @@ export async function flushProgress(bookId: string): Promise<void> {
       /* istanbul ignore next -- epubProgress/epubHref always set by syncEpubProgress */
       await updateEpubProgression(entry.bookId, entry.epubProgress ?? 0, entry.completed, entry.epubHref ?? '');
     } else if (entry.comic && entry.issueId !== undefined) {
-      await updateComicProgress(entry.issueId, entry.page, entry.completed);
+      await updateComicProgress(entry.issueId, entry.page, entry.completed, entry.total);
     } else {
       await updateReadProgress(entry.bookId, entry.page, entry.completed);
     }
@@ -94,7 +95,7 @@ export async function retryOfflineQueue(): Promise<void> {
         /* istanbul ignore next -- epubProgress/epubHref always set by syncEpubProgress */
         await updateEpubProgression(item.bookId, item.epubProgress ?? 0, item.completed, item.epubHref ?? '');
       } else if (item.comic && item.issueId !== undefined) {
-        await updateComicProgress(item.issueId, item.page, item.completed);
+        await updateComicProgress(item.issueId, item.page, item.completed, item.total);
       } else {
         await updateReadProgress(item.bookId, item.page, item.completed);
       }

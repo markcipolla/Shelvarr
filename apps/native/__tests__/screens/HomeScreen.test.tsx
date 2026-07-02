@@ -3,7 +3,7 @@ import { render, waitFor, fireEvent, act } from '@testing-library/react-native';
 import { FlatList } from 'react-native';
 import HomeScreen from '../../src/screens/HomeScreen';
 import { searchBooks, fetchInProgressBooks, fetchRecentlyAdded } from '../../src/services/api/books';
-import { fetchComics, fetchRecentComics } from '../../src/services/api/comics';
+import { fetchComics, fetchRecentComics, fetchInProgressComics } from '../../src/services/api/comics';
 import { useColumns } from '../../src/hooks/useColumns';
 import { useSettingsStore } from '../../src/stores/useSettingsStore';
 
@@ -54,6 +54,7 @@ const mockFetchInProgress = fetchInProgressBooks as jest.Mock;
 const mockFetchRecent = fetchRecentlyAdded as jest.Mock;
 const mockFetchRecentComics = fetchRecentComics as jest.Mock;
 const mockFetchComics = fetchComics as jest.Mock;
+const mockFetchInProgressComics = fetchInProgressComics as jest.Mock;
 const mockUseColumns = useColumns as jest.Mock;
 const mockUseSettingsStore = useSettingsStore as unknown as jest.Mock;
 
@@ -113,6 +114,7 @@ describe('HomeScreen', () => {
     jest.clearAllMocks();
     mockFetchRecentComics.mockResolvedValue({ configured: true, volumes: [] });
     mockFetchComics.mockResolvedValue({ configured: true, volumes: [] });
+    mockFetchInProgressComics.mockResolvedValue([]);
     mockUseColumns.mockReturnValue(2);
     mockUseSettingsStore.mockImplementation((selector: any) =>
       selector({ shelvarrUrl: 'http://shelvarr:3000' })
@@ -231,6 +233,23 @@ describe('HomeScreen', () => {
       expect(getByText('Batman')).toBeTruthy();
       expect(getByText('Superman')).toBeTruthy();
     });
+  });
+
+  it('renders in-progress comics section and navigates to detail', async () => {
+    setupLoadedState();
+    mockFetchInProgressComics.mockResolvedValue([
+      { volume: makeVolume(9, 'Saga'), issueId: 11, issueNumber: '3', page: 5, total: 20, updatedAt: 'x' },
+    ]);
+
+    const { getByText } = render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => {
+      expect(getByText('In Progress Comics')).toBeTruthy();
+      expect(getByText('Saga')).toBeTruthy();
+    });
+
+    fireEvent.press(getByText('Saga'));
+    expect(mockNavigation.navigate).toHaveBeenCalledWith('ComicDetail', { volumeId: 9 });
   });
 
   it('navigates to comic detail from comics row', async () => {

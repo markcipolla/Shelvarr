@@ -21,9 +21,11 @@ export function ComicGrid({ volumes }: ComicGridProps) {
 
 interface ComicCardProps {
   volume: KapowarrVolume;
+  /** Optional badge shown at the bottom-left, e.g. resume point for in-progress comics. */
+  progressLabel?: string;
 }
 
-export function ComicCard({ volume }: ComicCardProps) {
+export function ComicCard({ volume, progressLabel }: ComicCardProps) {
   const title = volume.title;
   const subtitle = [volume.publisher, volume.year].filter(Boolean).join(' · ');
   const coverSrc = `/api/comics/${volume.id}/cover`;
@@ -51,6 +53,11 @@ export function ComicCard({ volume }: ComicCardProps) {
         {volume.issue_count > 0 && (
           <div className="absolute top-2 right-2 bg-shelvarr-primary/90 text-white text-xs font-bold px-2 py-1 rounded">
             {volume.issues_downloaded}/{volume.issue_count}
+          </div>
+        )}
+        {progressLabel && (
+          <div className="absolute bottom-2 left-2 bg-black/70 text-white text-xs font-semibold px-2 py-1 rounded">
+            {progressLabel}
           </div>
         )}
       </div>

@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, waitFor } from '@testing-library/react-native';
 import IssueDetailScreen from '../../src/screens/IssueDetailScreen';
-import { fetchComicIssue } from '../../src/services/api/comics';
+import { fetchComicIssue, fetchComicProgress } from '../../src/services/api/comics';
 import { useAuthHeaders } from '../../src/hooks/useAuthHeaders';
 
 jest.mock('../../src/services/api/client', () => ({
@@ -12,6 +12,7 @@ jest.mock('../../src/services/api/comics');
 jest.mock('../../src/hooks/useAuthHeaders');
 
 const mockFetchComicIssue = fetchComicIssue as jest.Mock;
+const mockFetchComicProgress = fetchComicProgress as jest.Mock;
 const mockUseAuthHeaders = useAuthHeaders as jest.Mock;
 
 const mockNavigation = {
@@ -41,6 +42,7 @@ describe('IssueDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUseAuthHeaders.mockReturnValue({});
+    mockFetchComicProgress.mockResolvedValue(null);
   });
 
   it('shows loading indicator initially', () => {
@@ -79,6 +81,38 @@ describe('IssueDetailScreen', () => {
 
     await waitFor(() => expect(getByText('Second')).toBeTruthy());
     expect(getByText('Missing')).toBeTruthy();
+  });
+
+  it('shows a "Read" badge when the issue is completed', async () => {
+    mockFetchComicIssue.mockResolvedValue({ configured: true, issue: makeIssue() });
+    mockFetchComicProgress.mockResolvedValue({ page: 20, completed: true, total: 20 });
+
+    const { getByText, getAllByText } = render(
+      <IssueDetailScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    // Both the "Read" CTA button and the "Read" status badge render for a
+    // downloaded, completed issue.
+    await waitFor(() => expect(getAllByText('Read').length).toBe(2));
+    expect(getByText('Downloaded')).toBeTruthy();
+  });
+
+  it('shows "Reading X/Y" when in progress with a known total', async () => {
+    mockFetchComicIssue.mockResolvedValue({ configured: true, issue: makeIssue() });
+    mockFetchComicProgress.mockResolvedValue({ page: 5, completed: false, total: 22 });
+
+    const { getByText } = render(<IssueDetailScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => expect(getByText('Reading 5/22')).toBeTruthy());
+  });
+
+  it('shows "Reading p.X" when in progress with no known total', async () => {
+    mockFetchComicIssue.mockResolvedValue({ configured: true, issue: makeIssue() });
+    mockFetchComicProgress.mockResolvedValue({ page: 5, completed: false });
+
+    const { getByText } = render(<IssueDetailScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => expect(getByText('Reading p.5')).toBeTruthy());
   });
 
   it('shows error when the issue is not found', async () => {

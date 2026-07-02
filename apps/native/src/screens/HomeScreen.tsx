@@ -15,7 +15,13 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { Book } from '../types/komga';
 import { searchBooks, fetchInProgressBooks, fetchRecentlyAdded } from '../services/api/books';
-import { fetchComics, fetchRecentComics, KapowarrVolume } from '../services/api/comics';
+import {
+  fetchComics,
+  fetchRecentComics,
+  fetchInProgressComics,
+  KapowarrVolume,
+  InProgressComic,
+} from '../services/api/comics';
 import BookCard from '../components/BookCard';
 import ComicCard from '../components/ComicCard';
 import { useColumns } from '../hooks/useColumns';
@@ -38,6 +44,7 @@ export default function HomeScreen({ navigation }: Props) {
   const [inProgress, setInProgress] = useState<Book[]>([]);
   const [recentlyAdded, setRecentlyAdded] = useState<Book[]>([]);
   const [recentComics, setRecentComics] = useState<KapowarrVolume[]>([]);
+  const [inProgressComics, setInProgressComics] = useState<InProgressComic[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
@@ -58,18 +65,23 @@ export default function HomeScreen({ navigation }: Props) {
       return;
     }
     try {
-      const [inProgressRes, recentRes, comicsRes] = await Promise.all([
+      const [inProgressRes, recentRes, comicsRes, inProgressComicsRes] = await Promise.all([
         fetchInProgressBooks(),
         fetchRecentlyAdded(),
         fetchRecentComics(10).catch((err) => {
           console.error('Failed to load recent comics:', err);
           return null;
         }),
+        fetchInProgressComics(10).catch((err) => {
+          console.error('Failed to load in-progress comics:', err);
+          return [];
+        }),
       ]);
       const inProgressIds = new Set(inProgressRes.content.map((b) => b.id));
       setInProgress(inProgressRes.content);
       setRecentlyAdded(recentRes.content.filter((b) => !inProgressIds.has(b.id)));
       setRecentComics(comicsRes?.configured ? comicsRes.volumes : []);
+      setInProgressComics(inProgressComicsRes);
     } catch (err) {
       console.error('Failed to load home data:', err);
     } finally {
@@ -322,6 +334,7 @@ export default function HomeScreen({ navigation }: Props) {
     inProgress.length > 0 ||
     recentlyAdded.length > 0 ||
     downloadedBooks.length > 0 ||
+    inProgressComics.length > 0 ||
     recentComics.length > 0;
 
   return (
@@ -345,6 +358,29 @@ export default function HomeScreen({ navigation }: Props) {
                     book={item}
                     fill
                     onPress={() => navigation.navigate('BookDetail', { bookId: item.id })}
+                  />
+                </View>
+              )}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+            />
+          </View>
+        )}
+
+        {inProgressComics.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>In Progress Comics</Text>
+            <FlatList
+              horizontal
+              data={inProgressComics}
+              keyExtractor={(item) => String(item.volume.id)}
+              renderItem={({ item }) => (
+                <View style={{ width: cardWidth, marginRight: 12 }}>
+                  <ComicCard
+                    volume={item.volume}
+                    fill
+                    progressLabel={item.issueNumber ? `#${item.issueNumber}` : 'Reading'}
+                    onPress={() => navigation.navigate('ComicDetail', { volumeId: item.volume.id })}
                   />
                 </View>
               )}

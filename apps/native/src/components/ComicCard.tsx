@@ -10,9 +10,11 @@ interface Props {
   onPress: () => void;
   fill?: boolean;
   placeholder?: boolean;
+  /** Optional badge shown at the bottom-left, e.g. resume point for in-progress comics. */
+  progressLabel?: string;
 }
 
-export default function ComicCard({ volume, onPress, fill, placeholder }: Props) {
+export default function ComicCard({ volume, onPress, fill, placeholder, progressLabel }: Props) {
   if (placeholder) {
     return <View style={{ flex: 1, marginBottom: 12 }} />;
   }
@@ -40,6 +42,11 @@ export default function ComicCard({ volume, onPress, fill, placeholder }: Props)
             </Text>
           </View>
         )}
+        {progressLabel ? (
+          <View style={styles.progressBadge}>
+            <Text style={styles.progressBadgeText}>{progressLabel}</Text>
+          </View>
+        ) : null}
       </View>
       <View style={styles.info}>
         <Text style={styles.title} numberOfLines={2}>
@@ -69,6 +76,16 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   badgeText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  progressBadge: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  progressBadgeText: { color: '#fff', fontSize: 11, fontWeight: '600' },
   info: { marginTop: 6 },
   title: { fontSize: 13, color: '#222', lineHeight: 17 },
   subtitle: { fontSize: 11, color: '#777', marginTop: 2 },
