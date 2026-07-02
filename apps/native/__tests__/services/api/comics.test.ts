@@ -28,6 +28,7 @@ import {
   fetchComicIssue,
   getVolumeCoverUrl,
   fetchInProgressComics,
+  fetchNextUpComics,
   fetchVolumeProgress,
 } from '../../../src/services/api/comics';
 
@@ -273,6 +274,29 @@ describe('fetchInProgressComics', () => {
   it('returns an empty array on error', async () => {
     mockGet.mockRejectedValue(new Error('offline'));
     expect(await fetchInProgressComics()).toEqual([]);
+  });
+});
+
+describe('fetchNextUpComics', () => {
+  it('returns the next-up comics list from the API', async () => {
+    const comics = [{ volume: { id: 21 }, issueId: 42, issueNumber: '4', updatedAt: 'x' }];
+    mockGet.mockResolvedValue({ data: { comics } });
+
+    const result = await fetchNextUpComics(10);
+
+    expect(mockGet).toHaveBeenCalledWith('/api/comics/next-up', { params: { limit: 10 } });
+    expect(result).toEqual(comics);
+  });
+
+  it('defaults the limit to 20', async () => {
+    mockGet.mockResolvedValue({ data: { comics: [] } });
+    await fetchNextUpComics();
+    expect(mockGet).toHaveBeenCalledWith('/api/comics/next-up', { params: { limit: 20 } });
+  });
+
+  it('returns an empty array on error', async () => {
+    mockGet.mockRejectedValue(new Error('offline'));
+    expect(await fetchNextUpComics()).toEqual([]);
   });
 });
 

@@ -1,6 +1,7 @@
 /**
  * Unit tests for the comic progress read APIs:
  *   GET /api/comics/in-progress      (volumes in progress)
+ *   GET /api/comics/next-up          (next unread issue per volume)
  *   GET /api/comics/[id]/progress    (per-issue progress for a volume)
  */
 
@@ -11,6 +12,7 @@ import { cleanup } from '@testing-library/react';
 let authResult = true;
 
 const getInProgressComicsMock = mock.fn<(limit: number) => unknown[]>(() => []);
+const getNextUpComicsMock = mock.fn<(limit: number) => unknown[]>(() => []);
 const getComicReadProgressForVolumeMock = mock.fn<(volumeId: number) => unknown[]>(() => []);
 
 mock.module('@shelvarr/services', {
@@ -26,11 +28,13 @@ mock.module('@/lib/config', {
 mock.module('@/lib/db', {
   namedExports: {
     getInProgressComics: (limit: number) => getInProgressComicsMock(limit),
+    getNextUpComics: (limit: number) => getNextUpComicsMock(limit),
     getComicReadProgressForVolume: (volumeId: number) => getComicReadProgressForVolumeMock(volumeId),
   },
 });
 
 const inProgress = await import('@/app/api/comics/in-progress/route');
+const nextUp = await import('@/app/api/comics/next-up/route');
 const volumeProgress = await import('@/app/api/comics/[id]/progress/route');
 
 describe('GET /api/comics/in-progress', () => {
@@ -73,6 +77,44 @@ describe('GET /api/comics/in-progress', () => {
   it('falls back to default for a non-numeric limit', async () => {
     await inProgress.GET(req('http://localhost/api/comics/in-progress?limit=abc') as any);
     assert.equal(getInProgressComicsMock.mock.calls[0].arguments[0], 20);
+  });
+});
+
+describe('GET /api/comics/next-up', () => {
+  beforeEach(() => {
+    getNextUpComicsMock.mock.resetCalls();
+    getNextUpComicsMock.mock.mockImplementation(() => []);
+    authResult = true;
+  });
+  afterEach(cleanup);
+
+  function req(url = 'http://localhost/api/comics/next-up') {
+    return new Request(url, { method: 'GET' });
+  }
+
+  it('returns 401 when auth fails', async () => {
+    authResult = false;
+    const res = await nextUp.GET(req() as any);
+    assert.equal(res.status, 401);
+  });
+
+  it('returns the next-up comics list', async () => {
+    const comics = [{ volume: { id: 101 }, issueId: 2, issueNumber: '2', updatedAt: 'x' }];
+    getNextUpComicsMock.mock.mockImplementation(() => comics);
+    const res = await nextUp.GET(req() as any);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.deepEqual(body, { comics });
+  });
+
+  it('defaults the limit when none is supplied', async () => {
+    await nextUp.GET(req() as any);
+    assert.equal(getNextUpComicsMock.mock.calls[0].arguments[0], 20);
+  });
+
+  it('honors the limit query param', async () => {
+    await nextUp.GET(req('http://localhost/api/comics/next-up?limit=5') as any);
+    assert.equal(getNextUpComicsMock.mock.calls[0].arguments[0], 5);
   });
 });
 

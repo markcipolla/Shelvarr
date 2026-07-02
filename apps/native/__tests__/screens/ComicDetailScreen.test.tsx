@@ -113,7 +113,19 @@ describe('ComicDetailScreen', () => {
     const { getByText } = render(<ComicDetailScreen navigation={mockNavigation} route={mockRoute} />);
 
     await waitFor(() => expect(getByText('Read')).toBeTruthy());
-    expect(getByText('Reading')).toBeTruthy();
+    // The "Reading" badge now carries the page count.
+    expect(getByText('Reading 4/20')).toBeTruthy();
+  });
+
+  it('shows page number when total is unknown', async () => {
+    mockFetchComicDetail.mockResolvedValue({ configured: true, volume: makeVolume() });
+    mockFetchVolumeProgress.mockResolvedValue(
+      new Map([[2, { issueId: 2, page: 7, completed: false, total: null, updatedAt: 'x' }]])
+    );
+
+    const { getByText } = render(<ComicDetailScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => expect(getByText('Reading p.7')).toBeTruthy());
   });
 
   it('navigates to IssueDetail when tapping an undownloaded issue', async () => {

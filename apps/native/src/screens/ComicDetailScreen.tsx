@@ -38,7 +38,10 @@ function getIssueBadge(issue: KapowarrIssue, progress?: ComicIssueProgress) {
     return { label: 'Read', container: styles.badgeRead, text: styles.badgeTextOnColor };
   }
   if (progress && progress.page > 0) {
-    return { label: 'Reading', container: styles.badgeReading, text: styles.badgeTextOnColor };
+    const label = progress.total
+      ? `Reading ${progress.page}/${progress.total}`
+      : `Reading p.${progress.page}`;
+    return { label, container: styles.badgeReading, text: styles.badgeTextOnColor };
   }
   if (issue.files.length > 0) {
     return { label: 'Downloaded', container: styles.badgeDownloaded, text: styles.badgeTextDownloaded };

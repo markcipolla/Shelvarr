@@ -14,13 +14,15 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { Book } from '../types/komga';
-import { searchBooks, fetchInProgressBooks, fetchRecentlyAdded } from '../services/api/books';
+import { searchBooks, fetchInProgressBooks, fetchNextUpBooks, fetchRecentlyAdded } from '../services/api/books';
 import {
   fetchComics,
   fetchRecentComics,
   fetchInProgressComics,
+  fetchNextUpComics,
   KapowarrVolume,
   InProgressComic,
+  NextUpComic,
 } from '../services/api/comics';
 import BookCard from '../components/BookCard';
 import ComicCard from '../components/ComicCard';
@@ -29,6 +31,15 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 import { useDownloadStore } from '../stores/useDownloadStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
+
+/** Resume badge for an in-progress comic, e.g. "#3 · 7/22" or "#3 · p.7". */
+function inProgressComicLabel(item: InProgressComic): string {
+  const parts: string[] = [];
+  if (item.issueNumber) parts.push(`#${item.issueNumber}`);
+  if (item.total) parts.push(`${item.page}/${item.total}`);
+  else if (item.page > 0) parts.push(`p.${item.page}`);
+  return parts.join(' · ') || 'Reading';
+}
 
 export default function HomeScreen({ navigation }: Props) {
   const shelvarrUrl = useSettingsStore((s) => s.shelvarrUrl);
@@ -42,9 +53,11 @@ export default function HomeScreen({ navigation }: Props) {
     [downloadsMap]
   );
   const [inProgress, setInProgress] = useState<Book[]>([]);
+  const [nextUpBooks, setNextUpBooks] = useState<Book[]>([]);
   const [recentlyAdded, setRecentlyAdded] = useState<Book[]>([]);
   const [recentComics, setRecentComics] = useState<KapowarrVolume[]>([]);
   const [inProgressComics, setInProgressComics] = useState<InProgressComic[]>([]);
+  const [nextUpComics, setNextUpComics] = useState<NextUpComic[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
@@ -65,23 +78,38 @@ export default function HomeScreen({ navigation }: Props) {
       return;
     }
     try {
-      const [inProgressRes, recentRes, comicsRes, inProgressComicsRes] = await Promise.all([
-        fetchInProgressBooks(),
-        fetchRecentlyAdded(),
-        fetchRecentComics(10).catch((err) => {
-          console.error('Failed to load recent comics:', err);
-          return null;
-        }),
-        fetchInProgressComics(10).catch((err) => {
-          console.error('Failed to load in-progress comics:', err);
-          return [];
-        }),
-      ]);
+      const [inProgressRes, nextUpBooksRes, recentRes, comicsRes, inProgressComicsRes, nextUpComicsRes] =
+        await Promise.all([
+          fetchInProgressBooks(),
+          fetchNextUpBooks().catch((err) => {
+            console.error('Failed to load next-up books:', err);
+            return null;
+          }),
+          fetchRecentlyAdded(),
+          fetchRecentComics(10).catch((err) => {
+            console.error('Failed to load recent comics:', err);
+            return null;
+          }),
+          fetchInProgressComics(10).catch((err) => {
+            console.error('Failed to load in-progress comics:', err);
+            return [];
+          }),
+          fetchNextUpComics(10).catch((err) => {
+            console.error('Failed to load next-up comics:', err);
+            return [];
+          }),
+        ]);
       const inProgressIds = new Set(inProgressRes.content.map((b) => b.id));
+      const nextUp = (nextUpBooksRes?.content ?? []).filter((b) => !inProgressIds.has(b.id));
+      const nextUpIds = new Set(nextUp.map((b) => b.id));
       setInProgress(inProgressRes.content);
-      setRecentlyAdded(recentRes.content.filter((b) => !inProgressIds.has(b.id)));
+      setNextUpBooks(nextUp);
+      setRecentlyAdded(
+        recentRes.content.filter((b) => !inProgressIds.has(b.id) && !nextUpIds.has(b.id))
+      );
       setRecentComics(comicsRes?.configured ? comicsRes.volumes : []);
       setInProgressComics(inProgressComicsRes);
+      setNextUpComics(nextUpComicsRes);
     } catch (err) {
       console.error('Failed to load home data:', err);
     } finally {
@@ -332,9 +360,11 @@ export default function HomeScreen({ navigation }: Props) {
 
   const hasAny =
     inProgress.length > 0 ||
+    nextUpBooks.length > 0 ||
     recentlyAdded.length > 0 ||
     downloadedBooks.length > 0 ||
     inProgressComics.length > 0 ||
+    nextUpComics.length > 0 ||
     recentComics.length > 0;
 
   return (
@@ -379,8 +409,59 @@ export default function HomeScreen({ navigation }: Props) {
                   <ComicCard
                     volume={item.volume}
                     fill
-                    progressLabel={item.issueNumber ? `#${item.issueNumber}` : 'Reading'}
+                    progressLabel={inProgressComicLabel(item)}
                     onPress={() => navigation.navigate('ComicDetail', { volumeId: item.volume.id })}
+                  />
+                </View>
+              )}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+            />
+          </View>
+        )}
+
+        {nextUpBooks.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Next Up</Text>
+            <FlatList
+              horizontal
+              data={nextUpBooks}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <View style={{ width: cardWidth, marginRight: 12 }}>
+                  <BookCard
+                    book={item}
+                    fill
+                    onPress={() => navigation.navigate('BookDetail', { bookId: item.id })}
+                  />
+                </View>
+              )}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+            />
+          </View>
+        )}
+
+        {nextUpComics.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Next Up Comics</Text>
+            <FlatList
+              horizontal
+              data={nextUpComics}
+              keyExtractor={(item) => String(item.volume.id)}
+              renderItem={({ item }) => (
+                <View style={{ width: cardWidth, marginRight: 12 }}>
+                  <ComicCard
+                    volume={item.volume}
+                    fill
+                    progressLabel={item.issueNumber ? `Next #${item.issueNumber}` : 'Next up'}
+                    onPress={() =>
+                      navigation.navigate('IssueDetail', {
+                        volumeId: item.volume.id,
+                        issueId: item.issueId,
+                        volumeTitle: item.volume.title,
+                      })
+                    }
                   />
                 </View>
               )}

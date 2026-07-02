@@ -133,6 +133,16 @@ export async function fetchInProgressBooks(
   return data;
 }
 
+/** The next unread book in each series the user is partway through. */
+export async function fetchNextUpBooks(
+  libraryId?: string
+): Promise<PagedResponse<Book>> {
+  const params: Record<string, any> = { size: 10 };
+  if (libraryId) params.library_id = libraryId;
+  const { data } = await getApiClient().get<PagedResponse<Book>>('/api/books/next-up', { params });
+  return data;
+}
+
 export async function fetchRecentlyAdded(
   libraryId?: string
 ): Promise<PagedResponse<Book>> {

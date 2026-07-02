@@ -36,6 +36,7 @@ import {
   deleteReadProgress,
   searchBooks,
   fetchInProgressBooks,
+  fetchNextUpBooks,
   fetchRecentlyAdded,
 } from '../../../src/services/api/books';
 
@@ -240,6 +241,22 @@ describe('fetchInProgressBooks', () => {
         sort: 'readProgress.lastModified,desc',
         library_id: 'lib1',
       },
+    });
+  });
+});
+
+describe('fetchNextUpBooks', () => {
+  it('fetches without libraryId', async () => {
+    mockGet.mockResolvedValue({ data: { content: [] } });
+    await fetchNextUpBooks();
+    expect(mockGet).toHaveBeenCalledWith('/api/books/next-up', { params: { size: 10 } });
+  });
+
+  it('fetches with libraryId', async () => {
+    mockGet.mockResolvedValue({ data: { content: [] } });
+    await fetchNextUpBooks('lib1');
+    expect(mockGet).toHaveBeenCalledWith('/api/books/next-up', {
+      params: { size: 10, library_id: 'lib1' },
     });
   });
 });

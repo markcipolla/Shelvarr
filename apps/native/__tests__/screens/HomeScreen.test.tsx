@@ -2,8 +2,13 @@ import React from 'react';
 import { render, waitFor, fireEvent, act } from '@testing-library/react-native';
 import { FlatList } from 'react-native';
 import HomeScreen from '../../src/screens/HomeScreen';
-import { searchBooks, fetchInProgressBooks, fetchRecentlyAdded } from '../../src/services/api/books';
-import { fetchComics, fetchRecentComics, fetchInProgressComics } from '../../src/services/api/comics';
+import { searchBooks, fetchInProgressBooks, fetchNextUpBooks, fetchRecentlyAdded } from '../../src/services/api/books';
+import {
+  fetchComics,
+  fetchRecentComics,
+  fetchInProgressComics,
+  fetchNextUpComics,
+} from '../../src/services/api/comics';
 import { useColumns } from '../../src/hooks/useColumns';
 import { useSettingsStore } from '../../src/stores/useSettingsStore';
 
@@ -51,10 +56,12 @@ jest.mock('../../src/utils/gridHelpers', () => ({
 
 const mockSearchBooks = searchBooks as jest.Mock;
 const mockFetchInProgress = fetchInProgressBooks as jest.Mock;
+const mockFetchNextUpBooks = fetchNextUpBooks as jest.Mock;
 const mockFetchRecent = fetchRecentlyAdded as jest.Mock;
 const mockFetchRecentComics = fetchRecentComics as jest.Mock;
 const mockFetchComics = fetchComics as jest.Mock;
 const mockFetchInProgressComics = fetchInProgressComics as jest.Mock;
+const mockFetchNextUpComics = fetchNextUpComics as jest.Mock;
 const mockUseColumns = useColumns as jest.Mock;
 const mockUseSettingsStore = useSettingsStore as unknown as jest.Mock;
 
@@ -88,6 +95,7 @@ const makeVolume = (id: number, title = `Volume ${id}`) => ({
 
 function setupLoadedState() {
   mockFetchInProgress.mockResolvedValue({ content: [] });
+  mockFetchNextUpBooks.mockResolvedValue({ content: [] });
   mockFetchRecent.mockResolvedValue({ content: [] });
 }
 
@@ -115,6 +123,8 @@ describe('HomeScreen', () => {
     mockFetchRecentComics.mockResolvedValue({ configured: true, volumes: [] });
     mockFetchComics.mockResolvedValue({ configured: true, volumes: [] });
     mockFetchInProgressComics.mockResolvedValue([]);
+    mockFetchNextUpBooks.mockResolvedValue({ content: [] });
+    mockFetchNextUpComics.mockResolvedValue([]);
     mockUseColumns.mockReturnValue(2);
     mockUseSettingsStore.mockImplementation((selector: any) =>
       selector({ shelvarrUrl: 'http://shelvarr:3000' })
@@ -250,6 +260,42 @@ describe('HomeScreen', () => {
 
     fireEvent.press(getByText('Saga'));
     expect(mockNavigation.navigate).toHaveBeenCalledWith('ComicDetail', { volumeId: 9 });
+  });
+
+  it('renders the Next Up books section and navigates to the book', async () => {
+    setupLoadedState();
+    mockFetchNextUpBooks.mockResolvedValue({ content: [makeBook('b7', 'Dune Messiah')] });
+
+    const { getByText } = render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => {
+      expect(getByText('Next Up')).toBeTruthy();
+      expect(getByText('Dune Messiah')).toBeTruthy();
+    });
+
+    fireEvent.press(getByText('Dune Messiah'));
+    expect(mockNavigation.navigate).toHaveBeenCalledWith('BookDetail', { bookId: 'b7' });
+  });
+
+  it('renders Next Up Comics and opens the next issue', async () => {
+    setupLoadedState();
+    mockFetchNextUpComics.mockResolvedValue([
+      { volume: makeVolume(21, 'Sandman'), issueId: 42, issueNumber: '4', updatedAt: 'x' },
+    ]);
+
+    const { getByText } = render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => {
+      expect(getByText('Next Up Comics')).toBeTruthy();
+      expect(getByText('Sandman')).toBeTruthy();
+    });
+
+    fireEvent.press(getByText('Sandman'));
+    expect(mockNavigation.navigate).toHaveBeenCalledWith('IssueDetail', {
+      volumeId: 21,
+      issueId: 42,
+      volumeTitle: 'Sandman',
+    });
   });
 
   it('navigates to comic detail from comics row', async () => {

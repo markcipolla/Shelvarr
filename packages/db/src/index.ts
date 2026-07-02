@@ -682,6 +682,151 @@ export function getInProgressComics(limit: number): InProgressComic[] {
   }));
 }
 
+export interface NextUpComic {
+  volume: KapowarrVolume;
+  /** The next unread, downloaded issue the reader should open. */
+  issueId: number;
+  issueNumber: string | null;
+  /** When the volume's most recent issue was finished (drives ordering). */
+  updatedAt: string;
+}
+
+/**
+ * Volumes where the user has finished at least one issue and the *next* issue
+ * (by issue number, downloaded and unread) is ready to read. Excludes volumes
+ * with an issue currently in progress — those live in {@link getInProgressComics}.
+ * One entry per volume, most-recently-finished first.
+ */
+export function getNextUpComics(limit: number): NextUpComic[] {
+  const capped = Math.max(1, Math.min(100, limit));
+  const rows = query<
+    ComicRow & {
+      nu_issue_id: number;
+      nu_issue_number: string | null;
+      last_done_at: string;
+    }
+  >(
+    `SELECT c.*,
+            ci.id AS nu_issue_id,
+            ci.issue_number AS nu_issue_number,
+            done.last_done_at AS last_done_at
+       FROM comic_issues ci
+       JOIN comics c ON c.id = ci.volume_id AND c.deleted_at IS NULL
+       JOIN (
+         SELECT ci2.volume_id AS volume_id,
+                MAX(ci2.calculated_issue_number) AS max_done,
+                MAX(crp2.updated_at) AS last_done_at
+           FROM comic_read_progress crp2
+           JOIN comic_issues ci2 ON ci2.id = crp2.issue_id AND ci2.deleted_at IS NULL
+          WHERE crp2.completed = 1
+          GROUP BY ci2.volume_id
+       ) done ON done.volume_id = ci.volume_id
+       LEFT JOIN comic_read_progress crp ON crp.issue_id = ci.id
+      WHERE ci.deleted_at IS NULL
+        AND ci.calculated_issue_number > done.max_done
+        AND (crp.completed IS NULL OR crp.completed = 0)
+        AND ci.files IS NOT NULL AND ci.files != '' AND ci.files != '[]' AND ci.files != 'null'
+        AND ci.volume_id NOT IN (
+          SELECT ci3.volume_id
+            FROM comic_read_progress crp3
+            JOIN comic_issues ci3 ON ci3.id = crp3.issue_id AND ci3.deleted_at IS NULL
+           WHERE crp3.completed = 0 AND crp3.page > 0
+        )
+        AND ci.calculated_issue_number = (
+          SELECT MIN(ci4.calculated_issue_number)
+            FROM comic_issues ci4
+            LEFT JOIN comic_read_progress crp4 ON crp4.issue_id = ci4.id
+           WHERE ci4.volume_id = ci.volume_id
+             AND ci4.deleted_at IS NULL
+             AND ci4.calculated_issue_number > done.max_done
+             AND (crp4.completed IS NULL OR crp4.completed = 0)
+             AND ci4.files IS NOT NULL AND ci4.files != '' AND ci4.files != '[]' AND ci4.files != 'null'
+        )
+      GROUP BY c.id
+      ORDER BY done.last_done_at DESC
+      LIMIT ?`,
+    [capped]
+  );
+  return rows.map((r) => ({
+    volume: rowToVolume(r),
+    issueId: r.nu_issue_id,
+    issueNumber: r.nu_issue_number,
+    updatedAt: r.last_done_at,
+  }));
+}
+
+/**
+ * Books that are the next unread entry in a series the user is partway through:
+ * at least one book in the series is finished, no book in the series is
+ * currently in progress, and a later-numbered unread book exists. Returns the
+ * raw book rows (one per series, most-recently-finished first) for the caller
+ * to map into API shapes; use {@link countNextUpBooks} for the total.
+ */
+export function getNextUpBooks<T = Record<string, unknown>>(limit: number, offset: number): T[] {
+  return query<T>(
+    `SELECT b.*
+       FROM books b
+       JOIN (
+         SELECT b2.series_name AS series_name,
+                MAX(b2.series_number) AS max_done,
+                MAX(rp2.updated_at) AS last_done_at
+           FROM books b2
+           JOIN read_progress rp2 ON rp2.book_id = b2.id
+          WHERE rp2.completed = 1 AND b2.series_name IS NOT NULL AND b2.series_number IS NOT NULL
+          GROUP BY b2.series_name
+       ) done ON done.series_name = b.series_name
+       LEFT JOIN read_progress rp ON rp.book_id = b.id
+      WHERE b.series_number > done.max_done
+        AND (rp.completed IS NULL OR rp.completed = 0)
+        AND b.series_name NOT IN (
+          SELECT b3.series_name
+            FROM books b3
+            JOIN read_progress rp3 ON rp3.book_id = b3.id
+           WHERE rp3.completed = 0 AND rp3.page > 0 AND b3.series_name IS NOT NULL
+        )
+        AND b.series_number = (
+          SELECT MIN(b4.series_number)
+            FROM books b4
+            LEFT JOIN read_progress rp4 ON rp4.book_id = b4.id
+           WHERE b4.series_name = b.series_name
+             AND b4.series_number > done.max_done
+             AND (rp4.completed IS NULL OR rp4.completed = 0)
+        )
+      GROUP BY b.series_name
+      ORDER BY done.last_done_at DESC
+      LIMIT ? OFFSET ?`,
+    [Math.max(1, limit), Math.max(0, offset)]
+  );
+}
+
+/** Total number of series with a "next up" book (see {@link getNextUpBooks}). */
+export function countNextUpBooks(): number {
+  const row = queryOne<{ count: number }>(
+    `SELECT COUNT(*) AS count FROM (
+       SELECT b.series_name
+         FROM books b
+         JOIN (
+           SELECT b2.series_name AS series_name, MAX(b2.series_number) AS max_done
+             FROM books b2
+             JOIN read_progress rp2 ON rp2.book_id = b2.id
+            WHERE rp2.completed = 1 AND b2.series_name IS NOT NULL AND b2.series_number IS NOT NULL
+            GROUP BY b2.series_name
+         ) done ON done.series_name = b.series_name
+         LEFT JOIN read_progress rp ON rp.book_id = b.id
+        WHERE b.series_number > done.max_done
+          AND (rp.completed IS NULL OR rp.completed = 0)
+          AND b.series_name NOT IN (
+            SELECT b3.series_name
+              FROM books b3
+              JOIN read_progress rp3 ON rp3.book_id = b3.id
+             WHERE rp3.completed = 0 AND rp3.page > 0 AND b3.series_name IS NOT NULL
+          )
+        GROUP BY b.series_name
+     )`
+  );
+  return row?.count ?? 0;
+}
+
 // ============ Comics Cache Functions ============
 
 interface ComicRow {
