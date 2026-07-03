@@ -1,11 +1,15 @@
 import type { KapowarrIssue } from '@shelvarr/types';
+import { getInfoAsync, readDirectoryAsync } from 'expo-file-system/legacy';
 import { getFormatFromName } from '../utils/fileTypes';
-import { downloadBookFile, extractComicArchive, DownloadHttpError } from './fileManager';
+import { downloadBookFile, extractComicArchive, deleteBookFiles, DownloadHttpError } from './fileManager';
 import { getComicIssueFileUrl } from './api/comics';
+import { useComicDownloadStore, DownloadedComic } from '../stores/useComicDownloadStore';
 
 export type ComicReadResult =
   | { kind: 'pdf'; filePath: string }
   | { kind: 'images'; extractedDir: string; totalPages: number };
+
+const IMAGE_RE = /\.(jpe?g|png|gif|webp)$/i;
 
 /**
  * Translate a prepare-for-reading failure into a user-friendly, actionable
@@ -46,15 +50,45 @@ export function describeComicReadError(err: unknown): string {
   return message || 'Something went wrong while preparing this comic.';
 }
 
-export async function prepareComicForReading(
+/**
+ * Return an already-downloaded copy when this device still has its files on
+ * disk, otherwise null so the caller re-downloads.
+ */
+async function reuseExistingDownload(
+  existing: DownloadedComic | undefined
+): Promise<ComicReadResult | null> {
+  if (!existing) return null;
+
+  if (existing.kind === 'pdf') {
+    if (!existing.filePath) return null;
+    const info = await getInfoAsync(existing.filePath);
+    return info.exists ? { kind: 'pdf', filePath: existing.filePath } : null;
+  }
+
+  if (!existing.extractedDir || !existing.totalPages) return null;
+  const info = await getInfoAsync(existing.extractedDir);
+  if (!info.exists) return null;
+  const files = await readDirectoryAsync(existing.extractedDir);
+  const images = files.filter((f) => IMAGE_RE.test(f));
+  return images.length >= existing.totalPages
+    ? { kind: 'images', extractedDir: existing.extractedDir, totalPages: existing.totalPages }
+    : null;
+}
+
+/**
+ * Reuse an already-downloaded copy on this device when its files are still on
+ * disk, otherwise download (and, for archives, extract) the issue afresh.
+ */
+async function ensureComicDownloaded(
   issue: KapowarrIssue,
   headers: Record<string, string>,
   onProgress?: (progress: number) => void
 ): Promise<ComicReadResult> {
-  const filePath = issue.files[0]?.filepath ?? '';
-  const format = getFormatFromName(filePath);
-  const key = `comic-${issue.id}`;
+  const cached = await reuseExistingDownload(useComicDownloadStore.getState().downloads[issue.id]);
+  if (cached) return cached;
 
+  const key = `comic-${issue.id}`;
+  const format = getFormatFromName(issue.files[0]?.filepath ?? '');
   if (format === 'pdf') {
     const downloadedPath = await downloadBookFile(
       getComicIssueFileUrl(issue.id),
@@ -76,4 +110,70 @@ export async function prepareComicForReading(
   );
   const { dir, pageCount } = await extractComicArchive(downloadedPath, key);
   return { kind: 'images', extractedDir: dir, totalPages: pageCount };
+}
+
+/** Record a downloaded issue in the per-device manifest. */
+function recordComicDownload(
+  issue: KapowarrIssue,
+  result: ComicReadResult,
+  persisted: boolean,
+  volumeTitle?: string
+): DownloadedComic {
+  const store = useComicDownloadStore.getState();
+  const existing = store.downloads[issue.id];
+  const download: DownloadedComic = {
+    issueId: issue.id,
+    volumeId: issue.volume_id,
+    kind: result.kind,
+    filePath: result.kind === 'pdf' ? result.filePath : undefined,
+    extractedDir: result.kind === 'images' ? result.extractedDir : undefined,
+    totalPages: result.kind === 'images' ? result.totalPages : undefined,
+    downloadedAt: existing?.downloadedAt ?? Date.now(),
+    persisted: persisted || existing?.persisted || false,
+    issue,
+    volumeTitle: volumeTitle ?? existing?.volumeTitle,
+  };
+  store.setDownload(issue.id, download);
+  return download;
+}
+
+/** Download (if needed) and cache an issue so the reader can open it. */
+export async function prepareComicForReading(
+  issue: KapowarrIssue,
+  headers: Record<string, string>,
+  onProgress?: (progress: number) => void,
+  volumeTitle?: string
+): Promise<ComicReadResult> {
+  const result = await ensureComicDownloaded(issue, headers, onProgress);
+  recordComicDownload(issue, result, false, volumeTitle);
+  return result;
+}
+
+/** Explicitly download an issue for offline reading and keep it (persisted). */
+export async function downloadComic(
+  issue: KapowarrIssue,
+  headers: Record<string, string>,
+  volumeTitle?: string
+): Promise<DownloadedComic> {
+  const store = useComicDownloadStore.getState();
+  store.setActiveDownload(issue.id, 0);
+  try {
+    const result = await ensureComicDownloaded(issue, headers, (progress) =>
+      store.setActiveDownload(issue.id, progress)
+    );
+    store.setActiveDownload(null);
+    return recordComicDownload(issue, result, true, volumeTitle);
+  } catch (err) {
+    store.setActiveDownload(null);
+    throw err;
+  }
+}
+
+/** Delete an issue's local files and forget it in the manifest. */
+export async function removeDownloadedComic(issueId: number): Promise<void> {
+  const store = useComicDownloadStore.getState();
+  const existing = store.downloads[issueId];
+  if (!existing) return;
+  await deleteBookFiles(`comic-${issueId}`, existing.kind === 'pdf' ? '.pdf' : '.cbz');
+  store.removeDownload(issueId);
 }
