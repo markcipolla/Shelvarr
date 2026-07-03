@@ -128,6 +128,22 @@ describe('BookCard', () => {
     expect(onPress).toHaveBeenCalled();
   });
 
+  it('shows a remove button and calls onRemove when provided', () => {
+    const onRemove = jest.fn();
+    const onPress = jest.fn();
+    const { getByLabelText } = render(
+      <BookCard book={makeBook()} onPress={onPress} onRemove={onRemove} />
+    );
+    fireEvent.press(getByLabelText('Remove from Next Up'));
+    expect(onRemove).toHaveBeenCalled();
+    expect(onPress).not.toHaveBeenCalled();
+  });
+
+  it('omits the remove button when onRemove is not provided', () => {
+    const { queryByLabelText } = render(<BookCard book={makeBook()} onPress={jest.fn()} />);
+    expect(queryByLabelText('Remove from Next Up')).toBeNull();
+  });
+
   it('handles pagesCount of 0 gracefully', () => {
     const book = makeBook({
       media: { status: 'READY', mediaType: 'application/epub+zip', pagesCount: 0 },

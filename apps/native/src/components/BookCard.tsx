@@ -13,9 +13,11 @@ interface Props {
   onPress: () => void;
   fill?: boolean;
   placeholder?: boolean;
+  /** When provided, shows a "×" button to remove this book from Next Up. */
+  onRemove?: () => void;
 }
 
-export default function BookCard({ book, onPress, fill, placeholder }: Props) {
+export default function BookCard({ book, onPress, fill, placeholder, onRemove }: Props) {
   const headers = useAuthHeaders();
   const online = useConnectivityStore((s) => s.online);
   const isDownloaded = useDownloadStore((s) => !!s.downloads[book?.id]);
@@ -70,6 +72,17 @@ export default function BookCard({ book, onPress, fill, placeholder }: Props) {
             <View style={styles.readTriangle} />
           </View>
         )}
+        {onRemove && (
+          <TouchableOpacity
+            style={styles.removeButton}
+            onPress={onRemove}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Remove from Next Up"
+          >
+            <Text style={styles.removeButtonText}>×</Text>
+          </TouchableOpacity>
+        )}
       </View>
       <View style={styles.info}>
         <Text style={styles.title} numberOfLines={2}>
@@ -117,4 +130,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5c518',
   },
   dimmed: { opacity: 0.4 },
+  removeButton: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeButtonText: { color: '#fff', fontSize: 16, lineHeight: 18, fontWeight: '600' },
 });

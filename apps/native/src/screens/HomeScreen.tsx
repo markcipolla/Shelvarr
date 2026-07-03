@@ -29,6 +29,7 @@ import ComicCard from '../components/ComicCard';
 import { useColumns } from '../hooks/useColumns';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useDownloadStore } from '../stores/useDownloadStore';
+import { useNextUpStore } from '../stores/useNextUpStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -52,6 +53,10 @@ export default function HomeScreen({ navigation }: Props) {
         .map((d) => d.book as Book),
     [downloadsMap]
   );
+  const dismissedBooks = useNextUpStore((s) => s.dismissedBooks);
+  const dismissedComics = useNextUpStore((s) => s.dismissedComics);
+  const dismissBook = useNextUpStore((s) => s.dismissBook);
+  const dismissComic = useNextUpStore((s) => s.dismissComic);
   const [inProgress, setInProgress] = useState<Book[]>([]);
   const [nextUpBooks, setNextUpBooks] = useState<Book[]>([]);
   const [recentlyAdded, setRecentlyAdded] = useState<Book[]>([]);
@@ -202,6 +207,15 @@ export default function HomeScreen({ navigation }: Props) {
       autoCorrect={false}
       returnKeyType="search"
     />
+  );
+
+  const visibleNextUpBooks = useMemo(
+    () => nextUpBooks.filter((b) => !dismissedBooks[b.id]),
+    [nextUpBooks, dismissedBooks]
+  );
+  const visibleNextUpComics = useMemo(
+    () => nextUpComics.filter((c) => !dismissedComics[c.volume.id]),
+    [nextUpComics, dismissedComics]
   );
 
   if (!shelvarrUrl) {
@@ -360,11 +374,11 @@ export default function HomeScreen({ navigation }: Props) {
 
   const hasAny =
     inProgress.length > 0 ||
-    nextUpBooks.length > 0 ||
+    visibleNextUpBooks.length > 0 ||
     recentlyAdded.length > 0 ||
     downloadedBooks.length > 0 ||
     inProgressComics.length > 0 ||
-    nextUpComics.length > 0 ||
+    visibleNextUpComics.length > 0 ||
     recentComics.length > 0;
 
   return (
@@ -420,12 +434,12 @@ export default function HomeScreen({ navigation }: Props) {
           </View>
         )}
 
-        {nextUpBooks.length > 0 && (
+        {visibleNextUpBooks.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Next Up</Text>
             <FlatList
               horizontal
-              data={nextUpBooks}
+              data={visibleNextUpBooks}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <View style={{ width: cardWidth, marginRight: 12 }}>
@@ -433,6 +447,7 @@ export default function HomeScreen({ navigation }: Props) {
                     book={item}
                     fill
                     onPress={() => navigation.navigate('BookDetail', { bookId: item.id })}
+                    onRemove={() => dismissBook(item.id)}
                   />
                 </View>
               )}
@@ -442,12 +457,12 @@ export default function HomeScreen({ navigation }: Props) {
           </View>
         )}
 
-        {nextUpComics.length > 0 && (
+        {visibleNextUpComics.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Next Up Comics</Text>
             <FlatList
               horizontal
-              data={nextUpComics}
+              data={visibleNextUpComics}
               keyExtractor={(item) => String(item.volume.id)}
               renderItem={({ item }) => (
                 <View style={{ width: cardWidth, marginRight: 12 }}>
@@ -462,6 +477,7 @@ export default function HomeScreen({ navigation }: Props) {
                         volumeTitle: item.volume.title,
                       })
                     }
+                    onRemove={() => dismissComic(item.volume.id)}
                   />
                 </View>
               )}

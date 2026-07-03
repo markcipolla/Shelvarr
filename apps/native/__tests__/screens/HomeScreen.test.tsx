@@ -11,6 +11,14 @@ import {
 } from '../../src/services/api/comics';
 import { useColumns } from '../../src/hooks/useColumns';
 import { useSettingsStore } from '../../src/stores/useSettingsStore';
+import { useNextUpStore } from '../../src/stores/useNextUpStore';
+
+jest.mock('expo-file-system/legacy', () => ({
+  documentDirectory: 'file:///mock-document-dir/',
+  getInfoAsync: jest.fn().mockResolvedValue({ exists: false }),
+  readAsStringAsync: jest.fn().mockResolvedValue(''),
+  writeAsStringAsync: jest.fn().mockResolvedValue(undefined),
+}));
 
 jest.mock('../../src/services/api/client', () => ({
   getApiClient: jest.fn(),
@@ -30,21 +38,31 @@ jest.mock('../../src/stores/useDownloadStore', () => ({
 }));
 jest.mock('../../src/components/BookCard', () => {
   const { View, Text, TouchableOpacity } = require('react-native');
-  return function MockBookCard({ book, placeholder, onPress }: any) {
+  return function MockBookCard({ book, placeholder, onPress, onRemove }: any) {
     if (placeholder) return <View testID="placeholder" />;
     return (
       <TouchableOpacity testID={`book-${book.id}`} onPress={onPress}>
         <Text>{book.metadata?.title || book.name}</Text>
+        {onRemove ? (
+          <TouchableOpacity testID={`book-remove-${book.id}`} onPress={onRemove}>
+            <Text>remove</Text>
+          </TouchableOpacity>
+        ) : null}
       </TouchableOpacity>
     );
   };
 });
 jest.mock('../../src/components/ComicCard', () => {
   const { Text, TouchableOpacity } = require('react-native');
-  return function MockComicCard({ volume, onPress }: any) {
+  return function MockComicCard({ volume, onPress, onRemove }: any) {
     return (
       <TouchableOpacity testID={`comic-${volume.id}`} onPress={onPress}>
         <Text>{volume.title}</Text>
+        {onRemove ? (
+          <TouchableOpacity testID={`comic-remove-${volume.id}`} onPress={onRemove}>
+            <Text>remove</Text>
+          </TouchableOpacity>
+        ) : null}
       </TouchableOpacity>
     );
   };
@@ -120,6 +138,7 @@ function getOnChangeText(): ((text: string) => void) | null {
 describe('HomeScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    useNextUpStore.setState({ dismissedBooks: {}, dismissedComics: {}, hydrated: true });
     mockFetchRecentComics.mockResolvedValue({ configured: true, volumes: [] });
     mockFetchComics.mockResolvedValue({ configured: true, volumes: [] });
     mockFetchInProgressComics.mockResolvedValue([]);
@@ -296,6 +315,50 @@ describe('HomeScreen', () => {
       issueId: 42,
       volumeTitle: 'Sandman',
     });
+  });
+
+  it('removes a book from Next Up when its remove button is pressed', async () => {
+    setupLoadedState();
+    mockFetchNextUpBooks.mockResolvedValue({ content: [makeBook('b7', 'Dune Messiah')] });
+
+    const { getByText, getByTestId, queryByText } = render(
+      <HomeScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    await waitFor(() => expect(getByText('Next Up')).toBeTruthy());
+
+    act(() => {
+      fireEvent.press(getByTestId('book-remove-b7'));
+    });
+
+    await waitFor(() => {
+      expect(queryByText('Next Up')).toBeNull();
+      expect(queryByText('Dune Messiah')).toBeNull();
+    });
+    expect(useNextUpStore.getState().dismissedBooks['b7']).toBe(true);
+  });
+
+  it('removes a comic from Next Up when its remove button is pressed', async () => {
+    setupLoadedState();
+    mockFetchNextUpComics.mockResolvedValue([
+      { volume: makeVolume(21, 'Sandman'), issueId: 42, issueNumber: '4', updatedAt: 'x' },
+    ]);
+
+    const { getByText, getByTestId, queryByText } = render(
+      <HomeScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    await waitFor(() => expect(getByText('Next Up Comics')).toBeTruthy());
+
+    act(() => {
+      fireEvent.press(getByTestId('comic-remove-21'));
+    });
+
+    await waitFor(() => {
+      expect(queryByText('Next Up Comics')).toBeNull();
+      expect(queryByText('Sandman')).toBeNull();
+    });
+    expect(useNextUpStore.getState().dismissedComics[21]).toBe(true);
   });
 
   it('navigates to comic detail from comics row', async () => {

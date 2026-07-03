@@ -13,9 +13,11 @@ interface Props {
   placeholder?: boolean;
   /** Optional badge shown at the bottom-left, e.g. resume point for in-progress comics. */
   progressLabel?: string;
+  /** When provided, shows a "×" button to remove this comic from Next Up. */
+  onRemove?: () => void;
 }
 
-export default function ComicCard({ volume, onPress, fill, placeholder, progressLabel }: Props) {
+export default function ComicCard({ volume, onPress, fill, placeholder, progressLabel, onRemove }: Props) {
   if (placeholder) {
     return <View style={{ flex: 1, marginBottom: 12 }} />;
   }
@@ -49,6 +51,17 @@ export default function ComicCard({ volume, onPress, fill, placeholder, progress
           <View style={styles.progressBadge}>
             <Text style={styles.progressBadgeText}>{progressLabel}</Text>
           </View>
+        ) : null}
+        {onRemove ? (
+          <TouchableOpacity
+            style={styles.removeButton}
+            onPress={onRemove}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Remove from Next Up"
+          >
+            <Text style={styles.removeButtonText}>×</Text>
+          </TouchableOpacity>
         ) : null}
       </View>
       <View style={styles.info}>
@@ -89,6 +102,18 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   progressBadgeText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  removeButton: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeButtonText: { color: '#fff', fontSize: 16, lineHeight: 18, fontWeight: '600' },
   info: { marginTop: 6 },
   title: { fontSize: 13, color: '#222', lineHeight: 17 },
   subtitle: { fontSize: 11, color: '#777', marginTop: 2 },
