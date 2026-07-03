@@ -19,7 +19,13 @@ import {
   fetchComicProgress,
   ComicProgress,
 } from '../services/api/comics';
-import { prepareComicForReading, describeComicReadError } from '../services/comicReader';
+import {
+  prepareComicForReading,
+  downloadComic,
+  removeDownloadedComic,
+  describeComicReadError,
+} from '../services/comicReader';
+import { useComicDownloadStore } from '../stores/useComicDownloadStore';
 import { useAuthHeaders } from '../hooks/useAuthHeaders';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'IssueDetail'>;
@@ -43,7 +49,12 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
   const [readLoading, setReadLoading] = useState(false);
   const [readProgress, setReadProgress] = useState<number | null>(null);
   const [issueProgress, setIssueProgress] = useState<ComicProgress | null>(null);
+  const [downloading, setDownloading] = useState(false);
   const headers = useAuthHeaders();
+  const downloadedEntry = useComicDownloadStore((s) => s.downloads[issueId]);
+  const downloadStoreProgress = useComicDownloadStore((s) => s.progress);
+  const activeIssueId = useComicDownloadStore((s) => s.activeIssueId);
+  const isDownloaded = !!downloadedEntry;
 
   // Refresh saved read progress on focus so the status badge reflects the
   // latest reading position after returning from the reader.
@@ -82,7 +93,7 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
     setReadLoading(true);
     setReadProgress(0);
     try {
-      const result = await prepareComicForReading(issue, headers, setReadProgress);
+      const result = await prepareComicForReading(issue, headers, setReadProgress, volumeTitle);
       const progress = await fetchComicProgress(issueId);
       const startPage = progress?.page ?? 1;
 
@@ -114,6 +125,26 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
     }
   };
 
+  const handleDownload = async () => {
+    if (!issue) return;
+    setDownloading(true);
+    try {
+      await downloadComic(issue, headers, volumeTitle);
+    } catch (err) {
+      Alert.alert("Can't download comic", describeComicReadError(err));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleRemoveDownload = async () => {
+    try {
+      await removeDownloadedComic(issueId);
+    } catch (err) {
+      Alert.alert('Error', describeComicReadError(err));
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -130,7 +161,14 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
     );
   }
 
-  const downloaded = issue.files.length > 0;
+  const serverAvailable = issue.files.length > 0;
+  const canRead = serverAvailable || isDownloaded;
+  const isDownloadingThis = downloading && activeIssueId === issueId;
+  const availabilityBadge = isDownloaded
+    ? { label: 'Downloaded', container: styles.badgeDownloaded, text: styles.badgeTextDownloaded }
+    : serverAvailable
+      ? { label: 'Available', container: styles.badgeAvailable, text: styles.badgeTextAvailable }
+      : { label: 'Missing', container: styles.badgeMissing, text: styles.badgeTextMissing };
   const readStatusLabel = issueProgress?.completed
     ? 'Read'
     : issueProgress && issueProgress.page > 0
@@ -158,9 +196,9 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
           {issue.date ? <Text style={styles.detail}>{issue.date}</Text> : null}
           {fileSize ? <Text style={styles.detail}>Size: {fileSize}</Text> : null}
           <View style={styles.badgeRow}>
-            <View style={[styles.badge, downloaded ? styles.badgeDownloaded : styles.badgeMissing]}>
-              <Text style={[styles.badgeText, downloaded ? styles.badgeTextDownloaded : styles.badgeTextMissing]}>
-                {downloaded ? 'Downloaded' : 'Missing'}
+            <View style={[styles.badge, availabilityBadge.container]}>
+              <Text style={[styles.badgeText, availabilityBadge.text]}>
+                {availabilityBadge.label}
               </Text>
             </View>
             {readStatusLabel && (
@@ -169,7 +207,7 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
               </View>
             )}
           </View>
-          {downloaded && (
+          {canRead && (
             <TouchableOpacity
               style={[styles.readButton, readLoading && styles.readButtonDisabled]}
               onPress={handleRead}
@@ -190,6 +228,33 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
               )}
             </TouchableOpacity>
           )}
+          {isDownloaded ? (
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={handleRemoveDownload}
+              accessibilityLabel="Remove downloaded comic"
+            >
+              <Text style={styles.secondaryButtonText}>Remove Download</Text>
+            </TouchableOpacity>
+          ) : serverAvailable ? (
+            <TouchableOpacity
+              style={[styles.secondaryButton, downloading && styles.readButtonDisabled]}
+              onPress={handleDownload}
+              disabled={downloading}
+              accessibilityLabel="Download comic issue"
+            >
+              {isDownloadingThis ? (
+                <View style={styles.readButtonInner}>
+                  <ActivityIndicator size="small" color="#333" />
+                  <Text style={styles.secondaryButtonText}>
+                    {Math.round(downloadStoreProgress * 100)}%
+                  </Text>
+                </View>
+              ) : (
+                <Text style={styles.secondaryButtonText}>Download</Text>
+              )}
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 
@@ -218,10 +283,12 @@ const styles = StyleSheet.create({
   },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   badgeDownloaded: { backgroundColor: '#8b5e3c' },
+  badgeAvailable: { backgroundColor: '#d8cdbe' },
   badgeMissing: { backgroundColor: '#e8e4de' },
   badgeRead: { backgroundColor: '#4a7c59' },
   badgeText: { fontSize: 14, fontWeight: '600' },
   badgeTextDownloaded: { color: '#fff' },
+  badgeTextAvailable: { color: '#5c4a33' },
   badgeTextMissing: { color: '#999' },
   badgeTextRead: { color: '#fff' },
   summary: { fontSize: 21, color: '#444', lineHeight: 30, padding: 16, paddingTop: 0 },
@@ -238,4 +305,17 @@ const styles = StyleSheet.create({
   readButtonDisabled: { opacity: 0.7 },
   readButtonInner: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   readButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  secondaryButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#e8e4de',
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 12,
+    minWidth: 80,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#d5d0c8',
+  },
+  secondaryButtonText: { color: '#333', fontSize: 16, fontWeight: '600' },
 });

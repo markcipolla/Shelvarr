@@ -3,8 +3,10 @@ import { useBookReader } from '../../src/hooks/useBookReader';
 import { useReaderStore } from '../../src/stores/useReaderStore';
 import { useSettingsStore } from '../../src/stores/useSettingsStore';
 import { useDownloadStore } from '../../src/stores/useDownloadStore';
+import { useComicDownloadStore } from '../../src/stores/useComicDownloadStore';
 import { syncProgress, syncComicProgress, flushProgress } from '../../src/services/progressSync';
 import { deleteBookFiles } from '../../src/services/fileManager';
+import { removeDownloadedComic } from '../../src/services/comicReader';
 import { getFileExtension } from '../../src/utils/fileTypes';
 
 jest.mock('../../src/services/api/client', () => ({
@@ -14,8 +16,10 @@ jest.mock('../../src/services/api/client', () => ({
 jest.mock('../../src/stores/useReaderStore');
 jest.mock('../../src/stores/useSettingsStore');
 jest.mock('../../src/stores/useDownloadStore');
+jest.mock('../../src/stores/useComicDownloadStore');
 jest.mock('../../src/services/progressSync');
 jest.mock('../../src/services/fileManager');
+jest.mock('../../src/services/comicReader');
 jest.mock('../../src/utils/fileTypes');
 
 const mockSetPage = jest.fn();
@@ -26,13 +30,17 @@ const mockRemoveDownload = jest.fn();
 const mockUseReaderStore = useReaderStore as unknown as jest.Mock;
 const mockUseSettingsStore = useSettingsStore as unknown as jest.Mock;
 const mockUseDownloadStore = useDownloadStore as unknown as jest.Mock;
+const mockUseComicDownloadStore = useComicDownloadStore as unknown as jest.Mock;
 const mockSyncProgress = syncProgress as jest.Mock;
 const mockSyncComicProgress = syncComicProgress as jest.Mock;
 const mockFlushProgress = flushProgress as jest.Mock;
 const mockDeleteBookFiles = deleteBookFiles as jest.Mock;
+const mockRemoveDownloadedComic = removeDownloadedComic as jest.Mock;
 const mockGetFileExtension = getFileExtension as jest.Mock;
 
-function setupMocks(opts: { autoDelete?: boolean; download?: any } = {}) {
+function setupMocks(
+  opts: { autoDelete?: boolean; download?: any; comicDownloads?: Record<number, any> } = {}
+) {
   const readerState = {
     setPage: mockSetPage,
     startReading: mockStartReading,
@@ -51,8 +59,11 @@ function setupMocks(opts: { autoDelete?: boolean; download?: any } = {}) {
   mockUseDownloadStore.mockImplementation((selector: any) =>
     selector(downloadState)
   );
+  const comicState = { downloads: opts.comicDownloads ?? {} };
+  mockUseComicDownloadStore.mockImplementation((selector: any) => selector(comicState));
   mockFlushProgress.mockResolvedValue(undefined);
   mockDeleteBookFiles.mockResolvedValue(undefined);
+  mockRemoveDownloadedComic.mockResolvedValue(undefined);
   mockGetFileExtension.mockReturnValue('epub');
 }
 
@@ -189,5 +200,61 @@ describe('useBookReader', () => {
 
     // Should not throw, removeDownload should not be called
     expect(mockRemoveDownload).not.toHaveBeenCalled();
+  });
+
+  it('onReaderExit auto-deletes a non-persisted comic download', async () => {
+    setupMocks({
+      autoDelete: true,
+      comicDownloads: { 11: { issueId: 11, persisted: false } },
+    });
+    const { result } = renderHook(() => useBookReader('comic-11', { kind: 'comic', issueId: 11 }));
+
+    await act(async () => {
+      await result.current.onReaderExit();
+    });
+
+    expect(mockRemoveDownloadedComic).toHaveBeenCalledWith(11);
+    // The book-only delete path must not run for comics.
+    expect(mockDeleteBookFiles).not.toHaveBeenCalled();
+  });
+
+  it('onReaderExit keeps a persisted (explicitly downloaded) comic', async () => {
+    setupMocks({
+      autoDelete: true,
+      comicDownloads: { 11: { issueId: 11, persisted: true } },
+    });
+    const { result } = renderHook(() => useBookReader('comic-11', { kind: 'comic', issueId: 11 }));
+
+    await act(async () => {
+      await result.current.onReaderExit();
+    });
+
+    expect(mockRemoveDownloadedComic).not.toHaveBeenCalled();
+  });
+
+  it('onReaderExit does not delete a comic that was never downloaded', async () => {
+    setupMocks({ autoDelete: true });
+    const { result } = renderHook(() => useBookReader('comic-11', { kind: 'comic', issueId: 11 }));
+
+    await act(async () => {
+      await result.current.onReaderExit();
+    });
+
+    expect(mockRemoveDownloadedComic).not.toHaveBeenCalled();
+  });
+
+  it('onReaderExit handles comic delete failure gracefully', async () => {
+    setupMocks({
+      autoDelete: true,
+      comicDownloads: { 11: { issueId: 11, persisted: false } },
+    });
+    mockRemoveDownloadedComic.mockRejectedValue(new Error('comic delete failed'));
+    const { result } = renderHook(() => useBookReader('comic-11', { kind: 'comic', issueId: 11 }));
+
+    await act(async () => {
+      await result.current.onReaderExit();
+    });
+
+    expect(mockRemoveDownloadedComic).toHaveBeenCalledWith(11);
   });
 });

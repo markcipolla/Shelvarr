@@ -3,6 +3,7 @@ import { render, waitFor, fireEvent } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import ComicDetailScreen from '../../src/screens/ComicDetailScreen';
 import { fetchComicDetail, fetchVolumeProgress } from '../../src/services/api/comics';
+import { useComicDownloadStore } from '../../src/stores/useComicDownloadStore';
 import { useAuthHeaders } from '../../src/hooks/useAuthHeaders';
 
 jest.mock('../../src/services/api/client', () => ({
@@ -75,6 +76,7 @@ describe('ComicDetailScreen', () => {
     jest.spyOn(Alert, 'alert').mockImplementation(jest.fn());
     mockUseAuthHeaders.mockReturnValue({});
     mockFetchVolumeProgress.mockResolvedValue(new Map());
+    useComicDownloadStore.setState({ downloads: {}, activeIssueId: null, progress: 0 });
   });
 
   it('shows loading indicator initially', () => {
@@ -96,9 +98,35 @@ describe('ComicDetailScreen', () => {
     expect(getByText('An amazing comic')).toBeTruthy();
     expect(getByText('First')).toBeTruthy();
     expect(getByText('Second')).toBeTruthy();
-    // Downloaded but unread issue shows "Downloaded" (not "Read"); undownloaded shows "Missing".
-    expect(getByText('Downloaded')).toBeTruthy();
+    // On the server but not on this device -> "Available"; not on the server -> "Missing".
+    expect(getByText('Available')).toBeTruthy();
     expect(getByText('Missing')).toBeTruthy();
+  });
+
+  it('shows a Downloaded badge for an issue downloaded on this device', async () => {
+    mockFetchComicDetail.mockResolvedValue({ configured: true, volume: makeVolume() });
+    useComicDownloadStore.setState({
+      downloads: {
+        1: { issueId: 1, volumeId: 42, kind: 'images', extractedDir: '/e/', totalPages: 3, downloadedAt: 1 },
+      },
+    });
+
+    const { getByText } = render(<ComicDetailScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => expect(getByText('Downloaded')).toBeTruthy());
+    // Issue 2 is still only missing from the server.
+    expect(getByText('Missing')).toBeTruthy();
+  });
+
+  it('formats large volume sizes in GB', async () => {
+    mockFetchComicDetail.mockResolvedValue({
+      configured: true,
+      volume: makeVolume({ total_size: 2 * 1024 * 1024 * 1024 }),
+    });
+
+    const { getByText } = render(<ComicDetailScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => expect(getByText('Size: 2.00 GB')).toBeTruthy());
   });
 
   it('shows Read / Reading badges based on saved progress', async () => {
@@ -143,14 +171,14 @@ describe('ComicDetailScreen', () => {
     });
   });
 
-  it('navigates to IssueDetail when tapping a downloaded issue', async () => {
+  it('navigates to IssueDetail when tapping an available issue', async () => {
     mockFetchComicDetail.mockResolvedValue({ configured: true, volume: makeVolume() });
 
     const { getByText } = render(<ComicDetailScreen navigation={mockNavigation} route={mockRoute} />);
 
-    await waitFor(() => expect(getByText('Downloaded')).toBeTruthy());
+    await waitFor(() => expect(getByText('Available')).toBeTruthy());
 
-    fireEvent.press(getByText('Downloaded'));
+    fireEvent.press(getByText('Available'));
     expect(mockNavigation.navigate).toHaveBeenCalledWith('IssueDetail', {
       volumeId: 42,
       issueId: 1,
