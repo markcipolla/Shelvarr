@@ -113,6 +113,21 @@ describe('useBookReader', () => {
     expect(mockFlushProgress).not.toHaveBeenCalled();
   });
 
+  it('onPageChange does not mark a comic completed when the total is unknown (0)', () => {
+    setupMocks();
+    const { result } = renderHook(() =>
+      useBookReader('comic-11', { kind: 'comic', issueId: 11 })
+    );
+
+    act(() => {
+      result.current.onPageChange(1, 0);
+    });
+
+    // page 1 with an unknown total must stay in-progress, not be flushed as done
+    expect(mockSyncComicProgress).toHaveBeenCalledWith(11, 1, false, 0);
+    expect(mockFlushProgress).not.toHaveBeenCalled();
+  });
+
   it('onPageChange flushes and syncs comic progress on completion', () => {
     setupMocks();
     const { result } = renderHook(() =>

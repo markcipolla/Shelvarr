@@ -22,7 +22,10 @@ export function useBookReader(bookId: string, opts?: BookReaderOpts) {
   const onPageChange = useCallback(
     (page: number, totalPages: number) => {
       setStorePage(page);
-      const completed = page >= totalPages;
+      // Never treat progress as "completed" when the total is unknown (0) — a
+      // bogus total would otherwise mark a freshly-opened comic finished and
+      // hide it from the In Progress list.
+      const completed = totalPages > 0 && page >= totalPages;
       if (isComic) {
         const issueId = opts!.issueId!;
         if (completed) {

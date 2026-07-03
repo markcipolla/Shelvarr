@@ -102,6 +102,18 @@ describe('refreshStaleComics', () => {
     assert.strictEqual(summary.tombstoned, 0);
   });
 
+  it('skips tombstoning entirely when the remote list is empty', async () => {
+    db.execute(`INSERT INTO comics (id, title) VALUES (100, 'In progress')`);
+    getVolumesMock.mock.mockImplementation(async () => []);
+    const summary = await refreshStaleComics();
+    assert.strictEqual(summary.tombstoned, 0);
+    const survivor = db.queryOne<{ deleted_at: string | null }>(
+      'SELECT deleted_at FROM comics WHERE id = 100'
+    );
+    assert.strictEqual(survivor?.deleted_at, null);
+    assert.ok(summary.errors.some((e) => e.includes('empty')));
+  });
+
   it('refreshes stale detail records', async () => {
     const old = new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString();
     db.execute(
