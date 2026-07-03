@@ -19,6 +19,7 @@ import {
   ComicIssueProgress,
 } from '../services/api/comics';
 import { useAuthHeaders } from '../hooks/useAuthHeaders';
+import { useComicDownloadStore } from '../stores/useComicDownloadStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ComicDetail'>;
 
@@ -33,7 +34,7 @@ function formatSize(bytes: number | null | undefined): string | null {
   return `${(mb / 1024).toFixed(2)} GB`;
 }
 
-function getIssueBadge(issue: KapowarrIssue, progress?: ComicIssueProgress) {
+function getIssueBadge(issue: KapowarrIssue, downloaded: boolean, progress?: ComicIssueProgress) {
   if (progress?.completed) {
     return { label: 'Read', container: styles.badgeRead, text: styles.badgeTextOnColor };
   }
@@ -43,8 +44,11 @@ function getIssueBadge(issue: KapowarrIssue, progress?: ComicIssueProgress) {
       : `Reading p.${progress.page}`;
     return { label, container: styles.badgeReading, text: styles.badgeTextOnColor };
   }
-  if (issue.files.length > 0) {
+  if (downloaded) {
     return { label: 'Downloaded', container: styles.badgeDownloaded, text: styles.badgeTextDownloaded };
+  }
+  if (issue.files.length > 0) {
+    return { label: 'Available', container: styles.badgeAvailable, text: styles.badgeTextAvailable };
   }
   return { label: 'Missing', container: styles.badgeMissing, text: styles.badgeTextMissing };
 }
@@ -55,6 +59,7 @@ export default function ComicDetailScreen({ navigation, route }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<Map<number, ComicIssueProgress>>(new Map());
+  const downloads = useComicDownloadStore((s) => s.downloads);
   const headers = useAuthHeaders();
 
   // Reload read progress whenever the screen regains focus (e.g. after reading
@@ -145,7 +150,7 @@ export default function ComicDetailScreen({ navigation, route }: Props) {
         <View style={styles.issuesSection}>
           <Text style={styles.issuesHeading}>Issues</Text>
           {volume.issues.map((issue) => {
-            const badge = getIssueBadge(issue, progress.get(issue.id));
+            const badge = getIssueBadge(issue, !!downloads[issue.id], progress.get(issue.id));
             return (
               <TouchableOpacity
                 key={issue.id}
@@ -206,11 +211,13 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   badgeDownloaded: { backgroundColor: '#8b5e3c' },
+  badgeAvailable: { backgroundColor: '#d8cdbe' },
   badgeMissing: { backgroundColor: '#e8e4de' },
   badgeRead: { backgroundColor: '#4a7c59' },
   badgeReading: { backgroundColor: '#c78a3b' },
   badgeText: { fontSize: 14, fontWeight: '600' },
   badgeTextDownloaded: { color: '#fff' },
+  badgeTextAvailable: { color: '#5c4a33' },
   badgeTextMissing: { color: '#999' },
   badgeTextOnColor: { color: '#fff' },
 });

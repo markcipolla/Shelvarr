@@ -3,6 +3,7 @@ import { render, waitFor } from '@testing-library/react-native';
 import App from '../App';
 import { useSettingsStore } from '../src/stores/useSettingsStore';
 import { useDownloadStore } from '../src/stores/useDownloadStore';
+import { useComicDownloadStore } from '../src/stores/useComicDownloadStore';
 import { retryOfflineQueue } from '../src/services/progressSync';
 import * as Font from 'expo-font';
 
@@ -13,6 +14,11 @@ jest.mock('../src/stores/useSettingsStore', () => ({
 }));
 jest.mock('../src/stores/useDownloadStore', () => ({
   useDownloadStore: {
+    getState: jest.fn().mockReturnValue({ loadDownloads: jest.fn() }),
+  },
+}));
+jest.mock('../src/stores/useComicDownloadStore', () => ({
+  useComicDownloadStore: {
     getState: jest.fn().mockReturnValue({ loadDownloads: jest.fn() }),
   },
 }));
@@ -31,6 +37,7 @@ describe('App', () => {
     jest.clearAllMocks();
     (useSettingsStore.getState as jest.Mock).mockReturnValue({ loadSettings: jest.fn() });
     (useDownloadStore.getState as jest.Mock).mockReturnValue({ loadDownloads: jest.fn() });
+    (useComicDownloadStore.getState as jest.Mock).mockReturnValue({ loadDownloads: jest.fn() });
     (Font.loadAsync as jest.Mock).mockResolvedValue(undefined);
   });
 
@@ -52,6 +59,7 @@ describe('App', () => {
 
     expect(useSettingsStore.getState().loadSettings).toHaveBeenCalled();
     expect(useDownloadStore.getState().loadDownloads).toHaveBeenCalled();
+    expect(useComicDownloadStore.getState().loadDownloads).toHaveBeenCalled();
     expect(retryOfflineQueue).toHaveBeenCalled();
   });
 

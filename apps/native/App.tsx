@@ -7,6 +7,7 @@ import RootNavigator from './src/navigation/RootNavigator';
 import { useSettingsStore } from './src/stores/useSettingsStore';
 import { useDownloadStore } from './src/stores/useDownloadStore';
 import { useNextUpStore } from './src/stores/useNextUpStore';
+import { useComicDownloadStore } from './src/stores/useComicDownloadStore';
 import { retryOfflineQueue } from './src/services/progressSync';
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
     useSettingsStore.getState().loadSettings();
     useDownloadStore.getState().loadDownloads();
     useNextUpStore.getState().loadDismissed();
+    useComicDownloadStore.getState().loadDownloads();
     retryOfflineQueue();
     Font.loadAsync({
       'Literata-Regular': require('./assets/fonts/Literata-Regular.ttf'),

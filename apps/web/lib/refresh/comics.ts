@@ -57,16 +57,23 @@ export async function refreshStaleComics(
   upsertComicVolumes(remoteVolumes);
   summary.refreshedVolumes = remoteVolumes.length;
 
-  // Soft-delete local comics not returned by the server.
-  const remoteIds = new Set(remoteVolumes.map((v) => v.id));
-  const localRows = query<{ id: number }>(
-    'SELECT id FROM comics WHERE deleted_at IS NULL'
-  );
-  for (const row of localRows) {
-    if (!remoteIds.has(row.id)) {
-      softDeleteComic(row.id);
-      summary.tombstoned += 1;
+  // Soft-delete local comics not returned by the server. Guard against an
+  // empty response: Kapowarr occasionally returns [] on a transient error or
+  // mid-reconfigure, and tombstoning everything would wipe in-progress comics
+  // off the home screen even though the reader can still open them.
+  if (remoteVolumes.length > 0) {
+    const remoteIds = new Set(remoteVolumes.map((v) => v.id));
+    const localRows = query<{ id: number }>(
+      'SELECT id FROM comics WHERE deleted_at IS NULL'
+    );
+    for (const row of localRows) {
+      if (!remoteIds.has(row.id)) {
+        softDeleteComic(row.id);
+        summary.tombstoned += 1;
+      }
     }
+  } else {
+    summary.errors.push('volumes list empty; skipped tombstoning to avoid data loss');
   }
 
   // Refresh details for the most stale volumes.
