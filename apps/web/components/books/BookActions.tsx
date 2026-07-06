@@ -52,6 +52,28 @@ export function BookActions({ book }: BookActionsProps) {
     }
   };
 
+  const handleMarkCompleted = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/books/${book.id}/read-progress`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completed: true }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error || 'Failed to mark as completed');
+      } else {
+        toast.success('Marked as completed');
+        router.refresh();
+      }
+    } catch {
+      toast.error('Failed to reach server');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!confirm('Delete this book from the database? The file will not be deleted.')) {
       return;
@@ -89,6 +111,14 @@ export function BookActions({ book }: BookActionsProps) {
           className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
         >
           {hasMatch ? 'Fix Match' : 'Search Match'}
+        </button>
+
+        <button
+          onClick={handleMarkCompleted}
+          disabled={loading}
+          className="w-full bg-shelvarr-surface hover:bg-shelvarr-border border border-shelvarr-border text-shelvarr-text px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
+        >
+          Mark as completed
         </button>
 
         {hasHardcover && (

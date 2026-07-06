@@ -12,7 +12,7 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { Book, Series } from '../types/komga';
-import { fetchBook, getBookThumbnailUrl, deleteReadProgress } from '../services/api/books';
+import { fetchBook, getBookThumbnailUrl, deleteReadProgress, updateReadProgress } from '../services/api/books';
 import { fetchSeries } from '../services/api/series';
 import { getMediaFormat, getFormatFromName } from '../utils/fileTypes';
 import { useAuthHeaders } from '../hooks/useAuthHeaders';
@@ -165,6 +165,26 @@ export default function BookDetailScreen({ route, navigation }: Props) {
     }
   };
 
+  const handleMarkCompleted = async () => {
+    /* istanbul ignore next */
+    if (!book) return;
+    try {
+      await updateReadProgress(book.id, book.readProgress?.page ?? 0, true);
+      setBook({
+        ...book,
+        readProgress: {
+          page: book.readProgress?.page ?? 0,
+          completed: true,
+          readDate: book.readProgress?.readDate ?? '',
+          created: book.readProgress?.created ?? '',
+          lastModified: book.readProgress?.lastModified ?? '',
+        },
+      });
+    } catch {
+      Alert.alert('Error', 'Failed to mark as completed');
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -254,6 +274,12 @@ export default function BookDetailScreen({ route, navigation }: Props) {
           ) : (
             <Text style={styles.secondaryButtonText}>Download</Text>
           )}
+        </TouchableOpacity>
+      )}
+
+      {!book.readProgress?.completed && (
+        <TouchableOpacity style={styles.secondaryButton} onPress={handleMarkCompleted}>
+          <Text style={styles.secondaryButtonText}>Mark as Completed</Text>
         </TouchableOpacity>
       )}
 

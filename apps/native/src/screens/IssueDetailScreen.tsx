@@ -17,6 +17,7 @@ import {
   fetchComicIssue,
   getVolumeCoverUrl,
   fetchComicProgress,
+  updateComicProgress,
   ComicProgress,
 } from '../services/api/comics';
 import {
@@ -145,6 +146,24 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
     }
   };
 
+  const handleMarkCompleted = async () => {
+    try {
+      await updateComicProgress(
+        issueId,
+        issueProgress?.page ?? 0,
+        true,
+        issueProgress?.total,
+      );
+      setIssueProgress({
+        page: issueProgress?.page ?? 0,
+        completed: true,
+        total: issueProgress?.total,
+      });
+    } catch (err) {
+      Alert.alert('Error', describeComicReadError(err));
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -255,6 +274,15 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
               )}
             </TouchableOpacity>
           ) : null}
+          {!issueProgress?.completed && (
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={handleMarkCompleted}
+              accessibilityLabel="Mark comic issue as completed"
+            >
+              <Text style={styles.secondaryButtonText}>Mark as Completed</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
