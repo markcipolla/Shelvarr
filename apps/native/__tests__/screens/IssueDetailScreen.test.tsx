@@ -2,7 +2,7 @@ import React from 'react';
 import { render, waitFor, fireEvent } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import IssueDetailScreen from '../../src/screens/IssueDetailScreen';
-import { fetchComicIssue, fetchComicProgress } from '../../src/services/api/comics';
+import { fetchComicIssue, fetchComicProgress, updateComicProgress } from '../../src/services/api/comics';
 import {
   prepareComicForReading,
   downloadComic,
@@ -26,6 +26,7 @@ jest.mock('../../src/hooks/useAuthHeaders');
 
 const mockFetchComicIssue = fetchComicIssue as jest.Mock;
 const mockFetchComicProgress = fetchComicProgress as jest.Mock;
+const mockUpdateComicProgress = updateComicProgress as jest.Mock;
 const mockPrepare = prepareComicForReading as jest.Mock;
 const mockDownloadComic = downloadComic as jest.Mock;
 const mockRemoveComic = removeDownloadedComic as jest.Mock;
@@ -147,6 +148,54 @@ describe('IssueDetailScreen', () => {
     // Both the "Read" CTA button and the "Read" status badge render.
     await waitFor(() => expect(getAllByText('Read').length).toBe(2));
     expect(getByText('Available')).toBeTruthy();
+  });
+
+  it('marks an issue as completed', async () => {
+    mockFetchComicIssue.mockResolvedValue({ configured: true, issue: makeIssue() });
+    mockFetchComicProgress.mockResolvedValue({ page: 5, completed: false, total: 22 });
+    mockUpdateComicProgress.mockResolvedValue(undefined);
+
+    const { getByText, queryByText, getAllByText } = render(
+      <IssueDetailScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    await waitFor(() => expect(getByText('Mark as Completed')).toBeTruthy());
+    fireEvent.press(getByText('Mark as Completed'));
+
+    await waitFor(() => {
+      expect(mockUpdateComicProgress).toHaveBeenCalledWith(1, 5, true, 22);
+      // Once completed the button disappears and the "Read" badge shows
+      // (alongside the "Read" CTA button, so there are two matches).
+      expect(queryByText('Mark as Completed')).toBeNull();
+      expect(getAllByText('Read').length).toBe(2);
+    });
+  });
+
+  it('hides Mark as Completed when the issue is already completed', async () => {
+    mockFetchComicIssue.mockResolvedValue({ configured: true, issue: makeIssue() });
+    mockFetchComicProgress.mockResolvedValue({ page: 20, completed: true, total: 20 });
+
+    const { queryByText, getByText } = render(
+      <IssueDetailScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    await waitFor(() => expect(getByText('Available')).toBeTruthy());
+    expect(queryByText('Mark as Completed')).toBeNull();
+  });
+
+  it('alerts when marking completed fails', async () => {
+    mockFetchComicIssue.mockResolvedValue({ configured: true, issue: makeIssue() });
+    mockFetchComicProgress.mockResolvedValue({ page: 5, completed: false, total: 22 });
+    mockUpdateComicProgress.mockRejectedValue(new Error('nope'));
+
+    const { getByText } = render(<IssueDetailScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => expect(getByText('Mark as Completed')).toBeTruthy());
+    fireEvent.press(getByText('Mark as Completed'));
+
+    await waitFor(() => {
+      expect(Alert.alert).toHaveBeenCalledWith('Error', 'nope');
+    });
   });
 
   it('shows "Reading X/Y" when in progress with a known total', async () => {

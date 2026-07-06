@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getComic, getComicProgress } from '@/lib/actions/comics';
+import { MarkIssueReadButton } from '@/components/comics/MarkIssueReadButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -98,7 +99,9 @@ export default async function ComicDetailPage({ params }: PageProps) {
         <div>
           <h2 className="text-lg font-semibold text-white mb-3">Issues</h2>
           <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg divide-y divide-shelvarr-border">
-            {volume.issues.map((issue) => (
+            {volume.issues.map((issue) => {
+              const progress = progressByIssue.get(issue.id);
+              return (
               <div key={issue.id} className="flex items-center justify-between p-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-3">
@@ -117,7 +120,6 @@ export default async function ComicDetailPage({ params }: PageProps) {
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   {(() => {
-                    const progress = progressByIssue.get(issue.id);
                     if (progress?.completed) {
                       return (
                         <span className="bg-blue-600/20 text-blue-400 px-2 py-1 rounded">
@@ -148,9 +150,13 @@ export default async function ComicDetailPage({ params }: PageProps) {
                       </span>
                     );
                   })()}
+                  {!progress?.completed && issue.files.length > 0 && (
+                    <MarkIssueReadButton issueId={issue.id} total={progress?.total} />
+                  )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

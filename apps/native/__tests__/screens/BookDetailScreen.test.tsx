@@ -2,7 +2,7 @@ import React from 'react';
 import { render, waitFor, fireEvent } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import BookDetailScreen from '../../src/screens/BookDetailScreen';
-import { fetchBook, getBookThumbnailUrl, deleteReadProgress } from '../../src/services/api/books';
+import { fetchBook, getBookThumbnailUrl, deleteReadProgress, updateReadProgress } from '../../src/services/api/books';
 import { fetchSeries } from '../../src/services/api/series';
 import { useAuthHeaders } from '../../src/hooks/useAuthHeaders';
 import { useDownloadStore } from '../../src/stores/useDownloadStore';
@@ -26,6 +26,7 @@ const mockUseAuthHeaders = useAuthHeaders as jest.Mock;
 const mockUseDownloadStore = useDownloadStore as unknown as jest.Mock;
 const mockPrepare = prepareBookForReading as jest.Mock;
 const mockDeleteProgress = deleteReadProgress as jest.Mock;
+const mockUpdateProgress = updateReadProgress as jest.Mock;
 const mockGetMediaFormat = getMediaFormat as jest.Mock;
 const mockGetFormatFromName = getFormatFromName as jest.Mock;
 
@@ -261,6 +262,62 @@ describe('BookDetailScreen', () => {
 
     await waitFor(() => {
       expect(Alert.alert).toHaveBeenCalledWith('Error', 'Failed to mark as unread');
+    });
+  });
+
+  it('shows Mark as Completed when not completed and marks completed', async () => {
+    const book = makeBook({
+      readProgress: { page: 50, completed: false, readDate: '', created: '', lastModified: '' },
+    });
+    mockFetchBook.mockResolvedValue(book);
+    mockFetchSeries.mockResolvedValue(makeSeries());
+    mockUpdateProgress.mockResolvedValue(undefined);
+
+    const { getByText, queryByText } = render(
+      <BookDetailScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    await waitFor(() => expect(getByText('Mark as Completed')).toBeTruthy());
+    fireEvent.press(getByText('Mark as Completed'));
+
+    await waitFor(() => {
+      expect(mockUpdateProgress).toHaveBeenCalledWith('b1', 50, true);
+      // After completion the button disappears and progress reflects completed.
+      expect(queryByText('Mark as Completed')).toBeNull();
+      expect(getByText('Progress: Completed')).toBeTruthy();
+    });
+  });
+
+  it('hides Mark as Completed when already completed', async () => {
+    const book = makeBook({
+      readProgress: { page: 100, completed: true, readDate: '', created: '', lastModified: '' },
+    });
+    mockFetchBook.mockResolvedValue(book);
+    mockFetchSeries.mockResolvedValue(makeSeries());
+
+    const { queryByText } = render(
+      <BookDetailScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    await waitFor(() => expect(queryByText('Mark as Unread')).toBeTruthy());
+    expect(queryByText('Mark as Completed')).toBeNull();
+  });
+
+  it('handles mark as completed error', async () => {
+    const book = makeBook({
+      readProgress: { page: 50, completed: false, readDate: '', created: '', lastModified: '' },
+    });
+    mockFetchBook.mockResolvedValue(book);
+    mockFetchSeries.mockResolvedValue(makeSeries());
+    mockUpdateProgress.mockRejectedValue(new Error('fail'));
+
+    const { getByText } = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => expect(getByText('Mark as Completed')).toBeTruthy());
+    fireEvent.press(getByText('Mark as Completed'));
+
+    await waitFor(() => {
+      expect(Alert.alert).toHaveBeenCalledWith('Error', 'Failed to mark as completed');
     });
   });
 
