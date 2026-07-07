@@ -108,9 +108,11 @@ export default async function ComicDetailPage({ params }: PageProps) {
                     <span className="text-shelvarr-text-muted text-sm font-mono w-10 flex-shrink-0">
                       #{issue.issue_number}
                     </span>
-                    <span className="text-white truncate">
-                      {issue.title || 'Untitled'}
-                    </span>
+                    {issue.title && (
+                      <span className="text-white truncate">
+                        {issue.title}
+                      </span>
+                    )}
                   </div>
                   {issue.date && (
                     <p className="text-xs text-shelvarr-text-muted mt-1" style={{ paddingLeft: '3.25rem' }}>

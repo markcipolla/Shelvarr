@@ -210,7 +210,7 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
         />
         <View style={styles.meta}>
           <Text style={styles.issueNumber}>#{issue.issue_number}</Text>
-          <Text style={styles.title}>{issue.title || 'Untitled'}</Text>
+          {issue.title ? <Text style={styles.title}>{issue.title}</Text> : null}
           {volumeTitle ? <Text style={styles.subtitle}>{volumeTitle}</Text> : null}
           {issue.date ? <Text style={styles.detail}>{issue.date}</Text> : null}
           {fileSize ? <Text style={styles.detail}>Size: {fileSize}</Text> : null}

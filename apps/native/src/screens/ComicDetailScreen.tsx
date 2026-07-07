@@ -161,9 +161,11 @@ export default function ComicDetailScreen({ navigation, route }: Props) {
                 <View style={styles.issueMain}>
                   <Text style={styles.issueNumber}>#{issue.issue_number}</Text>
                   <View style={styles.issueTextWrap}>
-                    <Text style={styles.issueTitle} numberOfLines={2}>
-                      {issue.title || 'Untitled'}
-                    </Text>
+                    {issue.title ? (
+                      <Text style={styles.issueTitle} numberOfLines={2}>
+                        {issue.title}
+                      </Text>
+                    ) : null}
                     {issue.date ? <Text style={styles.issueDate}>{issue.date}</Text> : null}
                   </View>
                 </View>
