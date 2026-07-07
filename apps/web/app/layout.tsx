@@ -4,6 +4,7 @@ import './globals.css';
 import { SidebarWrapper } from '@/components/SidebarWrapper';
 import { ToastProvider } from '@/components/ui/Toast';
 import { GlobalSearch } from '@/components/GlobalSearch';
+import { ScrollRestorer } from '@/components/ScrollRestorer';
 
 // Force all pages to be dynamic — this app uses SQLite and has no static content
 export const dynamic = 'force-dynamic';
@@ -29,9 +30,12 @@ export default function RootLayout({
                 <GlobalSearch />
               </Suspense>
             </header>
-            <main className="flex-1 p-6 overflow-auto">
+            <main id="main-scroll" className="flex-1 p-6 overflow-auto">
               {children}
             </main>
+            <Suspense fallback={null}>
+              <ScrollRestorer />
+            </Suspense>
           </div>
         </ToastProvider>
       </body>
