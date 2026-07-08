@@ -144,6 +144,41 @@ describe('BookCard', () => {
     expect(queryByLabelText('Remove from Next Up')).toBeNull();
   });
 
+  it('shows a "Want to read" pill for Hardcover want-to-read books', () => {
+    const book = makeBook({ hardcoverStatus: 'want-to-read' });
+    const { getByText } = render(<BookCard book={book} onPress={jest.fn()} />);
+    expect(getByText('Want to read')).toBeTruthy();
+  });
+
+  it('shows a "Reading" pill when marked reading on Hardcover with no local progress', () => {
+    const book = makeBook({ hardcoverStatus: 'reading' });
+    const { getByText } = render(<BookCard book={book} onPress={jest.fn()} />);
+    expect(getByText('Reading')).toBeTruthy();
+  });
+
+  it('hides the "Reading" pill when a local progress bar is already shown', () => {
+    const book = makeBook({
+      hardcoverStatus: 'reading',
+      readProgress: { page: 50, completed: false, readDate: '', created: '', lastModified: '' },
+    });
+    const { queryByText } = render(<BookCard book={book} onPress={jest.fn()} />);
+    expect(queryByText('Reading')).toBeNull();
+  });
+
+  it('shows a "DNF" pill for Hardcover did-not-finish books', () => {
+    const book = makeBook({ hardcoverStatus: 'dnf' });
+    const { getByText } = render(<BookCard book={book} onPress={jest.fn()} />);
+    expect(getByText('DNF')).toBeTruthy();
+  });
+
+  it('shows no status pill for a Hardcover-read book (uses the read badge)', () => {
+    const book = makeBook({ hardcoverStatus: 'read' });
+    const { queryByText } = render(<BookCard book={book} onPress={jest.fn()} />);
+    expect(queryByText('Want to read')).toBeNull();
+    expect(queryByText('Reading')).toBeNull();
+    expect(queryByText('DNF')).toBeNull();
+  });
+
   it('handles pagesCount of 0 gracefully', () => {
     const book = makeBook({
       media: { status: 'READY', mediaType: 'application/epub+zip', pagesCount: 0 },

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { toggleSource, setApiKey } from '@/lib/actions/settings';
+import { toggleSource, setApiKey, syncHardcoverStatus } from '@/lib/actions/settings';
 
 interface SourceStatus {
   name: 'hardcover';
@@ -34,6 +34,21 @@ function SourceRow({ source }: { source: SourceStatus }) {
   const [loading, setLoading] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKey, setApiKeyValue] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  const handleSyncStatus = async () => {
+    setSyncing(true);
+    setSyncMessage(null);
+    const result = await syncHardcoverStatus();
+    setSyncMessage(
+      result.success
+        ? `Synced ${result.synced ?? 0} reading ${result.synced === 1 ? 'status' : 'statuses'}`
+        : result.error || 'Sync failed'
+    );
+    router.refresh();
+    setSyncing(false);
+  };
 
   const handleToggle = async () => {
     setLoading(true);
@@ -72,6 +87,16 @@ function SourceRow({ source }: { source: SourceStatus }) {
         </div>
 
         <div className="flex items-center gap-3">
+          {source.name === 'hardcover' && source.configured && (
+            <button
+              onClick={handleSyncStatus}
+              disabled={syncing}
+              className="text-sm text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50"
+            >
+              {syncing ? 'Syncing…' : 'Sync reading status'}
+            </button>
+          )}
+
           {source.requiresApiKey && (
             <button
               onClick={() => setShowApiKey(!showApiKey)}
@@ -100,6 +125,10 @@ function SourceRow({ source }: { source: SourceStatus }) {
           </button>
         </div>
       </div>
+
+      {syncMessage && (
+        <p className="mt-3 text-sm text-shelvarr-text-muted">{syncMessage}</p>
+      )}
 
       {showApiKey && (
         <div className="mt-4 pt-4 border-t border-shelvarr-border">

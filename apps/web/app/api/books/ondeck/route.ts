@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
-import { query, queryOne, getReadProgress } from '@/lib/db';
+import { query, getReadProgress, getHardcoverReadingBooks } from '@/lib/db';
 import { validateApiAuth } from '@shelvarr/services';
 import { toKomgaBook, toPagedResponse } from '@shelvarr/services/komga-response';
+
+// Cap on how many books are gathered before in-memory pagination. These home
+// rows are short, so this is effectively "all" while bounding the query.
+const MAX_ROWS = 500;
 
 export const dynamic = 'force-dynamic';
 
@@ -29,32 +33,44 @@ interface BookRow {
   updated_at: string;
 }
 
+// Merge book lists, keeping the first occurrence of each id (order-preserving).
+function dedupeById(rows: BookRow[]): BookRow[] {
+  const seen = new Set<number>();
+  const out: BookRow[] = [];
+  for (const row of rows) {
+    if (!seen.has(row.id)) {
+      seen.add(row.id);
+      out.push(row);
+    }
+  }
+  return out;
+}
+
 export function GET(request: NextRequest) {
   if (!validateApiAuth(request.headers)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const searchParams = request.nextUrl.searchParams;
+  const searchParams = new URL(request.url).searchParams;
   const page = parseInt(searchParams.get('page') || '0');
   const size = parseInt(searchParams.get('size') || '20');
   const offset = page * size;
 
-  const countRow = queryOne<{ count: number }>(
-    `SELECT COUNT(*) as count FROM books b
-     JOIN read_progress rp ON b.id = rp.book_id
-     WHERE rp.completed = 0 AND rp.page > 0`
-  );
-  const totalElements = countRow?.count || 0;
-
-  const rows = query<BookRow>(
+  // Locally in-progress books (opened and partway through)...
+  const localRows = query<BookRow>(
     `SELECT b.* FROM books b
      JOIN read_progress rp ON b.id = rp.book_id
      WHERE rp.completed = 0 AND rp.page > 0
      ORDER BY rp.updated_at DESC
-     LIMIT ? OFFSET ?`,
-    [size, offset]
+     LIMIT ?`,
+    [MAX_ROWS]
   );
+  // ...plus books the user marked "currently reading" on Hardcover with no local
+  // progress yet. Local progress takes precedence when a book appears in both.
+  const hardcoverRows = getHardcoverReadingBooks<BookRow>(MAX_ROWS, 0);
 
-  const content = rows.map(b => toKomgaBook(b, getReadProgress(b.id)));
-  return NextResponse.json(toPagedResponse(content, page, size, totalElements));
+  const merged = dedupeById([...localRows, ...hardcoverRows]);
+  const pageRows = merged.slice(offset, offset + size);
+  const content = pageRows.map(b => toKomgaBook(b, getReadProgress(b.id)));
+  return NextResponse.json(toPagedResponse(content, page, size, merged.length));
 }

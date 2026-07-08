@@ -61,6 +61,25 @@ export async function isHardcoverConfigured(): Promise<boolean> {
   return isConfigured();
 }
 
+/**
+ * Pull the user's Hardcover reading statuses (want to read / reading / read)
+ * into the local cache so they surface on book cards and the home rows.
+ */
+export async function syncHardcoverStatus(): Promise<{
+  success: boolean;
+  synced?: number;
+  error?: string;
+}> {
+  const { hardcover } = await import('@/lib/services/metadata');
+  const result = await hardcover.syncReadingStatusesFromHardcover();
+  if (result.success) {
+    revalidatePath('/');
+    revalidatePath('/books');
+    revalidatePath('/settings');
+  }
+  return result;
+}
+
 // Komga settings
 export async function getKomgaSettings() {
   return {

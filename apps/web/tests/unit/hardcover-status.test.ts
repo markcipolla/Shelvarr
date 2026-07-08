@@ -47,6 +47,7 @@ const {
   updateUserBook,
   upsertReadingStatus,
   isConfigured,
+  getMyUserBooks,
 } = await import('../../lib/services/metadata/hardcover.js');
 
 describe('Hardcover Reading Status', () => {
@@ -327,6 +328,44 @@ describe('Hardcover Reading Status', () => {
       assert.ok(result.error?.includes('Network error'));
 
       setupMockFetch();
+    });
+  });
+
+  describe('getMyUserBooks', () => {
+    it('maps a single page of the user\'s tracked books', async () => {
+      mockFetchResponses.push({
+        data: {
+          me: [{
+            user_books: [
+              { book_id: 100, status_id: 1 },
+              { book_id: 200, status_id: 3 },
+            ],
+          }],
+        },
+      });
+
+      const result = await getMyUserBooks();
+      assert.deepStrictEqual(result, [
+        { bookId: 100, statusId: 1 },
+        { bookId: 200, statusId: 3 },
+      ]);
+    });
+
+    it('returns an empty list when nothing is tracked', async () => {
+      mockFetchResponses.push({ data: { me: [{ user_books: [] }] } });
+      const result = await getMyUserBooks();
+      assert.deepStrictEqual(result, []);
+    });
+
+    it('pages until a short page is returned', async () => {
+      // First page is full (500) -> should fetch again; second page is short.
+      const fullPage = Array.from({ length: 500 }, (_, i) => ({ book_id: i + 1, status_id: 1 }));
+      mockFetchResponses.push({ data: { me: [{ user_books: fullPage }] } });
+      mockFetchResponses.push({ data: { me: [{ user_books: [{ book_id: 999, status_id: 3 }] }] } });
+
+      const result = await getMyUserBooks();
+      assert.strictEqual(result.length, 501);
+      assert.deepStrictEqual(result[500], { bookId: 999, statusId: 3 });
     });
   });
 });

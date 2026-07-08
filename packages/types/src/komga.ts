@@ -1,5 +1,7 @@
 // Komga API types - defines the shape of Komga-compatible API responses
 
+import type { HardcoverReadingStatus } from './domain';
+
 export interface Library {
   id: string;
   name: string;
@@ -30,6 +32,9 @@ export interface Book {
   metadata: BookMetadata;
   readProgress: ReadProgress | null;
   sizeBytes: number;
+  // Shelvarr extension: the user's Hardcover reading status for this book, when
+  // it is matched to Hardcover and tracked on their account. null otherwise.
+  hardcoverStatus?: HardcoverReadingStatus | null;
 }
 
 export interface BookMedia {
