@@ -37,6 +37,18 @@ export function EpubReader({ book, onClose }: EpubReaderProps) {
     fetchEpub();
   }, [book.id]);
 
+  // Fire-and-forget: mark as "currently reading" on Hardcover when the reader opens
+  useEffect(() => {
+    if (book.metadataSource !== 'hardcover') return;
+    fetch(`/api/books/${book.id}/reading-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'reading' }),
+    }).catch(() => {
+      // Non-critical: don't interrupt reading if the sync fails
+    });
+  }, [book.id, book.metadataSource]);
+
   const locationChanged = useCallback((epubcfi: string) => {
     setLocation(epubcfi);
   }, []);
