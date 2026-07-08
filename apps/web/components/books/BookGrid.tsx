@@ -22,11 +22,37 @@ interface BookCardProps {
   showSeriesNumber?: boolean;
 }
 
+interface StatusBadge {
+  label: string;
+  className: string;
+}
+
+// Derive a single status badge from local read progress and the user's
+// Hardcover reading status. Local "completed" and Hardcover "read" both count as
+// read; Hardcover reading/want-to-read/DNF surface when there's nothing more
+// specific to show.
+function getStatusBadge(book: Book): StatusBadge | null {
+  if (book.progressCompleted || book.hardcoverStatus === 'read') {
+    return { label: 'Read', className: 'bg-green-600 text-white' };
+  }
+  switch (book.hardcoverStatus) {
+    case 'reading':
+      return { label: 'Reading', className: 'bg-blue-600 text-white' };
+    case 'want-to-read':
+      return { label: 'Want to read', className: 'bg-amber-500 text-black' };
+    case 'dnf':
+      return { label: 'DNF', className: 'bg-shelvarr-bg text-shelvarr-text-muted' };
+    default:
+      return null;
+  }
+}
+
 export function BookCard({ book, showSeriesNumber }: BookCardProps) {
   const authors = formatAuthors(book.authors);
   const title = book.title || getFilenameFromPath(book.filePath);
   const percent = book.progressPercent;
   const showBar = !book.progressCompleted && typeof percent === 'number' && percent > 0;
+  const badge = getStatusBadge(book);
 
   return (
     <Link
@@ -48,6 +74,13 @@ export function BookCard({ book, showSeriesNumber }: BookCardProps) {
         {showSeriesNumber && book.seriesNumber && (
           <div className="absolute top-2 left-2 bg-shelvarr-primary text-white text-xs font-bold px-2 py-1 rounded">
             #{book.seriesNumber}
+          </div>
+        )}
+        {badge && (
+          <div
+            className={`absolute top-2 right-2 text-[10px] font-semibold px-1.5 py-0.5 rounded ${badge.className}`}
+          >
+            {badge.label}
           </div>
         )}
         {showBar && (

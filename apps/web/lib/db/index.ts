@@ -40,6 +40,13 @@ export {
   getNextUpComics,
   getNextUpBooks,
   countNextUpBooks,
+  replaceHardcoverStatuses,
+  hardcoverStatusLabel,
+  HARDCOVER_STATUS_LABELS,
+  getWantToReadBooks,
+  countWantToReadBooks,
+  getHardcoverReadingBooks,
+  countHardcoverReadingBooks,
   getEpubProgression,
   getLatestEpubProgression,
   upsertEpubProgression,
@@ -68,6 +75,8 @@ export type {
   EpubProgressionRow,
   BookSearchRow,
   ComicSearchRow,
+  HardcoverStatusEntry,
+  HardcoverStatusLabel,
 } from '@shelvarr/db';
 
 // Re-export types from @shelvarr/types that were previously defined here

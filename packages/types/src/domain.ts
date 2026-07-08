@@ -33,7 +33,14 @@ export interface Book {
   // Reading progress (optional — only populated by queries that join progress tables)
   progressPercent?: number | null; // 0-100, null if unknown
   progressCompleted?: boolean;
+  // Hardcover.app reading status (optional — only populated by queries that join
+  // the cached hardcover_reading_status table). null when the book is not tracked
+  // on the user's Hardcover account.
+  hardcoverStatus?: HardcoverReadingStatus | null;
 }
+
+// The user's reading status for a book on Hardcover.app.
+export type HardcoverReadingStatus = 'want-to-read' | 'reading' | 'read' | 'dnf';
 
 export interface Series {
   id: number;

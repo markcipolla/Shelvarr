@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
-import { getNextUpBooks, countNextUpBooks, getReadProgress } from '@/lib/db';
+import { getNextUpBooks, getWantToReadBooks, getReadProgress } from '@/lib/db';
 import { validateApiAuth } from '@shelvarr/services';
 import { toKomgaBook, toPagedResponse } from '@shelvarr/services/komga-response';
+
+// Cap on how many books are gathered before in-memory pagination. This home row
+// is short, so this is effectively "all" while bounding the query.
+const MAX_ROWS = 500;
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +33,21 @@ interface BookRow {
   updated_at: string;
 }
 
-// The next unread book in each series the user is partway through.
+// Merge book lists, keeping the first occurrence of each id (order-preserving).
+function dedupeById(rows: BookRow[]): BookRow[] {
+  const seen = new Set<number>();
+  const out: BookRow[] = [];
+  for (const row of rows) {
+    if (!seen.has(row.id)) {
+      seen.add(row.id);
+      out.push(row);
+    }
+  }
+  return out;
+}
+
+// "Next Up" = the next unread book in each series the user is partway through,
+// plus books the user marked "want to read" on Hardcover and hasn't started.
 export function GET(request: NextRequest) {
   if (!validateApiAuth(request.headers)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -40,9 +58,12 @@ export function GET(request: NextRequest) {
   const size = parseInt(searchParams.get('size') || '20');
   const offset = page * size;
 
-  const totalElements = countNextUpBooks();
-  const rows = getNextUpBooks<BookRow>(size, offset);
-  const content = rows.map((b) => toKomgaBook(b, getReadProgress(b.id)));
+  const seriesRows = getNextUpBooks<BookRow>(MAX_ROWS, 0);
+  const wantToReadRows = getWantToReadBooks<BookRow>(MAX_ROWS, 0);
 
-  return NextResponse.json(toPagedResponse(content, page, size, totalElements));
+  const merged = dedupeById([...seriesRows, ...wantToReadRows]);
+  const pageRows = merged.slice(offset, offset + size);
+  const content = pageRows.map((b) => toKomgaBook(b, getReadProgress(b.id)));
+
+  return NextResponse.json(toPagedResponse(content, page, size, merged.length));
 }

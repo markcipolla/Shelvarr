@@ -8,6 +8,28 @@ import { useDownloadStore } from '../stores/useDownloadStore';
 
 const COVER_ASPECT_RATIO = 140 / 200; // match SeriesCard
 
+interface StatusPill {
+  label: string;
+  backgroundColor: string;
+  color: string;
+}
+
+// Derive a Hardcover status pill, skipping cases the card already shows: "read"
+// (the corner triangle) and "reading" when a local progress bar is visible.
+function getStatusPill(book: Book, isRead: boolean, showBar: boolean): StatusPill | null {
+  if (isRead) return null;
+  switch (book.hardcoverStatus) {
+    case 'reading':
+      return showBar ? null : { label: 'Reading', backgroundColor: '#2563eb', color: '#fff' };
+    case 'want-to-read':
+      return { label: 'Want to read', backgroundColor: '#f59e0b', color: '#1a1a1a' };
+    case 'dnf':
+      return { label: 'DNF', backgroundColor: 'rgba(0,0,0,0.6)', color: '#fff' };
+    default:
+      return null;
+  }
+}
+
 interface Props {
   book: Book;
   onPress: () => void;
@@ -30,7 +52,8 @@ export default function BookCard({ book, onPress, fill, placeholder, onRemove }:
   const offlineUnavailable = !online && !isDownloaded;
 
   const progress = book.readProgress;
-  const isRead = progress?.completed;
+  // "Read" spans a locally-completed book and one marked read on Hardcover.
+  const isRead = progress?.completed || book.hardcoverStatus === 'read';
   const pagePercent = progress && book.media.pagesCount > 0
     ? Math.round((progress.page / book.media.pagesCount) * 100)
     : 0;
@@ -39,6 +62,10 @@ export default function BookCard({ book, onPress, fill, placeholder, onRemove }:
     : 0;
   const progressPercent = Math.max(pagePercent, epubPercent);
   const showBar = !!progress && !progress.completed && progressPercent > 0;
+
+  // A small status pill for Hardcover statuses that aren't already conveyed by
+  // the read badge or the local progress bar.
+  const statusPill = getStatusPill(book, isRead, showBar);
 
   const containerStyle: ViewStyle = fill
     ? { flex: 1, marginBottom: 12 }
@@ -70,6 +97,13 @@ export default function BookCard({ book, onPress, fill, placeholder, onRemove }:
         {isRead && (
           <View style={styles.readBadge}>
             <View style={styles.readTriangle} />
+          </View>
+        )}
+        {statusPill && (
+          <View style={[styles.statusPill, { backgroundColor: statusPill.backgroundColor }]}>
+            <Text style={[styles.statusPillText, { color: statusPill.color }]} numberOfLines={1}>
+              {statusPill.label}
+            </Text>
           </View>
         )}
         {onRemove && (
@@ -115,6 +149,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#d4a017',
     transform: [{ rotate: '45deg' }],
   },
+  statusPill: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    maxWidth: '90%',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  statusPillText: { fontSize: 10, fontWeight: '600' },
   info: { marginTop: 6 },
   title: { fontSize: 13, color: '#222', lineHeight: 17 },
   progressBarOverlay: {

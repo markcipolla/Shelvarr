@@ -4,7 +4,7 @@
 
 import type * as Komga from '@shelvarr/types/komga';
 import type { ReadProgressRow, EpubProgressionRow } from '@shelvarr/db';
-import { getEpubProgression } from '@shelvarr/db';
+import { getEpubProgression, getHardcoverStatusId, hardcoverStatusLabel } from '@shelvarr/db';
 
 interface DbBook {
   id: number;
@@ -27,6 +27,9 @@ interface DbBook {
   metadata_id: string | null;
   created_at: string;
   updated_at: string;
+  // Optional Hardcover status id, when a query already joined it in. Falls back
+  // to a lookup by metadata_id when absent.
+  hc_status?: number | null;
 }
 
 interface DbLibrary {
@@ -107,6 +110,16 @@ function formatReadProgress(
   };
 }
 
+// The user's cached Hardcover reading status for a book. Prefers a status id the
+// query already joined in (`hc_status`); otherwise looks it up by Hardcover id.
+function resolveHardcoverStatus(row: DbBook): Komga.Book['hardcoverStatus'] {
+  if (row.hc_status !== undefined) return hardcoverStatusLabel(row.hc_status);
+  if (row.metadata_source === 'hardcover' && row.metadata_id) {
+    return hardcoverStatusLabel(getHardcoverStatusId(row.metadata_id));
+  }
+  return null;
+}
+
 export function toKomgaBook(row: DbBook, readProgress: ReadProgressRow | null = null): Komga.Book {
   const epub = getEpubProgression(row.id);
   return {
@@ -127,6 +140,7 @@ export function toKomgaBook(row: DbBook, readProgress: ReadProgressRow | null = 
     },
     readProgress: formatReadProgress(readProgress, epub),
     sizeBytes: row.file_size || 0,
+    hardcoverStatus: resolveHardcoverStatus(row),
   };
 }
 

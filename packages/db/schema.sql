@@ -161,6 +161,16 @@ CREATE TABLE IF NOT EXISTS read_progress (
   UNIQUE(book_id)
 );
 
+-- Cached Hardcover.app reading statuses, pulled from the user's account.
+-- Keyed by Hardcover book id (matches books.metadata_id when
+-- metadata_source = 'hardcover'). Status ids follow Hardcover's convention:
+-- 1 = want to read, 2 = currently reading, 3 = read, 5 = did not finish.
+CREATE TABLE IF NOT EXISTS hardcover_reading_status (
+  hardcover_id TEXT PRIMARY KEY,
+  status_id INTEGER NOT NULL,
+  synced_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Comic read progress (Kapowarr issues; not in books table, so no FK)
 CREATE TABLE IF NOT EXISTS comic_read_progress (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -246,6 +256,7 @@ CREATE INDEX IF NOT EXISTS idx_wanted_books_status ON wanted_books(status);
 CREATE INDEX IF NOT EXISTS idx_wanted_books_title ON wanted_books(title);
 CREATE INDEX IF NOT EXISTS idx_source_status_cache_source ON source_status_cache(source);
 CREATE INDEX IF NOT EXISTS idx_read_progress_book ON read_progress(book_id);
+CREATE INDEX IF NOT EXISTS idx_hardcover_status_status ON hardcover_reading_status(status_id);
 CREATE INDEX IF NOT EXISTS idx_comic_read_progress_issue ON comic_read_progress(issue_id);
 CREATE INDEX IF NOT EXISTS idx_epub_progression_book ON epub_progression(book_id);
 CREATE INDEX IF NOT EXISTS idx_books_komga_book_id ON books(komga_book_id);

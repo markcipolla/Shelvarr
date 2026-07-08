@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getRecentBooks, getCurrentlyReadingBooks } from '@/lib/services/scanner';
+import { getRecentBooks, getCurrentlyReadingBooks, getWantToReadBooks } from '@/lib/services/scanner';
 import { getRecentComics, getInProgressComics } from '@/lib/actions/comics';
 import { BookCard } from '@/components/books/BookGrid';
 import { ComicCard } from '@/components/comics/ComicGrid';
@@ -10,12 +10,14 @@ import type { InProgressComic } from '@/lib/db';
 export const dynamic = 'force-dynamic';
 
 const CURRENTLY_READING_LIMIT = 12;
+const NEXT_UP_LIMIT = 12;
 const RECENT_BOOKS_LIMIT = 12;
 const RECENT_COMICS_LIMIT = 12;
 
 export default async function HomePage() {
-  const [currentlyReading, recentBooks, comicsResult, inProgressComics] = await Promise.all([
+  const [currentlyReading, nextUp, recentBooks, comicsResult, inProgressComics] = await Promise.all([
     getCurrentlyReadingBooks(CURRENTLY_READING_LIMIT),
+    getWantToReadBooks(NEXT_UP_LIMIT),
     getRecentBooks(RECENT_BOOKS_LIMIT),
     getRecentComics(RECENT_COMICS_LIMIT),
     getInProgressComics(CURRENTLY_READING_LIMIT),
@@ -34,6 +36,16 @@ export default async function HomePage() {
       >
         <BookRow books={currentlyReading} />
       </HomeSection>
+
+      {nextUp.length > 0 && (
+        <HomeSection
+          title="Next Up"
+          empty=""
+          isEmpty={false}
+        >
+          <BookRow books={nextUp} />
+        </HomeSection>
+      )}
 
       {inProgressComics.length > 0 && (
         <HomeSection

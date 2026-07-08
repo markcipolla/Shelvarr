@@ -532,6 +532,114 @@ export function deleteReadProgress(bookId: number): boolean {
   return result.rowCount > 0;
 }
 
+// ============ Hardcover Reading Status (cached from the user's account) ============
+
+export type HardcoverStatusLabel = 'want-to-read' | 'reading' | 'read' | 'dnf';
+
+// Hardcover's status ids: 1=want to read, 2=currently reading, 3=read, 5=DNF.
+export const HARDCOVER_STATUS_LABELS: Record<number, HardcoverStatusLabel> = {
+  1: 'want-to-read',
+  2: 'reading',
+  3: 'read',
+  5: 'dnf',
+};
+
+export function hardcoverStatusLabel(
+  statusId: number | null | undefined
+): HardcoverStatusLabel | null {
+  if (statusId == null) return null;
+  return HARDCOVER_STATUS_LABELS[statusId] ?? null;
+}
+
+export interface HardcoverStatusEntry {
+  hardcoverId: string;
+  statusId: number;
+}
+
+/**
+ * Replace the cached Hardcover reading statuses with a fresh snapshot from the
+ * user's account. Runs in a single transaction so readers never observe a
+ * partially-synced table. Entries with unknown status ids are dropped.
+ * Returns the number of statuses stored.
+ */
+export function replaceHardcoverStatuses(entries: HardcoverStatusEntry[]): number {
+  const valid = entries.filter((e) => e.hardcoverId && HARDCOVER_STATUS_LABELS[e.statusId]);
+  const database = getDb();
+  const txn = database.transaction((rows: HardcoverStatusEntry[]) => {
+    database.prepare('DELETE FROM hardcover_reading_status').run();
+    const stmt = database.prepare(
+      `INSERT INTO hardcover_reading_status (hardcover_id, status_id, synced_at)
+       VALUES (?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT (hardcover_id) DO UPDATE SET
+         status_id = excluded.status_id,
+         synced_at = CURRENT_TIMESTAMP`
+    );
+    for (const row of rows) {
+      stmt.run(String(row.hardcoverId), row.statusId);
+    }
+  });
+  txn(valid);
+  return valid.length;
+}
+
+// Shared join/filter: hardcover-tracked books at a given status that the user
+// hasn't already started or finished reading locally.
+const HARDCOVER_STATUS_FROM = `
+  FROM books b
+  JOIN hardcover_reading_status hs
+    ON hs.hardcover_id = b.metadata_id AND b.metadata_source = 'hardcover'
+  LEFT JOIN read_progress rp ON rp.book_id = b.id
+ WHERE hs.status_id = ?
+   AND (rp.completed IS NULL OR rp.completed = 0)
+   AND (rp.page IS NULL OR rp.page = 0)`;
+
+function getBooksByHardcoverStatus<T>(statusId: number, limit: number, offset: number): T[] {
+  return query<T>(
+    `SELECT b.* ${HARDCOVER_STATUS_FROM}
+      ORDER BY hs.synced_at DESC, b.title COLLATE NOCASE
+      LIMIT ? OFFSET ?`,
+    [statusId, Math.max(1, limit), Math.max(0, offset)]
+  );
+}
+
+function countBooksByHardcoverStatus(statusId: number): number {
+  const row = queryOne<{ count: number }>(
+    `SELECT COUNT(*) AS count ${HARDCOVER_STATUS_FROM}`,
+    [statusId]
+  );
+  return row?.count ?? 0;
+}
+
+/** The cached Hardcover status id for a Hardcover book id, or null if untracked. */
+export function getHardcoverStatusId(hardcoverId: string): number | null {
+  const row = queryOne<{ status_id: number }>(
+    'SELECT status_id FROM hardcover_reading_status WHERE hardcover_id = ?',
+    [hardcoverId]
+  );
+  return row?.status_id ?? null;
+}
+
+/** Books the user marked "want to read" on Hardcover and hasn't started locally. */
+export function getWantToReadBooks<T = Record<string, unknown>>(limit: number, offset: number): T[] {
+  return getBooksByHardcoverStatus<T>(1, limit, offset);
+}
+
+export function countWantToReadBooks(): number {
+  return countBooksByHardcoverStatus(1);
+}
+
+/** Books the user marked "currently reading" on Hardcover with no local progress yet. */
+export function getHardcoverReadingBooks<T = Record<string, unknown>>(
+  limit: number,
+  offset: number
+): T[] {
+  return getBooksByHardcoverStatus<T>(2, limit, offset);
+}
+
+export function countHardcoverReadingBooks(): number {
+  return countBooksByHardcoverStatus(2);
+}
+
 export interface EpubProgressionRow {
   id: number;
   book_id: number;

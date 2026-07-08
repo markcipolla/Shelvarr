@@ -6,7 +6,7 @@
  */
 
 import { getServiceConfig } from '../config';
-import { getSetting } from '@shelvarr/db';
+import { getSetting, replaceHardcoverStatuses } from '@shelvarr/db';
 
 const API_BASE = 'https://api.hardcover.app/v1/graphql';
 
@@ -368,6 +368,72 @@ export async function searchUserBook(hardcoverId: string): Promise<UserBook | nu
   });
 
   return data?.me?.[0]?.user_books?.[0] ?? null;
+}
+
+export interface HardcoverUserBookStatus {
+  bookId: number;
+  statusId: number;
+}
+
+/**
+ * Fetch all of the current user's tracked books with their status ids, paging
+ * through Hardcover's `me { user_books }` until exhausted. Scoped via `me` so it
+ * only returns the authenticated user's records.
+ */
+export async function getMyUserBooks(): Promise<HardcoverUserBookStatus[]> {
+  const PAGE = 500;
+  const MAX_PAGES = 100; // safety cap (~50k books) against a non-paging API
+  const out: HardcoverUserBookStatus[] = [];
+
+  const query = `
+    query MyUserBooks($limit: Int!, $offset: Int!) {
+      me {
+        user_books(limit: $limit, offset: $offset, order_by: { id: asc }) {
+          book_id
+          status_id
+        }
+      }
+    }
+  `;
+
+  for (let pageIndex = 0; pageIndex < MAX_PAGES; pageIndex++) {
+    const data = await graphqlFetch<{
+      me?: Array<{ user_books?: Array<{ book_id: number; status_id: number }> }>;
+    }>(query, { limit: PAGE, offset: pageIndex * PAGE });
+
+    const batch = data?.me?.[0]?.user_books ?? [];
+    for (const ub of batch) {
+      if (ub.book_id != null && ub.status_id != null) {
+        out.push({ bookId: ub.book_id, statusId: ub.status_id });
+      }
+    }
+    if (batch.length < PAGE) break;
+  }
+
+  return out;
+}
+
+/**
+ * Pull the user's Hardcover reading statuses and replace the local cache.
+ * Returns the number of statuses synced, or an error message.
+ */
+export async function syncReadingStatusesFromHardcover(): Promise<{
+  success: boolean;
+  synced?: number;
+  error?: string;
+}> {
+  if (!isConfigured()) return { success: false, error: 'Hardcover not configured' };
+  try {
+    const userBooks = await getMyUserBooks();
+    const synced = replaceHardcoverStatuses(
+      userBooks.map((ub) => ({ hardcoverId: String(ub.bookId), statusId: ub.statusId }))
+    );
+    return { success: true, synced };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`Hardcover syncReadingStatusesFromHardcover error: ${message}`);
+    return { success: false, error: message };
+  }
 }
 
 /**
