@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { getSetting, setSetting, getAllSettings } from '@/lib/db';
 import { getAllSourcesStatus, isConfigured } from '@/lib/services/metadata';
+import { audiobook } from '@shelvarr/services';
 
 // Only Hardcover is supported
 type MetadataSource = 'hardcover';
@@ -179,6 +180,94 @@ export async function isKapowarrConfigured(): Promise<boolean> {
   const url = await getSetting<string>('kapowarr_url', null);
   const apiKey = await getSetting<string>('kapowarr_api_key', null);
   return !!(url && apiKey);
+}
+
+// Kokoro TTS settings (audiobook narration)
+
+/**
+ * Effective narration settings. Saved values win over environment variables,
+ * so the form shows what generation will actually use.
+ */
+export async function getKokoroSettings() {
+  const config = audiobook.getKokoroConfig();
+  return {
+    url: config.url ?? '',
+    voice: config.voice,
+    model: config.model,
+    speed: config.speed,
+    // True when nothing is saved and the value comes from KOKORO_URL.
+    fromEnv: !(await getSetting<string>(audiobook.SETTING_KEYS.url, null)) && !!config.url,
+  };
+}
+
+export async function setKokoroSettings(settings: {
+  url: string;
+  voice: string;
+  model: string;
+  speed: number;
+}) {
+  const url = settings.url.trim();
+  if (url && !/^https?:\/\//i.test(url)) {
+    return { error: 'URL must start with http:// or https://' };
+  }
+  if (!Number.isFinite(settings.speed) || settings.speed < 0.5 || settings.speed > 2) {
+    return { error: 'Speed must be between 0.5 and 2' };
+  }
+
+  setSetting(audiobook.SETTING_KEYS.url, url);
+  setSetting(audiobook.SETTING_KEYS.voice, settings.voice.trim());
+  setSetting(audiobook.SETTING_KEYS.model, settings.model.trim() || 'kokoro');
+  setSetting(audiobook.SETTING_KEYS.speed, String(settings.speed));
+
+  revalidatePath('/settings');
+  revalidatePath('/books');
+  return { success: true };
+}
+
+/**
+ * Check a Kokoro server and return the voices it offers, so the UI can
+ * populate its voice picker. Tests the supplied URL rather than the saved one,
+ * so it can be used before saving.
+ */
+export async function testKokoroConnection(url?: string) {
+  const target = (url ?? '').trim() || audiobook.getKokoroConfig().url;
+  if (!target) {
+    return { success: false, error: 'No Kokoro URL configured' };
+  }
+
+  try {
+    const voices = await audiobook.listVoices(target);
+    return { success: true, voices };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Connection failed',
+    };
+  }
+}
+
+/** Narrate a short sample so a voice can be auditioned before committing to it. */
+export async function previewKokoroVoice(settings: {
+  url?: string;
+  voice: string;
+  model: string;
+  speed: number;
+}) {
+  const url = (settings.url ?? '').trim() || audiobook.getKokoroConfig().url;
+  if (!url) {
+    return { error: 'No Kokoro URL configured' };
+  }
+
+  try {
+    const audio = await audiobook.synthesize(
+      'This is how your audiobook will sound.',
+      undefined,
+      { url, voice: settings.voice, model: settings.model, speed: settings.speed }
+    );
+    return { audio: `data:audio/mpeg;base64,${audio.toString('base64')}` };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Preview failed' };
+  }
 }
 
 // Organize settings

@@ -6,6 +6,7 @@ import type { Book } from '@/types';
 import { deleteBook } from '@/lib/actions/books';
 import { MetadataSearchModal } from '@/components/books/MetadataSearchModal';
 import { EpubReader } from '@/components/books/EpubReader';
+import { AudiobookPanel } from '@/components/books/AudiobookPanel';
 import { useToast } from '@/components/ui/Toast';
 
 interface BookActionsProps {
@@ -120,6 +121,8 @@ export function BookActions({ book }: BookActionsProps) {
         >
           Mark as completed
         </button>
+
+        {isEpub && <AudiobookPanel bookId={book.id} />}
 
         {hasHardcover && (
           <div className="pt-2">

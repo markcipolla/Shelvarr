@@ -70,7 +70,7 @@ export interface Task {
   completedAt: string | null;
 }
 
-export type TaskType = 'scan' | 'metadata' | 'book_metadata' | 'organize' | 'download' | 'author_sync' | 'komga_sync';
+export type TaskType = 'scan' | 'metadata' | 'book_metadata' | 'organize' | 'download' | 'author_sync' | 'komga_sync' | 'audiobook';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface Author {
@@ -149,6 +149,14 @@ export interface KapowarrConfig {
   pathMap?: string | null;
 }
 
+export interface KokoroConfig {
+  /** Base URL of a kokoro-fastapi server, e.g. http://localhost:8880 */
+  url: string | null;
+  voice: string;
+  model: string;
+  speed: number;
+}
+
 export interface AppConfig {
   env: string;
   port: number;
@@ -157,6 +165,7 @@ export interface AppConfig {
   dbPath: string;
   komga: KomgaConfig;
   kapowarr: KapowarrConfig;
+  kokoro: KokoroConfig;
   supportedExtensions: string[];
   rateLimits: {
     hardcover: number;

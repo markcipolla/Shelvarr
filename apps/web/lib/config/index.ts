@@ -32,6 +32,14 @@ const config: AppConfig = {
     pathMap: process.env['KAPOWARR_PATH_MAP'] || null,
   },
 
+  // Kokoro TTS for audiobook generation (optional)
+  kokoro: {
+    url: process.env['KOKORO_URL'] || null,
+    voice: process.env['KOKORO_VOICE'] || 'af_bella',
+    model: process.env['KOKORO_MODEL'] || 'kokoro',
+    speed: parseFloat(process.env['KOKORO_SPEED'] || '1'),
+  },
+
   // Supported file extensions
   supportedExtensions: ['.epub', '.pdf', '.mobi', '.azw', '.azw3'],
 
