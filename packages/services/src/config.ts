@@ -35,6 +35,12 @@ export function getServiceConfig(): AppConfig {
         apiKey: process.env['KAPOWARR_API_KEY'] || null,
         pathMap: process.env['KAPOWARR_PATH_MAP'] || null,
       },
+      kokoro: {
+        url: process.env['KOKORO_URL'] || null,
+        voice: process.env['KOKORO_VOICE'] || 'af_bella',
+        model: process.env['KOKORO_MODEL'] || 'kokoro',
+        speed: parseFloat(process.env['KOKORO_SPEED'] || '1'),
+      },
       rateLimits: { hardcover: 60 },
     };
   }
