@@ -16,7 +16,7 @@ export * as queueHandlers from './queue/handlers';
 export * as downloads from './downloads/index';
 export * as komga from './komga/index';
 export * as kapowarr from './kapowarr/index';
-export * as audiobook from './audiobook/index';
+export * as audiletome from './audiletome/index';
 export * as sourceStatus from './downloads/source-status';
 
 // Komga response adapters

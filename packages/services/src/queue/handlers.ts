@@ -11,8 +11,7 @@ import * as metadataService from '../metadata';
 import { downloadFile as downloadFromLibgen } from '../downloads/libgen';
 import { komgaClient } from '../komga';
 import { applyReorganization } from '../organizer';
-import { generateAudiobook } from '../audiobook';
-import { getOrCreateAuthor, fetchAuthorMetadata, getAuthorByName } from '@/lib/actions/authors';
+import { getOrCreateAuthor, fetchAuthorMetadata, getAuthorByName } from '../authors';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -913,53 +912,6 @@ const komgaSyncHandler: TaskHandler = async (taskId, onProgress) => {
 };
 
 /**
- * Audiobook task handler
- * Narrates a book's EPUB into per-chapter MP3s via Kokoro TTS.
- */
-const audiobookHandler: TaskHandler = async (taskId, onProgress, signal) => {
-  const taskRow = queryOne<{ result: string | null }>(
-    'SELECT result FROM tasks WHERE id = ?',
-    [taskId]
-  );
-
-  if (!taskRow?.result) {
-    throw new Error('Task missing configuration');
-  }
-
-  const data = JSON.parse(taskRow.result) as {
-    bookId: number;
-    force?: boolean;
-  };
-
-  const book = queryOne<{ id: number; file_path: string; title: string | null }>(
-    'SELECT id, file_path, title FROM books WHERE id = ?',
-    [data.bookId]
-  );
-
-  if (!book) {
-    throw new Error(`Book ${data.bookId} not found`);
-  }
-
-  const result = await generateAudiobook(
-    {
-      bookId: book.id,
-      bookPath: book.file_path,
-      title: book.title || path.basename(book.file_path),
-    },
-    { onProgress, signal, force: data.force === true }
-  );
-
-  return {
-    bookId: book.id,
-    title: book.title,
-    outputDir: result.outputDir,
-    chapters: result.chapters,
-    chunks: result.chunks,
-    reused: result.reused,
-  };
-};
-
-/**
  * Register all task handlers
  */
 export function registerAllHandlers(): void {
@@ -979,9 +931,6 @@ export function registerAllHandlers(): void {
 
   // Komga sync handler - syncs book metadata and cover to Komga
   registerTaskHandler('komga_sync', komgaSyncHandler);
-
-  // Audiobook handler - narrates an EPUB to per-chapter MP3s
-  registerTaskHandler('audiobook', audiobookHandler);
 }
 
 export default { registerAllHandlers };
