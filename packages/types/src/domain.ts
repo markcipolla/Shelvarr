@@ -70,7 +70,7 @@ export interface Task {
   completedAt: string | null;
 }
 
-export type TaskType = 'scan' | 'metadata' | 'book_metadata' | 'organize' | 'download' | 'author_sync' | 'komga_sync' | 'audiobook';
+export type TaskType = 'scan' | 'metadata' | 'book_metadata' | 'organize' | 'download' | 'author_sync' | 'komga_sync';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface Author {
@@ -149,12 +149,11 @@ export interface KapowarrConfig {
   pathMap?: string | null;
 }
 
-export interface KokoroConfig {
-  /** Base URL of a kokoro-fastapi server, e.g. http://localhost:8880 */
+export interface AudiletomeConfig {
+  /** Base URL of an audiletome server, e.g. http://localhost:10000 */
   url: string | null;
-  voice: string;
-  model: string;
-  speed: number;
+  /** Sent as the `X-Api-Key` header; null keeps the API open (trusted network). */
+  apiKey: string | null;
 }
 
 export interface AppConfig {
@@ -165,7 +164,7 @@ export interface AppConfig {
   dbPath: string;
   komga: KomgaConfig;
   kapowarr: KapowarrConfig;
-  kokoro: KokoroConfig;
+  audiletome: AudiletomeConfig;
   supportedExtensions: string[];
   rateLimits: {
     hardcover: number;
@@ -312,4 +311,39 @@ export interface EpubProgression {
   progression: number; // 0-1 percentage
   createdAt: string;
   updatedAt: string;
+}
+
+// Audiletome domain types — mirror the read-only, versioned /api/v1 integration
+// API an audiletome server exposes (server/src/audiletome/shelvarr_api.py).
+
+/** Coarse, stable state callers can switch on, distinct from the raw status string. */
+export type AudiletomeState = 'pending' | 'processing' | 'completed' | 'failed';
+
+export interface AudiletomeProgress {
+  total: number;
+  done: number;
+  failed: number;
+  leased: number;
+  pending: number;
+  percent: number;
+}
+
+export interface AudiletomeBook {
+  id: number;
+  title?: string;
+  /** Raw upstream status string. */
+  status: string;
+  /** Coarse state derived from `status`. */
+  state: AudiletomeState;
+  progress: AudiletomeProgress;
+  /** Present once the .m4b is ready. */
+  download_url: string | null;
+}
+
+export interface AudiletomeSystemStatus {
+  /** App name reported by the server. */
+  name: string;
+  version: string;
+  /** Liveness indicator, e.g. "ok". */
+  status: string;
 }
