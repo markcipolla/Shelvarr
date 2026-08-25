@@ -5,11 +5,11 @@
 
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import type { KapowarrVolume, KapowarrVolumeDetail, KapowarrIssue } from '@shelvarr/types';
+import type { ComicVolumeSummary, ComicVolumeDetail, ComicIssueSummary } from '@shelvarr/types';
 
 let db: typeof import('../../lib/db/index.js');
 
-function makeVolume(overrides: Partial<KapowarrVolume> = {}): KapowarrVolume {
+function makeVolume(overrides: Partial<ComicVolumeSummary> = {}): ComicVolumeSummary {
   return {
     id: 101,
     comicvine_id: 5001,
@@ -30,7 +30,7 @@ function makeVolume(overrides: Partial<KapowarrVolume> = {}): KapowarrVolume {
   };
 }
 
-function makeIssue(overrides: Partial<KapowarrIssue> = {}): KapowarrIssue {
+function makeIssue(overrides: Partial<ComicIssueSummary> = {}): ComicIssueSummary {
   return {
     id: 9001,
     volume_id: 101,
@@ -46,7 +46,7 @@ function makeIssue(overrides: Partial<KapowarrIssue> = {}): KapowarrIssue {
   };
 }
 
-function makeDetail(overrides: Partial<KapowarrVolumeDetail> = {}): KapowarrVolumeDetail {
+function makeDetail(overrides: Partial<ComicVolumeDetail> = {}): ComicVolumeDetail {
   return {
     ...makeVolume(),
     special_version: null,

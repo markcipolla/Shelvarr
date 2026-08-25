@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import type { KapowarrIssue } from '@shelvarr/types';
+import type { ComicIssueSummary } from '@shelvarr/types';
 import {
   fetchComicIssue,
   getVolumeCoverUrl,
@@ -44,7 +44,7 @@ function formatSize(bytes: number | null | undefined): string | null {
 
 export default function IssueDetailScreen({ navigation, route }: Props) {
   const { volumeId, issueId, volumeTitle } = route.params;
-  const [issue, setIssue] = useState<KapowarrIssue | null>(null);
+  const [issue, setIssue] = useState<ComicIssueSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [readLoading, setReadLoading] = useState(false);
@@ -74,12 +74,8 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
   useEffect(() => {
     fetchComicIssue(issueId, volumeId)
       .then((res) => {
-        if (!res.configured) {
-          setError('Kapowarr is not configured on your Shelvarr server.');
-          return;
-        }
         if (!res.issue) {
-          setError(res.error || 'Issue not found');
+          setError(res.error || 'This issue is not on the server.');
           return;
         }
         setIssue(res.issue);
@@ -197,7 +193,7 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
       : null;
   const description = issue.description ? stripHtml(issue.description) : '';
   const fileSize = formatSize(issue.files.reduce((sum, f) => sum + (f.size || 0), 0));
-  // Kapowarr has no per-issue cover endpoint; issues share the volume cover.
+  // There is no per-issue cover; issues share the volume's.
   const coverUri = getVolumeCoverUrl(volumeId);
 
   return (

@@ -1,4 +1,4 @@
-import type { KapowarrIssue } from '@shelvarr/types';
+import type { ComicIssueSummary } from '@shelvarr/types';
 import { getInfoAsync, readDirectoryAsync } from 'expo-file-system/legacy';
 import { getFormatFromName } from '../utils/fileTypes';
 import { downloadBookFile, extractComicArchive, deleteBookFiles, DownloadHttpError } from './fileManager';
@@ -24,11 +24,11 @@ export function describeComicReadError(err: unknown): string {
         return 'Your session has expired. Please sign in to Shelvarr again.';
       case 404:
         if (/no file|not downloaded|no such file|enoent|not found on disk/.test(detail)) {
-          return "This issue's file isn't available on the server yet. Make sure Kapowarr has downloaded it and that your Shelvarr server can reach Kapowarr's files.";
+          return "This issue's file isn't available on the server yet. Check that it has been downloaded and that the file is where Shelvarr expects it.";
         }
         return "This comic couldn't be found on the server.";
       case 503:
-        return 'Kapowarr is not configured on your Shelvarr server.';
+        return 'Comics are not set up on your Shelvarr server.';
       default:
         if (err.status >= 500) {
           return `The Shelvarr server had a problem preparing this comic (error ${err.status}). Please try again.`;
@@ -80,7 +80,7 @@ async function reuseExistingDownload(
  * disk, otherwise download (and, for archives, extract) the issue afresh.
  */
 async function ensureComicDownloaded(
-  issue: KapowarrIssue,
+  issue: ComicIssueSummary,
   headers: Record<string, string>,
   onProgress?: (progress: number) => void
 ): Promise<ComicReadResult> {
@@ -114,7 +114,7 @@ async function ensureComicDownloaded(
 
 /** Record a downloaded issue in the per-device manifest. */
 function recordComicDownload(
-  issue: KapowarrIssue,
+  issue: ComicIssueSummary,
   result: ComicReadResult,
   persisted: boolean,
   volumeTitle?: string
@@ -139,7 +139,7 @@ function recordComicDownload(
 
 /** Download (if needed) and cache an issue so the reader can open it. */
 export async function prepareComicForReading(
-  issue: KapowarrIssue,
+  issue: ComicIssueSummary,
   headers: Record<string, string>,
   onProgress?: (progress: number) => void,
   volumeTitle?: string
@@ -151,7 +151,7 @@ export async function prepareComicForReading(
 
 /** Explicitly download an issue for offline reading and keep it (persisted). */
 export async function downloadComic(
-  issue: KapowarrIssue,
+  issue: ComicIssueSummary,
   headers: Record<string, string>,
   volumeTitle?: string
 ): Promise<DownloadedComic> {

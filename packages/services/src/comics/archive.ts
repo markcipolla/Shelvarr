@@ -14,12 +14,15 @@ export interface ComicArchiveResult {
 }
 
 /**
- * Remap a filepath using KAPOWARR_PATH_MAP ("from:to").
- * E.g. if pathMap = "/media/kapowarr:/comics", a filepath starting with
- * "/media/kapowarr" will have that prefix replaced with "/comics".
+ * Remap a filepath recorded by a previous manager, using the migration path
+ * map ("from:to").
+ *
+ * E.g. with `"/comics-1:/libraries/comics"`, a path starting `/comics-1` is
+ * rewritten to `/libraries/comics`. Volumes Shelvarr manages record their own
+ * paths and need no remapping.
  */
 export function remapComicPath(filepath: string): string {
-  const pathMap = getServiceConfig().kapowarr.pathMap;
+  const pathMap = getServiceConfig().comicMigration.pathMap;
   if (!pathMap) return filepath;
   const sep = pathMap.indexOf(':');
   if (sep < 0) return filepath;
@@ -37,8 +40,20 @@ export function remapComicPath(filepath: string): string {
  * - CBZ/ZIP → stream raw bytes, Content-Type: application/x-cbz
  * - CBR/RAR → extract images, re-zip to CBZ, Content-Type: application/x-cbz
  */
-export async function openComicArchive(filepath: string): Promise<ComicArchiveResult> {
-  const real = remapComicPath(filepath);
+export interface OpenComicArchiveOptions {
+  /**
+   * Apply the migration prefix remap. Only paths recorded by a previous
+   * manager need it; Shelvarr's own library paths are already local, so
+   * managed volumes pass `false`.
+   */
+  remap?: boolean;
+}
+
+export async function openComicArchive(
+  filepath: string,
+  options: OpenComicArchiveOptions = {}
+): Promise<ComicArchiveResult> {
+  const real = options.remap === false ? filepath : remapComicPath(filepath);
 
   // Verify file exists (throws ENOENT otherwise, which we map to 404)
   statSync(real);

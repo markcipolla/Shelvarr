@@ -411,6 +411,116 @@ Each phase must include tests before marking complete:
 - [ ] 8.6 Downloads UI page
 - [ ] 8.7 **Tests**: Unit tests for search services (mocked), integration tests for download APIs, E2E for search/download workflow
 
+### Phase 9: Comics in-house (replacing Kapowarr) 🔶 MOSTLY COMPLETE
+
+Shelvarr relicensed from MIT to **GPL-3.0-only** so the sourcing logic could be
+derived from [Kapowarr](https://github.com/Casvt/Kapowarr) — see NOTICE.md.
+
+**Stage 1 — GetComics sourcing** ✅ COMPLETE
+- [x] 9.1 Filename/title extraction (`comics/getcomics/parse.ts`), verified
+      against Kapowarr's own 91-case corpus
+- [x] 9.2 Match filters and result ranking (`match.ts`, `rank.ts`)
+- [x] 9.3 Search over the GetComics WordPress REST API (`search.ts`), with the
+      query-format ladder, manual search and auto-search
+- [x] 9.4 Article download-group extraction (`groups.ts`) and the
+      non-overlapping link-path solver (`paths.ts`)
+- [x] 9.5 Download clients: GetComics-direct and Pixeldrain, streaming with
+      range resume (`clients/`)
+- [x] 9.6 Schema: `comic_downloads`, `comic_download_history`, `comic_blocklist`
+- [x] 9.7 Queue handlers: `comic_search` and `comic_download`, with import
+      (rename + move into the volume folder)
+- [x] 9.8 API routes: manual/auto search, download, queue, blocklist
+- [x] 9.9 **Tests**: 69 unit tests covering extraction parity, matching,
+      ranking, path solving, article parsing, search transport and naming
+
+**Stage 2 — Metadata and library ownership** ✅ COMPLETE
+- [x] 9.10 ComicVine client (search, volume, issues, covers) with rate-limit
+      pacing (`comics/comicvine/`)
+- [x] 9.11 Schema: `comic_root_folders`, `comic_files`, `comic_issue_files`,
+      and the `managed` / `root_folder_id` / `last_cv_fetch` / `cover` columns
+      on `comics`
+- [x] 9.12 Volume add / refresh / delete, keeping local issue ids stable
+      across refreshes (`comics/library.ts`)
+- [x] 9.13 Disk scan + file-to-issue matching, preserving manual links
+      (`comics/scan.ts`)
+- [x] 9.14 Mass rename with preview and collision handling (`comics/rename.ts`)
+- [x] 9.15 Library import — adopt an existing folder tree, which is the
+      migration path off Kapowarr (`comics/import-library.ts`)
+- [x] 9.16 Tasks: `comic_refresh`, `comic_scan`, `comic_rename`,
+      `comic_update_all`, `comic_search_all`, `comic_library_import`
+- [x] 9.17 Local-first routes: the library, volume detail, covers and issue
+      files all serve from Shelvarr's database for managed volumes
+- [x] 9.18 UI: Settings → Comics (API key, root folders, library import),
+      Add Comic search, and per-volume actions
+- [x] 9.19 **Tests**: 45 more covering the ComicVine client, root folders,
+      issue-id stability, scanning, renaming, import grouping, and the
+      add/refresh flow end to end
+
+**Stage 3 — Retiring Kapowarr** ✅ COMPLETE
+- [x] 9.20 Kapowarr is optional: nothing in the comic pipeline needs it
+- [x] 9.21 Deleted `services/kapowarr`, the web shim, `refresh/comics.ts`,
+      `/api/refresh/comics`, the settings tab and page, and every runtime
+      reference. Shelvarr no longer makes a single call to Kapowarr.
+- [x] 9.27 `KapowarrConfig` replaced with `ComicMigrationConfig` — a
+      migration-only path map (`COMIC_PATH_MAP`, falling back to the old
+      `KAPOWARR_PATH_MAP`)
+- [x] 9.28 Wire-format types renamed off the Kapowarr name:
+      `KapowarrVolume` → `ComicVolumeSummary`, `KapowarrVolumeDetail` →
+      `ComicVolumeDetail`, `KapowarrIssue` → `ComicIssueSummary`,
+      `KapowarrFile` → `ComicFileRef`, `KapowarrGeneralFile` →
+      `ComicGeneralFile`. Field names stay snake_case: the native app's
+      on-device cache speaks them.
+- [x] 9.29 Native app no longer has a "Kapowarr not configured" state; its
+      comic responses dropped the `configured` flag with the integration
+- [x] 9.30 Migration from the UI: **Settings → Comics → Migrate mirrored
+      volumes**, backed by a `comic_adopt` task, with blocked volumes listed
+      and explained
+
+- [x] 9.22 Library-import review UI at `/comics/import` — candidates are kept
+      in the scan's result so changing a match costs no extra ComicVine calls
+- [x] 9.23 Download-queue page at `/comics/downloads` (queue, history,
+      blocklist, cancel/unblock)
+- [x] 9.24 Recurring jobs: `scheduled_tasks` table, an in-process scheduler
+      that claims due jobs with a single atomic UPDATE (safe across several
+      server processes), and settings UI to set intervals and run on demand
+- [x] 9.25 `pnpm comics:migrate` — adopts Kapowarr-mirrored volumes directly
+      from cached data, so it needs no ComicVine calls and works with Kapowarr
+      switched off (`comics/adopt.ts`, `scripts/migrate-comics.ts`)
+- [x] 9.26 **Tests**: 25 more covering adoption (path remapping, blockers,
+      issue-id preservation, files never moved) and the scheduler (atomic
+      claiming, interval handling, defaults)
+
+- [x] 9.31 Fixed `npm run build`: `lib/actions/authors.ts` re-exported
+      bindings from a `'use server'` module, which Next rejects — it may only
+      export async functions. Replaced with explicit async wrappers.
+
+### Phase 10: Native app ✅
+
+- [x] 10.1 Fixed the four standing `tsc` errors (`getAllByProps` on a render
+      result, a `MediaFormat` casing mismatch, `_reset` imported from the real
+      `expo-secure-store` rather than its mock, and `unknown[]` passed to
+      `runAsync` in `syncApply.ts`)
+- [x] 10.2 Added a `typecheck` script to `apps/native` — its absence is why
+      those errors sat unnoticed; `pnpm -r typecheck` now covers all six
+      packages
+- [x] 10.3 Contract tests (`comics-native-contract.test.ts`) run the real
+      route handlers against a real database and assert the exact response
+      shapes the native client reads. The native app ships separately, so a
+      silent shape change is otherwise invisible until it breaks a device.
+- [x] 10.4 Comic search on the Comics screen: debounced server search, falling
+      back to `searchCachedComics` over the on-device cache when the server
+      can't be reached
+- [x] 10.5 ESLint for `apps/native` (it had none): flat config mirroring the
+      web app plus React and React-Hooks rules, and a `lint` script. Cleared
+      all 36 errors it found — dead imports, unused bindings, undocumented
+      empty catches, and a `Function`-typed mock. The lazy `require()`s in
+      `api/books.ts` / `api/comics.ts` are kept and documented: the settings
+      store and the API client import each other, and a static import would
+      pull those modules into the cycle.
+- [ ] 10.6 Six `react-hooks/exhaustive-deps` warnings remain in the reader and
+      settings screens — mount-once effects where adding the dependencies
+      would change behaviour. Left as warnings rather than guessed at.
+
 ---
 
 ## Verification Checklist

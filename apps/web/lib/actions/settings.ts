@@ -126,61 +126,6 @@ export async function testKomgaConnection() {
   }
 }
 
-// Kapowarr settings
-export async function getKapowarrSettings() {
-  return {
-    url: await getSetting<string>('kapowarr_url', null),
-    hasApiKey: !!(await getSetting<string>('kapowarr_api_key', null)),
-  };
-}
-
-export async function setKapowarrSettings(url: string, apiKey?: string) {
-  setSetting('kapowarr_url', url);
-  if (apiKey) {
-    setSetting('kapowarr_api_key', apiKey);
-  }
-
-  const { configureKapowarrFromDb } = await import('@/lib/services/kapowarr');
-  await configureKapowarrFromDb();
-
-  revalidatePath('/settings');
-  revalidatePath('/comics');
-  return { success: true };
-}
-
-export async function testKapowarrConnection() {
-  const url = await getSetting<string>('kapowarr_url', null);
-  const apiKey = await getSetting<string>('kapowarr_api_key', null);
-
-  if (!url || !apiKey) {
-    return { success: false, error: 'Kapowarr settings incomplete' };
-  }
-
-  try {
-    const base = url.replace(/\/$/, '');
-    const response = await fetch(
-      `${base}/api/system/about?api_key=${encodeURIComponent(apiKey)}`
-    );
-
-    if (response.ok) {
-      return { success: true };
-    } else {
-      return { success: false, error: `HTTP ${response.status}` };
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Connection failed',
-    };
-  }
-}
-
-export async function isKapowarrConfigured(): Promise<boolean> {
-  const url = await getSetting<string>('kapowarr_url', null);
-  const apiKey = await getSetting<string>('kapowarr_api_key', null);
-  return !!(url && apiKey);
-}
-
 // Audiletome settings (audiobook generation)
 export async function getAudiletomeSettings() {
   return {
@@ -279,4 +224,216 @@ export async function previewOrganizeForLibrary(
 ): Promise<ReorgPreviewItem[]> {
   const { template } = await getOrganizeSettings();
   return previewReorganization(libraryId, { template });
+}
+
+// ---------------------------------------------------------------------------
+// Comics: ComicVine metadata and library root folders
+// ---------------------------------------------------------------------------
+
+export async function getComicsSettings() {
+  const { comicLibrary } = await import('@shelvarr/services');
+  const { countVolumesInRootFolder } = await import('@/lib/db');
+
+  return {
+    hasApiKey: !!(await getSetting<string>('comicvine_api_key', null)),
+    dateType: (await getSetting<string>('comicvine_date_type', 'cover_date')) ?? 'cover_date',
+    rootFolders: comicLibrary.listRootFolders().map((folder) => ({
+      ...folder,
+      volumeCount: countVolumesInRootFolder(folder.id),
+    })),
+  };
+}
+
+export async function setComicVineSettings(apiKey?: string, dateType?: string) {
+  if (apiKey) setSetting('comicvine_api_key', apiKey);
+  if (dateType) setSetting('comicvine_date_type', dateType);
+
+  revalidatePath('/settings');
+  revalidatePath('/comics');
+  return { success: true };
+}
+
+/** Verify the stored ComicVine key with the cheapest call the API allows. */
+export async function testComicVineConnection() {
+  const { comicLibrary } = await import('@shelvarr/services');
+
+  try {
+    const client = await comicLibrary.getComicVine();
+    return (await client.testKey())
+      ? { success: true }
+      : { success: false, error: 'ComicVine rejected the API key' };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Connection failed',
+    };
+  }
+}
+
+export async function addComicRootFolderAction(path: string) {
+  const { comicLibrary } = await import('@shelvarr/services');
+
+  try {
+    await comicLibrary.addRootFolder(path);
+    revalidatePath('/settings');
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to add root folder',
+    };
+  }
+}
+
+export async function removeComicRootFolderAction(id: number) {
+  const { comicLibrary } = await import('@shelvarr/services');
+
+  try {
+    comicLibrary.removeRootFolder(id);
+    revalidatePath('/settings');
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to remove root folder',
+    };
+  }
+}
+
+/**
+ * Kick off a library import scan. Returns the task id so the UI can follow it
+ * on the tasks page — it makes one ComicVine search per folder, so a large
+ * library takes minutes.
+ */
+export async function startComicLibraryImport(path: string) {
+  const { queue } = await import('@shelvarr/services');
+  const task = queue.enqueueTask('comic_library_import', { path });
+  revalidatePath('/settings');
+  return { success: true, taskId: task.id };
+}
+
+// ---------------------------------------------------------------------------
+// Recurring jobs
+// ---------------------------------------------------------------------------
+
+export interface ScheduleView {
+  name: string;
+  description: string;
+  intervalSeconds: number;
+  nextRun: number;
+  lastRun: number | null;
+  enabled: boolean;
+}
+
+export async function getSchedules(): Promise<ScheduleView[]> {
+  const { scheduler } = await import('@shelvarr/services');
+
+  scheduler.ensureDefaultSchedules();
+  return scheduler.listSchedules().map((schedule) => ({
+    name: schedule.name,
+    description: schedule.description,
+    intervalSeconds: schedule.intervalSeconds,
+    nextRun: schedule.nextRun,
+    lastRun: schedule.lastRun,
+    enabled: schedule.enabled,
+  }));
+}
+
+export async function setScheduleEnabledAction(name: string, enabled: boolean) {
+  const { scheduler } = await import('@shelvarr/services');
+
+  try {
+    scheduler.setScheduleEnabled(name, enabled);
+    revalidatePath('/settings/comics');
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to update schedule',
+    };
+  }
+}
+
+export async function setScheduleIntervalAction(name: string, intervalSeconds: number) {
+  const { scheduler } = await import('@shelvarr/services');
+
+  try {
+    scheduler.setScheduleInterval(name, intervalSeconds);
+    revalidatePath('/settings/comics');
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to update interval',
+    };
+  }
+}
+
+/** Run a scheduled job now, leaving its timetable alone. */
+export async function runScheduleNowAction(name: string) {
+  const { scheduler } = await import('@shelvarr/services');
+
+  try {
+    const taskId = scheduler.runScheduleNow(name);
+    revalidatePath('/settings/comics');
+    return { success: true, taskId };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to run job',
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Migrating a mirrored library
+// ---------------------------------------------------------------------------
+
+export interface AdoptionCandidateView {
+  volumeId: number;
+  title: string;
+  localFolder: string | null;
+  issueCount: number;
+  blocker: string | null;
+}
+
+/**
+ * Volumes still mirrored from a previous manager, and what stands in the way
+ * of taking each one over.
+ */
+export async function getAdoptionCandidates(): Promise<AdoptionCandidateView[]> {
+  const { comicAdopt } = await import('@shelvarr/services');
+
+  return comicAdopt.listAdoptionCandidates().map((candidate) => ({
+    volumeId: candidate.volumeId,
+    title: candidate.title,
+    localFolder: candidate.localFolder,
+    issueCount: candidate.issueCount,
+    blocker: candidate.blocker,
+  }));
+}
+
+/**
+ * Take over every mirrored volume that is ready.
+ *
+ * Runs in the background: adoption itself is cheap, but each volume's folder
+ * gets scanned, and a large library takes a moment.
+ */
+export async function startComicAdoption(volumeIds?: number[]) {
+  const { comicAdopt, queue } = await import('@shelvarr/services');
+
+  const ready = comicAdopt
+    .listAdoptionCandidates()
+    .filter((candidate) => !candidate.blocker);
+  if (ready.length === 0) {
+    return { success: false as const, error: 'Nothing is ready to migrate' };
+  }
+
+  const task = queue.enqueueTask('comic_adopt', {
+    ...(volumeIds && volumeIds.length > 0 ? { volumeIds } : {}),
+  });
+
+  revalidatePath('/settings/comics');
+  revalidatePath('/comics');
+  return { success: true as const, taskId: task.id, count: volumeIds?.length ?? ready.length };
 }

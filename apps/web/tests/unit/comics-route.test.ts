@@ -1,20 +1,18 @@
 /**
  * Unit tests for the /api/comics route handler.
- * Mocks the Kapowarr client, auth, and DB cache layer.
+ *
+ * The library is read from the database; there is no upstream to consult.
  */
 
 import { describe, it, beforeEach, mock } from 'node:test';
 import assert from 'node:assert';
-import type { KapowarrVolume } from '@shelvarr/types';
+import type { ComicVolumeSummary } from '@shelvarr/types';
+
+type ListedVolume = ComicVolumeSummary & { managed: boolean };
+type ListOptions = { search?: string; sort?: string };
 
 let authResult = true;
-let configuredResult = true;
-const getVolumesMock = mock.fn<(params?: { query?: string; sort?: string }) => Promise<KapowarrVolume[]>>(
-  async () => []
-);
-const configureMock = mock.fn<() => Promise<boolean>>(async () => configuredResult);
-const getCachedComicsMock = mock.fn<() => KapowarrVolume[]>(() => []);
-const upsertComicVolumesMock = mock.fn<(v: KapowarrVolume[]) => void>(() => {});
+const listComicVolumesMock = mock.fn<(options: ListOptions) => ListedVolume[]>(() => []);
 
 mock.module('@shelvarr/services', {
   namedExports: {
@@ -22,27 +20,15 @@ mock.module('@shelvarr/services', {
   },
 });
 
-mock.module('@/lib/services/kapowarr', {
-  namedExports: {
-    kapowarrClient: {
-      getVolumes: (...args: any[]) => getVolumesMock(...args),
-    },
-    configureKapowarrFromDb: () => configureMock(),
-  },
-});
-
-mock.module('@/lib/config', {
-  namedExports: {},
-});
+mock.module('@/lib/config', { namedExports: {} });
 
 mock.module('@/lib/db', {
   namedExports: {
-    getCachedComics: () => getCachedComicsMock(),
-    upsertComicVolumes: (v: KapowarrVolume[]) => upsertComicVolumesMock(v),
+    listComicVolumes: (options: ListOptions) => listComicVolumesMock(options),
   },
 });
 
-function makeVolume(overrides: Partial<KapowarrVolume> = {}): KapowarrVolume {
+function makeVolume(overrides: Partial<ListedVolume> = {}): ListedVolume {
   return {
     id: 1,
     comicvine_id: 100,
@@ -59,6 +45,7 @@ function makeVolume(overrides: Partial<KapowarrVolume> = {}): KapowarrVolume {
     issues_downloaded: 5,
     issues_downloaded_monitored: 5,
     total_size: 1024,
+    managed: true,
     ...overrides,
   };
 }
@@ -76,119 +63,49 @@ const { GET } = await import('../../app/api/comics/route.js');
 describe('GET /api/comics', () => {
   beforeEach(() => {
     authResult = true;
-    configuredResult = true;
-    getVolumesMock.mock.resetCalls();
-    configureMock.mock.resetCalls();
-    getCachedComicsMock.mock.resetCalls();
-    upsertComicVolumesMock.mock.resetCalls();
-    getVolumesMock.mock.mockImplementation(async () => []);
-    getCachedComicsMock.mock.mockImplementation(() => []);
+    listComicVolumesMock.mock.resetCalls();
+    listComicVolumesMock.mock.mockImplementation(() => []);
   });
 
   it('returns 401 when auth validation fails', async () => {
     authResult = false;
     const res = await GET(makeRequest('http://host/api/comics'));
     assert.strictEqual(res.status, 401);
-    const body = await res.json();
-    assert.strictEqual(body.error, 'Unauthorized');
+    assert.strictEqual((await res.json()).error, 'Unauthorized');
   });
 
-  it('returns configured:false with empty cache when Kapowarr is not configured', async () => {
-    configuredResult = false;
+  it('serves the library from the database', async () => {
+    listComicVolumesMock.mock.mockImplementation(() => [makeVolume({ title: 'Saga' })]);
+
     const res = await GET(makeRequest('http://host/api/comics'));
     assert.strictEqual(res.status, 200);
-    const body = await res.json();
-    assert.strictEqual(body.configured, false);
-    assert.deepStrictEqual(body.volumes, []);
-    assert.strictEqual(body.cached, false);
-    assert.strictEqual(getVolumesMock.mock.callCount(), 0);
-  });
 
-  it('serves cached volumes when Kapowarr is not configured but cache has data', async () => {
-    configuredResult = false;
-    const cached = [makeVolume({ id: 1, title: 'Cached A' })];
-    getCachedComicsMock.mock.mockImplementation(() => cached);
-    const res = await GET(makeRequest('http://host/api/comics'));
     const body = await res.json();
-    assert.strictEqual(body.configured, false);
-    assert.strictEqual(body.cached, true);
     assert.strictEqual(body.volumes.length, 1);
-    assert.strictEqual(body.volumes[0].title, 'Cached A');
+    assert.strictEqual(body.volumes[0].title, 'Saga');
   });
 
-  it('returns volumes and persists them when Kapowarr is configured', async () => {
-    const volumes = [makeVolume({ id: 1, title: 'A' }), makeVolume({ id: 2, title: 'B' })];
-    getVolumesMock.mock.mockImplementation(async () => volumes);
+  it('passes search and sort straight through', async () => {
+    await GET(makeRequest('http://host/api/comics?search=batman&sort=year'));
 
-    const res = await GET(makeRequest('http://host/api/comics'));
-    assert.strictEqual(res.status, 200);
-    const body = await res.json();
-    assert.strictEqual(body.configured, true);
-    assert.strictEqual(body.volumes.length, 2);
-    assert.strictEqual(upsertComicVolumesMock.mock.callCount(), 1);
-    assert.strictEqual((upsertComicVolumesMock.mock.calls[0].arguments[0] as KapowarrVolume[]).length, 2);
+    const options = listComicVolumesMock.mock.calls[0]!.arguments[0];
+    assert.strictEqual(options.search, 'batman');
+    assert.strictEqual(options.sort, 'year');
   });
 
-  it('does not persist when a search or sort is applied (result is filtered)', async () => {
-    getVolumesMock.mock.mockImplementation(async () => [makeVolume()]);
-    await GET(makeRequest('http://host/api/comics?search=batman'));
-    assert.strictEqual(upsertComicVolumesMock.mock.callCount(), 0);
-  });
-
-  it('forwards search param to Kapowarr client', async () => {
-    await GET(makeRequest('http://host/api/comics?search=batman'));
-    assert.strictEqual(getVolumesMock.mock.callCount(), 1);
-    const call = getVolumesMock.mock.calls[0];
-    assert.strictEqual(call.arguments[0]?.query, 'batman');
-  });
-
-  it('forwards valid sort param to Kapowarr client', async () => {
-    await GET(makeRequest('http://host/api/comics?sort=title'));
-    const call = getVolumesMock.mock.calls[0];
-    assert.strictEqual(call.arguments[0]?.sort, 'title');
-  });
-
-  it('ignores unknown sort values', async () => {
+  it('ignores an unknown sort value', async () => {
     await GET(makeRequest('http://host/api/comics?sort=notreal'));
-    const call = getVolumesMock.mock.calls[0];
-    assert.strictEqual(call.arguments[0]?.sort, undefined);
+    assert.strictEqual(listComicVolumesMock.mock.calls[0]!.arguments[0].sort, undefined);
   });
 
-  it('falls back to cache when Kapowarr call throws', async () => {
-    const cached = [makeVolume({ id: 7, title: 'Cached Fallback' })];
-    getCachedComicsMock.mock.mockImplementation(() => cached);
-    getVolumesMock.mock.mockImplementation(async () => {
-      throw new Error('Kapowarr offline');
-    });
+  it('omits both keys when neither was given', async () => {
+    await GET(makeRequest('http://host/api/comics'));
+    assert.deepStrictEqual(listComicVolumesMock.mock.calls[0]!.arguments[0], {});
+  });
 
+  it('returns an empty list rather than an error for an empty library', async () => {
     const res = await GET(makeRequest('http://host/api/comics'));
     assert.strictEqual(res.status, 200);
-    const body = await res.json();
-    assert.strictEqual(body.configured, true);
-    assert.strictEqual(body.cached, true);
-    assert.strictEqual(body.volumes.length, 1);
-    assert.strictEqual(body.volumes[0].title, 'Cached Fallback');
-    assert.strictEqual(body.error, 'Kapowarr offline');
-  });
-
-  it('returns empty list with error when Kapowarr throws and no cache available', async () => {
-    getVolumesMock.mock.mockImplementation(async () => {
-      throw new Error('Kapowarr offline');
-    });
-    const res = await GET(makeRequest('http://host/api/comics'));
-    const body = await res.json();
-    assert.strictEqual(body.cached, false);
-    assert.deepStrictEqual(body.volumes, []);
-    assert.strictEqual(body.error, 'Kapowarr offline');
-  });
-
-  it('returns generic error message for non-Error rejections', async () => {
-    getVolumesMock.mock.mockImplementation(async () => {
-      throw 'string reason';
-    });
-
-    const res = await GET(makeRequest('http://host/api/comics'));
-    const body = await res.json();
-    assert.strictEqual(body.error, 'Failed to load comics');
+    assert.deepStrictEqual((await res.json()).volumes, []);
   });
 });

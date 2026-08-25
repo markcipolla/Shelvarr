@@ -178,7 +178,7 @@ describe('EpubReaderScreen', () => {
     mockGetEpubPosition.mockResolvedValue(null);
     mockGetEpubProgression.mockResolvedValue(null);
 
-    const { getByText, getAllByProps } = render(
+    const { getByText } = render(
       <EpubReaderScreen navigation={mockNavigation} route={mockRoute} />
     );
 

@@ -1,4 +1,6 @@
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// app.json lives outside src and is bundled by Metro, so it is required
+// rather than imported.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const appJson = require('../../app.json') as { expo: { version: string } };
 
 export const APP_VERSION: string = appJson.expo.version;

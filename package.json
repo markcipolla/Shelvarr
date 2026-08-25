@@ -17,7 +17,8 @@
     "typecheck": "pnpm -r typecheck",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "comics:migrate": "tsx scripts/migrate-comics.ts"
   },
   "keywords": [
     "komga",
@@ -29,9 +30,12 @@
     "self-hosted"
   ],
   "author": "",
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "engines": {
     "node": ">=20.0.0"
   },
-  "packageManager": "pnpm@9.15.0"
+  "packageManager": "pnpm@9.15.0",
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  }
 }

@@ -11,13 +11,13 @@ import { BookCard } from '@/components/books/BookGrid';
 import { ComicCard } from '@/components/comics/ComicGrid';
 import type { SearchResultWithStatus } from '@/app/search/page';
 import type { Book } from '@/types';
-import type { KapowarrVolume } from '@shelvarr/types';
+import type { ComicVolumeSummary } from '@shelvarr/types';
 
 interface SearchPageProps {
   initialQuery: string;
   initialResults: SearchResultWithStatus[];
   initialLocalBooks?: Book[];
-  initialLocalComics?: KapowarrVolume[];
+  initialLocalComics?: ComicVolumeSummary[];
   isConfigured: boolean;
 }
 

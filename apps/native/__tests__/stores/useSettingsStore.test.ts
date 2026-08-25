@@ -7,7 +7,9 @@ jest.mock('../../src/services/api/client', () => ({
 
 import { useSettingsStore } from '../../src/stores/useSettingsStore';
 import * as SecureStore from 'expo-secure-store';
-import { _reset } from 'expo-secure-store';
+// `_reset` only exists on the mock (jest maps expo-secure-store to it), so
+// import it from there rather than from the real module's types.
+import { _reset } from '../../__mocks__/expo-secure-store';
 
 const initialState = useSettingsStore.getState();
 

@@ -1,10 +1,9 @@
 'use server';
 
-import { query, searchBooksFts, searchComicsFts, buildFtsQuery } from '@/lib/db';
+import { query, searchBooksFts, searchComicsFts, buildFtsQuery, listComicVolumes } from '@/lib/db';
 import * as metadataService from '@/lib/services/metadata';
-import { kapowarrClient, configureKapowarrFromDb } from '@/lib/services/kapowarr';
 import type { Book } from '@/types';
-import type { KapowarrVolume } from '@shelvarr/types';
+import type { ComicVolumeSummary } from '@shelvarr/types';
 
 export interface LocalSearchResult {
   type: 'book' | 'author' | 'series' | 'comic';
@@ -121,12 +120,9 @@ export async function searchLocal(searchQuery: string, limit = 10): Promise<Loca
   return results.slice(0, limit);
 }
 
-async function searchLocalComics(searchQuery: string, limit: number): Promise<KapowarrVolume[]> {
+function searchLocalComics(searchQuery: string, limit: number): ComicVolumeSummary[] {
   try {
-    const configured = await configureKapowarrFromDb();
-    if (!configured) return [];
-    const volumes = await kapowarrClient.getVolumes({ query: searchQuery });
-    return volumes.slice(0, limit);
+    return listComicVolumes({ search: searchQuery }).slice(0, limit);
   } catch (error) {
     console.warn('Comic search failed:', error);
     return [];
@@ -200,9 +196,9 @@ export async function searchLocalBooks(searchQuery: string, limit = 20): Promise
 }
 
 /**
- * Search local comics (Kapowarr). Used by /search page.
+ * Search the comic library. Used by the /search page.
  */
-export async function searchLocalComicsList(searchQuery: string, limit = 20): Promise<KapowarrVolume[]> {
+export async function searchLocalComicsList(searchQuery: string, limit = 20): Promise<ComicVolumeSummary[]> {
   return searchLocalComics(searchQuery, limit);
 }
 

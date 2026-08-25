@@ -78,11 +78,6 @@ export default function BookDetailScreen({ route, navigation }: Props) {
     const format = getMediaFormat(book.media.mediaType) !== 'unknown'
       ? getMediaFormat(book.media.mediaType)
       : getFormatFromName(book.name);
-    /* istanbul ignore next */
-    const startPage = book.readProgress?.page || 1;
-    /* istanbul ignore next */
-    const totalPages = book.media.pagesCount || 0;
-
     await downloadAndRead(book, format);
   };
 

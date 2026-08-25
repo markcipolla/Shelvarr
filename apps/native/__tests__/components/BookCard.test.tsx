@@ -2,7 +2,6 @@ import React from 'react';
 import { render, fireEvent } from '@testing-library/react-native';
 import BookCard from '../../src/components/BookCard';
 import { useAuthHeaders } from '../../src/hooks/useAuthHeaders';
-import { getBookThumbnailUrl } from '../../src/services/api/books';
 import { useConnectivityStore } from '../../src/stores/useConnectivityStore';
 import { useDownloadStore } from '../../src/stores/useDownloadStore';
 import { Book } from '../../src/types/komga';

@@ -14,7 +14,7 @@ jest.mock('../../src/hooks/useAuthHeaders', () => ({
   useAuthHeaders: jest.fn().mockReturnValue({}),
 }));
 jest.mock('../../src/components/BookCard', () => {
-  const { View, Text, TouchableOpacity } = require('react-native');
+  const { Text, TouchableOpacity } = require('react-native');
   return function MockBookCard({ book, onPress }: any) {
     return (
       <TouchableOpacity onPress={onPress} testID={`book-${book.id}`}>

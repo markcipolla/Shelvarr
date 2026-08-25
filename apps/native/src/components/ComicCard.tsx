@@ -1,13 +1,13 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
-import type { KapowarrVolume } from '@shelvarr/types';
+import type { ComicVolumeSummary } from '@shelvarr/types';
 import { getVolumeCoverUrl } from '../services/api/comics';
 
 const COVER_ASPECT_RATIO = 140 / 200;
 
 interface Props {
-  volume: KapowarrVolume;
+  volume: ComicVolumeSummary;
   onPress: () => void;
   fill?: boolean;
   placeholder?: boolean;

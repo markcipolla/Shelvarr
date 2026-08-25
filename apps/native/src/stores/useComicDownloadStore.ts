@@ -5,13 +5,13 @@ import {
   readAsStringAsync,
   writeAsStringAsync,
 } from 'expo-file-system/legacy';
-import type { KapowarrIssue } from '@shelvarr/types';
+import type { ComicIssueSummary } from '@shelvarr/types';
 
 const MANIFEST_PATH = `${documentDirectory}comic-downloads.json`;
 
 /**
  * A comic issue downloaded to *this device* for offline reading. Distinct from
- * `issue.files` on the server (which merely means Kapowarr grabbed the file
+ * `issue.files` on the server (which merely means the server has the file
  * into the library and is shared across every device).
  */
 export interface DownloadedComic {
@@ -27,7 +27,7 @@ export interface DownloadedComic {
   /** true for explicit downloads; false for on-demand read-and-cache. */
   persisted?: boolean;
   /** Cached issue metadata so detail screens work offline. */
-  issue?: KapowarrIssue;
+  issue?: ComicIssueSummary;
   volumeTitle?: string;
 }
 
@@ -66,7 +66,7 @@ export const useComicDownloadStore = create<ComicDownloadState>((set, get) => ({
 
   removeDownload: (issueId) =>
     set((state) => {
-      const { [issueId]: _, ...rest } = state.downloads;
+      const { [issueId]: _removed, ...rest } = state.downloads;
       persist(rest);
       return { downloads: rest };
     }),

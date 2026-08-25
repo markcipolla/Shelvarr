@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import type { KapowarrVolumeDetail, KapowarrIssue } from '@shelvarr/types';
+import type { ComicVolumeDetail, ComicIssueSummary } from '@shelvarr/types';
 import {
   fetchComicDetail,
   getVolumeCoverUrl,
@@ -34,7 +34,7 @@ function formatSize(bytes: number | null | undefined): string | null {
   return `${(mb / 1024).toFixed(2)} GB`;
 }
 
-function getIssueBadge(issue: KapowarrIssue, downloaded: boolean, progress?: ComicIssueProgress) {
+function getIssueBadge(issue: ComicIssueSummary, downloaded: boolean, progress?: ComicIssueProgress) {
   if (progress?.completed) {
     return { label: 'Read', container: styles.badgeRead, text: styles.badgeTextOnColor };
   }
@@ -55,7 +55,7 @@ function getIssueBadge(issue: KapowarrIssue, downloaded: boolean, progress?: Com
 
 export default function ComicDetailScreen({ navigation, route }: Props) {
   const { volumeId } = route.params;
-  const [volume, setVolume] = useState<KapowarrVolumeDetail | null>(null);
+  const [volume, setVolume] = useState<ComicVolumeDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<Map<number, ComicIssueProgress>>(new Map());
@@ -79,12 +79,10 @@ export default function ComicDetailScreen({ navigation, route }: Props) {
   useEffect(() => {
     fetchComicDetail(volumeId)
       .then((res) => {
-        if (!res.configured) {
-          setError('Kapowarr is not configured on your Shelvarr server.');
-          return;
-        }
+        // Prefer whatever the server said went wrong; fall back to a plain
+        // "not there" only when it offered no reason.
         if (res.error || !res.volume) {
-          setError(res.error || 'Comic not found');
+          setError(res.error || 'This comic is not on the server.');
           return;
         }
         setVolume(res.volume);
@@ -93,7 +91,7 @@ export default function ComicDetailScreen({ navigation, route }: Props) {
       .finally(() => setLoading(false));
   }, [volumeId]);
 
-  const handleOpenIssue = (issue: KapowarrIssue) => {
+  const handleOpenIssue = (issue: ComicIssueSummary) => {
     navigation.navigate('IssueDetail', {
       volumeId,
       issueId: issue.id,

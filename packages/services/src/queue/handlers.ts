@@ -6,7 +6,26 @@
 import { registerTaskHandler, enqueueTask, type TaskHandler } from './index';
 import { scanLibrary, updateBook, addBook } from '../scanner';
 import { getLibraryById } from '../library';
-import { query, queryOne, execute, markWantedBookAsAcquired } from '@shelvarr/db';
+import {
+  query,
+  queryOne,
+  execute,
+  markWantedBookAsAcquired,
+  addComicDownloadHistory,
+  getComicDownload,
+  getComicVolumesNeedingRefresh,
+  getComicVolumesWithMissingIssues,
+  setComicDownloadState,
+  updateComicDownloadProgress,
+} from '@shelvarr/db';
+import * as getcomics from '../comics/getcomics/index';
+import * as comicLibrary from '../comics/library';
+import { importComicDownload } from '../comics/import';
+import { scanVolumeFiles } from '../comics/scan';
+import { applyVolumeRename } from '../comics/rename';
+import { findImportGroups, proposeLibraryImport } from '../comics/import-library';
+import { adoptAllVolumes, adoptVolume, listAdoptionCandidates } from '../comics/adopt';
+import { getServiceConfig } from '../config';
 import * as metadataService from '../metadata';
 import { downloadFile as downloadFromLibgen } from '../downloads/libgen';
 import { komgaClient } from '../komga';
@@ -912,6 +931,382 @@ const komgaSyncHandler: TaskHandler = async (taskId, onProgress) => {
 };
 
 /**
+ * Search GetComics for a comic volume's missing issues and queue whatever it
+ * finds. Each queued download becomes its own `comic_download` task.
+ */
+const comicSearchHandler: TaskHandler = async (taskId, onProgress, signal) => {
+  const taskRow = queryOne<{ result: string | null }>(
+    'SELECT result FROM tasks WHERE id = ?',
+    [taskId]
+  );
+  if (!taskRow?.result) throw new Error('Task missing comic search configuration');
+
+  const data = JSON.parse(taskRow.result) as { volumeId?: number; issueId?: number | null };
+  if (!data.volumeId) throw new Error('Comic search task has no volumeId');
+
+  onProgress(0, 2);
+
+  const { downloads, failed } = await getcomics.autoSearchVolume(data.volumeId, {
+    issueId: data.issueId ?? null,
+    signal,
+  });
+
+  onProgress(1, 2);
+
+  for (const download of downloads) {
+    enqueueTask('comic_download', { comicDownloadId: download.id });
+  }
+
+  onProgress(2, 2);
+
+  return {
+    volumeId: data.volumeId,
+    queued: downloads.length,
+    downloadIds: downloads.map((download) => download.id),
+    failed,
+  };
+};
+
+/**
+ * Fetch one queued comic download and import it into the library.
+ *
+ * Progress is reported in bytes so the UI can show a real progress bar; the
+ * `comic_downloads` row carries the same figures for anything reading the
+ * queue directly.
+ */
+const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
+  const taskRow = queryOne<{ result: string | null }>(
+    'SELECT result FROM tasks WHERE id = ?',
+    [taskId]
+  );
+  if (!taskRow?.result) throw new Error('Task missing comic download configuration');
+
+  const data = JSON.parse(taskRow.result) as { comicDownloadId?: number };
+  if (!data.comicDownloadId) throw new Error('Comic download task has no comicDownloadId');
+
+  const download = getComicDownload(data.comicDownloadId);
+  if (!download) throw new Error(`Comic download ${data.comicDownloadId} not found`);
+
+  const loaded = getcomics.loadVolume(download.volumeId);
+  if (!loaded) throw new Error(`Comic volume ${download.volumeId} not found`);
+
+  const volumeRow = queryOne<{ folder: string | null; publisher: string | null }>(
+    'SELECT folder, publisher FROM comics WHERE id = ?',
+    [download.volumeId]
+  );
+
+  const fail = (message: string): never => {
+    setComicDownloadState(download.id, 'failed', { error: message });
+    addComicDownloadHistory({
+      volumeId: download.volumeId,
+      issueId: download.issueId,
+      webLink: download.webLink,
+      webTitle: download.webTitle,
+      webSubTitle: download.webSubTitle,
+      host: download.host,
+      success: false,
+    });
+    throw new Error(message);
+  };
+
+  try {
+    setComicDownloadState(download.id, 'downloading');
+
+    const resolved = await getcomics.resolveDownload(
+      download.host,
+      download.downloadLink,
+      signal
+    );
+
+    const scratchDir = getServiceConfig().getcomics.downloadDir;
+    const scratchPath = path.join(
+      scratchDir,
+      `${download.id}-${sanitizeFilename(resolved.filename)}`
+    );
+
+    // Throttle DB writes: the stream fires per chunk, which for a 50 MB file
+    // is thousands of events. The same checkpoint is where we notice the
+    // download being cancelled from the queue UI, which marks the row rather
+    // than reaching into this task.
+    const cancelController = new AbortController();
+    const downloadSignal = AbortSignal.any([signal, cancelController.signal]);
+    let lastPersist = 0;
+    let cancelledByUser = false;
+
+    const result = await getcomics.downloadToFile(resolved, scratchPath, {
+      signal: downloadSignal,
+      onProgress: (bytes, total) => {
+        onProgress(bytes, total ?? 0);
+        if (bytes - lastPersist < 1_000_000) return;
+
+        lastPersist = bytes;
+        updateComicDownloadProgress(download.id, bytes, total);
+
+        if (getComicDownload(download.id)?.state === 'cancelled') {
+          cancelledByUser = true;
+          cancelController.abort();
+        }
+      },
+    });
+
+    if (cancelledByUser) throw new Error('Download cancelled');
+
+    updateComicDownloadProgress(download.id, result.bytes, resolved.size);
+    setComicDownloadState(download.id, 'importing');
+
+    const imported = await importComicDownload(download, result.path, {
+      title: loaded.volume.title,
+      year: loaded.volume.year,
+      volumeNumber: loaded.volume.volumeNumber,
+      specialVersion: loaded.volume.specialVersion,
+      publisher: volumeRow?.publisher ?? null,
+      folder: volumeRow?.folder ?? null,
+    });
+
+    setComicDownloadState(download.id, 'completed', { filePath: imported.path });
+    addComicDownloadHistory({
+      volumeId: download.volumeId,
+      issueId: download.issueId,
+      webLink: download.webLink,
+      webTitle: download.webTitle,
+      webSubTitle: download.webSubTitle,
+      fileTitle: imported.path.split('/').pop() ?? null,
+      host: download.host,
+      success: true,
+    });
+
+    return {
+      comicDownloadId: download.id,
+      volumeId: download.volumeId,
+      path: imported.path,
+      bytes: imported.bytes,
+      renamed: imported.renamed,
+    };
+  } catch (error) {
+    if (signal.aborted || getComicDownload(download.id)?.state === 'cancelled') {
+      setComicDownloadState(download.id, 'cancelled');
+      throw error;
+    }
+    return fail(error instanceof Error ? error.message : String(error));
+  }
+};
+
+/** Read a task's stored configuration blob. */
+function comicTaskData<T>(taskId: number, what: string): T {
+  const taskRow = queryOne<{ result: string | null }>(
+    'SELECT result FROM tasks WHERE id = ?',
+    [taskId]
+  );
+  if (!taskRow?.result) throw new Error(`Task missing ${what}`);
+  return JSON.parse(taskRow.result) as T;
+}
+
+/** Re-fetch one volume's metadata from ComicVine and rescan its folder. */
+const comicRefreshHandler: TaskHandler = async (taskId, onProgress, signal) => {
+  const data = comicTaskData<{ volumeId?: number }>(taskId, 'comic refresh configuration');
+  if (!data.volumeId) throw new Error('Comic refresh task has no volumeId');
+
+  onProgress(0, 1);
+  const result = await comicLibrary.refreshVolume(data.volumeId, { signal });
+  onProgress(1, 1);
+  return { ...result };
+};
+
+/** Rescan one volume's folder without touching ComicVine. */
+const comicScanHandler: TaskHandler = async (taskId, onProgress) => {
+  const data = comicTaskData<{ volumeId?: number }>(taskId, 'comic scan configuration');
+  if (!data.volumeId) throw new Error('Comic scan task has no volumeId');
+
+  onProgress(0, 1);
+  const result = await scanVolumeFiles(data.volumeId);
+  onProgress(1, 1);
+  return {
+    volumeId: result.volumeId,
+    matched: result.matched,
+    unmatched: result.unmatched.length,
+    removed: result.removed,
+  };
+};
+
+/** Rename one volume's files to match the naming templates. */
+const comicRenameHandler: TaskHandler = async (taskId, onProgress) => {
+  const data = comicTaskData<{ volumeId?: number }>(taskId, 'comic rename configuration');
+  if (!data.volumeId) throw new Error('Comic rename task has no volumeId');
+
+  onProgress(0, 1);
+  const result = await applyVolumeRename(data.volumeId);
+  onProgress(1, 1);
+  return { ...result };
+};
+
+/**
+ * Refresh every volume whose ComicVine data has gone stale.
+ *
+ * Capped per run so a large library spreads its ComicVine budget over several
+ * runs rather than exhausting the hourly limit in one go.
+ */
+const comicUpdateAllHandler: TaskHandler = async (taskId, onProgress, signal) => {
+  const data = comicTaskData<{ maxAgeHours?: number; limit?: number }>(
+    taskId,
+    'comic update configuration'
+  );
+  const maxAgeHours = data.maxAgeHours ?? 24;
+  const limit = data.limit ?? 25;
+
+  const volumeIds = getComicVolumesNeedingRefresh(maxAgeHours, limit);
+  onProgress(0, volumeIds.length);
+
+  const refreshed: number[] = [];
+  const failed: Array<{ volumeId: number; error: string }> = [];
+
+  for (const [index, volumeId] of volumeIds.entries()) {
+    if (signal.aborted) break;
+    try {
+      await comicLibrary.refreshVolume(volumeId, { signal });
+      refreshed.push(volumeId);
+    } catch (error) {
+      failed.push({
+        volumeId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    onProgress(index + 1, volumeIds.length);
+  }
+
+  return { considered: volumeIds.length, refreshed: refreshed.length, failed };
+};
+
+/**
+ * Auto-search every monitored volume that is still missing issues, queueing
+ * whatever it finds. This is the scheduled sweep.
+ */
+const comicSearchAllHandler: TaskHandler = async (taskId, onProgress, signal) => {
+  const data = comicTaskData<{ limit?: number }>(taskId, 'comic search configuration');
+  const volumeIds = getComicVolumesWithMissingIssues(data.limit ?? 100);
+
+  onProgress(0, volumeIds.length);
+
+  let queued = 0;
+  const failed: Array<{ volumeId: number; error: string }> = [];
+
+  for (const [index, volumeId] of volumeIds.entries()) {
+    if (signal.aborted) break;
+    try {
+      const { downloads } = await getcomics.autoSearchVolume(volumeId, { signal });
+      for (const download of downloads) {
+        enqueueTask('comic_download', { comicDownloadId: download.id });
+        queued += 1;
+      }
+    } catch (error) {
+      failed.push({
+        volumeId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    onProgress(index + 1, volumeIds.length);
+  }
+
+  return { volumesSearched: volumeIds.length, queued, failed };
+};
+
+/**
+ * Walk a folder tree and work out which ComicVine volume each folder is.
+ *
+ * Proposals are returned rather than applied — adopting the wrong series would
+ * be tedious to undo, so a human confirms. One ComicVine search per folder
+ * means this is slow by design.
+ */
+const comicLibraryImportHandler: TaskHandler = async (taskId, onProgress, signal) => {
+  const data = comicTaskData<{ path?: string; maxGroups?: number }>(
+    taskId,
+    'library import configuration'
+  );
+  if (!data.path) throw new Error('Library import task has no path');
+
+  const groups = await findImportGroups(data.path, {
+    ...(data.maxGroups !== undefined ? { maxGroups: data.maxGroups } : {}),
+  });
+  onProgress(0, groups.length);
+
+  const proposals = await proposeLibraryImport(groups, {
+    signal,
+    onProgress: (done, total) => onProgress(done, total),
+  });
+
+  // Candidates are kept — trimmed to what the review UI shows — so choosing a
+  // different match costs no further ComicVine searches. Descriptions are
+  // dropped: they are by far the largest field and the UI does not use them.
+  return {
+    path: data.path,
+    proposals: proposals.map((proposal) => ({
+      folder: proposal.folder,
+      series: proposal.info.series,
+      year: proposal.info.year,
+      fileCount: proposal.files.length,
+      suggestedComicvineId: proposal.suggested?.comicvineId ?? null,
+      alreadyAdded: proposal.alreadyAdded,
+      candidates: proposal.candidates.map((candidate) => ({
+        comicvineId: candidate.comicvineId,
+        title: candidate.title,
+        year: candidate.year,
+        volumeNumber: candidate.volumeNumber,
+        publisher: candidate.publisher,
+        issueCount: candidate.issueCount,
+      })),
+    })),
+  };
+};
+
+/**
+ * Take over volumes mirrored from a previous manager.
+ *
+ * Adoption reads only data Shelvarr already holds, so it needs no network —
+ * but a large library still means one folder scan per volume, which is why it
+ * runs here rather than inline in a request.
+ */
+const comicAdoptHandler: TaskHandler = async (taskId, onProgress, signal) => {
+  const data = comicTaskData<{ volumeIds?: number[] }>(taskId, 'adoption configuration');
+
+  // Either a specific selection, or everything that is ready.
+  if (data.volumeIds && data.volumeIds.length > 0) {
+    const adopted: string[] = [];
+    const skipped: Array<{ volumeId: number; reason: string }> = [];
+
+    onProgress(0, data.volumeIds.length);
+    for (const [index, volumeId] of data.volumeIds.entries()) {
+      if (signal.aborted) break;
+      try {
+        adopted.push((await adoptVolume(volumeId)).title);
+      } catch (error) {
+        skipped.push({
+          volumeId,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
+      onProgress(index + 1, data.volumeIds.length);
+    }
+
+    return { adopted: adopted.length, titles: adopted, skipped };
+  }
+
+  const total = listAdoptionCandidates().length;
+  onProgress(0, total);
+
+  const result = await adoptAllVolumes({
+    signal,
+    onProgress: (done) => onProgress(done, total),
+  });
+
+  return {
+    adopted: result.adopted.length,
+    skipped: result.skipped,
+    unmatchedFiles: result.adopted
+      .filter((entry) => entry.unmatchedFiles > 0)
+      .map((entry) => ({ title: entry.title, count: entry.unmatchedFiles })),
+  };
+};
+
+/**
  * Register all task handlers
  */
 export function registerAllHandlers(): void {
@@ -923,6 +1318,19 @@ export function registerAllHandlers(): void {
   registerTaskHandler('organize', organizeHandler);
 
   registerTaskHandler('download', downloadHandler);
+
+  // Comic acquisition: search GetComics, then fetch and import what it found.
+  registerTaskHandler('comic_search', comicSearchHandler);
+  registerTaskHandler('comic_download', comicDownloadHandler);
+
+  // Comic library: ComicVine metadata, disk scanning, renaming, adoption.
+  registerTaskHandler('comic_refresh', comicRefreshHandler);
+  registerTaskHandler('comic_scan', comicScanHandler);
+  registerTaskHandler('comic_rename', comicRenameHandler);
+  registerTaskHandler('comic_update_all', comicUpdateAllHandler);
+  registerTaskHandler('comic_search_all', comicSearchAllHandler);
+  registerTaskHandler('comic_library_import', comicLibraryImportHandler);
+  registerTaskHandler('comic_adopt', comicAdoptHandler);
 
   registerTaskHandler('author_sync', async (_taskId, onProgress) => {
     onProgress(1, 1);

@@ -2,7 +2,7 @@ import React from 'react';
 import { render, waitFor, fireEvent } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import BookDetailScreen from '../../src/screens/BookDetailScreen';
-import { fetchBook, getBookThumbnailUrl, deleteReadProgress, updateReadProgress } from '../../src/services/api/books';
+import { fetchBook, deleteReadProgress, updateReadProgress } from '../../src/services/api/books';
 import { fetchSeries } from '../../src/services/api/series';
 import { useAuthHeaders } from '../../src/hooks/useAuthHeaders';
 import { useDownloadStore } from '../../src/stores/useDownloadStore';
@@ -324,7 +324,7 @@ describe('BookDetailScreen', () => {
   it('handles fetch book error', async () => {
     mockFetchBook.mockRejectedValue(new Error('fail'));
 
-    const { toJSON } = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
+    render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
 
     await waitFor(() => {
       expect(Alert.alert).toHaveBeenCalledWith('Error', 'Failed to load book details');

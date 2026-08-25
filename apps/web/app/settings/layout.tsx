@@ -10,8 +10,8 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
     { href: '/settings/metadata', label: 'Metadata Sources' },
     { href: '/settings/downloads', label: 'Download Sources' },
     { href: '/settings/organize', label: 'Organize' },
+    { href: '/settings/comics', label: 'Comics' },
     { href: '/settings/komga', label: 'Komga' },
-    { href: '/settings/kapowarr', label: 'Kapowarr' },
     { href: '/settings/audiletome', label: 'Audiletome' },
     { href: '/settings/about', label: 'About' },
   ];

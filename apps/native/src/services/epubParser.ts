@@ -1,12 +1,5 @@
 import JSZip from 'jszip';
-import {
-  readAsStringAsync,
-  writeAsStringAsync,
-  makeDirectoryAsync,
-  getInfoAsync,
-  EncodingType,
-} from 'expo-file-system/legacy';
-import { getBookExtractDir } from '../utils/paths';
+import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 
 export interface EpubChapter {
   id: string;
@@ -26,7 +19,7 @@ export interface EpubBook {
  * Parse an EPUB file from a local file path.
  * Returns structured chapter data ready for native rendering.
  */
-export async function parseEpub(filePath: string, bookId: string): Promise<EpubBook> {
+export async function parseEpub(filePath: string, _bookId: string): Promise<EpubBook> {
   // Read the file as base64
   const base64 = await readAsStringAsync(filePath, { encoding: EncodingType.Base64 });
   const zip = await JSZip.loadAsync(base64, { base64: true });
@@ -48,7 +41,7 @@ export async function parseEpub(filePath: string, bookId: string): Promise<EpubB
 
   // 3. Build image map (extract images as base64 data URIs)
   const imageMap: Record<string, string> = {};
-  for (const [id, item] of Object.entries(manifest)) {
+  for (const item of Object.values(manifest)) {
     if (item.mediaType.startsWith('image/')) {
       const fullPath = basePath + item.href;
       const file = zip.file(fullPath);

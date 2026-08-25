@@ -4,7 +4,7 @@ import { getRecentComics, getInProgressComics } from '@/lib/actions/comics';
 import { BookCard } from '@/components/books/BookGrid';
 import { ComicCard } from '@/components/comics/ComicGrid';
 import type { Book } from '@/types';
-import type { KapowarrVolume } from '@shelvarr/types';
+import type { ComicVolumeSummary } from '@shelvarr/types';
 import type { InProgressComic } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -67,12 +67,12 @@ export default async function HomePage() {
         <BookRow books={recentBooks} />
       </HomeSection>
 
-      {comicsResult.configured && (
+      {recentComics.length > 0 && (
         <HomeSection
           title="Recently Added Comics"
           href="/comics"
-          empty={comicsResult.error || 'No comics found in Kapowarr.'}
-          isEmpty={recentComics.length === 0}
+          empty="No comics yet."
+          isEmpty={false}
         >
           <ComicRow volumes={recentComics} />
         </HomeSection>
@@ -121,7 +121,7 @@ function BookRow({ books }: { books: Book[] }) {
   );
 }
 
-function ComicRow({ volumes }: { volumes: KapowarrVolume[] }) {
+function ComicRow({ volumes }: { volumes: ComicVolumeSummary[] }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
       {volumes.map((volume) => (

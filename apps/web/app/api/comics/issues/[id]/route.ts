@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
-import { kapowarrClient, configureKapowarrFromDb } from '@/lib/services/kapowarr';
 import { validateApiAuth } from '@shelvarr/services';
+import { getComicIssueDetail } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,18 +19,10 @@ export async function GET(
     return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
   }
 
-  const configured = await configureKapowarrFromDb();
-  if (!configured) {
-    return NextResponse.json({ configured: false });
+  const issue = getComicIssueDetail(issueId);
+  if (!issue) {
+    return NextResponse.json({ error: 'Issue not found' }, { status: 404 });
   }
 
-  try {
-    const issue = await kapowarrClient.getIssue(issueId);
-    return NextResponse.json({ configured: true, issue });
-  } catch (err) {
-    return NextResponse.json({
-      configured: true,
-      error: err instanceof Error ? err.message : 'Failed to load issue',
-    });
-  }
+  return NextResponse.json({ issue });
 }

@@ -36,7 +36,7 @@ import {
 import { getComicIssueFileUrl } from '../../src/services/api/comics';
 import { getInfoAsync, readDirectoryAsync } from 'expo-file-system/legacy';
 import { useComicDownloadStore } from '../../src/stores/useComicDownloadStore';
-import type { KapowarrIssue } from '@shelvarr/types';
+import type { ComicIssueSummary } from '@shelvarr/types';
 
 const mockDownload = downloadBookFile as jest.Mock;
 const mockExtract = extractComicArchive as jest.Mock;
@@ -44,7 +44,7 @@ const mockDelete = deleteBookFiles as jest.Mock;
 const mockGetInfo = getInfoAsync as jest.Mock;
 const mockReadDir = readDirectoryAsync as jest.Mock;
 
-function makeIssue(filepath: string, overrides: Partial<KapowarrIssue> = {}): KapowarrIssue {
+function makeIssue(filepath: string, overrides: Partial<ComicIssueSummary> = {}): ComicIssueSummary {
   return {
     id: 7,
     volume_id: 1,
@@ -390,7 +390,7 @@ describe('describeComicReadError', () => {
       new DownloadHttpError(404, "ENOENT: no such file or directory, stat '/media/x.cbz'")
     );
     expect(msg).toMatch(/isn't available on the server/i);
-    expect(msg).toMatch(/Kapowarr/);
+    expect(msg).toMatch(/has been downloaded/);
   });
 
   it('explains "no file available" for 404', () => {
@@ -415,9 +415,9 @@ describe('describeComicReadError', () => {
     );
   });
 
-  it('points to Kapowarr config for 503', () => {
-    expect(describeComicReadError(new DownloadHttpError(503, 'Kapowarr not configured'))).toMatch(
-      /not configured/i
+  it('points to comic setup for 503', () => {
+    expect(describeComicReadError(new DownloadHttpError(503, 'Comics not set up'))).toMatch(
+      /not set up/i
     );
   });
 

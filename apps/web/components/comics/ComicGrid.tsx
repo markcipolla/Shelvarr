@@ -2,11 +2,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import type { KapowarrVolume } from '@shelvarr/types';
+import type { ComicVolumeSummary } from '@shelvarr/types';
 import { BookIcon, ComicIcon } from '@/components/ui/Icons';
 
 interface ComicGridProps {
-  volumes: KapowarrVolume[];
+  volumes: ComicVolumeSummary[];
 }
 
 export function ComicGrid({ volumes }: ComicGridProps) {
@@ -20,7 +20,7 @@ export function ComicGrid({ volumes }: ComicGridProps) {
 }
 
 interface ComicCardProps {
-  volume: KapowarrVolume;
+  volume: ComicVolumeSummary;
   /** Optional badge shown at the bottom-left, e.g. resume point for in-progress comics. */
   progressLabel?: string;
 }

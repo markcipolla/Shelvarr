@@ -20,7 +20,7 @@ import {
   fetchRecentComics,
   fetchInProgressComics,
   fetchNextUpComics,
-  KapowarrVolume,
+  ComicVolumeSummary,
   InProgressComic,
   NextUpComic,
 } from '../services/api/comics';
@@ -60,7 +60,7 @@ export default function HomeScreen({ navigation }: Props) {
   const [inProgress, setInProgress] = useState<Book[]>([]);
   const [nextUpBooks, setNextUpBooks] = useState<Book[]>([]);
   const [recentlyAdded, setRecentlyAdded] = useState<Book[]>([]);
-  const [recentComics, setRecentComics] = useState<KapowarrVolume[]>([]);
+  const [recentComics, setRecentComics] = useState<ComicVolumeSummary[]>([]);
   const [inProgressComics, setInProgressComics] = useState<InProgressComic[]>([]);
   const [nextUpComics, setNextUpComics] = useState<NextUpComic[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,7 +70,7 @@ export default function HomeScreen({ navigation }: Props) {
   const { width: screenWidth } = useWindowDimensions();
   const cardWidth = (screenWidth - 32 - 12 * (columns - 1)) / columns;
   const [searchResults, setSearchResults] = useState<Book[]>([]);
-  const [comicSearchResults, setComicSearchResults] = useState<KapowarrVolume[]>([]);
+  const [comicSearchResults, setComicSearchResults] = useState<ComicVolumeSummary[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchPage, setSearchPage] = useState(0);
   const [searchHasMore, setSearchHasMore] = useState(false);
@@ -112,7 +112,7 @@ export default function HomeScreen({ navigation }: Props) {
       setRecentlyAdded(
         recentRes.content.filter((b) => !inProgressIds.has(b.id) && !nextUpIds.has(b.id))
       );
-      setRecentComics(comicsRes?.configured ? comicsRes.volumes : []);
+      setRecentComics(comicsRes?.volumes ?? []);
       setInProgressComics(inProgressComicsRes);
       setNextUpComics(nextUpComicsRes);
     } catch (err) {
@@ -142,7 +142,7 @@ export default function HomeScreen({ navigation }: Props) {
     try {
       if (page === 0) {
         // Books and comics come from different sources; fetch both. A comic
-        // failure (e.g. Kapowarr unconfigured) must not break book search.
+        // failure must not break book search.
         const [bookRes, comicRes] = await Promise.all([
           searchBooks(query, 0),
           fetchComics(query).catch((err) => {
@@ -153,7 +153,7 @@ export default function HomeScreen({ navigation }: Props) {
         setSearchResults(bookRes.content);
         setSearchHasMore(!bookRes.last);
         setSearchPage(0);
-        setComicSearchResults(comicRes?.configured ? comicRes.volumes : []);
+        setComicSearchResults(comicRes?.volumes ?? []);
       } else {
         const result = await searchBooks(query, page);
         setSearchResults((prev) => [...prev, ...result.content]);
