@@ -79,7 +79,9 @@ if (canRunTests) {
       });
 
       it('should fail task when no handler is registered', async () => {
-        const task = createTask('metadata');
+        // Every declared task type has a handler now that the built-ins are
+        // installed, so reach for one that does not exist at all.
+        const task = createTask('not_a_real_task_type' as Parameters<typeof createTask>[0]);
         await runTask(task.id);
 
         const updated = getTask(task.id);

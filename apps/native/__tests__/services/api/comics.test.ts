@@ -43,7 +43,7 @@ beforeEach(() => {
 describe('fetchRecentComics', () => {
   it('requests the recently_added sort and limits results', async () => {
     const volumes = [{ id: 1 }, { id: 2 }, { id: 3 }];
-    mockGet.mockResolvedValue({ data: { configured: true, volumes } });
+    mockGet.mockResolvedValue({ data: { volumes } });
 
     const result = await fetchRecentComics(2);
 
@@ -73,7 +73,7 @@ describe('fetchRecentComics', () => {
 
 describe('fetchComics', () => {
   it('calls /api/comics without params when no search', async () => {
-    const res = { configured: true, volumes: [{ id: 1 }] };
+    const res = { volumes: [{ id: 1 }] };
     mockGet.mockResolvedValue({ data: res });
 
     const result = await fetchComics();
@@ -83,38 +83,38 @@ describe('fetchComics', () => {
   });
 
   it('forwards the trimmed search query', async () => {
-    mockGet.mockResolvedValue({ data: { configured: true, volumes: [] } });
+    mockGet.mockResolvedValue({ data: { volumes: [] } });
     await fetchComics('  batman  ');
     expect(mockGet).toHaveBeenCalledWith('/api/comics', { params: { search: 'batman' } });
   });
 
   it('omits empty search strings', async () => {
-    mockGet.mockResolvedValue({ data: { configured: true, volumes: [] } });
+    mockGet.mockResolvedValue({ data: { volumes: [] } });
     await fetchComics('   ');
     expect(mockGet).toHaveBeenCalledWith('/api/comics', { params: {} });
   });
 
   it('caches fetched volumes when no search applied', async () => {
     const volumes = [{ id: 1 }, { id: 2 }];
-    mockGet.mockResolvedValue({ data: { configured: true, volumes } });
+    mockGet.mockResolvedValue({ data: { volumes } });
     await fetchComics();
     expect(mockUpsertVolumes).toHaveBeenCalledWith(volumes);
   });
 
   it('does not cache when search was applied', async () => {
-    mockGet.mockResolvedValue({ data: { configured: true, volumes: [{ id: 1 }] } });
+    mockGet.mockResolvedValue({ data: { volumes: [{ id: 1 }] } });
     await fetchComics('batman');
     expect(mockUpsertVolumes).not.toHaveBeenCalled();
   });
 
   it('does not cache when configured is false', async () => {
-    mockGet.mockResolvedValue({ data: { configured: false, volumes: [] } });
+    mockGet.mockResolvedValue({ data: { volumes: [] } });
     await fetchComics();
     expect(mockUpsertVolumes).not.toHaveBeenCalled();
   });
 
   it('does not cache empty volume list', async () => {
-    mockGet.mockResolvedValue({ data: { configured: true, volumes: [] } });
+    mockGet.mockResolvedValue({ data: { volumes: [] } });
     await fetchComics();
     expect(mockUpsertVolumes).not.toHaveBeenCalled();
   });
@@ -126,7 +126,6 @@ describe('fetchComics', () => {
 
     const result = await fetchComics();
 
-    expect(result.configured).toBe(true);
     expect(result.cached).toBe(true);
     expect(result.volumes).toEqual(cached);
     expect(result.error).toBe('offline');
@@ -147,7 +146,7 @@ describe('fetchComics', () => {
 
 describe('fetchComicDetail', () => {
   it('calls /api/comics/:id and returns data', async () => {
-    const res = { configured: true, volume: { id: 42, issues: [] } };
+    const res = { volume: { id: 42, issues: [] } };
     mockGet.mockResolvedValue({ data: res });
 
     const result = await fetchComicDetail(42);
@@ -158,14 +157,14 @@ describe('fetchComicDetail', () => {
 
   it('caches fresh detail to local DB', async () => {
     const vol = { id: 42, issues: [] };
-    mockGet.mockResolvedValue({ data: { configured: true, volume: vol } });
+    mockGet.mockResolvedValue({ data: { volume: vol } });
     await fetchComicDetail(42);
     expect(mockUpsertDetail).toHaveBeenCalledWith(vol);
   });
 
   it('does not re-cache when response was itself served from server cache', async () => {
     mockGet.mockResolvedValue({
-      data: { configured: true, volume: { id: 42, issues: [] }, cached: true },
+      data: { volume: { id: 42, issues: [] }, cached: true },
     });
     await fetchComicDetail(42);
     expect(mockUpsertDetail).not.toHaveBeenCalled();
@@ -190,7 +189,6 @@ describe('fetchComicDetail', () => {
 
     const result = await fetchComicDetail(42);
 
-    expect(result.configured).toBe(true);
     expect(result.cached).toBe(true);
     expect(result.volume).toEqual(cachedVol);
     expect(result.error).toBe('offline');
@@ -212,12 +210,12 @@ describe('fetchComicDetail', () => {
 describe('fetchComicIssue', () => {
   it('fetches a single issue from /api/comics/issues/:id', async () => {
     const issue = { id: 7, issue_number: '7', files: [] };
-    mockGet.mockResolvedValue({ data: { configured: true, issue } });
+    mockGet.mockResolvedValue({ data: { issue } });
 
     const result = await fetchComicIssue(7, 42);
 
     expect(mockGet).toHaveBeenCalledWith('/api/comics/issues/7');
-    expect(result).toEqual({ configured: true, issue });
+    expect(result).toEqual({ issue });
   });
 
   it('falls back to the cached volume issue on network error', async () => {

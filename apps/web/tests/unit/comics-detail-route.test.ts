@@ -1,45 +1,39 @@
 /**
- * Unit tests for the /api/comics/[id] route handler (cache-through detail).
+ * Unit tests for the /api/comics/[id] route handler.
+ *
+ * Volumes Shelvarr manages are served from its own tables. A volume that has
+ * not been migrated yet is still readable from the cached mirror data, so the
+ * reader keeps working during a migration.
  */
 
 import { describe, it, beforeEach, mock } from 'node:test';
 import assert from 'node:assert';
-import type { KapowarrVolumeDetail } from '@shelvarr/types';
+import type { ComicVolumeDetail } from '@shelvarr/types';
 
 let authResult = true;
-let configuredResult = true;
-const getVolumeMock = mock.fn<(id: number) => Promise<KapowarrVolumeDetail>>();
-const configureMock = mock.fn<() => Promise<boolean>>(async () => configuredResult);
-const getCachedComicDetailMock = mock.fn<(id: number) => KapowarrVolumeDetail | null>(() => null);
-const upsertComicDetailMock = mock.fn<(v: KapowarrVolumeDetail) => void>(() => {});
+const deleteVolumeMock = mock.fn<(id: number, options: object) => Promise<void>>(async () => {});
+const getCachedComicDetailMock = mock.fn<(id: number) => ComicVolumeDetail | null>(() => null);
+const getManagedComicDetailMock = mock.fn<(id: number) => ComicVolumeDetail | null>(() => null);
 
 mock.module('@shelvarr/services', {
   namedExports: {
     validateApiAuth: () => authResult,
-  },
-});
-
-mock.module('@/lib/services/kapowarr', {
-  namedExports: {
-    kapowarrClient: {
-      getVolume: (id: number) => getVolumeMock(id),
+    comicLibrary: {
+      deleteVolume: (...args: unknown[]) => deleteVolumeMock(...(args as [number, object])),
     },
-    configureKapowarrFromDb: () => configureMock(),
   },
 });
 
-mock.module('@/lib/config', {
-  namedExports: {},
-});
+mock.module('@/lib/config', { namedExports: {} });
 
 mock.module('@/lib/db', {
   namedExports: {
     getCachedComicDetail: (id: number) => getCachedComicDetailMock(id),
-    upsertComicDetail: (v: KapowarrVolumeDetail) => upsertComicDetailMock(v),
+    getManagedComicDetail: (id: number) => getManagedComicDetailMock(id),
   },
 });
 
-function makeDetail(overrides: Partial<KapowarrVolumeDetail> = {}): KapowarrVolumeDetail {
+function makeDetail(overrides: Partial<ComicVolumeDetail> = {}): ComicVolumeDetail {
   return {
     id: 101,
     comicvine_id: 5001,
@@ -67,22 +61,22 @@ function makeDetail(overrides: Partial<KapowarrVolumeDetail> = {}): KapowarrVolu
   };
 }
 
-function makeRequest(): any {
-  return { headers: new Headers() };
+function makeRequest(search = ''): any {
+  return {
+    headers: new Headers(),
+    nextUrl: { searchParams: new URLSearchParams(search) },
+  };
 }
 
-const { GET } = await import('../../app/api/comics/[id]/route.js');
+const { GET, DELETE } = await import('../../app/api/comics/[id]/route.js');
 
 describe('GET /api/comics/[id]', () => {
   beforeEach(() => {
     authResult = true;
-    configuredResult = true;
-    getVolumeMock.mock.resetCalls();
-    configureMock.mock.resetCalls();
     getCachedComicDetailMock.mock.resetCalls();
-    upsertComicDetailMock.mock.resetCalls();
+    getManagedComicDetailMock.mock.resetCalls();
     getCachedComicDetailMock.mock.mockImplementation(() => null);
-    getVolumeMock.mock.mockImplementation(async () => makeDetail());
+    getManagedComicDetailMock.mock.mockImplementation(() => null);
   });
 
   it('returns 401 when auth fails', async () => {
@@ -91,64 +85,69 @@ describe('GET /api/comics/[id]', () => {
     assert.strictEqual(res.status, 401);
   });
 
-  it('returns 400 for non-numeric id', async () => {
+  it('returns 400 for a non-numeric id', async () => {
     const res = await GET(makeRequest(), { params: Promise.resolve({ id: 'abc' }) });
     assert.strictEqual(res.status, 400);
   });
 
-  it('returns configured:false with no cache when Kapowarr is not configured and cache is empty', async () => {
-    configuredResult = false;
-    const res = await GET(makeRequest(), { params: Promise.resolve({ id: '101' }) });
-    const body = await res.json();
-    assert.strictEqual(body.configured, false);
-    assert.strictEqual(body.volume, undefined);
-    assert.strictEqual(getVolumeMock.mock.callCount(), 0);
+  it('serves a managed volume and says so', async () => {
+    getManagedComicDetailMock.mock.mockImplementation(() => makeDetail({ title: 'Owned Saga' }));
+
+    const body = await (
+      await GET(makeRequest(), { params: Promise.resolve({ id: '101' }) })
+    ).json();
+
+    assert.strictEqual(body.managed, true);
+    assert.strictEqual(body.volume.title, 'Owned Saga');
   });
 
-  it('serves cached volume when Kapowarr is not configured but cache has the item', async () => {
-    configuredResult = false;
-    getCachedComicDetailMock.mock.mockImplementation(() => makeDetail({ id: 101, title: 'Cached Saga' }));
-    const res = await GET(makeRequest(), { params: Promise.resolve({ id: '101' }) });
-    const body = await res.json();
-    assert.strictEqual(body.configured, false);
-    assert.strictEqual(body.cached, true);
-    assert.strictEqual(body.volume.title, 'Cached Saga');
+  it('falls back to mirrored data for a volume that has not been migrated', async () => {
+    getCachedComicDetailMock.mock.mockImplementation(() => makeDetail({ title: 'Not Migrated' }));
+
+    const body = await (
+      await GET(makeRequest(), { params: Promise.resolve({ id: '101' }) })
+    ).json();
+
+    assert.strictEqual(body.managed, false);
+    assert.strictEqual(body.volume.title, 'Not Migrated');
   });
 
-  it('fetches from Kapowarr, persists detail, and returns fresh data', async () => {
-    getVolumeMock.mock.mockImplementation(async () => makeDetail({ title: 'Fresh' }));
-    const res = await GET(makeRequest(), { params: Promise.resolve({ id: '101' }) });
-    const body = await res.json();
-    assert.strictEqual(body.configured, true);
-    assert.strictEqual(body.cached, undefined);
-    assert.strictEqual(body.volume.title, 'Fresh');
-    assert.strictEqual(upsertComicDetailMock.mock.callCount(), 1);
-    assert.strictEqual(getVolumeMock.mock.callCount(), 1);
-    assert.strictEqual(getVolumeMock.mock.calls[0].arguments[0], 101);
+  it('404s when the volume is unknown', async () => {
+    const res = await GET(makeRequest(), { params: Promise.resolve({ id: '999' }) });
+    assert.strictEqual(res.status, 404);
+  });
+});
+
+describe('DELETE /api/comics/[id]', () => {
+  beforeEach(() => {
+    authResult = true;
+    deleteVolumeMock.mock.resetCalls();
+    deleteVolumeMock.mock.mockImplementation(async () => {});
   });
 
-  it('falls back to cache on Kapowarr error', async () => {
-    getCachedComicDetailMock.mock.mockImplementation(() => makeDetail({ id: 101, title: 'Stale' }));
-    getVolumeMock.mock.mockImplementation(async () => {
-      throw new Error('network fail');
+  it('keeps the files unless asked otherwise', async () => {
+    const body = await (
+      await DELETE(makeRequest(), { params: Promise.resolve({ id: '101' }) })
+    ).json();
+
+    assert.strictEqual(body.deleted, true);
+    assert.deepStrictEqual(deleteVolumeMock.mock.calls[0]!.arguments[1], { deleteFiles: false });
+  });
+
+  it('deletes the files when asked', async () => {
+    await DELETE(makeRequest('deleteFiles=true'), {
+      params: Promise.resolve({ id: '101' }),
     });
-    const res = await GET(makeRequest(), { params: Promise.resolve({ id: '101' }) });
-    const body = await res.json();
-    assert.strictEqual(body.configured, true);
-    assert.strictEqual(body.cached, true);
-    assert.strictEqual(body.volume.title, 'Stale');
-    assert.strictEqual(body.error, 'network fail');
-    assert.strictEqual(upsertComicDetailMock.mock.callCount(), 0);
+
+    assert.deepStrictEqual(deleteVolumeMock.mock.calls[0]!.arguments[1], { deleteFiles: true });
   });
 
-  it('returns error only when Kapowarr fails and cache is empty', async () => {
-    getVolumeMock.mock.mockImplementation(async () => {
-      throw new Error('network fail');
+  it('reports a missing volume as 404', async () => {
+    deleteVolumeMock.mock.mockImplementation(async () => {
+      throw new Error('Comic volume 999 not found');
     });
-    const res = await GET(makeRequest(), { params: Promise.resolve({ id: '101' }) });
-    const body = await res.json();
-    assert.strictEqual(body.configured, true);
-    assert.strictEqual(body.volume, undefined);
-    assert.strictEqual(body.error, 'network fail');
+
+    const res = await DELETE(makeRequest(), { params: Promise.resolve({ id: '999' }) });
+    assert.strictEqual(res.status, 404);
   });
 });

@@ -143,10 +143,32 @@ export interface KomgaConfig {
   apiKey: string | null;
 }
 
-export interface KapowarrConfig {
-  url: string | null;
-  apiKey: string | null;
-  pathMap?: string | null;
+/**
+ * Settings that only matter while migrating a library Shelvarr did not
+ * organise itself.
+ */
+export interface ComicMigrationConfig {
+  /**
+   * `"from:to"` prefix remap for paths recorded by whatever managed the
+   * library before. Kapowarr, for instance, reports its own container paths;
+   * this maps them onto the ones Shelvarr can see. Unused once volumes are
+   * managed, because their folders are then Shelvarr's own.
+   */
+  pathMap: string | null;
+}
+
+/** Where comics are sourced from and what happens to the files. */
+export interface GetComicsConfig {
+  /** Site base URL — configurable so a mirror can be swapped in. */
+  baseUrl: string;
+  /** Scratch directory for in-flight downloads. */
+  downloadDir: string;
+  /** Root of the comic library; downloads are imported into it. */
+  libraryRoot: string | null;
+  /** Order to try download hosts in. */
+  hostPreference: string[];
+  /** Rename imported files to the configured naming template. */
+  renameDownloadedFiles: boolean;
 }
 
 export interface AudiletomeConfig {
@@ -163,7 +185,8 @@ export interface AppConfig {
   libraryRoot: string;
   dbPath: string;
   komga: KomgaConfig;
-  kapowarr: KapowarrConfig;
+  comicMigration: ComicMigrationConfig;
+  getcomics: GetComicsConfig;
   audiletome: AudiletomeConfig;
   supportedExtensions: string[];
   rateLimits: {
@@ -172,20 +195,27 @@ export interface AppConfig {
   hardcoverToken: string | null;
 }
 
-// Kapowarr domain types — shapes mirror the Kapowarr Flask API
-// (see frontend/api.py and backend/implementations/volumes.py in casvt/Kapowarr).
+// The comic wire format.
+//
+// These shapes originally mirrored Kapowarr's Flask API, and the snake_case
+// field names are a legacy of that. They are kept because the native app and
+// its on-device cache speak them; renaming the fields would strand cached
+// data on every installed client for no benefit.
 
-export interface KapowarrFile {
+/** A file belonging to a volume, as the API reports it. */
+export interface ComicFileRef {
   id: number;
   filepath: string;
   size: number;
 }
 
-export interface KapowarrGeneralFile extends KapowarrFile {
+/** A volume file that isn't an issue: cover art, ComicInfo.xml, and so on. */
+export interface ComicGeneralFile extends ComicFileRef {
   file_type: string;
 }
 
-export interface KapowarrVolume {
+/** A volume as the library list reports it. */
+export interface ComicVolumeSummary {
   id: number;
   comicvine_id: number;
   title: string;
@@ -203,17 +233,19 @@ export interface KapowarrVolume {
   total_size: number | null;
 }
 
-export interface KapowarrVolumeDetail extends KapowarrVolume {
+/** A volume with its issues and files. */
+export interface ComicVolumeDetail extends ComicVolumeSummary {
   special_version: string | null;
   special_version_locked: boolean;
   site_url: string;
   root_folder: number;
   volume_folder: string;
-  issues: KapowarrIssue[];
-  general_files: KapowarrGeneralFile[];
+  issues: ComicIssueSummary[];
+  general_files: ComicGeneralFile[];
 }
 
-export interface KapowarrIssue {
+/** An issue with the files that satisfy it. */
+export interface ComicIssueSummary {
   id: number;
   volume_id: number;
   comicvine_id: number;
@@ -223,7 +255,7 @@ export interface KapowarrIssue {
   date: string | null;
   description: string;
   monitored: boolean;
-  files: KapowarrFile[];
+  files: ComicFileRef[];
 }
 
 // Settings stored in database

@@ -1,0 +1,20 @@
+{
+  "name": "@shelvarr/scripts",
+  "version": "0.0.1",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@shelvarr/db": "workspace:*",
+    "@shelvarr/services": "workspace:*",
+    "@shelvarr/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

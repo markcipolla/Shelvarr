@@ -5,27 +5,30 @@ import {
   upsertComicDetail,
   upsertComicVolumes,
 } from '../db/comics';
-import type { KapowarrVolume, KapowarrVolumeDetail, KapowarrIssue } from '@shelvarr/types';
+import type { ComicVolumeSummary, ComicVolumeDetail, ComicIssueSummary } from '@shelvarr/types';
 
-export type { KapowarrVolume, KapowarrVolumeDetail, KapowarrIssue };
+export type { ComicVolumeSummary, ComicVolumeDetail, ComicIssueSummary };
 
+/**
+ * Comic responses.
+ *
+ * `cached` means the payload came from the on-device database because the
+ * server could not be reached; `error` carries why.
+ */
 export interface ComicsListResponse {
-  configured: boolean;
-  volumes: KapowarrVolume[];
+  volumes: ComicVolumeSummary[];
   cached?: boolean;
   error?: string;
 }
 
 export interface ComicDetailResponse {
-  configured: boolean;
-  volume?: KapowarrVolumeDetail;
+  volume?: ComicVolumeDetail;
   cached?: boolean;
   error?: string;
 }
 
 export interface ComicIssueResponse {
-  configured: boolean;
-  issue?: KapowarrIssue;
+  issue?: ComicIssueSummary;
   cached?: boolean;
   error?: string;
 }
@@ -37,7 +40,7 @@ export async function fetchComics(search?: string): Promise<ComicsListResponse> 
 
   try {
     const { data } = await getApiClient().get<ComicsListResponse>('/api/comics', { params });
-    if (data.configured && data.volumes.length > 0 && !trimmed) {
+    if (data.volumes.length > 0 && !trimmed) {
       await upsertComicVolumes(data.volumes);
     }
     return data;
@@ -45,7 +48,6 @@ export async function fetchComics(search?: string): Promise<ComicsListResponse> 
     const cached = await getCachedComics();
     if (cached.length > 0) {
       return {
-        configured: true,
         volumes: cached,
         cached: true,
         error: err instanceof Error ? err.message : 'Network error',
@@ -65,7 +67,6 @@ export async function fetchRecentComics(limit: number): Promise<ComicsListRespon
     const cached = await getCachedComics();
     if (cached.length > 0) {
       return {
-        configured: true,
         volumes: cached.slice(0, limit),
         cached: true,
         error: err instanceof Error ? err.message : 'Network error',
@@ -78,7 +79,7 @@ export async function fetchRecentComics(limit: number): Promise<ComicsListRespon
 export async function fetchComicDetail(volumeId: number): Promise<ComicDetailResponse> {
   try {
     const { data } = await getApiClient().get<ComicDetailResponse>(`/api/comics/${volumeId}`);
-    if (data.configured && data.volume && !data.cached) {
+    if (data.volume && !data.cached) {
       await upsertComicDetail(data.volume);
     }
     return data;
@@ -86,7 +87,6 @@ export async function fetchComicDetail(volumeId: number): Promise<ComicDetailRes
     const cached = await getCachedComicDetail(volumeId);
     if (cached) {
       return {
-        configured: true,
         volume: cached,
         cached: true,
         error: err instanceof Error ? err.message : 'Network error',
@@ -109,19 +109,16 @@ export async function fetchComicIssue(
     const { data } = await getApiClient().get<ComicIssueResponse>(
       `/api/comics/issues/${issueId}`
     );
-    if (data.configured && data.issue) {
+    if (data.issue) {
       return data;
     }
-    if (data.error || !data.configured) {
-      const cached = await cachedIssue(issueId, volumeId);
-      if (cached) return { configured: true, issue: cached, cached: true, error: data.error };
-    }
+    const cached = await cachedIssue(issueId, volumeId);
+    if (cached) return { issue: cached, cached: true, error: data.error };
     return data;
   } catch (err) {
     const cached = await cachedIssue(issueId, volumeId);
     if (cached) {
       return {
-        configured: true,
         issue: cached,
         cached: true,
         error: err instanceof Error ? err.message : 'Network error',
@@ -134,18 +131,24 @@ export async function fetchComicIssue(
 async function cachedIssue(
   issueId: number,
   volumeId?: number
-): Promise<KapowarrIssue | undefined> {
+): Promise<ComicIssueSummary | undefined> {
   if (volumeId === undefined) return undefined;
   const volume = await getCachedComicDetail(volumeId);
   return volume?.issues.find((i) => i.id === issueId);
 }
 
+// `useSettingsStore` and `api/client` import each other (the store resets the
+// client when the URL changes). Requiring the store lazily here keeps this
+// module out of that cycle — a static import can leave the store undefined
+// depending on which module the bundler initialises first.
 export function getVolumeCoverUrl(volumeId: number): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { shelvarrUrl } = require('../../stores/useSettingsStore').useSettingsStore.getState();
   return `${shelvarrUrl}/api/comics/${volumeId}/cover`;
 }
 
 export function getComicIssueFileUrl(issueId: number): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { shelvarrUrl } = require('../../stores/useSettingsStore').useSettingsStore.getState();
   return `${shelvarrUrl}/api/comics/issues/${issueId}/file`;
 }
@@ -168,7 +171,7 @@ export async function fetchComicProgress(issueId: number): Promise<ComicProgress
 }
 
 export interface InProgressComic {
-  volume: KapowarrVolume;
+  volume: ComicVolumeSummary;
   issueId: number;
   issueNumber: string | null;
   page: number;
@@ -190,7 +193,7 @@ export async function fetchInProgressComics(limit = 20): Promise<InProgressComic
 }
 
 export interface NextUpComic {
-  volume: KapowarrVolume;
+  volume: ComicVolumeSummary;
   issueId: number;
   issueNumber: string | null;
   updatedAt: string;

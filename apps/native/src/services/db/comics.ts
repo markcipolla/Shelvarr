@@ -1,14 +1,14 @@
 /**
- * Offline cache for Kapowarr comics metadata.
+ * Offline cache for comic metadata.
  * Reads/writes go through the local expo-sqlite database so the app
  * can render detail pages and lists without a server connection.
  */
 import type {
-  KapowarrVolume,
-  KapowarrVolumeDetail,
-  KapowarrIssue,
-  KapowarrFile,
-  KapowarrGeneralFile,
+  ComicVolumeSummary,
+  ComicVolumeDetail,
+  ComicIssueSummary,
+  ComicFileRef,
+  ComicGeneralFile,
 } from '@shelvarr/types';
 import { getDatabase } from './database';
 
@@ -65,7 +65,7 @@ function parseJson<T>(text: string | null, fallback: T): T {
   }
 }
 
-function rowToVolume(row: ComicRow): KapowarrVolume {
+function rowToVolume(row: ComicRow): ComicVolumeSummary {
   return {
     id: row.id,
     comicvine_id: row.comicvine_id ?? 0,
@@ -85,7 +85,7 @@ function rowToVolume(row: ComicRow): KapowarrVolume {
   };
 }
 
-function rowToIssue(row: IssueRow): KapowarrIssue {
+function rowToIssue(row: IssueRow): ComicIssueSummary {
   return {
     id: row.id,
     volume_id: row.volume_id,
@@ -96,11 +96,11 @@ function rowToIssue(row: IssueRow): KapowarrIssue {
     date: row.date,
     description: row.description ?? '',
     monitored: Boolean(row.monitored),
-    files: parseJson<KapowarrFile[]>(row.files, []),
+    files: parseJson<ComicFileRef[]>(row.files, []),
   };
 }
 
-function rowToDetail(row: ComicRow, issues: KapowarrIssue[]): KapowarrVolumeDetail {
+function rowToDetail(row: ComicRow, issues: ComicIssueSummary[]): ComicVolumeDetail {
   return {
     ...rowToVolume(row),
     special_version: row.special_version,
@@ -109,11 +109,11 @@ function rowToDetail(row: ComicRow, issues: KapowarrIssue[]): KapowarrVolumeDeta
     root_folder: row.root_folder ?? 0,
     volume_folder: row.volume_folder ?? '',
     issues,
-    general_files: parseJson<KapowarrGeneralFile[]>(row.general_files, []),
+    general_files: parseJson<ComicGeneralFile[]>(row.general_files, []),
   };
 }
 
-export async function getCachedComic(id: number): Promise<KapowarrVolume | null> {
+export async function getCachedComic(id: number): Promise<ComicVolumeSummary | null> {
   const db = await getDatabase();
   const row = await db.getFirstAsync<ComicRow>(
     'SELECT * FROM comics WHERE id = ? AND deleted_at IS NULL',
@@ -122,7 +122,7 @@ export async function getCachedComic(id: number): Promise<KapowarrVolume | null>
   return row ? rowToVolume(row) : null;
 }
 
-export async function getCachedComicDetail(id: number): Promise<KapowarrVolumeDetail | null> {
+export async function getCachedComicDetail(id: number): Promise<ComicVolumeDetail | null> {
   const db = await getDatabase();
   const row = await db.getFirstAsync<ComicRow>(
     'SELECT * FROM comics WHERE id = ? AND deleted_at IS NULL',
@@ -136,10 +136,34 @@ export async function getCachedComicDetail(id: number): Promise<KapowarrVolumeDe
   return rowToDetail(row, issueRows.map(rowToIssue));
 }
 
-export async function getCachedComics(): Promise<KapowarrVolume[]> {
+export async function getCachedComics(): Promise<ComicVolumeSummary[]> {
   const db = await getDatabase();
   const rows = await db.getAllAsync<ComicRow>(
     'SELECT * FROM comics WHERE deleted_at IS NULL ORDER BY title'
+  );
+  return rows.map(rowToVolume);
+}
+
+/**
+ * Search the cached comics by title or publisher.
+ *
+ * Used when the server can't be reached, so searching still works offline
+ * across whatever has been synced to the device. `LIKE` is enough here: the
+ * cache holds one row per volume, not per issue.
+ */
+export async function searchCachedComics(query: string): Promise<ComicVolumeSummary[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return getCachedComics();
+
+  const db = await getDatabase();
+  // Escape LIKE wildcards so a title containing % or _ still matches literally.
+  const pattern = `%${trimmed.replace(/[\\%_]/g, '\\$&')}%`;
+  const rows = await db.getAllAsync<ComicRow>(
+    `SELECT * FROM comics
+      WHERE deleted_at IS NULL
+        AND (title LIKE ? ESCAPE '\\' OR publisher LIKE ? ESCAPE '\\')
+      ORDER BY title`,
+    [pattern, pattern]
   );
   return rows.map(rowToVolume);
 }
@@ -168,7 +192,7 @@ ON CONFLICT (id) DO UPDATE SET
   updated_at = CURRENT_TIMESTAMP,
   deleted_at = NULL`;
 
-export async function upsertComicVolume(volume: KapowarrVolume): Promise<void> {
+export async function upsertComicVolume(volume: ComicVolumeSummary): Promise<void> {
   const db = await getDatabase();
   await db.runAsync(UPSERT_COMIC_LIST_SQL, [
     volume.id,
@@ -189,7 +213,7 @@ export async function upsertComicVolume(volume: KapowarrVolume): Promise<void> {
   ]);
 }
 
-export async function upsertComicVolumes(volumes: KapowarrVolume[]): Promise<void> {
+export async function upsertComicVolumes(volumes: ComicVolumeSummary[]): Promise<void> {
   const db = await getDatabase();
   await db.withTransactionAsync(async () => {
     for (const v of volumes) {
@@ -263,7 +287,7 @@ ON CONFLICT (id) DO UPDATE SET
   updated_at = CURRENT_TIMESTAMP,
   deleted_at = NULL`;
 
-export async function upsertComicDetail(detail: KapowarrVolumeDetail): Promise<void> {
+export async function upsertComicDetail(detail: ComicVolumeDetail): Promise<void> {
   const db = await getDatabase();
   await db.withTransactionAsync(async () => {
     await db.runAsync(UPSERT_COMIC_DETAIL_SQL, [

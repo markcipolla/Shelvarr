@@ -54,6 +54,15 @@ function TaskRow({ task }: { task: Task }) {
     download: 'Download',
     author_sync: 'Author Sync',
     komga_sync: 'Komga Sync',
+    comic_search: 'Comic Search',
+    comic_download: 'Comic Download',
+    comic_refresh: 'Comic Metadata Refresh',
+    comic_scan: 'Comic File Scan',
+    comic_rename: 'Comic Rename',
+    comic_update_all: 'Refresh All Comics',
+    comic_search_all: 'Search All Comics',
+    comic_library_import: 'Comic Library Import',
+    comic_adopt: 'Comic Library Migration',
   }[task.type] || task.type;
 
   const taskData = task.data || {};

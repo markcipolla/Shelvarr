@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getComic, getComicProgress } from '@/lib/actions/comics';
 import { MarkIssueReadButton } from '@/components/comics/MarkIssueReadButton';
+import { VolumeActions } from '@/components/comics/VolumeActions';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,27 +21,14 @@ export default async function ComicDetailPage({ params }: PageProps) {
   ]);
   const progressByIssue = new Map(progressRows.map((p) => [p.issueId, p]));
 
-  if (!result.configured) {
-    return (
-      <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-8 text-center">
-        <p className="text-shelvarr-text-muted">
-          Kapowarr is not configured.{' '}
-          <Link href="/settings/kapowarr" className="text-shelvarr-primary hover:underline">
-            Configure Kapowarr
-          </Link>
-        </p>
-      </div>
-    );
-  }
-
-  if (result.error || !result.volume) {
+  if (!result.volume) {
     return (
       <div className="space-y-4">
         <Link href="/comics" className="text-shelvarr-text-muted hover:text-white text-sm">
           ← Back to Comics
         </Link>
         <div className="bg-red-600/20 text-red-400 border border-red-500/40 rounded-lg p-4">
-          {result.error || 'Comic not found'}
+          Comic not found
         </div>
       </div>
     );
@@ -91,6 +79,21 @@ export default async function ComicDetailPage({ params }: PageProps) {
               className="text-shelvarr-text-muted prose prose-invert prose-sm max-w-none"
               dangerouslySetInnerHTML={{ __html: volume.description }}
             />
+          )}
+
+          {/* Library jobs only apply to volumes Shelvarr owns. Anything else
+              is a leftover mirror waiting to be migrated. */}
+          {result.managed ? (
+            <VolumeActions volumeId={volumeId} />
+          ) : (
+            <p className="text-xs text-shelvarr-text-muted">
+              This volume has not been migrated yet, so Shelvarr cannot manage it. Migrate it
+              under{' '}
+              <Link href="/settings/comics" className="text-shelvarr-primary hover:underline">
+                Settings → Comics
+              </Link>
+              .
+            </p>
           )}
         </div>
       </div>

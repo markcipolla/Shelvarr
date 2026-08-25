@@ -17,7 +17,7 @@ jest.mock('../../src/services/api/books', () => ({
   getSeriesThumbnailUrl: jest.fn().mockReturnValue('http://thumb/s1'),
 }));
 jest.mock('../../src/components/SeriesCard', () => {
-  const { View, Text, TouchableOpacity } = require('react-native');
+  const { Text, TouchableOpacity } = require('react-native');
   return function MockSeriesCard({ series, onPress }: any) {
     return (
       <TouchableOpacity onPress={onPress} testID={`series-${series.id}`}>

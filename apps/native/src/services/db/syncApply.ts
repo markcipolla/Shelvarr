@@ -3,6 +3,7 @@
  * mirror. Each row may be a normal update or a tombstone (`deleted_at` set).
  * This module is table-generic — it takes a column list and an array of rows.
  */
+import type { SQLiteBindValue } from 'expo-sqlite';
 import { getDatabase } from './database';
 
 export interface RowLike {
@@ -42,7 +43,12 @@ export async function applyRows(
         VALUES (${placeholders})
         ON CONFLICT (id) DO UPDATE SET ${assignments}`;
 
-      await db.runAsync(sql, columns.map((c) => row[c] as unknown));
+      // Sync payloads are JSON, so every value is already a SQLite-bindable
+      // primitive; `RowLike`'s index signature just can't say so.
+      await db.runAsync(
+        sql,
+        columns.map((c) => row[c] as SQLiteBindValue)
+      );
       upserted += 1;
     }
   });

@@ -8,7 +8,9 @@ import { createLogger } from '../utils/logger';
 
 const log = createLogger('queue');
 
-export type TaskType = 'scan' | 'metadata' | 'book_metadata' | 'organize' | 'download' | 'author_sync' | 'komga_sync';
+export type TaskType = 'scan' | 'metadata' | 'book_metadata' | 'organize' | 'download' | 'author_sync' | 'komga_sync' | 'comic_search' | 'comic_download' | 'comic_refresh' | 'comic_scan'
+  | 'comic_rename' | 'comic_update_all' | 'comic_search_all'
+  | 'comic_library_import' | 'comic_adopt';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface Task {
@@ -130,9 +132,20 @@ export interface TaskHandler {
 const taskHandlers = new Map<TaskType, TaskHandler>();
 
 /**
- * Register a handler for a task type
+ * True while the built-in handlers are being installed.
+ *
+ * The bootstrap fills in handlers that nobody has provided; it must not
+ * replace one a caller registered deliberately. Registration is lazy, so
+ * without this a caller that registers its own handler after import — a test,
+ * typically — would silently lose it the first time a task ran.
+ */
+let installingDefaults = false;
+
+/**
+ * Register a handler for a task type. A later call replaces an earlier one.
  */
 export function registerTaskHandler(type: TaskType, handler: TaskHandler): void {
+  if (installingDefaults && taskHandlers.has(type)) return;
   taskHandlers.set(type, handler);
 }
 
@@ -312,20 +325,25 @@ export async function runTask(taskId: number): Promise<void> {
     throw new Error(`Task ${taskId} not found`);
   }
 
+  // Register the abort controller before anything is awaited. Handler loading
+  // is asynchronous, and a cancel that arrives during it would otherwise find
+  // nothing to cancel and be silently ignored.
+  const abortController = new AbortController();
+  runningTasks.set(taskId, {
+    cancel: () => abortController.abort(),
+  });
+
+  await ensureHandlersRegistered();
+
   const handler = taskHandlers.get(task.type);
   if (!handler) {
     log.error('No handler for task type', { taskId, type: task.type });
+    runningTasks.delete(taskId);
     failTask(taskId, `No handler registered for task type: ${task.type}`);
     return;
   }
 
   log.info('Starting task', { taskId, type: task.type });
-
-  // Create abort controller for cancellation
-  const abortController = new AbortController();
-  runningTasks.set(taskId, {
-    cancel: () => abortController.abort(),
-  });
 
   startTask(taskId);
 
@@ -432,27 +450,45 @@ export function getTaskStats(): {
   return stats || { total: 0, pending: 0, running: 0, completed: 0, failed: 0 };
 }
 
-// Ensure handlers are registered on module load
+// Handler registration
+//
+// `handlers.ts` imports this module, so it cannot be imported at the top
+// level here. It is pulled in lazily instead, via a dynamic import that works
+// under a bundler and under plain ESM alike — a `require()` here only worked
+// inside Next's webpack build and threw everywhere else (CLI scripts, the
+// migration tool).
 let handlersRegistered = false;
+let handlerRegistration: Promise<void> | null = null;
 
-export function ensureHandlersRegistered(): void {
-  if (handlersRegistered) return;
-  handlersRegistered = true;
+export function ensureHandlersRegistered(): Promise<void> {
+  if (handlersRegistered) return Promise.resolve();
 
-  // Import and register handlers synchronously
-  // Using require to avoid async import issues
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { registerAllHandlers } = require('./handlers');
-    registerAllHandlers();
-    log.info('Task handlers registered');
-  } catch (err) {
-    log.error('Failed to register task handlers', { error: err });
-  }
+  handlerRegistration ??= import('./handlers')
+    .then(({ registerAllHandlers }) => {
+      installingDefaults = true;
+      try {
+        registerAllHandlers();
+      } finally {
+        installingDefaults = false;
+      }
+      handlersRegistered = true;
+      log.info('Task handlers registered');
+    })
+    .catch((err) => {
+      // Let the next call try again rather than wedging the queue.
+      handlerRegistration = null;
+      log.error('Failed to register task handlers', { error: err });
+      throw err;
+    });
+
+  return handlerRegistration;
 }
 
-// Auto-register handlers when module is imported
-ensureHandlersRegistered();
+// Kick registration off at import time. Anything that actually runs a task
+// awaits it, so this is a warm-up rather than a requirement.
+void ensureHandlersRegistered().catch(() => {
+  // Already logged; `runTask` surfaces it properly if a task is run.
+});
 
 export default {
   registerTaskHandler,

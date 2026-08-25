@@ -1,4 +1,3 @@
-import React from 'react';
 import { render } from '@testing-library/react-native';
 
 jest.mock('../../src/services/api/client', () => ({
@@ -9,7 +8,7 @@ jest.mock('../../src/services/api/client', () => ({
 jest.mock('@react-navigation/native-stack', () => ({
   createNativeStackNavigator: () => ({
     Navigator: ({ children }: any) => children,
-    Screen: ({ component: Component, name }: any) => {
+    Screen: ({ name }: any) => {
       const React = require('react');
       const { View, Text } = require('react-native');
       return (

@@ -31,6 +31,12 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
+/** The shape expo's download-progress callback is invoked with. */
+type ProgressCallback = (progress: {
+  totalBytesWritten: number;
+  totalBytesExpectedToWrite: number;
+}) => void;
+
 describe('ensureDirectories', () => {
   it('creates directories that do not exist', async () => {
     mockedGetInfo.mockResolvedValue({ exists: false });
@@ -70,8 +76,8 @@ describe('downloadBookFile', () => {
   it('calls onProgress callback', async () => {
     mockedGetInfo.mockResolvedValue({ exists: true });
     const onProgress = jest.fn();
-    let progressCallback: Function;
-    mockedCreateDl.mockImplementation((_url: string, _path: string, _opts: any, cb: Function) => {
+    let progressCallback: ProgressCallback;
+    mockedCreateDl.mockImplementation((_url: string, _path: string, _opts: any, cb: ProgressCallback) => {
       progressCallback = cb;
       return {
         downloadAsync: jest.fn().mockImplementation(async () => {
@@ -88,7 +94,7 @@ describe('downloadBookFile', () => {
   it('reports 0 progress when the expected size is unknown (no Content-Length)', async () => {
     mockedGetInfo.mockResolvedValue({ exists: true });
     const onProgress = jest.fn();
-    mockedCreateDl.mockImplementation((_url: string, _path: string, _opts: any, cb: Function) => ({
+    mockedCreateDl.mockImplementation((_url: string, _path: string, _opts: any, cb: ProgressCallback) => ({
       downloadAsync: jest.fn().mockImplementation(async () => {
         // expo reports -1 when the server omits Content-Length
         cb({ totalBytesWritten: 12967268, totalBytesExpectedToWrite: -1 });

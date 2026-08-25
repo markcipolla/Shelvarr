@@ -46,8 +46,12 @@ export type RootStackParamList = {
   Settings: undefined;
 };
 
+// React Navigation types its global param list through a namespace, so this
+// augmentation has to use one too; the empty interface is the extension point.
+/* eslint-disable @typescript-eslint/no-namespace, @typescript-eslint/no-empty-object-type */
 declare global {
   namespace ReactNavigation {
     interface RootParamList extends RootStackParamList {}
   }
 }
+/* eslint-enable @typescript-eslint/no-namespace, @typescript-eslint/no-empty-object-type */

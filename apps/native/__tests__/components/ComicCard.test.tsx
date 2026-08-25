@@ -1,13 +1,13 @@
 import React from 'react';
 import { render, fireEvent } from '@testing-library/react-native';
 import ComicCard from '../../src/components/ComicCard';
-import type { KapowarrVolume } from '@shelvarr/types';
+import type { ComicVolumeSummary } from '@shelvarr/types';
 
 jest.mock('../../src/services/api/comics', () => ({
   getVolumeCoverUrl: jest.fn().mockReturnValue('http://cover/42'),
 }));
 
-const makeVolume = (overrides: Partial<KapowarrVolume> = {}): KapowarrVolume => ({
+const makeVolume = (overrides: Partial<ComicVolumeSummary> = {}): ComicVolumeSummary => ({
   id: 42,
   comicvine_id: 1,
   title: 'The Volume',

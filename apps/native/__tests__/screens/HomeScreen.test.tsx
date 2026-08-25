@@ -139,8 +139,8 @@ describe('HomeScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     useNextUpStore.setState({ dismissedBooks: {}, dismissedComics: {}, hydrated: true });
-    mockFetchRecentComics.mockResolvedValue({ configured: true, volumes: [] });
-    mockFetchComics.mockResolvedValue({ configured: true, volumes: [] });
+    mockFetchRecentComics.mockResolvedValue({ volumes: [] });
+    mockFetchComics.mockResolvedValue({ volumes: [] });
     mockFetchInProgressComics.mockResolvedValue([]);
     mockFetchNextUpBooks.mockResolvedValue({ content: [] });
     mockFetchNextUpComics.mockResolvedValue([]);
@@ -251,7 +251,6 @@ describe('HomeScreen', () => {
   it('renders recently added comics section', async () => {
     setupLoadedState();
     mockFetchRecentComics.mockResolvedValue({
-      configured: true,
       volumes: [makeVolume(1, 'Batman'), makeVolume(2, 'Superman')],
     });
 
@@ -364,7 +363,6 @@ describe('HomeScreen', () => {
   it('navigates to comic detail from comics row', async () => {
     setupLoadedState();
     mockFetchRecentComics.mockResolvedValue({
-      configured: true,
       volumes: [makeVolume(7, 'Watchmen')],
     });
 
@@ -378,10 +376,10 @@ describe('HomeScreen', () => {
     expect(mockNavigation.navigate).toHaveBeenCalledWith('ComicDetail', { volumeId: 7 });
   });
 
-  it('omits comics section when Kapowarr not configured', async () => {
+  it('omits the comics section when there are no comics', async () => {
     setupLoadedState();
     mockFetchInProgress.mockResolvedValue({ content: [makeBook('b1', 'Book One')] });
-    mockFetchRecentComics.mockResolvedValue({ configured: false, volumes: [] });
+    mockFetchRecentComics.mockResolvedValue({ volumes: [] });
 
     const { getByText, queryByText } = render(
       <HomeScreen navigation={mockNavigation} route={mockRoute} />
@@ -467,7 +465,6 @@ describe('HomeScreen', () => {
     setupLoadedState();
     mockSearchBooks.mockResolvedValue({ content: [], last: true });
     mockFetchComics.mockResolvedValue({
-      configured: true,
       volumes: [makeVolume(3, 'Spawn')],
     });
 
@@ -495,7 +492,6 @@ describe('HomeScreen', () => {
     setupLoadedState();
     mockSearchBooks.mockResolvedValue({ content: [], last: true });
     mockFetchComics.mockResolvedValue({
-      configured: true,
       volumes: [makeVolume(8, 'Hellboy')],
     });
 
@@ -523,7 +519,7 @@ describe('HomeScreen', () => {
   it('still shows book results when comic search fails', async () => {
     setupLoadedState();
     mockSearchBooks.mockResolvedValue({ content: [makeBook('sr1', 'A Book')], last: true });
-    mockFetchComics.mockRejectedValue(new Error('kapowarr down'));
+    mockFetchComics.mockRejectedValue(new Error('comics unavailable'));
 
     const { getByText, queryByText } = renderHome();
 

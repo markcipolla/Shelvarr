@@ -171,7 +171,7 @@ CREATE TABLE IF NOT EXISTS hardcover_reading_status (
   synced_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
--- Comic read progress (Kapowarr issues; not in books table, so no FK)
+-- Comic read progress (comic issues; not in books table, so no FK)
 CREATE TABLE IF NOT EXISTS comic_read_progress (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   issue_id INTEGER NOT NULL UNIQUE,
@@ -182,8 +182,8 @@ CREATE TABLE IF NOT EXISTS comic_read_progress (
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
--- Comics (cached Kapowarr volumes)
--- id is the Kapowarr volume id (natural key)
+-- Comics (volumes)
+-- Ids are stable: read progress and the native app's cache reference them.
 CREATE TABLE IF NOT EXISTS comics (
   id INTEGER PRIMARY KEY,
   comicvine_id INTEGER,
@@ -212,7 +212,7 @@ CREATE TABLE IF NOT EXISTS comics (
   deleted_at TEXT
 );
 
--- Comic issues (cached Kapowarr issues)
+-- Comic issues
 CREATE TABLE IF NOT EXISTS comic_issues (
   id INTEGER PRIMARY KEY,
   volume_id INTEGER NOT NULL REFERENCES comics(id) ON DELETE CASCADE,
@@ -319,3 +319,108 @@ CREATE TRIGGER IF NOT EXISTS comics_fts_au AFTER UPDATE ON comics BEGIN
   INSERT INTO comics_fts (rowid, title, publisher, description)
   VALUES (new.id, new.title, new.publisher, new.description);
 END;
+
+-- Comic acquisition (GetComics sourcing)
+-- The queue of downloads Shelvarr has decided to fetch. One row per file.
+CREATE TABLE IF NOT EXISTS comic_downloads (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  volume_id INTEGER NOT NULL REFERENCES comics(id) ON DELETE CASCADE,
+  issue_id INTEGER,
+  covered_issues TEXT, -- JSON: number | [start, end] | null
+  host TEXT NOT NULL,  -- getcomics, pixeldrain, …
+  download_link TEXT NOT NULL,
+  web_link TEXT,       -- the GetComics article the link came from
+  web_title TEXT,
+  web_sub_title TEXT,
+  filename_body TEXT,  -- what the file is renamed to on import
+  state TEXT NOT NULL DEFAULT 'queued', -- queued|downloading|importing|completed|failed|cancelled
+  progress INTEGER NOT NULL DEFAULT 0,  -- bytes downloaded
+  size INTEGER,                          -- total bytes, when the server says
+  file_path TEXT,                        -- final resting place after import
+  error TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  completed_at TEXT
+);
+
+-- What we've downloaded before, so the UI can show history and auto-search
+-- can avoid re-fetching.
+CREATE TABLE IF NOT EXISTS comic_download_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  volume_id INTEGER REFERENCES comics(id) ON DELETE SET NULL,
+  issue_id INTEGER,
+  web_link TEXT,
+  web_title TEXT,
+  web_sub_title TEXT,
+  file_title TEXT,
+  host TEXT,
+  success INTEGER NOT NULL DEFAULT 1,
+  downloaded_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Links that turned out to be dead or unusable. Checked before enqueuing so
+-- the same broken mirror isn't retried every search.
+CREATE TABLE IF NOT EXISTS comic_blocklist (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  volume_id INTEGER REFERENCES comics(id) ON DELETE SET NULL,
+  issue_id INTEGER,
+  web_link TEXT,
+  web_title TEXT,
+  web_sub_title TEXT,
+  download_link TEXT NOT NULL UNIQUE,
+  host TEXT,
+  reason TEXT NOT NULL, -- link-broken|source-not-supported|no-working-links|added-by-user
+  added_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_comic_downloads_state ON comic_downloads(state);
+CREATE INDEX IF NOT EXISTS idx_comic_downloads_volume ON comic_downloads(volume_id);
+CREATE INDEX IF NOT EXISTS idx_comic_download_history_volume ON comic_download_history(volume_id);
+CREATE INDEX IF NOT EXISTS idx_comic_blocklist_link ON comic_blocklist(download_link);
+
+-- Comic library ownership
+-- Directories Shelvarr stores comics in. A volume's folder lives under one.
+CREATE TABLE IF NOT EXISTS comic_root_folders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  path TEXT NOT NULL UNIQUE,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Comic files on disk. Authoritative for volumes with comics.managed = 1;
+-- volumes not yet migrated still carry their files in comic_issues.files.
+CREATE TABLE IF NOT EXISTS comic_files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  volume_id INTEGER NOT NULL REFERENCES comics(id) ON DELETE CASCADE,
+  filepath TEXT NOT NULL UNIQUE,
+  size INTEGER NOT NULL DEFAULT 0,
+  -- Files that belong to the volume but not to any issue: cover art,
+  -- ComicInfo.xml, and so on.
+  file_type TEXT NOT NULL DEFAULT 'issue', -- issue|cover|metadata|other
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Which issues a file satisfies. A collected edition covers many issues, so
+-- this is deliberately many-to-many.
+CREATE TABLE IF NOT EXISTS comic_issue_files (
+  file_id INTEGER NOT NULL REFERENCES comic_files(id) ON DELETE CASCADE,
+  issue_id INTEGER NOT NULL REFERENCES comic_issues(id) ON DELETE CASCADE,
+  -- Set when a human linked the file by hand, so a rescan won't undo it.
+  forced INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (file_id, issue_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_comic_files_volume ON comic_files(volume_id);
+CREATE INDEX IF NOT EXISTS idx_comic_issue_files_issue ON comic_issue_files(issue_id);
+CREATE INDEX IF NOT EXISTS idx_comic_root_folders_path ON comic_root_folders(path);
+
+-- Recurring jobs. Rows are claimed with a single atomic UPDATE, so several
+-- app processes sharing this database can run schedulers without doubling up.
+CREATE TABLE IF NOT EXISTS scheduled_tasks (
+  name TEXT PRIMARY KEY,
+  task_type TEXT NOT NULL,
+  interval_seconds INTEGER NOT NULL,
+  next_run INTEGER NOT NULL,
+  last_run INTEGER,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  payload TEXT -- JSON passed to the task
+);

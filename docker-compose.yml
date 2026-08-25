@@ -19,6 +19,11 @@ services:
       # Optional: Komga integration
       # - KOMGA_URL=http://your-komga:25600
       # - KOMGA_API_KEY=your-api-key
+      # Comic sourcing from GetComics
+      - COMIC_LIBRARY_ROOT=/libraries/comics
+      # - GETCOMICS_HOST_PREFERENCE=getcomics,pixeldrain
+      # Only while migrating a library another tool organised
+      # - COMIC_PATH_MAP=/comics-1:/libraries/comics
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]

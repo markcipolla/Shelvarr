@@ -3,7 +3,16 @@ export { initServiceConfig, getServiceConfig } from './config';
 
 // Comics
 export { openComicArchive, remapComicPath } from './comics/archive';
-export type { ComicArchiveResult } from './comics/archive';
+export type { ComicArchiveResult, OpenComicArchiveOptions } from './comics/archive';
+export * as getcomics from './comics/getcomics/index';
+export * as comicvine from './comics/comicvine/index';
+export * as comicLibrary from './comics/library';
+export * as comicNaming from './comics/naming';
+export * as comicScan from './comics/scan';
+export * as comicRename from './comics/rename';
+export * as comicLibraryImport from './comics/import-library';
+export * as comicAdopt from './comics/adopt';
+export { importComicDownload, resolveImportTarget } from './comics/import';
 
 // Services
 export * as scanner from './scanner/index';
@@ -13,9 +22,9 @@ export * as hardcover from './metadata/hardcover';
 export * as organizer from './organizer/index';
 export * as queue from './queue/index';
 export * as queueHandlers from './queue/handlers';
+export * as scheduler from './queue/scheduler';
 export * as downloads from './downloads/index';
 export * as komga from './komga/index';
-export * as kapowarr from './kapowarr/index';
 export * as audiletome from './audiletome/index';
 export * as sourceStatus from './downloads/source-status';
 

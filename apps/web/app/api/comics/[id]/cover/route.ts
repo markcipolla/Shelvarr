@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import '@/lib/config';
-import { kapowarrClient, configureKapowarrFromDb } from '@/lib/services/kapowarr';
+import { getComicVolumeCover } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
+/** A volume's cover, fetched from ComicVine when it was added. */
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -14,29 +15,16 @@ export async function GET(
     return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
   }
 
-  const configured = await configureKapowarrFromDb();
-  if (!configured) {
-    return NextResponse.json({ error: 'Kapowarr not configured' }, { status: 404 });
+  const cover = getComicVolumeCover(volumeId);
+  if (!cover) {
+    return NextResponse.json({ error: 'No cover stored for this volume' }, { status: 404 });
   }
 
-  const coverUrl = kapowarrClient.getVolumeCoverUrl(volumeId);
-  if (!coverUrl) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  }
-
-  const upstream = await fetch(coverUrl);
-  if (!upstream.ok || !upstream.body) {
-    return NextResponse.json(
-      { error: `Upstream error: ${upstream.status}` },
-      { status: upstream.status === 404 ? 404 : 502 }
-    );
-  }
-
-  return new NextResponse(upstream.body, {
+  return new NextResponse(new Uint8Array(cover), {
     status: 200,
     headers: {
-      'Content-Type': upstream.headers.get('content-type') || 'image/jpeg',
-      'Cache-Control': 'private, max-age=3600',
+      'Content-Type': 'image/jpeg',
+      'Cache-Control': 'private, max-age=86400',
     },
   });
 }

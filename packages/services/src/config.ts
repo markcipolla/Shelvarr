@@ -30,10 +30,21 @@ export function getServiceConfig(): AppConfig {
         url: process.env['KOMGA_URL'] || null,
         apiKey: process.env['KOMGA_API_KEY'] || null,
       },
-      kapowarr: {
-        url: process.env['KAPOWARR_URL'] || null,
-        apiKey: process.env['KAPOWARR_API_KEY'] || null,
-        pathMap: process.env['KAPOWARR_PATH_MAP'] || null,
+      comicMigration: {
+        // KAPOWARR_PATH_MAP is the old name, kept so existing deployments
+        // keep working through the migration.
+        pathMap:
+          process.env['COMIC_PATH_MAP'] || process.env['KAPOWARR_PATH_MAP'] || null,
+      },
+      getcomics: {
+        baseUrl: process.env['GETCOMICS_URL'] || 'https://getcomics.org',
+        downloadDir: process.env['GETCOMICS_DOWNLOAD_DIR'] || join(dataDir, 'downloads'),
+        libraryRoot: process.env['COMIC_LIBRARY_ROOT'] || null,
+        hostPreference: (process.env['GETCOMICS_HOST_PREFERENCE'] || 'getcomics,pixeldrain')
+          .split(',')
+          .map((host) => host.trim())
+          .filter(Boolean),
+        renameDownloadedFiles: process.env['GETCOMICS_RENAME'] !== 'false',
       },
       audiletome: {
         url: process.env['AUDILETOME_URL'] || null,

@@ -1,10 +1,11 @@
-import type { KapowarrVolume, KapowarrVolumeDetail, KapowarrIssue } from '@shelvarr/types';
+import type { ComicVolumeSummary, ComicVolumeDetail, ComicIssueSummary } from '@shelvarr/types';
 import { resetDatabase } from '../../../src/services/db/database';
 import {
   getCachedComic,
   getCachedComicDetail,
   getCachedComics,
   upsertComicVolume,
+  searchCachedComics,
   upsertComicVolumes,
   upsertComicDetail,
   softDeleteComic,
@@ -12,7 +13,7 @@ import {
 } from '../../../src/services/db/comics';
 import { _resetAllDatabases } from '../../../__mocks__/expo-sqlite';
 
-function makeVolume(overrides: Partial<KapowarrVolume> = {}): KapowarrVolume {
+function makeVolume(overrides: Partial<ComicVolumeSummary> = {}): ComicVolumeSummary {
   return {
     id: 1,
     comicvine_id: 100,
@@ -33,7 +34,7 @@ function makeVolume(overrides: Partial<KapowarrVolume> = {}): KapowarrVolume {
   };
 }
 
-function makeIssue(overrides: Partial<KapowarrIssue> = {}): KapowarrIssue {
+function makeIssue(overrides: Partial<ComicIssueSummary> = {}): ComicIssueSummary {
   return {
     id: 9001,
     volume_id: 1,
@@ -49,7 +50,7 @@ function makeIssue(overrides: Partial<KapowarrIssue> = {}): KapowarrIssue {
   };
 }
 
-function makeDetail(overrides: Partial<KapowarrVolumeDetail> = {}): KapowarrVolumeDetail {
+function makeDetail(overrides: Partial<ComicVolumeDetail> = {}): ComicVolumeDetail {
   return {
     ...makeVolume(),
     special_version: null,
@@ -272,5 +273,50 @@ describe('comics local cache', () => {
       const got = await getCachedComicDetail(1);
       expect(got?.general_files).toEqual([]);
     });
+  });
+});
+
+describe('searchCachedComics', () => {
+  it('matches on title, case-insensitively', async () => {
+    await upsertComicVolumes([
+      makeVolume({ id: 1, title: 'Immortal Hulk' }),
+      makeVolume({ id: 2, title: 'Saga' }),
+    ]);
+
+    const results = await searchCachedComics('hulk');
+    expect(results.map((v) => v.title)).toEqual(['Immortal Hulk']);
+  });
+
+  it('matches on publisher too', async () => {
+    await upsertComicVolumes([
+      makeVolume({ id: 1, title: 'Saga', publisher: 'Image' }),
+      makeVolume({ id: 2, title: 'Hulk', publisher: 'Marvel' }),
+    ]);
+
+    const results = await searchCachedComics('marvel');
+    expect(results.map((v) => v.title)).toEqual(['Hulk']);
+  });
+
+  it('returns the whole library for an empty query', async () => {
+    await upsertComicVolumes([makeVolume({ id: 1 }), makeVolume({ id: 2 })]);
+    expect(await searchCachedComics('   ')).toHaveLength(2);
+  });
+
+  it('treats LIKE wildcards as literal characters', async () => {
+    await upsertComicVolumes([
+      makeVolume({ id: 1, title: '100% Hero' }),
+      makeVolume({ id: 2, title: 'Something Else' }),
+    ]);
+
+    // Without escaping, "%" would match everything.
+    const results = await searchCachedComics('100%');
+    expect(results.map((v) => v.title)).toEqual(['100% Hero']);
+  });
+
+  it('skips tombstoned volumes', async () => {
+    await upsertComicVolumes([makeVolume({ id: 1, title: 'Saga' })]);
+    await softDeleteComic(1);
+
+    expect(await searchCachedComics('saga')).toEqual([]);
   });
 });

@@ -10,7 +10,7 @@ beforeEach(() => {
 const makeBook = (bookId: string): DownloadedBook => ({
   bookId,
   filePath: `/path/${bookId}.epub`,
-  format: 'EPUB',
+  format: 'epub',
   downloadedAt: Date.now(),
 });
 

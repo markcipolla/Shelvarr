@@ -33,17 +33,24 @@ export async function fetchOnDeck(page: number = 0, libraryId?: string): Promise
   return data;
 }
 
+// `useSettingsStore` and `api/client` import each other (the store resets the
+// client when the URL changes). Requiring the store lazily here keeps this
+// module out of that cycle — a static import can leave the store undefined
+// depending on which module the bundler initialises first.
 export function getBookThumbnailUrl(bookId: string): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { shelvarrUrl } = require('../../stores/useSettingsStore').useSettingsStore.getState();
   return `${shelvarrUrl}/api/books/${bookId}/thumbnail`;
 }
 
 export function getBookPageUrl(bookId: string, pageNumber: number): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { shelvarrUrl } = require('../../stores/useSettingsStore').useSettingsStore.getState();
   return `${shelvarrUrl}/api/books/${bookId}/pages/${pageNumber}`;
 }
 
 export function getSeriesThumbnailUrl(seriesId: string): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { shelvarrUrl } = require('../../stores/useSettingsStore').useSettingsStore.getState();
   return `${shelvarrUrl}/api/series/${seriesId}/thumbnail`;
 }

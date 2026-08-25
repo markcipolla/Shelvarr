@@ -1,8 +1,8 @@
 import React from 'react';
-import { render, waitFor, fireEvent } from '@testing-library/react-native';
+import { render, waitFor, fireEvent, act } from '@testing-library/react-native';
 import ComicsScreen from '../../src/screens/ComicsScreen';
 import { fetchComics } from '../../src/services/api/comics';
-import { getCachedComics } from '../../src/services/db/comics';
+import { getCachedComics, searchCachedComics } from '../../src/services/db/comics';
 import { useColumns } from '../../src/hooks/useColumns';
 import { useSettingsStore } from '../../src/stores/useSettingsStore';
 
@@ -13,6 +13,7 @@ jest.mock('../../src/services/api/client', () => ({
 jest.mock('../../src/services/api/comics');
 jest.mock('../../src/services/db/comics', () => ({
   getCachedComics: jest.fn(),
+  searchCachedComics: jest.fn(),
 }));
 jest.mock('../../src/hooks/useColumns');
 jest.mock('../../src/stores/useSettingsStore');
@@ -40,6 +41,7 @@ jest.mock('../../src/utils/gridHelpers', () => ({
 
 const mockFetchComics = fetchComics as jest.Mock;
 const mockGetCachedComics = getCachedComics as jest.Mock;
+const mockSearchCachedComics = searchCachedComics as jest.Mock;
 const mockUseColumns = useColumns as jest.Mock;
 const mockUseSettingsStore = useSettingsStore as unknown as jest.Mock;
 
@@ -69,6 +71,7 @@ describe('ComicsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetCachedComics.mockResolvedValue([]);
+    mockSearchCachedComics.mockResolvedValue([]);
     mockUseColumns.mockReturnValue(2);
     mockUseSettingsStore.mockImplementation((selector: any) =>
       selector({ shelvarrUrl: 'http://shelvarr:3000' })
@@ -103,7 +106,6 @@ describe('ComicsScreen', () => {
   it('ignores cache-read errors and still loads from the network', async () => {
     mockGetCachedComics.mockRejectedValue(new Error('cache unavailable'));
     mockFetchComics.mockResolvedValue({
-      configured: true,
       volumes: [makeVolume(2, { title: 'Networked Superman' })],
     });
 
@@ -116,7 +118,6 @@ describe('ComicsScreen', () => {
 
   it('shows volumes returned by the API', async () => {
     mockFetchComics.mockResolvedValue({
-      configured: true,
       volumes: [makeVolume(1, { title: 'Batman' }), makeVolume(2, { title: 'Superman' })],
     });
 
@@ -128,41 +129,16 @@ describe('ComicsScreen', () => {
     });
   });
 
-  it('shows "Kapowarr not configured" message when configured:false', async () => {
-    mockFetchComics.mockResolvedValue({ configured: false, volumes: [] });
-
-    const { getByText } = render(<ComicsScreen navigation={mockNavigation} route={mockRoute} />);
-
-    await waitFor(() => {
-      expect(getByText(/Kapowarr is not configured/)).toBeTruthy();
-      expect(getByText('Open Settings')).toBeTruthy();
-    });
-  });
-
-  it('navigates to Settings from the not-configured state', async () => {
-    mockFetchComics.mockResolvedValue({ configured: false, volumes: [] });
-
-    const { getByText } = render(<ComicsScreen navigation={mockNavigation} route={mockRoute} />);
-
-    await waitFor(() => {
-      expect(getByText('Open Settings')).toBeTruthy();
-    });
-
-    fireEvent.press(getByText('Open Settings'));
-    expect(mockNavigation.navigate).toHaveBeenCalledWith('Settings');
-  });
-
   it('shows error text when the API response includes an error', async () => {
     mockFetchComics.mockResolvedValue({
-      configured: true,
       volumes: [],
-      error: 'Kapowarr unreachable',
+      error: 'Server unreachable',
     });
 
     const { getByText } = render(<ComicsScreen navigation={mockNavigation} route={mockRoute} />);
 
     await waitFor(() => {
-      expect(getByText('Kapowarr unreachable')).toBeTruthy();
+      expect(getByText('Server unreachable')).toBeTruthy();
     });
   });
 
@@ -188,7 +164,6 @@ describe('ComicsScreen', () => {
 
   it('navigates to ComicDetail when a volume is tapped', async () => {
     mockFetchComics.mockResolvedValue({
-      configured: true,
       volumes: [makeVolume(42, { title: 'Batman' })],
     });
 
@@ -202,13 +177,147 @@ describe('ComicsScreen', () => {
     expect(mockNavigation.navigate).toHaveBeenCalledWith('ComicDetail', { volumeId: 42 });
   });
 
-  it('shows empty state when configured with zero volumes', async () => {
-    mockFetchComics.mockResolvedValue({ configured: true, volumes: [] });
+  it('shows the empty state for an empty library', async () => {
+    mockFetchComics.mockResolvedValue({ volumes: [] });
 
     const { getByText } = render(<ComicsScreen navigation={mockNavigation} route={mockRoute} />);
 
     await waitFor(() => {
       expect(getByText('No comics found.')).toBeTruthy();
     });
+  });
+});
+
+describe('ComicsScreen search', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    mockGetCachedComics.mockResolvedValue([]);
+    mockSearchCachedComics.mockResolvedValue([]);
+    mockUseColumns.mockReturnValue(2);
+    mockUseSettingsStore.mockImplementation((selector: any) =>
+      selector({ shelvarrUrl: 'http://shelvarr:3000' })
+    );
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  /** Advance past the debounce and let the resulting promises settle. */
+  async function flushSearch() {
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+  }
+
+  it('loads the library exactly once on mount', async () => {
+    mockFetchComics.mockResolvedValue({ volumes: [] });
+
+    render(<ComicsScreen navigation={mockNavigation} route={mockRoute} />);
+    await act(async () => {});
+
+    expect(mockFetchComics).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends the typed query to the server after a pause', async () => {
+    mockFetchComics.mockResolvedValue({ volumes: [makeVolume(1)] });
+
+    const { getByPlaceholderText } = render(
+      <ComicsScreen navigation={mockNavigation} route={mockRoute} />
+    );
+    await act(async () => {});
+
+    fireEvent.changeText(getByPlaceholderText('Search comics…'), 'saga');
+    await flushSearch();
+
+    expect(mockFetchComics).toHaveBeenCalledWith('saga');
+  });
+
+  it('debounces, so typing does not fire a request per keystroke', async () => {
+    mockFetchComics.mockResolvedValue({ volumes: [] });
+
+    const { getByPlaceholderText } = render(
+      <ComicsScreen navigation={mockNavigation} route={mockRoute} />
+    );
+    await act(async () => {});
+    mockFetchComics.mockClear();
+
+    const input = getByPlaceholderText('Search comics…');
+    fireEvent.changeText(input, 's');
+    fireEvent.changeText(input, 'sa');
+    fireEvent.changeText(input, 'sag');
+    fireEvent.changeText(input, 'saga');
+    await flushSearch();
+
+    expect(mockFetchComics).toHaveBeenCalledTimes(1);
+    expect(mockFetchComics).toHaveBeenCalledWith('saga');
+  });
+
+  it('renders the results it gets back', async () => {
+    mockFetchComics.mockResolvedValue({ volumes: [makeVolume(7, { title: 'Saga' })] });
+
+    const { getByPlaceholderText, getByText } = render(
+      <ComicsScreen navigation={mockNavigation} route={mockRoute} />
+    );
+    await act(async () => {});
+
+    fireEvent.changeText(getByPlaceholderText('Search comics…'), 'saga');
+    await flushSearch();
+
+    expect(getByText('Saga')).toBeTruthy();
+  });
+
+  it('says so when nothing matches', async () => {
+    mockFetchComics.mockResolvedValue({ volumes: [] });
+
+    const { getByPlaceholderText, getByText } = render(
+      <ComicsScreen navigation={mockNavigation} route={mockRoute} />
+    );
+    await act(async () => {});
+
+    fireEvent.changeText(getByPlaceholderText('Search comics…'), 'nothing');
+    await flushSearch();
+
+    expect(getByText(/No comics match/)).toBeTruthy();
+  });
+
+  it('falls back to the on-device cache when the server is unreachable', async () => {
+    mockFetchComics.mockResolvedValue({ volumes: [] });
+
+    const { getByPlaceholderText, getByText } = render(
+      <ComicsScreen navigation={mockNavigation} route={mockRoute} />
+    );
+    await act(async () => {});
+
+    mockFetchComics.mockRejectedValue(new Error('offline'));
+    mockSearchCachedComics.mockResolvedValue([makeVolume(3, { title: 'Cached Saga' })]);
+
+    fireEvent.changeText(getByPlaceholderText('Search comics…'), 'saga');
+    await flushSearch();
+
+    expect(mockSearchCachedComics).toHaveBeenCalledWith('saga');
+    expect(getByText('Cached Saga')).toBeTruthy();
+  });
+
+  it('restores the full library when the query is cleared', async () => {
+    mockFetchComics.mockResolvedValue({ volumes: [makeVolume(1, { title: 'Everything' })] });
+
+    const { getByPlaceholderText, getByText } = render(
+      <ComicsScreen navigation={mockNavigation} route={mockRoute} />
+    );
+    await act(async () => {});
+
+    const input = getByPlaceholderText('Search comics…');
+    fireEvent.changeText(input, 'saga');
+    await flushSearch();
+
+    mockFetchComics.mockClear();
+    fireEvent.changeText(input, '');
+    await act(async () => {});
+
+    // Clearing reloads the library rather than leaving the last results up.
+    expect(mockFetchComics).toHaveBeenCalledWith();
+    expect(getByText('Everything')).toBeTruthy();
   });
 });

@@ -76,7 +76,9 @@ export async function downloadBookFile(
       } catch {
         detail = body;
       }
-    } catch {}
+    } catch {
+      // Couldn't read the body — the status code below is enough to report.
+    }
     await deleteAsync(result.uri, { idempotent: true }).catch(() => {});
     throw new DownloadHttpError(result.status, detail.trim().slice(0, 300));
   }
@@ -93,14 +95,18 @@ export async function deleteBookFiles(bookId: string, extension: string): Promis
     if (fileInfo.exists) {
       await deleteAsync(filePath, { idempotent: true });
     }
-  } catch {}
+  } catch {
+    // Nothing to clean up, or the file is already gone. Either is fine.
+  }
 
   try {
     const dirInfo = await getInfoAsync(extractDir);
     if (dirInfo.exists) {
       await deleteAsync(extractDir, { idempotent: true });
     }
-  } catch {}
+  } catch {
+    // As above: a missing extract directory is the desired end state anyway.
+  }
 }
 
 export async function listExtractedFiles(bookId: string): Promise<string[]> {
@@ -118,7 +124,9 @@ export async function cleanAllDownloads(): Promise<void> {
   try {
     await deleteAsync(getDownloadsDir(), { idempotent: true });
     await deleteAsync(getExtractedDir(), { idempotent: true });
-  } catch {}
+  } catch {
+    // Clearing downloads is best-effort; a partial clean is still a clean.
+  }
 }
 
 export async function extractComicArchive(

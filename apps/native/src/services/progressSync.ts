@@ -75,7 +75,8 @@ export async function flushProgress(bookId: string): Promise<void> {
     } else {
       await updateReadProgress(entry.bookId, entry.page, entry.completed);
     }
-  } catch (err) {
+  } catch {
+    // Offline or the server rejected it — retry from the queue later.
     offlineQueue.push(entry);
   }
 }

@@ -2,7 +2,6 @@ import React from 'react';
 import { render, fireEvent } from '@testing-library/react-native';
 import SeriesCard from '../../src/components/SeriesCard';
 import { useAuthHeaders } from '../../src/hooks/useAuthHeaders';
-import { getSeriesThumbnailUrl } from '../../src/services/api/books';
 import { Series } from '../../src/types/komga';
 
 jest.mock('../../src/hooks/useAuthHeaders');

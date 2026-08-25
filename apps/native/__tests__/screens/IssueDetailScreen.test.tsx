@@ -335,12 +335,12 @@ describe('IssueDetailScreen', () => {
     await waitFor(() => expect(getByText('Issue not found')).toBeTruthy());
   });
 
-  it('shows kapowarr-not-configured error', async () => {
+  it('shows an error when the server has no such issue', async () => {
     mockFetchComicIssue.mockResolvedValue({ configured: false });
 
     const { getByText } = render(<IssueDetailScreen navigation={mockNavigation} route={mockRoute} />);
 
-    await waitFor(() => expect(getByText(/Kapowarr is not configured/)).toBeTruthy());
+    await waitFor(() => expect(getByText(/not on the server/)).toBeTruthy());
   });
 
   it('shows generic error when fetch rejects', async () => {

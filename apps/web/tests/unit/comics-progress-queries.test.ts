@@ -6,11 +6,11 @@
 
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import type { KapowarrVolumeDetail, KapowarrIssue } from '@shelvarr/types';
+import type { ComicVolumeDetail, ComicIssueSummary } from '@shelvarr/types';
 
 let db: typeof import('../../lib/db/index.js');
 
-function makeIssue(overrides: Partial<KapowarrIssue> = {}): KapowarrIssue {
+function makeIssue(overrides: Partial<ComicIssueSummary> = {}): ComicIssueSummary {
   return {
     id: 9001,
     volume_id: 101,
@@ -26,7 +26,7 @@ function makeIssue(overrides: Partial<KapowarrIssue> = {}): KapowarrIssue {
   };
 }
 
-function makeDetail(id: number, issues: KapowarrIssue[]): KapowarrVolumeDetail {
+function makeDetail(id: number, issues: ComicIssueSummary[]): ComicVolumeDetail {
   return {
     id,
     comicvine_id: 5000 + id,

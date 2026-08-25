@@ -186,22 +186,22 @@ describe('ComicDetailScreen', () => {
     });
   });
 
-  it('shows kapowarr-not-configured error', async () => {
-    mockFetchComicDetail.mockResolvedValue({ configured: false });
+  it('shows an error when the server has no such comic', async () => {
+    mockFetchComicDetail.mockResolvedValue({});
 
     const { getByText } = render(<ComicDetailScreen navigation={mockNavigation} route={mockRoute} />);
 
     await waitFor(() => {
-      expect(getByText(/Kapowarr is not configured/)).toBeTruthy();
+      expect(getByText(/not on the server/)).toBeTruthy();
     });
   });
 
   it('shows API-level error message', async () => {
-    mockFetchComicDetail.mockResolvedValue({ configured: true, error: 'Kapowarr down' });
+    mockFetchComicDetail.mockResolvedValue({ error: 'Server unreachable' });
 
     const { getByText } = render(<ComicDetailScreen navigation={mockNavigation} route={mockRoute} />);
 
-    await waitFor(() => expect(getByText('Kapowarr down')).toBeTruthy());
+    await waitFor(() => expect(getByText('Server unreachable')).toBeTruthy());
   });
 
   it('shows generic error when fetch rejects', async () => {
