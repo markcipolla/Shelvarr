@@ -2,6 +2,7 @@ import { getApiClient } from './client';
 import {
   getCachedComicDetail,
   getCachedComics,
+  searchCachedComics,
   upsertComicDetail,
   upsertComicVolumes,
 } from '../db/comics';
@@ -45,7 +46,9 @@ export async function fetchComics(search?: string): Promise<ComicsListResponse> 
     }
     return data;
   } catch (err) {
-    const cached = await getCachedComics();
+    // Honour the query offline too — falling back to the whole cache would
+    // read as "your search matched everything".
+    const cached = trimmed ? await searchCachedComics(trimmed) : await getCachedComics();
     if (cached.length > 0) {
       return {
         volumes: cached,

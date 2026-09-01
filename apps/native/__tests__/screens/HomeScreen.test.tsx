@@ -31,11 +31,14 @@ jest.mock('../../src/stores/useSettingsStore');
 jest.mock('../../src/hooks/useAuthHeaders', () => ({
   useAuthHeaders: jest.fn().mockReturnValue({}),
 }));
-jest.mock('../../src/stores/useDownloadStore', () => ({
-  useDownloadStore: jest.fn((selector: any) =>
-    selector({ downloads: {}, activeDownloadId: null, progress: 0 })
-  ),
-}));
+const mockDownloads: { current: Record<string, any> } = { current: {} };
+jest.mock('../../src/stores/useDownloadStore', () => {
+  const store = jest.fn((selector: any) =>
+    selector({ downloads: mockDownloads.current, activeDownloadId: null, progress: 0 })
+  ) as unknown as jest.Mock & { getState: () => unknown };
+  store.getState = () => ({ downloads: mockDownloads.current });
+  return { useDownloadStore: store };
+});
 jest.mock('../../src/components/BookCard', () => {
   const { View, Text, TouchableOpacity } = require('react-native');
   return function MockBookCard({ book, placeholder, onPress, onRemove }: any) {
@@ -138,6 +141,7 @@ function getOnChangeText(): ((text: string) => void) | null {
 describe('HomeScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockDownloads.current = {};
     useNextUpStore.setState({ dismissedBooks: {}, dismissedComics: {}, hydrated: true });
     mockFetchRecentComics.mockResolvedValue({ volumes: [] });
     mockFetchComics.mockResolvedValue({ volumes: [] });
@@ -563,6 +567,48 @@ describe('HomeScreen', () => {
     await waitFor(() => {
       expect(mockSearchBooks).toHaveBeenCalled();
     });
+  });
+
+  it('falls back to downloaded books when the book search fails', async () => {
+    setupLoadedState();
+    mockDownloads.current = {
+      d1: {
+        bookId: 'd1',
+        filePath: 'file:///d1.epub',
+        format: 'epub',
+        downloadedAt: 1,
+        persisted: true,
+        book: makeBook('d1', 'Downloaded Dune'),
+      },
+      d2: {
+        bookId: 'd2',
+        filePath: 'file:///d2.epub',
+        format: 'epub',
+        downloadedAt: 2,
+        persisted: true,
+        book: makeBook('d2', 'Downloaded Emma'),
+      },
+    };
+    mockSearchBooks.mockRejectedValue(new Error('Network Error'));
+    mockFetchComics.mockRejectedValue(new Error('Network Error'));
+
+    const { getByText, queryByText } = renderHome();
+
+    await waitFor(() => {
+      expect(getOnChangeText()).toBeTruthy();
+    });
+
+    await act(async () => {
+      getOnChangeText()!('dune');
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+
+    await waitFor(() => {
+      expect(getByText('Downloaded Dune')).toBeTruthy();
+    });
+    expect(queryByText('Downloaded Emma')).toBeNull();
   });
 
   it('handles search error gracefully', async () => {
