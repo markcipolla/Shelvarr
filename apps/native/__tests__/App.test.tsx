@@ -4,6 +4,7 @@ import App from '../App';
 import { useSettingsStore } from '../src/stores/useSettingsStore';
 import { useDownloadStore } from '../src/stores/useDownloadStore';
 import { useComicDownloadStore } from '../src/stores/useComicDownloadStore';
+import { useUpdateStore } from '../src/stores/useUpdateStore';
 import { retryOfflineQueue } from '../src/services/progressSync';
 import * as Font from 'expo-font';
 
@@ -33,6 +34,17 @@ jest.mock('../src/stores/useComicDownloadStore', () => ({
     getState: jest.fn().mockReturnValue({ loadDownloads: jest.fn() }),
   },
 }));
+jest.mock('../src/stores/useUpdateStore', () => ({
+  useUpdateStore: {
+    getState: jest.fn(),
+  },
+}));
+jest.mock('../src/components/UpdateBanner', () => {
+  const { Text } = require('react-native');
+  return function MockUpdateBanner() {
+    return <Text>UpdateBanner</Text>;
+  };
+});
 jest.mock('../src/services/progressSync', () => ({
   retryOfflineQueue: jest.fn(),
 }));
@@ -58,6 +70,10 @@ describe('App', () => {
     });
     (useDownloadStore.getState as jest.Mock).mockReturnValue({ loadDownloads: jest.fn() });
     (useComicDownloadStore.getState as jest.Mock).mockReturnValue({ loadDownloads: jest.fn() });
+    (useUpdateStore.getState as jest.Mock).mockReturnValue({
+      loadDismissed: jest.fn().mockResolvedValue(undefined),
+      check: jest.fn(),
+    });
     (Font.loadAsync as jest.Mock).mockResolvedValue(undefined);
   });
 
@@ -89,6 +105,17 @@ describe('App', () => {
     await waitFor(() => {
       expect(mockLoadAuth).toHaveBeenCalled();
     });
+  });
+
+  it('checks for an app update once the dismissed version is loaded', async () => {
+    const check = jest.fn();
+    const loadDismissed = jest.fn().mockResolvedValue(undefined);
+    (useUpdateStore.getState as jest.Mock).mockReturnValue({ loadDismissed, check });
+
+    render(<App />);
+
+    expect(loadDismissed).toHaveBeenCalled();
+    await waitFor(() => expect(check).toHaveBeenCalledWith({ silent: true }));
   });
 
   it('continues without fonts on loadAsync failure', async () => {
@@ -138,5 +165,19 @@ describe('App', () => {
     await waitFor(() => {
       expect(getByText('RootNavigator')).toBeTruthy();
     });
+  });
+
+  it('offers the update prompt even when signed out', async () => {
+    // An old build is exactly what a server that now wants a login will
+    // refuse, so the way to update has to be reachable from the sign-in
+    // screen rather than sitting behind it.
+    mockAuthState = 'signed-out';
+
+    const { getByText } = render(<App />);
+
+    await waitFor(() => {
+      expect(getByText('LoginScreen')).toBeTruthy();
+    });
+    expect(getByText('UpdateBanner')).toBeTruthy();
   });
 });

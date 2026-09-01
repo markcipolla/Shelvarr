@@ -28,6 +28,7 @@
     "expo": "~54.0.33",
     "expo-file-system": "~19.0.21",
     "expo-image": "~3.0.9",
+    "expo-intent-launcher": "~13.0.8",
     "expo-font": "^55.0.4",
     "expo-sqlite": "~16.0.10",
     "expo-navigation-bar": "^55.0.9",

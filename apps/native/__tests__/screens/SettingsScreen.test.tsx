@@ -3,6 +3,8 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import SettingsScreen from '../../src/screens/SettingsScreen';
 import { useSettingsStore } from '../../src/stores/useSettingsStore';
+import { useUpdateStore } from '../../src/stores/useUpdateStore';
+import { useAuthStore } from '../../src/stores/useAuthStore';
 import { cleanAllDownloads } from '../../src/services/fileManager';
 import { APP_VERSION, BUILD_VERSION } from '../../src/utils/constants';
 import { testShelvarrConnection } from '../../src/services/api/shelvarr';
@@ -14,6 +16,8 @@ jest.mock('../../src/services/api/client', () => ({
   resetApiClient: jest.fn(),
 }));
 jest.mock('../../src/stores/useSettingsStore');
+jest.mock('../../src/stores/useUpdateStore');
+jest.mock('../../src/stores/useAuthStore');
 jest.mock('../../src/services/fileManager');
 jest.mock('../../src/services/api/shelvarr', () => ({
   testShelvarrConnection: jest.fn(),
@@ -23,7 +27,38 @@ const mockSetAutoDelete = jest.fn();
 const mockSetShelvarrUrl = jest.fn();
 const mockLoadSettings = jest.fn();
 
+const mockCheckForUpdates = jest.fn();
+const mockStartUpdate = jest.fn();
+const mockSignOut = jest.fn();
+
 const mockUseSettingsStore = useSettingsStore as unknown as jest.Mock;
+const mockUseUpdateStore = useUpdateStore as unknown as jest.Mock;
+const mockUseAuthStore = useAuthStore as unknown as jest.Mock;
+
+function mockUpdateState(overrides: Record<string, unknown> = {}) {
+  mockUseUpdateStore.mockImplementation((selector: any) =>
+    selector({
+      status: 'idle',
+      update: null,
+      error: null,
+      upToDate: false,
+      check: mockCheckForUpdates,
+      startUpdate: mockStartUpdate,
+      ...overrides,
+    })
+  );
+}
+function mockAuthState(overrides: Record<string, unknown> = {}) {
+  mockUseAuthStore.mockImplementation((selector: any) =>
+    selector({
+      state: 'signed-in',
+      user: { id: 1, email: 'reader@example.com', name: 'Reader', role: 'user' },
+      signOut: mockSignOut,
+      ...overrides,
+    })
+  );
+}
+
 const mockCleanAllDownloads = cleanAllDownloads as jest.Mock;
 const mockTestShelvarrConnection = testShelvarrConnection as jest.Mock;
 
@@ -33,6 +68,9 @@ describe('SettingsScreen', () => {
     jest.spyOn(Alert, 'alert').mockImplementation(jest.fn());
     mockCleanAllDownloads.mockResolvedValue(undefined);
     mockTestShelvarrConnection.mockResolvedValue({ ok: true });
+
+    mockUpdateState();
+    mockAuthState();
 
     mockUseSettingsStore.mockImplementation((selector: any) =>
       selector({
@@ -51,6 +89,59 @@ describe('SettingsScreen', () => {
     expect(getByText('Reading')).toBeTruthy();
     expect(getByText('Auto-delete after reading')).toBeTruthy();
     expect(getByText('Storage')).toBeTruthy();
+    expect(getByText('Updates')).toBeTruthy();
+  });
+
+  describe('the account section', () => {
+    it('names who is signed in', () => {
+      const { getByText } = render(<SettingsScreen />);
+
+      expect(getByText('Account')).toBeTruthy();
+      expect(getByText('reader@example.com')).toBeTruthy();
+    });
+
+    it('says so rather than going blank when the account is not known yet', () => {
+      mockAuthState({ user: null });
+
+      const { getByText } = render(<SettingsScreen />);
+
+      expect(getByText('Unknown')).toBeTruthy();
+    });
+
+    it('hides the section on a server that has no accounts', () => {
+      mockAuthState({ state: 'disabled', user: null });
+
+      const { queryByText } = render(<SettingsScreen />);
+
+      expect(queryByText('Account')).toBeNull();
+      expect(queryByText('Sign out')).toBeNull();
+    });
+
+    it('asks before signing out, since getting back in needs a new link', () => {
+      const { getByText } = render(<SettingsScreen />);
+
+      fireEvent.press(getByText('Sign out'));
+
+      expect(Alert.alert).toHaveBeenCalledWith(
+        'Sign out',
+        'You will need a new sign-in link to get back in.',
+        expect.any(Array)
+      );
+      expect(mockSignOut).not.toHaveBeenCalled();
+    });
+
+    it('signs out once confirmed', () => {
+      const { getByText } = render(<SettingsScreen />);
+      fireEvent.press(getByText('Sign out'));
+
+      const buttons = (Alert.alert as jest.Mock).mock.calls[0][2] as Array<{
+        text: string;
+        onPress?: () => void;
+      }>;
+      buttons.find((button) => button.text === 'Sign out')?.onPress?.();
+
+      expect(mockSignOut).toHaveBeenCalled();
+    });
   });
 
   it('calls loadSettings on mount', () => {
@@ -142,4 +233,74 @@ describe('SettingsScreen', () => {
       expect(style.fontFamily).toBe('monospace');
     });
   });
+});
+
+describe('SettingsScreen updates section', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.spyOn(Alert, 'alert').mockImplementation(jest.fn());
+    mockUseSettingsStore.mockImplementation((selector: any) =>
+      selector({
+        autoDeleteAfterReading: true,
+        setAutoDelete: mockSetAutoDelete,
+        shelvarrUrl: '',
+        setShelvarrUrl: mockSetShelvarrUrl,
+        loadSettings: mockLoadSettings,
+      })
+    );
+    mockUpdateState();
+  });
+
+  it('checks for updates on demand', () => {
+    const { getByText } = render(<SettingsScreen />);
+
+    fireEvent.press(getByText('Check for updates'));
+
+    expect(mockCheckForUpdates).toHaveBeenCalledWith();
+  });
+
+  it('disables the button and spins while checking', () => {
+    mockUpdateState({ status: 'checking' });
+
+    const { queryByText } = render(<SettingsScreen />);
+
+    expect(queryByText('Check for updates')).toBeNull();
+  });
+
+  it('confirms when there is nothing newer', () => {
+    mockUpdateState({ upToDate: true });
+
+    const { getByText } = render(<SettingsScreen />);
+
+    expect(getByText("You're on the latest version.")).toBeTruthy();
+  });
+
+  it('surfaces a check failure', () => {
+    mockUpdateState({ status: 'error', error: 'GitHub returned 403' });
+
+    const { getByText } = render(<SettingsScreen />);
+
+    expect(getByText('GitHub returned 403')).toBeTruthy();
+  });
+
+  it('offers to install a pending update', () => {
+    mockUpdateState({ status: 'available', update: { version: '1.2.0' } });
+
+    const { getByText } = render(<SettingsScreen />);
+
+    fireEvent.press(getByText(/Install version/));
+
+    expect(mockStartUpdate).toHaveBeenCalled();
+  });
+
+  it.each(['downloading', 'installing'] as const)(
+    'shows a spinner instead of the install button while %s',
+    (status) => {
+      mockUpdateState({ status, update: { version: '1.2.0' } });
+
+      const { queryByText } = render(<SettingsScreen />);
+
+      expect(queryByText(/Install version/)).toBeNull();
+    }
+  );
 });

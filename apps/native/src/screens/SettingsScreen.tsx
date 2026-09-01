@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Switch, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { cleanAllDownloads } from '../services/fileManager';
+import { useUpdateStore } from '../stores/useUpdateStore';
 import { APP_VERSION, BUILD_VERSION } from '../utils/constants';
 import { testShelvarrConnection } from '../services/api/shelvarr';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -17,6 +18,13 @@ export default function SettingsScreen() {
   const authState = useAuthStore((s) => s.state);
   const account = useAuthStore((s) => s.user);
   const signOut = useAuthStore((s) => s.signOut);
+  const updateStatus = useUpdateStore((s) => s.status);
+  const availableUpdate = useUpdateStore((s) => s.update);
+  const updateError = useUpdateStore((s) => s.error);
+  const upToDate = useUpdateStore((s) => s.upToDate);
+  const checkForUpdates = useUpdateStore((s) => s.check);
+  const startUpdate = useUpdateStore((s) => s.startUpdate);
+  const updateBusy = updateStatus === 'downloading' || updateStatus === 'installing';
 
   useEffect(() => {
     loadSettings();
@@ -116,6 +124,35 @@ export default function SettingsScreen() {
         <Text style={styles.buttonText}>Clear all downloads</Text>
       </TouchableOpacity>
 
+      <Text style={styles.sectionTitle}>Updates</Text>
+      {availableUpdate ? (
+        <TouchableOpacity
+          style={[styles.button, updateBusy && styles.buttonDisabled]}
+          onPress={startUpdate}
+          disabled={updateBusy}
+        >
+          {updateBusy ? (
+            <ActivityIndicator color="#333" />
+          ) : (
+            <Text style={styles.buttonText}>Install version {availableUpdate.version}</Text>
+          )}
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          style={[styles.button, updateStatus === 'checking' && styles.buttonDisabled]}
+          onPress={() => checkForUpdates()}
+          disabled={updateStatus === 'checking'}
+        >
+          {updateStatus === 'checking' ? (
+            <ActivityIndicator color="#333" />
+          ) : (
+            <Text style={styles.buttonText}>Check for updates</Text>
+          )}
+        </TouchableOpacity>
+      )}
+      {upToDate && <Text style={styles.updateNote}>You&apos;re on the latest version.</Text>}
+      {updateStatus === 'error' && <Text style={styles.updateError}>{updateError}</Text>}
+
       <Text style={styles.sectionTitle}>About</Text>
       <View style={styles.aboutRow}>
         <Text style={styles.label}>Version</Text>
@@ -146,6 +183,8 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { color: '#333', fontSize: 15 },
+  updateNote: { fontSize: 13, color: '#777', marginTop: 10 },
+  updateError: { fontSize: 13, color: '#a03c2c', marginTop: 10 },
   input: {
     backgroundColor: '#fff',
     borderRadius: 8,
