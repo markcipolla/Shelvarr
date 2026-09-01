@@ -1,18 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
 import { audiletomeClient, configureAudiletomeFromDb } from '@/lib/services/audiletome';
+import { validateApiAuth } from '@shelvarr/services';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * Stream a finished .m4b from audiletome. Not auth-gated so it can back a
- * plain browser download link; the upstream status is passed through — 409
- * while the book is still generating, 404 if the file is missing.
+ * Stream a finished .m4b from audiletome. A plain browser download link works
+ * because the session cookie rides along with it. The upstream status is
+ * passed through — 409 while the book is still generating, 404 if the file is
+ * missing.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!validateApiAuth(request.headers)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const { id } = await params;
 
   const configured = await configureAudiletomeFromDb();

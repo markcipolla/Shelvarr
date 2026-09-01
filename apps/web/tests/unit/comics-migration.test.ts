@@ -369,23 +369,35 @@ describe('Scheduler', () => {
     const future = Math.floor(Date.now() / 1000) + 25 * 3600;
     const claimed = scheduler.claimDueSchedules(future);
 
-    // Only the enabled job comes back.
+    // Only the jobs that are on by default come back. Derived rather than
+    // written out, so adding a scheduled job does not fail this test for
+    // saying something it never meant to say.
     assert.deepStrictEqual(
-      claimed.map((schedule) => schedule.name),
-      ['comic_update_all']
+      claimed.map((schedule) => schedule.name).sort(),
+      scheduler.DEFAULT_SCHEDULES.filter((entry) => entry.enabledByDefault)
+        .map((entry) => entry.name)
+        .sort()
+    );
+    assert.strictEqual(
+      claimed.some((schedule) => schedule.name === 'comic_search_all'),
+      false,
+      'a job that is off by default must not be claimed'
     );
   });
 
   it('claims each due job exactly once', () => {
     scheduler.ensureDefaultSchedules();
     const future = Math.floor(Date.now() / 1000) + 25 * 3600;
+    const enabledCount = scheduler.DEFAULT_SCHEDULES.filter(
+      (entry) => entry.enabledByDefault
+    ).length;
 
     const first = scheduler.claimDueSchedules(future);
     // A second process ticking at the same moment must come away empty: the
     // claim moved next_run forward in the same statement.
     const second = scheduler.claimDueSchedules(future);
 
-    assert.strictEqual(first.length, 1);
+    assert.strictEqual(first.length, enabledCount);
     assert.deepStrictEqual(second, []);
   });
 

@@ -31,6 +31,8 @@ Thumbs.db
 test-results/
 playwright-report/
 coverage/
+# Throwaway database the E2E run creates its first admin account in
+apps/web/tests/.e2e-data/
 
 # Temp files
 *.tmp

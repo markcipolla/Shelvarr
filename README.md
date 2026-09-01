@@ -103,6 +103,60 @@ npm run test:e2e
 | `COMICVINE_API_KEY` | - | ComicVine key; normally set in Settings → Comics instead |
 | `COMIC_PATH_MAP` | - | `from:to` prefix remap for a library's recorded paths, used while migrating |
 
+#### Accounts and email
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SHELVARR_AUTH_ENABLED` | true | Set `false` to turn user accounts off entirely and leave the server open |
+| `SHELVARR_ALLOW_SIGNUP` | false | Starting value for self-signup; the toggle in **Settings → Users** wins once an admin has set it |
+| `SHELVARR_URL` | - | Public base URL, used to build sign-in links. Set this if Shelvarr is behind a proxy or reached by hostname |
+| `SHELVARR_LOGIN_LINK_TTL` | 900 | Seconds a sign-in link stays valid |
+| `SHELVARR_SESSION_TTL` | 2592000 | Seconds a browser session lasts (30 days) |
+| `SHELVARR_NATIVE_SESSION_TTL` | 31536000 | Seconds a Stackarr session lasts (1 year) |
+| `SMTP_HOST` | - | Mail server for sign-in links. Without it, links are written to the server log instead |
+| `SMTP_PORT` | 587 | Mail server port |
+| `SMTP_SECURE` | port is 465 | Implicit TLS. Leave unset unless your server disagrees with the default |
+| `SMTP_USER` | - | Username, if the mail server needs one |
+| `SMTP_PASSWORD` | - | Password for `SMTP_USER` |
+| `SMTP_FROM` | Shelvarr &lt;shelvarr@localhost&gt; | Address sign-in emails come from |
+
+## Accounts
+
+Shelvarr requires a sign-in by default. **Existing installs will be locked out
+on first start after upgrading** until an admin account is created — open the
+app and the first-run wizard will take you through it.
+
+If you would rather not have accounts at all — a trusted home network, or a
+reverse proxy that already authenticates — set `SHELVARR_AUTH_ENABLED=false`
+and everything is open again, exactly as it was before.
+
+**No passwords.** Signing in means entering your email and opening the link
+that arrives. Links work once and expire after fifteen minutes.
+
+**First run.** With no accounts on the server, every page redirects to
+`/setup`. That wizard creates the first account, always an admin, and signs you
+in on the spot — so you can get in before SMTP is configured. Once the first
+account exists the wizard is closed for good.
+
+**Adding people.** By default nobody can sign themselves up: an admin invites
+them from **Settings → Users**, which creates the account and emails a link.
+Turn on *Let anyone sign themselves up* there if you would rather any address
+could create its own account.
+
+**Without email.** Sign-in links can only be delivered if `SMTP_HOST` is set.
+Until it is, Shelvarr writes each link to the server log and shows invite links
+in **Settings → Users**, so a mail-less install is still usable — just manual.
+
+**The app.** Stackarr signs in with the same email and link. Because a phone
+cannot open its own email reliably, it shows a short code and waits: open the
+link anywhere — your laptop is fine — check the code in the email matches the
+one on the phone, and the app finishes signing in within a few seconds.
+
+**API access.** The `api_key` setting still works for scripts, sent as
+`X-API-Key` or as the password in basic auth. It grants access but no identity.
+It is unset by default, and unlike before, leaving it unset no longer means the
+API is open.
+
 ## Comics
 
 Shelvarr manages comics itself — it does not need Kapowarr.

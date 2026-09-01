@@ -6,6 +6,7 @@
 import { registerTaskHandler, enqueueTask, type TaskHandler } from './index';
 import { scanLibrary, updateBook, addBook } from '../scanner';
 import { getLibraryById } from '../library';
+import { pruneExpired } from '../auth/sessions';
 import {
   query,
   queryOne,
@@ -1306,6 +1307,16 @@ const comicAdoptHandler: TaskHandler = async (taskId, onProgress, signal) => {
   };
 };
 
+/** Housekeeping for expired sessions and unopened sign-in links. */
+const authPruneHandler: TaskHandler = async (_taskId, onProgress) => {
+  const removed = pruneExpired();
+  onProgress(1, 1);
+  return {
+    message: `Removed ${removed.sessions} expired sessions and ${removed.loginTokens} expired sign-in links`,
+    ...removed,
+  };
+};
+
 /**
  * Register all task handlers
  */
@@ -1339,6 +1350,11 @@ export function registerAllHandlers(): void {
 
   // Komga sync handler - syncs book metadata and cover to Komga
   registerTaskHandler('komga_sync', komgaSyncHandler);
+
+  // Housekeeping: drop timed-out sessions and sign-in links. Sessions are
+  // also swept as they are met, but nothing else ever revisits a link that
+  // was emailed and never opened.
+  registerTaskHandler('auth_prune', authPruneHandler);
 }
 
 export default { registerAllHandlers };

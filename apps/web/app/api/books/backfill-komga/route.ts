@@ -1,11 +1,16 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { query, execute } from '@/lib/db';
 import { komgaClient } from '@/lib/services/komga';
 import path from 'path';
+import { validateApiAuth } from '@shelvarr/services';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  if (!validateApiAuth(request.headers)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   if (!komgaClient.isConfigured()) {
     return NextResponse.json({ error: 'Komga not configured' }, { status: 400 });
   }

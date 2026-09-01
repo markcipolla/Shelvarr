@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { queryOne } from '@/lib/db';
 import { upsertReadingStatus, HardcoverStatusId } from '@/lib/services/metadata/hardcover';
+import { validateApiAuth } from '@shelvarr/services';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,10 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!validateApiAuth(request.headers)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const { id } = await params;
   const bookId = parseInt(id, 10);
 

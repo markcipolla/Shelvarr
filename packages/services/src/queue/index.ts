@@ -10,7 +10,7 @@ const log = createLogger('queue');
 
 export type TaskType = 'scan' | 'metadata' | 'book_metadata' | 'organize' | 'download' | 'author_sync' | 'komga_sync' | 'comic_search' | 'comic_download' | 'comic_refresh' | 'comic_scan'
   | 'comic_rename' | 'comic_update_all' | 'comic_search_all'
-  | 'comic_library_import' | 'comic_adopt';
+  | 'comic_library_import' | 'comic_adopt' | 'auth_prune';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface Task {

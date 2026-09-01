@@ -1,14 +1,19 @@
 import { NextResponse } from 'next/server';
 import '@/lib/config';
 import { getComicVolumeCover } from '@/lib/db';
+import { validateApiAuth } from '@shelvarr/services';
 
 export const dynamic = 'force-dynamic';
 
 /** A volume's cover, fetched from ComicVine when it was added. */
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  if (!validateApiAuth(request.headers)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const { id } = await params;
   const volumeId = parseInt(id, 10);
   if (!Number.isFinite(volumeId)) {

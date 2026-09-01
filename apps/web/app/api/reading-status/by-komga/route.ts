@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { queryOne } from '@/lib/db';
 import { upsertReadingStatus, HardcoverStatusId } from '@/lib/services/metadata/hardcover';
+import { validateApiAuth } from '@shelvarr/services';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +13,10 @@ const STATUS_MAP: Record<string, HardcoverStatusId> = {
 };
 
 export async function POST(request: NextRequest) {
+  if (!validateApiAuth(request.headers)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const body = await request.json() as { komgaBookId?: string; status?: string };
 
   if (!body.komgaBookId) {

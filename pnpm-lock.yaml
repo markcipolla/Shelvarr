@@ -278,10 +278,16 @@ importers:
       node-unrar-js:
         specifier: ^2.0.2
         version: 2.0.2
+      nodemailer:
+        specifier: ^9.1.0
+        version: 9.1.0
     devDependencies:
       '@types/node':
         specifier: ^22.10.2
         version: 22.19.17
+      '@types/nodemailer':
+        specifier: ^8.0.1
+        version: 8.0.1
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -1935,6 +1941,9 @@ packages:
 
   '@types/node@22.19.17':
     resolution: {integrity: sha512-wGdMcf+vPYM6jikpS/qhg6WiqSV/OhG+jeeHT/KlVqxYfD40iYJf9/AE1uQxVWFvU7MipKRkRv8NSHiCGgPr8Q==}
+
+  '@types/nodemailer@8.0.1':
+    resolution: {integrity: sha512-PxpaInm8V1JQDd4j0ds5HfvWQk8JupS1C0Picb96QJsrrRDjBH+DlK7L4ZdNSqNULhiZRQHc40nLVShaGxXAMw==}
 
   '@types/qs@6.15.0':
     resolution: {integrity: sha512-JawvT8iBVWpzTrz3EGw9BTQFg3BQNmwERdKE22vlTxawwtbyUSlMppvZYKLZzB5zgACXdXxbD3m1bXaMqP/9ow==}
@@ -4487,6 +4496,10 @@ packages:
   node-unrar-js@2.0.2:
     resolution: {integrity: sha512-hLNmoJzqaKJnod8yiTVGe9hnlNRHotUi0CreSv/8HtfRi/3JnRC8DvsmKfeGGguRjTEulhZK6zXX5PXoVuDZ2w==}
     engines: {node: '>=10.0.0'}
+
+  nodemailer@9.1.0:
+    resolution: {integrity: sha512-xj1Ri5Sau3qpPffHJwi2bY0oWVVWYq62Ph17l+2v1xXpxjqTls3YPc3L8dub9mcJpxj+1ucNnuYVqLlgh4pmDA==}
+    engines: {node: '>=6.0.0'}
 
   normalize-path@3.0.0:
     resolution: {integrity: sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2Pnb/mD4WYojCRwcwLA==}
@@ -7978,6 +7991,10 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
+  '@types/nodemailer@8.0.1':
+    dependencies:
+      '@types/node': 22.19.17
+
   '@types/qs@6.15.0': {}
 
   '@types/ramda@0.27.66':
@@ -11303,6 +11320,8 @@ snapshots:
   node-releases@2.0.37: {}
 
   node-unrar-js@2.0.2: {}
+
+  nodemailer@9.1.0: {}
 
   normalize-path@3.0.0: {}
 

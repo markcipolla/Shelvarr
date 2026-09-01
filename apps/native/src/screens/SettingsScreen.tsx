@@ -4,6 +4,7 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 import { cleanAllDownloads } from '../services/fileManager';
 import { APP_VERSION, BUILD_VERSION } from '../utils/constants';
 import { testShelvarrConnection } from '../services/api/shelvarr';
+import { useAuthStore } from '../stores/useAuthStore';
 
 export default function SettingsScreen() {
   const autoDelete = useSettingsStore((s) => s.autoDeleteAfterReading);
@@ -13,6 +14,9 @@ export default function SettingsScreen() {
   const loadSettings = useSettingsStore((s) => s.loadSettings);
   const [shelvarrUrlInput, setShelvarrUrlInput] = useState(shelvarrUrl);
   const [testing, setTesting] = useState(false);
+  const authState = useAuthStore((s) => s.state);
+  const account = useAuthStore((s) => s.user);
+  const signOut = useAuthStore((s) => s.signOut);
 
   useEffect(() => {
     loadSettings();
@@ -32,6 +36,13 @@ export default function SettingsScreen() {
     }
     setShelvarrUrl(shelvarrUrlInput);
     Alert.alert('Saved', 'Shelvarr URL updated.');
+  };
+
+  const handleSignOut = () => {
+    Alert.alert('Sign out', 'You will need a new sign-in link to get back in.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign out', style: 'destructive', onPress: () => void signOut() },
+    ]);
   };
 
   const handleClearDownloads = () => {
@@ -72,6 +83,19 @@ export default function SettingsScreen() {
           <Text style={styles.buttonText}>Save</Text>
         )}
       </TouchableOpacity>
+
+      {authState !== 'disabled' && (
+        <>
+          <Text style={styles.sectionTitle}>Account</Text>
+          <View style={styles.aboutRow}>
+            <Text style={styles.label}>Signed in as</Text>
+            <Text style={styles.aboutValue}>{account?.email ?? 'Unknown'}</Text>
+          </View>
+          <TouchableOpacity style={styles.button} onPress={handleSignOut}>
+            <Text style={styles.buttonText}>Sign out</Text>
+          </TouchableOpacity>
+        </>
+      )}
 
       <Text style={styles.sectionTitle}>Reading</Text>
       <View style={styles.row}>

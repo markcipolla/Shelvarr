@@ -4,6 +4,8 @@ import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import * as Font from 'expo-font';
 import RootNavigator from './src/navigation/RootNavigator';
+import LoginScreen from './src/screens/LoginScreen';
+import { useAuthStore } from './src/stores/useAuthStore';
 import { useSettingsStore } from './src/stores/useSettingsStore';
 import { useDownloadStore } from './src/stores/useDownloadStore';
 import { useNextUpStore } from './src/stores/useNextUpStore';
@@ -12,9 +14,14 @@ import { retryOfflineQueue } from './src/services/progressSync';
 
 export default function App() {
   const [fontsReady, setFontsReady] = useState(false);
+  const authState = useAuthStore((s) => s.state);
 
   useEffect(() => {
-    useSettingsStore.getState().loadSettings();
+    // Settings first: the auth check needs the server URL to know where to ask.
+    useSettingsStore
+      .getState()
+      .loadSettings()
+      .then(() => useAuthStore.getState().loadAuth());
     useDownloadStore.getState().loadDownloads();
     useNextUpStore.getState().loadDismissed();
     useComicDownloadStore.getState().loadDownloads();
@@ -29,7 +36,7 @@ export default function App() {
       .catch(() => setFontsReady(true)); // continue without custom fonts
   }, []);
 
-  if (!fontsReady) {
+  if (!fontsReady || authState === 'unknown') {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f1eb' }}>
         <ActivityIndicator size="large" color="#8b5e3c" />
@@ -58,7 +65,7 @@ export default function App() {
       }}
     >
       <StatusBar style="dark" />
-      <RootNavigator />
+      {authState === 'signed-out' ? <LoginScreen /> : <RootNavigator />}
     </NavigationContainer>
   );
 }
