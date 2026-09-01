@@ -8,7 +8,9 @@ import { useSettingsStore } from './src/stores/useSettingsStore';
 import { useDownloadStore } from './src/stores/useDownloadStore';
 import { useNextUpStore } from './src/stores/useNextUpStore';
 import { useComicDownloadStore } from './src/stores/useComicDownloadStore';
+import { useUpdateStore } from './src/stores/useUpdateStore';
 import { retryOfflineQueue } from './src/services/progressSync';
+import UpdateBanner from './src/components/UpdateBanner';
 
 export default function App() {
   const [fontsReady, setFontsReady] = useState(false);
@@ -19,6 +21,10 @@ export default function App() {
     useNextUpStore.getState().loadDismissed();
     useComicDownloadStore.getState().loadDownloads();
     retryOfflineQueue();
+    // Look for a newer release once per cold start. Failures are swallowed by
+    // the store, so this is a no-op when the phone is offline.
+    const updates = useUpdateStore.getState();
+    updates.loadDismissed().then(() => updates.check({ silent: true }));
     Font.loadAsync({
       'Literata-Regular': require('./assets/fonts/Literata-Regular.ttf'),
       'Literata-Bold': require('./assets/fonts/Literata-Bold.ttf'),
@@ -59,6 +65,7 @@ export default function App() {
     >
       <StatusBar style="dark" />
       <RootNavigator />
+      <UpdateBanner />
     </NavigationContainer>
   );
 }

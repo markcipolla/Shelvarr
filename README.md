@@ -164,6 +164,19 @@ confirm the matches on `/comics/import`.
 Shelvarr no longer talks to Kapowarr at all, so once everything is migrated you
 can stop and remove its container.
 
+## Android app
+
+`apps/native` is an Expo app (Stackarr) that reads your Shelvarr library on a
+phone, with offline downloads for books and comics. It is sideloaded rather than
+shipped through the Play Store, so it keeps itself current: on each launch it
+checks the repository's GitHub Releases for a newer version and offers to
+download and install the release APK. **Settings → Updates** has a manual check
+and shows the running version.
+
+Publishing a new version is a version bump plus a `v*` tag — see
+[apps/native/RELEASING.md](./apps/native/RELEASING.md) for the keystore setup
+that in-place updates depend on.
+
 ## Development Status
 
 See [PLAN.md](./PLAN.md) for detailed implementation progress.
