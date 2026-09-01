@@ -224,6 +224,9 @@ export interface DownloadQueueView {
     state: string;
     progress: number;
     size: number | null;
+    attempts: number;
+    /** Fallback links left to try if the current one dies. */
+    alternates: number;
     error: string | null;
     createdAt: string;
   }>;
@@ -271,6 +274,8 @@ export async function getComicDownloadQueue(): Promise<DownloadQueueView> {
       state: download.state,
       progress: download.progress,
       size: download.size,
+      attempts: download.attempts,
+      alternates: download.alternateLinks.length,
       error: download.error,
       createdAt: download.createdAt,
     })),
@@ -325,6 +330,38 @@ export async function cancelComicDownload(
   } else {
     deleteComicDownload(id);
   }
+
+  revalidatePath('/comics/downloads');
+  return { success: true };
+}
+
+/**
+ * Drive a download again from the top: attempts and progress cleared, state
+ * back to queued, and a fresh task started.
+ *
+ * This is how a download that ran out of attempts — a host that kept
+ * rate-limiting us, say — gets another go without searching again.
+ */
+export async function retryComicDownload(
+  id: number
+): Promise<{ success: boolean; error?: string }> {
+  const { getComicDownload, resetComicDownloadForRetry } = await import('@/lib/db');
+  const { queue } = await import('@shelvarr/services');
+  const { revalidatePath } = await import('next/cache');
+
+  const download = getComicDownload(id);
+  if (!download) return { success: false, error: 'Download not found' };
+
+  if (
+    download.state === 'downloading' ||
+    download.state === 'importing' ||
+    download.state === 'queued'
+  ) {
+    return { success: false, error: `Download is already ${download.state}` };
+  }
+
+  resetComicDownloadForRetry(id);
+  queue.enqueueTask('comic_download', { comicDownloadId: id });
 
   revalidatePath('/comics/downloads');
   return { success: true };

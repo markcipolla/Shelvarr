@@ -14,6 +14,7 @@ import type {
   BlocklistReason,
   ComicBlocklistEntry,
   ComicDownload,
+  ComicDownloadLink,
   ComicDownloadState,
   DownloadHost,
   IssueNumber,
@@ -234,6 +235,32 @@ function runMigrations(database: Database.Database): void {
     console.log(`Running migration: adding ${name} column to comics`);
     database.exec(`ALTER TABLE comics ADD COLUMN ${name} ${definition}`);
   }
+
+  // Download retries: alternate links to fall back to, and the attempt count
+  // that bounds how often a rate-limited download is re-tried.
+  const comicDownloadsInfo = database
+    .prepare('PRAGMA table_info(comic_downloads)')
+    .all() as Array<{ name: string }>;
+  const comicDownloadColumns: Array<[string, string]> = [
+    ['alternate_links', 'TEXT'],
+    ['attempts', 'INTEGER NOT NULL DEFAULT 0'],
+    // No DEFAULT: SQLite rejects a non-constant one in ALTER TABLE, so
+    // existing rows are backfilled below instead.
+    ['heartbeat_at', 'TEXT'],
+  ];
+  for (const [name, definition] of comicDownloadColumns) {
+    if (comicDownloadsInfo.some((col) => col.name === name)) continue;
+    console.log(`Running migration: adding ${name} column to comic_downloads`);
+    database.exec(`ALTER TABLE comic_downloads ADD COLUMN ${name} ${definition}`);
+    if (name === 'heartbeat_at') {
+      // Anything already in the queue counts as alive from now, so the first
+      // resume sweep doesn't restart downloads that were only just running.
+      database.exec('UPDATE comic_downloads SET heartbeat_at = CURRENT_TIMESTAMP');
+    }
+  }
+  database.exec(
+    'CREATE INDEX IF NOT EXISTS idx_comic_downloads_heartbeat ON comic_downloads(state, heartbeat_at)'
+  );
 
   const comicIssuesInfo = database.prepare('PRAGMA table_info(comic_issues)').all() as Array<{ name: string }>;
   if (!comicIssuesInfo.some((col) => col.name === 'comicvine_volume_id')) {
@@ -1471,11 +1498,14 @@ interface ComicDownloadRow {
   web_title: string | null;
   web_sub_title: string | null;
   filename_body: string | null;
+  alternate_links: string | null;
   state: string;
   progress: number;
   size: number | null;
+  attempts: number;
   file_path: string | null;
   error: string | null;
+  heartbeat_at: string | null;
   created_at: string;
   completed_at: string | null;
 }
@@ -1490,6 +1520,16 @@ function rowToComicDownload(row: ComicDownloadRow): ComicDownload {
     }
   }
 
+  let alternateLinks: ComicDownloadLink[] = [];
+  if (row.alternate_links) {
+    try {
+      const parsed = JSON.parse(row.alternate_links) as ComicDownloadLink[];
+      if (Array.isArray(parsed)) alternateLinks = parsed;
+    } catch {
+      alternateLinks = [];
+    }
+  }
+
   return {
     id: row.id,
     volumeId: row.volume_id,
@@ -1501,10 +1541,13 @@ function rowToComicDownload(row: ComicDownloadRow): ComicDownload {
     webTitle: row.web_title,
     webSubTitle: row.web_sub_title,
     filenameBody: row.filename_body,
+    alternateLinks,
     state: row.state as ComicDownloadState,
     progress: row.progress,
     size: row.size,
+    attempts: row.attempts ?? 0,
     error: row.error,
+    heartbeatAt: row.heartbeat_at,
     createdAt: row.created_at,
     completedAt: row.completed_at,
   };
@@ -1520,6 +1563,8 @@ export interface AddComicDownloadInput {
   webTitle?: string | null;
   webSubTitle?: string | null;
   filenameBody?: string | null;
+  /** Fallbacks for the same issues, tried in order if the first link dies. */
+  alternateLinks?: ComicDownloadLink[];
 }
 
 /** Queue a download. Returns the created row. */
@@ -1527,8 +1572,8 @@ export function addComicDownload(input: AddComicDownloadInput): ComicDownload {
   const row = insertReturning<ComicDownloadRow>(
     `INSERT INTO comic_downloads
        (volume_id, issue_id, covered_issues, host, download_link,
-        web_link, web_title, web_sub_title, filename_body, state)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued')
+        web_link, web_title, web_sub_title, filename_body, alternate_links, state)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued')
      RETURNING *`,
     [
       input.volumeId,
@@ -1542,6 +1587,7 @@ export function addComicDownload(input: AddComicDownloadInput): ComicDownload {
       input.webTitle ?? null,
       input.webSubTitle ?? null,
       input.filenameBody ?? null,
+      input.alternateLinks?.length ? JSON.stringify(input.alternateLinks) : null,
     ]
   );
   if (!row) throw new Error('Failed to create comic download');
@@ -1586,11 +1632,12 @@ export function isComicDownloadActive(downloadLink: string): boolean {
 }
 
 export function updateComicDownloadProgress(id: number, progress: number, size: number | null): void {
-  execute('UPDATE comic_downloads SET progress = ?, size = COALESCE(?, size) WHERE id = ?', [
-    progress,
-    size,
-    id,
-  ]);
+  execute(
+    `UPDATE comic_downloads
+        SET progress = ?, size = COALESCE(?, size), heartbeat_at = CURRENT_TIMESTAMP
+      WHERE id = ?`,
+    [progress, size, id]
+  );
 }
 
 export function setComicDownloadState(
@@ -1604,9 +1651,115 @@ export function setComicDownloadState(
         SET state = ?,
             error = COALESCE(?, error),
             file_path = COALESCE(?, file_path),
+            heartbeat_at = CURRENT_TIMESTAMP,
             completed_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE completed_at END
       WHERE id = ?`,
     [state, extra.error ?? null, extra.filePath ?? null, terminal ? 1 : 0, id]
+  );
+}
+
+/**
+ * Mark a download as being tried, counting the attempt.
+ *
+ * The count is what stops a host that keeps rate-limiting us from being
+ * retried forever; it is returned so the caller can act on the limit.
+ */
+export function startComicDownloadAttempt(id: number): number {
+  execute(
+    `UPDATE comic_downloads
+        SET state = 'downloading', attempts = attempts + 1, error = NULL,
+            heartbeat_at = CURRENT_TIMESTAMP
+      WHERE id = ?`,
+    [id]
+  );
+  const row = queryOne<{ attempts: number }>(
+    'SELECT attempts FROM comic_downloads WHERE id = ?',
+    [id]
+  );
+  return row?.attempts ?? 0;
+}
+
+/**
+ * Put a download back in the queue rather than failing it — for a host that is
+ * only temporarily refusing us. Any partial file is left alone so the retry
+ * resumes rather than starting over.
+ */
+export function deferComicDownload(id: number, error: string): void {
+  execute(
+    `UPDATE comic_downloads
+        SET state = 'queued', error = ?, completed_at = NULL,
+            heartbeat_at = CURRENT_TIMESTAMP
+      WHERE id = ?`,
+    [error, id]
+  );
+}
+
+/**
+ * Point a download at one of its alternates, dropping the links tried so far.
+ * Progress resets because the new link is a different file on disk.
+ */
+export function switchComicDownloadLink(
+  id: number,
+  next: ComicDownloadLink,
+  remaining: ComicDownloadLink[]
+): void {
+  execute(
+    `UPDATE comic_downloads
+        SET host = ?, download_link = ?, alternate_links = ?, progress = 0, size = NULL,
+            heartbeat_at = CURRENT_TIMESTAMP
+      WHERE id = ?`,
+    [next.host, next.link, remaining.length ? JSON.stringify(remaining) : null, id]
+  );
+}
+
+/**
+ * Claim downloads that were left mid-flight when a process stopped.
+ *
+ * A live download stamps `heartbeat_at` as it goes — on every state change and
+ * every progress checkpoint — so anything non-terminal whose heartbeat has
+ * gone cold has nobody driving it. The claim is the same UPDATE that finds
+ * them, so two server processes sweeping at once cannot both take a row: the
+ * loser's subquery no longer matches once the winner's stamp lands.
+ *
+ * `staleMinutes` must stay above the longest rate-limit backoff, or a download
+ * quietly waiting out a host would be claimed from under the process that is
+ * already going to retry it.
+ */
+export function claimStalledComicDownloads(
+  staleMinutes: number,
+  limit = 25
+): ComicDownload[] {
+  const rows = getDb()
+    .prepare(
+      `UPDATE comic_downloads
+          SET state = 'queued', heartbeat_at = CURRENT_TIMESTAMP
+        WHERE id IN (
+          SELECT id FROM comic_downloads
+           WHERE state IN ('queued', 'downloading', 'importing')
+             AND (heartbeat_at IS NULL
+                  OR heartbeat_at <= datetime('now', ?))
+           ORDER BY id ASC
+           LIMIT ?
+        )
+        RETURNING *`
+    )
+    .all(`-${staleMinutes} minutes`, limit) as ComicDownloadRow[];
+
+  return rows.map(rowToComicDownload);
+}
+
+/**
+ * Put a download back to the start: state, progress and attempts cleared, so
+ * it can be driven again from scratch. Alternates already tried are gone, so
+ * this retries whatever link the row currently points at.
+ */
+export function resetComicDownloadForRetry(id: number): void {
+  execute(
+    `UPDATE comic_downloads
+        SET state = 'queued', progress = 0, attempts = 0, error = NULL,
+            file_path = NULL, completed_at = NULL, heartbeat_at = CURRENT_TIMESTAMP
+      WHERE id = ?`,
+    [id]
   );
 }
 

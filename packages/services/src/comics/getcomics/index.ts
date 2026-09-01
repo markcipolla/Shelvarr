@@ -18,6 +18,7 @@ import {
 } from '@shelvarr/db';
 import type {
   ComicDownload,
+  ComicDownloadLink,
   DownloadGroup,
   DownloadHost,
   GetComicsPost,
@@ -148,6 +149,13 @@ interface WorkingLink {
   host: DownloadHost;
   link: string;
   group: DownloadGroup;
+  /**
+   * The group's remaining candidates, in host-preference order. They are not
+   * probed — that would cost a request each for links most downloads never
+   * need — but they are recorded so the download can fall back if this one
+   * dies before the file lands.
+   */
+  alternates: ComicDownloadLink[];
 }
 
 /**
@@ -159,33 +167,38 @@ async function findWorkingLink(
   context: { volumeId: number; issueId: number | null; webLink: string; webTitle: string | null },
   signal?: AbortSignal
 ): Promise<WorkingLink | null> {
+  const candidates: ComicDownloadLink[] = [];
   for (const [host, links] of Object.entries(group.links) as Array<[DownloadHost, string[]]>) {
     if (!isResolvable(host)) continue;
+    for (const link of links) candidates.push({ host, link });
+  }
 
-    for (const link of links) {
-      if (comicBlocklistContains(link)) continue;
+  for (const [index, { host, link }] of candidates.entries()) {
+    if (comicBlocklistContains(link)) continue;
 
-      try {
-        await resolveDownload(host, link, signal);
-        return { host, link, group };
-      } catch (error) {
-        if (error instanceof LinkBrokenError) {
-          log.info('Blocklisting broken link', { link, reason: error.message });
-          addToComicBlocklist({
-            downloadLink: link,
-            reason: 'link-broken',
-            volumeId: context.volumeId,
-            issueId: context.issueId,
-            webLink: context.webLink,
-            webTitle: context.webTitle,
-            webSubTitle: group.subTitle,
-            host,
-          });
-          continue;
-        }
-        // Rate limits and transient failures shouldn't poison the link.
-        log.warn('Link resolution failed', { link, error });
+    try {
+      await resolveDownload(host, link, signal);
+      const alternates = candidates
+        .slice(index + 1)
+        .filter((candidate) => !comicBlocklistContains(candidate.link));
+      return { host, link, group, alternates };
+    } catch (error) {
+      if (error instanceof LinkBrokenError) {
+        log.info('Blocklisting broken link', { link, reason: error.message });
+        addToComicBlocklist({
+          downloadLink: link,
+          reason: 'link-broken',
+          volumeId: context.volumeId,
+          issueId: context.issueId,
+          webLink: context.webLink,
+          webTitle: context.webTitle,
+          webSubTitle: group.subTitle,
+          host,
+        });
+        continue;
       }
+      // Rate limits and transient failures shouldn't poison the link.
+      log.warn('Link resolution failed', { link, error });
     }
   }
 
@@ -258,6 +271,7 @@ export async function createDownloadsFromPost(
           coveredIssues: entry.group.info.issueNumber,
           host: entry.host,
           downloadLink: entry.link,
+          alternateLinks: entry.alternates,
           webLink: post.link,
           webTitle: post.title,
           webSubTitle: entry.group.subTitle,

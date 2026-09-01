@@ -342,6 +342,9 @@ describe('Scheduler', () => {
     assert.strictEqual(scheduler.getSchedule('comic_update_all')!.enabled, true);
     // Downloading things unprompted should be opt-in.
     assert.strictEqual(scheduler.getSchedule('comic_search_all')!.enabled, false);
+    // Finishing a download that was already asked for is not unprompted, so
+    // the resume sweep runs by default.
+    assert.strictEqual(scheduler.getSchedule('comic_resume')!.enabled, true);
   });
 
   it('does not overwrite settings the user has changed', () => {
@@ -369,10 +372,10 @@ describe('Scheduler', () => {
     const future = Math.floor(Date.now() / 1000) + 25 * 3600;
     const claimed = scheduler.claimDueSchedules(future);
 
-    // Only the enabled job comes back.
+    // Only the enabled jobs come back; the download sweep is off by default.
     assert.deepStrictEqual(
-      claimed.map((schedule) => schedule.name),
-      ['comic_update_all']
+      claimed.map((schedule) => schedule.name).sort(),
+      ['comic_resume', 'comic_update_all']
     );
   });
 
@@ -385,7 +388,7 @@ describe('Scheduler', () => {
     // claim moved next_run forward in the same statement.
     const second = scheduler.claimDueSchedules(future);
 
-    assert.strictEqual(first.length, 1);
+    assert.ok(first.length > 0);
     assert.deepStrictEqual(second, []);
   });
 

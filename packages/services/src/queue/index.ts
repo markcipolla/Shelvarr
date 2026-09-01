@@ -10,7 +10,7 @@ const log = createLogger('queue');
 
 export type TaskType = 'scan' | 'metadata' | 'book_metadata' | 'organize' | 'download' | 'author_sync' | 'komga_sync' | 'comic_search' | 'comic_download' | 'comic_refresh' | 'comic_scan'
   | 'comic_rename' | 'comic_update_all' | 'comic_search_all'
-  | 'comic_library_import' | 'comic_adopt';
+  | 'comic_library_import' | 'comic_adopt' | 'comic_resume';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface Task {
@@ -67,57 +67,116 @@ function rowToTask(row: TaskRow): Task {
 const runningTasks = new Map<number, { cancel: () => void }>();
 
 // Rate limit retry queue - processes one task at a time with delays
-const retryQueue: number[] = [];
+interface RetryEntry {
+  taskId: number;
+  /** Epoch ms before which this task should not be retried. */
+  notBefore: number;
+}
+
+const retryQueue: RetryEntry[] = [];
 let retryProcessorRunning = false;
 const RETRY_DELAY_MS = 10000; // 10 seconds between retries
+
+/**
+ * A rate limit the handler wants waited out for a specific length of time.
+ *
+ * Handlers that know what they hit — a host's download limit, say, which is
+ * measured in minutes rather than seconds — throw this instead of a plain
+ * error so the retry is spaced sensibly rather than hammering the host.
+ */
+export class RateLimitedError extends Error {
+  constructor(message: string, readonly retryAfterMs: number = RETRY_DELAY_MS) {
+    super(message);
+    this.name = 'RateLimitedError';
+  }
+}
+
+/**
+ * Whether an error means "come back later" rather than "this failed".
+ *
+ * Matched by name rather than by type so the queue doesn't have to import the
+ * download clients that raise them: `DownloadLimitReachedError` says only
+ * "Download limit reached for <host>", with no status code to sniff for.
+ */
+function rateLimitDelay(error: unknown, message: string): number | null {
+  if (error instanceof RateLimitedError) return error.retryAfterMs;
+  if (error instanceof Error && error.name === 'DownloadLimitReachedError') {
+    return RETRY_DELAY_MS;
+  }
+  return message.includes('429') ? RETRY_DELAY_MS : null;
+}
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise(resolve => {
+    const timer = setTimeout(resolve, ms);
+    // A retry that is minutes away shouldn't be the reason the process stays
+    // alive; it still fires for as long as the server is running. Node hands
+    // back a Timeout object here; the DOM typings say number, hence the cast.
+    (timer as unknown as { unref?: () => void }).unref?.();
+  });
 
 async function processRetryQueue(): Promise<void> {
   if (retryProcessorRunning) return;
   retryProcessorRunning = true;
 
   while (retryQueue.length > 0) {
-    const taskId = retryQueue.shift();
-    if (!taskId) continue;
+    // Take whichever task is due soonest, waiting for it if it isn't due yet.
+    retryQueue.sort((a, b) => a.notBefore - b.notBefore);
+    const entry = retryQueue.shift();
+    if (!entry) continue;
+
+    const wait = entry.notBefore - Date.now();
+    if (wait > 0) {
+      log.info('Waiting before retry', { taskId: entry.taskId, delayMs: wait });
+      await sleep(wait);
+    }
 
     // Check if task still exists and is pending
-    const task = getTask(taskId);
+    const task = getTask(entry.taskId);
     if (!task || task.status !== 'pending') {
-      log.info('Skipping retry - task no longer pending', { taskId, status: task?.status });
+      log.info('Skipping retry - task no longer pending', {
+        taskId: entry.taskId,
+        status: task?.status,
+      });
       continue;
     }
 
-    log.info('Retrying rate-limited task', { taskId, queueLength: retryQueue.length });
+    log.info('Retrying rate-limited task', {
+      taskId: entry.taskId,
+      queueLength: retryQueue.length,
+    });
 
     try {
-      await runTask(taskId);
+      await runTask(entry.taskId);
     } catch (err) {
-      log.error('Retry failed', { taskId, error: err });
+      log.error('Retry failed', { taskId: entry.taskId, error: err });
     }
 
     // Wait before processing next task (even if successful, to avoid rate limits)
     if (retryQueue.length > 0) {
       log.info('Waiting before next retry', { delayMs: RETRY_DELAY_MS, remaining: retryQueue.length });
-      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+      await sleep(RETRY_DELAY_MS);
     }
   }
 
   retryProcessorRunning = false;
 }
 
-function scheduleRetry(taskId: number): void {
-  if (!retryQueue.includes(taskId)) {
-    retryQueue.push(taskId);
-    log.info('Task added to retry queue', { taskId, queueLength: retryQueue.length });
+function scheduleRetry(taskId: number, delayMs: number = RETRY_DELAY_MS): void {
+  const existing = retryQueue.find(entry => entry.taskId === taskId);
+  if (existing) {
+    existing.notBefore = Date.now() + delayMs;
+  } else {
+    retryQueue.push({ taskId, notBefore: Date.now() + delayMs });
+    log.info('Task added to retry queue', { taskId, delayMs, queueLength: retryQueue.length });
   }
 
-  // Start processor after initial delay if not running
+  // Start processor if not running; it waits for the entry to come due itself.
   if (!retryProcessorRunning) {
-    setTimeout(() => {
-      processRetryQueue().catch(err => {
-        log.error('Retry processor error', { error: err });
-        retryProcessorRunning = false;
-      });
-    }, RETRY_DELAY_MS);
+    processRetryQueue().catch(err => {
+      log.error('Retry processor error', { error: err });
+      retryProcessorRunning = false;
+    });
   }
 }
 
@@ -364,10 +423,11 @@ export async function runTask(taskId: number): Promise<void> {
       );
     } else {
       const message = error instanceof Error ? error.message : 'Unknown error';
+      const retryAfterMs = rateLimitDelay(error, message);
 
       // Check if it's a rate limit error - add to retry queue
-      if (message.includes('429')) {
-        log.info('Rate limited, adding to retry queue', { taskId, type: task.type });
+      if (retryAfterMs !== null) {
+        log.info('Rate limited, adding to retry queue', { taskId, type: task.type, retryAfterMs });
 
         // Update task to pending with a note about queue position
         const queuePosition = retryQueue.length + 1;
@@ -378,7 +438,7 @@ export async function runTask(taskId: number): Promise<void> {
         runningTasks.delete(taskId);
 
         // Add to serial retry queue
-        scheduleRetry(taskId);
+        scheduleRetry(taskId, retryAfterMs);
       } else {
         log.error('Task failed', { taskId, type: task.type, error: message });
         failTask(taskId, message);

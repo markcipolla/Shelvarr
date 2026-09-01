@@ -333,11 +333,17 @@ CREATE TABLE IF NOT EXISTS comic_downloads (
   web_title TEXT,
   web_sub_title TEXT,
   filename_body TEXT,  -- what the file is renamed to on import
+  alternate_links TEXT, -- JSON: [{host, link}] covering the same issues
   state TEXT NOT NULL DEFAULT 'queued', -- queued|downloading|importing|completed|failed|cancelled
   progress INTEGER NOT NULL DEFAULT 0,  -- bytes downloaded
   size INTEGER,                          -- total bytes, when the server says
+  attempts INTEGER NOT NULL DEFAULT 0,   -- how many times it has been tried
   file_path TEXT,                        -- final resting place after import
   error TEXT,
+  -- Last sign of life: bumped on progress and on every state change. A
+  -- non-terminal download whose heartbeat has gone cold was orphaned by a
+  -- process that stopped, and is picked back up by the resume sweep.
+  heartbeat_at TEXT DEFAULT CURRENT_TIMESTAMP,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   completed_at TEXT
 );
@@ -373,6 +379,9 @@ CREATE TABLE IF NOT EXISTS comic_blocklist (
 );
 
 CREATE INDEX IF NOT EXISTS idx_comic_downloads_state ON comic_downloads(state);
+-- idx_comic_downloads_heartbeat is created by the migration step instead: this
+-- file is replayed over existing databases, where the column it indexes does
+-- not exist until that step has run.
 CREATE INDEX IF NOT EXISTS idx_comic_downloads_volume ON comic_downloads(volume_id);
 CREATE INDEX IF NOT EXISTS idx_comic_download_history_volume ON comic_download_history(volume_id);
 CREATE INDEX IF NOT EXISTS idx_comic_blocklist_link ON comic_blocklist(download_link);
