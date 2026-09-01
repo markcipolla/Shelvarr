@@ -124,6 +124,16 @@ template, and land in the volume's folder. Supported hosts are GetComics' own
 servers and Pixeldrain; DataNodes, VikingFile, TeraBox, Mega and MediaFire are
 recognised and shown but not fetched — see [NOTICE.md](./NOTICE.md).
 
+**When a download goes wrong.** The article's other links for the same issues
+are recorded alongside the one being used, so a link that dies between search
+and download falls through to the next mirror (and the dead one is
+blocklisted). A host that rate-limits us is not treated as a failure at all:
+the download goes back in the queue with its partial file intact and is retried
+after a backoff, up to five attempts, resuming rather than starting over. Only
+once those are spent does it fail — which is what lets the next search pick a
+different release. Anything stopped can be started again with **Retry** on
+`/comics/downloads`.
+
 **Keeping it tidy.** Per volume: refresh metadata from ComicVine, rescan files,
 and preview-then-apply a rename to the naming template. Library-wide:
 `POST /api/comics/tasks` with `updateAll` or `searchAll`.

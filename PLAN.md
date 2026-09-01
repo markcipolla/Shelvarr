@@ -490,6 +490,23 @@ derived from [Kapowarr](https://github.com/Casvt/Kapowarr) — see NOTICE.md.
       issue-id preservation, files never moved) and the scheduler (atomic
       claiming, interval handling, defaults)
 
+- [x] 9.32 Downloads survive a dead link: the group's remaining mirrors are
+      stored on the `comic_downloads` row when it is queued, and the download
+      falls through to them (blocklisting each dead one) before failing
+- [x] 9.33 Rate limits are waited out rather than treated as failures.
+      `DownloadLimitReachedError` was raised by the download clients but caught
+      nowhere, so a 429 mid-stream permanently failed the download and wrote a
+      bogus failure history row. It now defers the download — state back to
+      `queued`, partial file kept for resume — and the task is retried with a
+      per-attempt backoff, giving up after 5 attempts so the next auto-search
+      can try a different release. The queue's retry path grew a typed
+      `RateLimitedError` with a per-task delay; it previously only recognised a
+      rate limit by looking for "429" in the message, which never matched
+      these.
+- [x] 9.34 Retry action on the download queue (`POST /api/comics/downloads/:id`
+      and a button on `/comics/downloads`) to re-drive a spent or failed
+      download without searching again
+
 - [x] 9.31 Fixed `npm run build`: `lib/actions/authors.ts` re-exported
       bindings from a `'use server'` module, which Next rejects — it may only
       export async functions. Replaced with explicit async wrappers.

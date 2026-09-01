@@ -116,14 +116,27 @@ export interface ComicDownload {
   webSubTitle: string | null;
   /** Filename body the file will be renamed to on import. */
   filenameBody: string | null;
+  /**
+   * Other links on the article that cover the same issues, in host-preference
+   * order, tried in turn if `downloadLink` dies before the file lands.
+   */
+  alternateLinks: ComicDownloadLink[];
   state: ComicDownloadState;
   /** Bytes downloaded so far. */
   progress: number;
   /** Total bytes, or null if the server didn't say. */
   size: number | null;
+  /** How many times this download has been attempted. */
+  attempts: number;
   error: string | null;
   createdAt: string;
   completedAt: string | null;
+}
+
+/** One candidate link for a download, with the host it came from. */
+export interface ComicDownloadLink {
+  host: DownloadHost;
+  link: string;
 }
 
 /** Why a link was blocklisted. Mirrors Kapowarr's `BlocklistReason`. */

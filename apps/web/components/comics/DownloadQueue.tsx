@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   cancelComicDownload,
+  retryComicDownload,
   unblockComicLink,
   type DownloadQueueView,
 } from '@/lib/actions/comics';
@@ -42,6 +43,13 @@ export function DownloadQueue({ data }: { data: DownloadQueueView }) {
   const handleCancel = async (id: number) => {
     setBusy(id);
     await cancelComicDownload(id);
+    router.refresh();
+    setBusy(null);
+  };
+
+  const handleRetry = async (id: number) => {
+    setBusy(id);
+    await retryComicDownload(id);
     router.refresh();
     setBusy(null);
   };
@@ -95,7 +103,13 @@ export function DownloadQueue({ data }: { data: DownloadQueueView }) {
                     {download.host}
                     {progressLabel(download.progress, download.size) &&
                       ` · ${progressLabel(download.progress, download.size)}`}
+                    {download.attempts > 1 && ` · attempt ${download.attempts}`}
+                    {download.alternates > 0 &&
+                      ` · ${download.alternates} fallback${download.alternates === 1 ? '' : 's'}`}
                   </p>
+                  {download.state === 'queued' && download.error && (
+                    <p className="text-xs text-amber-400 mt-1 truncate">{download.error}</p>
+                  )}
                   {download.size ? (
                     <div className="mt-2 h-1 bg-shelvarr-bg rounded overflow-hidden">
                       <div
@@ -148,14 +162,26 @@ export function DownloadQueue({ data }: { data: DownloadQueueView }) {
                   )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleCancel(download.id)}
-                  disabled={busy === download.id}
-                  className="text-sm text-shelvarr-text-muted hover:text-white disabled:opacity-40"
-                >
-                  Clear
-                </button>
+                <div className="flex items-center gap-3">
+                  {(download.state === 'failed' || download.state === 'cancelled') && (
+                    <button
+                      type="button"
+                      onClick={() => handleRetry(download.id)}
+                      disabled={busy === download.id}
+                      className="text-sm text-blue-400 hover:text-blue-300 disabled:opacity-40"
+                    >
+                      Retry
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleCancel(download.id)}
+                    disabled={busy === download.id}
+                    className="text-sm text-shelvarr-text-muted hover:text-white disabled:opacity-40"
+                  >
+                    Clear
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
