@@ -2,6 +2,7 @@ const mockGet = jest.fn();
 const mockUpsertVolumes = jest.fn<Promise<void>, [unknown]>();
 const mockUpsertDetail = jest.fn<Promise<void>, [unknown]>();
 const mockGetCachedComics = jest.fn();
+const mockSearchCachedComics = jest.fn();
 const mockGetCachedDetail = jest.fn();
 
 jest.mock('../../../src/services/api/client', () => ({
@@ -12,6 +13,7 @@ jest.mock('../../../src/services/db/comics', () => ({
   upsertComicVolumes: (...args: unknown[]) => mockUpsertVolumes(args[0]),
   upsertComicDetail: (...args: unknown[]) => mockUpsertDetail(args[0]),
   getCachedComics: () => mockGetCachedComics(),
+  searchCachedComics: (...args: unknown[]) => mockSearchCachedComics(args[0]),
   getCachedComicDetail: () => mockGetCachedDetail(),
 }));
 
@@ -37,6 +39,7 @@ beforeEach(() => {
   mockUpsertVolumes.mockResolvedValue(undefined);
   mockUpsertDetail.mockResolvedValue(undefined);
   mockGetCachedComics.mockResolvedValue([]);
+  mockSearchCachedComics.mockResolvedValue([]);
   mockGetCachedDetail.mockResolvedValue(null);
 });
 
@@ -66,6 +69,7 @@ describe('fetchRecentComics', () => {
   it('rethrows when no cache is available on error', async () => {
     mockGet.mockRejectedValue(new Error('network'));
     mockGetCachedComics.mockResolvedValue([]);
+  mockSearchCachedComics.mockResolvedValue([]);
 
     await expect(fetchRecentComics(5)).rejects.toThrow('network');
   });
@@ -117,6 +121,27 @@ describe('fetchComics', () => {
     mockGet.mockResolvedValue({ data: { volumes: [] } });
     await fetchComics();
     expect(mockUpsertVolumes).not.toHaveBeenCalled();
+  });
+
+  it('searches the cache rather than returning everything when offline', async () => {
+    const matches = [{ id: 7, title: 'Saga' }];
+    mockSearchCachedComics.mockResolvedValue(matches);
+    mockGetCachedComics.mockResolvedValue([{ id: 7 }, { id: 8 }, { id: 9 }]);
+    mockGet.mockRejectedValue(new Error('Network Error'));
+
+    const result = await fetchComics('saga');
+
+    expect(mockSearchCachedComics).toHaveBeenCalledWith('saga');
+    expect(mockGetCachedComics).not.toHaveBeenCalled();
+    expect(result.volumes).toEqual(matches);
+    expect(result.cached).toBe(true);
+  });
+
+  it('rethrows when an offline search matches nothing cached', async () => {
+    mockSearchCachedComics.mockResolvedValue([]);
+    mockGet.mockRejectedValue(new Error('Network Error'));
+
+    await expect(fetchComics('nothing')).rejects.toThrow('Network Error');
   });
 
   it('falls back to cached volumes on network error', async () => {

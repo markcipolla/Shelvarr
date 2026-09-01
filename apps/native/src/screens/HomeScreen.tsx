@@ -30,6 +30,7 @@ import { useColumns } from '../hooks/useColumns';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useDownloadStore } from '../stores/useDownloadStore';
 import { useNextUpStore } from '../stores/useNextUpStore';
+import { searchDownloadedBooks } from '../services/offlineLibrary';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -141,17 +142,27 @@ export default function HomeScreen({ navigation }: Props) {
     setSearching(true);
     try {
       if (page === 0) {
-        // Books and comics come from different sources; fetch both. A comic
-        // failure must not break book search.
+        // Books and comics come from different sources; fetch both. Neither
+        // failure may break the other half of the search.
         const [bookRes, comicRes] = await Promise.all([
-          searchBooks(query, 0),
+          searchBooks(query, 0).catch((err) => {
+            console.error('Book search failed:', err);
+            return null;
+          }),
           fetchComics(query).catch((err) => {
             console.error('Comic search failed:', err);
             return null;
           }),
         ]);
-        setSearchResults(bookRes.content);
-        setSearchHasMore(!bookRes.last);
+        if (bookRes) {
+          setSearchResults(bookRes.content);
+          setSearchHasMore(!bookRes.last);
+        } else {
+          // Offline: search the books whose files are on this device. There
+          // are no further pages to ask the server for.
+          setSearchResults(searchDownloadedBooks(useDownloadStore.getState().downloads, query));
+          setSearchHasMore(false);
+        }
         setSearchPage(0);
         setComicSearchResults(comicRes?.volumes ?? []);
       } else {

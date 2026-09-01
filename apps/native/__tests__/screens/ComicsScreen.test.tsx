@@ -5,6 +5,7 @@ import { fetchComics } from '../../src/services/api/comics';
 import { getCachedComics, searchCachedComics } from '../../src/services/db/comics';
 import { useColumns } from '../../src/hooks/useColumns';
 import { useSettingsStore } from '../../src/stores/useSettingsStore';
+import { useComicDownloadStore } from '../../src/stores/useComicDownloadStore';
 
 jest.mock('../../src/services/api/client', () => ({
   getApiClient: jest.fn(),
@@ -17,6 +18,9 @@ jest.mock('../../src/services/db/comics', () => ({
 }));
 jest.mock('../../src/hooks/useColumns');
 jest.mock('../../src/stores/useSettingsStore');
+jest.mock('../../src/stores/useComicDownloadStore', () => ({
+  useComicDownloadStore: { getState: jest.fn(() => ({ downloads: {} })) },
+}));
 jest.mock('../../src/components/ComicGridSkeleton', () => {
   const { View } = require('react-native');
   return function MockSkeleton() {
@@ -44,6 +48,20 @@ const mockGetCachedComics = getCachedComics as jest.Mock;
 const mockSearchCachedComics = searchCachedComics as jest.Mock;
 const mockUseColumns = useColumns as jest.Mock;
 const mockUseSettingsStore = useSettingsStore as unknown as jest.Mock;
+const mockComicDownloadState = useComicDownloadStore.getState as unknown as jest.Mock;
+
+const makeComicDownload = (issueId: number, volumeId: number, volumeTitle: string) => ({
+  issueId,
+  volumeId,
+  kind: 'pdf' as const,
+  filePath: `file:///${issueId}.pdf`,
+  downloadedAt: issueId,
+  volumeTitle,
+});
+
+function setComicDownloads(downloads: Record<number, unknown>) {
+  mockComicDownloadState.mockReturnValue({ downloads });
+}
 
 const mockNavigation = { navigate: jest.fn() } as any;
 const mockRoute = { params: {} } as any;
@@ -76,6 +94,7 @@ describe('ComicsScreen', () => {
     mockUseSettingsStore.mockImplementation((selector: any) =>
       selector({ shelvarrUrl: 'http://shelvarr:3000' })
     );
+    setComicDownloads({});
   });
 
   it('shows "no server configured" message when shelvarrUrl is empty', () => {
@@ -186,6 +205,36 @@ describe('ComicsScreen', () => {
       expect(getByText('No comics found.')).toBeTruthy();
     });
   });
+
+  it('lists volumes with downloaded issues that the cache is missing', async () => {
+    // A cached response means the server was unreachable.
+    mockFetchComics.mockResolvedValue({
+      volumes: [makeVolume(1, { title: 'Cached Batman' })],
+      cached: true,
+    });
+    setComicDownloads({ 5: makeComicDownload(5, 99, 'Downloaded Saga') });
+
+    const { getByText } = render(<ComicsScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => {
+      expect(getByText('Cached Batman')).toBeTruthy();
+      expect(getByText('Downloaded Saga')).toBeTruthy();
+    });
+  });
+
+  it('shows downloaded volumes when nothing is cached and the server is unreachable', async () => {
+    mockFetchComics.mockRejectedValue(new Error('offline'));
+    setComicDownloads({ 5: makeComicDownload(5, 99, 'Downloaded Saga') });
+
+    const { getByText, queryByText } = render(
+      <ComicsScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    await waitFor(() => {
+      expect(getByText('Downloaded Saga')).toBeTruthy();
+    });
+    expect(queryByText('offline')).toBeNull();
+  });
 });
 
 describe('ComicsScreen search', () => {
@@ -194,6 +243,7 @@ describe('ComicsScreen search', () => {
     jest.useFakeTimers();
     mockGetCachedComics.mockResolvedValue([]);
     mockSearchCachedComics.mockResolvedValue([]);
+    setComicDownloads({});
     mockUseColumns.mockReturnValue(2);
     mockUseSettingsStore.mockImplementation((selector: any) =>
       selector({ shelvarrUrl: 'http://shelvarr:3000' })
@@ -319,5 +369,25 @@ describe('ComicsScreen search', () => {
     // Clearing reloads the library rather than leaving the last results up.
     expect(mockFetchComics).toHaveBeenCalledWith();
     expect(getByText('Everything')).toBeTruthy();
+  });
+
+  it('includes matching downloaded volumes in an offline search', async () => {
+    mockFetchComics.mockResolvedValue({ volumes: [] });
+    setComicDownloads({
+      5: makeComicDownload(5, 99, 'Downloaded Saga'),
+      6: makeComicDownload(6, 98, 'Downloaded Bone'),
+    });
+
+    const { getByPlaceholderText, getByText, queryByText } = render(
+      <ComicsScreen navigation={mockNavigation} route={mockRoute} />
+    );
+    await act(async () => {});
+
+    mockFetchComics.mockResolvedValue({ volumes: [], cached: true });
+    fireEvent.changeText(getByPlaceholderText('Search comics…'), 'saga');
+    await flushSearch();
+
+    expect(getByText('Downloaded Saga')).toBeTruthy();
+    expect(queryByText('Downloaded Bone')).toBeNull();
   });
 });

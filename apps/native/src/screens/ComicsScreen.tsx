@@ -13,6 +13,11 @@ import { RootStackParamList } from '../navigation/types';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { fetchComics, ComicVolumeSummary } from '../services/api/comics';
 import { getCachedComics, searchCachedComics } from '../services/db/comics';
+import { useComicDownloadStore } from '../stores/useComicDownloadStore';
+import {
+  listDownloadedComicVolumes,
+  withDownloadedComicVolumes,
+} from '../services/offlineLibrary';
 import ComicCard from '../components/ComicCard';
 import ComicGridSkeleton from '../components/ComicGridSkeleton';
 import { useColumns } from '../hooks/useColumns';
@@ -22,6 +27,15 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Comics'>;
 
 /** Wait this long after the last keystroke before asking the server. */
 const SEARCH_DEBOUNCE_MS = 350;
+
+/**
+ * Downloaded issues, read at call time rather than subscribed to: the screen
+ * reloads on focus anyway, and a download started elsewhere shouldn't refetch
+ * the library mid-search.
+ */
+function comicDownloads() {
+  return useComicDownloadStore.getState().downloads;
+}
 
 export default function ComicsScreen({ navigation }: Props) {
   const shelvarrUrl = useSettingsStore((s) => s.shelvarrUrl);
@@ -58,11 +72,20 @@ export default function ComicsScreen({ navigation }: Props) {
 
     try {
       const res = await fetchComics();
-      setVolumes(res.volumes);
+      // A cached response means the server was unreachable; make sure issues
+      // downloaded to this device are listed even if the cache lacks them.
+      setVolumes(res.cached ? withDownloadedComicVolumes(res.volumes, comicDownloads()) : res.volumes);
       setError(res.error || null);
     } catch (err) {
       console.error('Failed to load comics:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load comics');
+      // Nothing cached either — downloads are all that's left to show.
+      const downloaded = listDownloadedComicVolumes(comicDownloads());
+      if (downloaded.length > 0) {
+        setVolumes(downloaded);
+        setError(null);
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to load comics');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -78,11 +101,14 @@ export default function ComicsScreen({ navigation }: Props) {
   const runSearch = useCallback(async (query: string) => {
     try {
       const res = await fetchComics(query);
-      setVolumes(res.volumes);
+      setVolumes(res.cached
+        ? withDownloadedComicVolumes(res.volumes, comicDownloads(), query)
+        : res.volumes);
       setError(res.error || null);
     } catch {
       try {
-        setVolumes(await searchCachedComics(query));
+        const cached = await searchCachedComics(query);
+        setVolumes(withDownloadedComicVolumes(cached, comicDownloads(), query));
         setError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Search failed');
