@@ -11,3 +11,9 @@ export const EXTRACTED_DIR = 'shelvarr-extracted';
 
 export const PROGRESS_SYNC_DEBOUNCE_MS = 3000;
 export const PAGE_SIZE = 20;
+
+// Auto-update: the app checks GitHub Releases for a newer signed APK. Override
+// the repo at build time (e.g. for a fork) with EXPO_PUBLIC_UPDATE_REPO.
+export const UPDATE_REPO: string =
+  process.env.EXPO_PUBLIC_UPDATE_REPO || 'markcipolla/shelvarr';
+export const UPDATE_LATEST_RELEASE_URL = `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`;
