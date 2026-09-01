@@ -349,6 +349,86 @@ describe('Comic download retries', () => {
     assert.deepStrictEqual(created[0]!.alternateLinks, [{ host: 'getcomics', link: LINK_B }]);
   });
 
+  it('resumes a download orphaned by a restart, and leaves live ones alone', async () => {
+    const orphan = db.addComicDownload({
+      volumeId: 501,
+      host: 'getcomics',
+      downloadLink: LINK_A,
+    });
+    const live = db.addComicDownload({
+      volumeId: 501,
+      host: 'getcomics',
+      downloadLink: LINK_B,
+    });
+    // The orphan was last heard from an hour ago, mid-download; the other one
+    // checked in a moment ago and is somebody else's work.
+    db.execute(
+      `UPDATE comic_downloads SET state = 'downloading',
+              heartbeat_at = datetime('now', '-60 minutes') WHERE id = ?`,
+      [orphan.id]
+    );
+    db.execute("UPDATE comic_downloads SET state = 'downloading' WHERE id = ?", [live.id]);
+
+    // The sweep only queues the download tasks; stub the transport so the one
+    // it starts finishes rather than reaching the network.
+    stubFetch({ [LINK_A]: () => fileResponse('comic-bytes', LINK_A) });
+
+    const task = queue.createTask('comic_resume', { staleMinutes: 30, limit: 25 });
+    await queue.runTask(task.id);
+
+    const result = queue.getTask(task.id)!;
+    assert.strictEqual(result.status, 'completed');
+    assert.deepStrictEqual(JSON.parse(result.result!).downloadIds, [orphan.id]);
+
+    assert.strictEqual(
+      db.getComicDownload(live.id)!.state,
+      'downloading',
+      'a download that is still checking in is left alone'
+    );
+  });
+
+  it('will not let two sweeps claim the same orphan', () => {
+    const orphan = db.addComicDownload({
+      volumeId: 501,
+      host: 'getcomics',
+      downloadLink: LINK_A,
+    });
+    db.execute(
+      `UPDATE comic_downloads SET state = 'importing',
+              heartbeat_at = datetime('now', '-60 minutes') WHERE id = ?`,
+      [orphan.id]
+    );
+
+    // Two server processes sweeping at once: the claim is the same statement
+    // that finds the row, so only the first one gets it.
+    const first = db.claimStalledComicDownloads(30);
+    const second = db.claimStalledComicDownloads(30);
+
+    assert.deepStrictEqual(
+      first.map((download) => download.id),
+      [orphan.id]
+    );
+    assert.deepStrictEqual(second, []);
+    assert.strictEqual(db.getComicDownload(orphan.id)!.state, 'queued');
+  });
+
+  it('keeps the heartbeat warm while a download is making progress', () => {
+    const download = db.addComicDownload({
+      volumeId: 501,
+      host: 'getcomics',
+      downloadLink: LINK_A,
+    });
+    db.execute(
+      `UPDATE comic_downloads SET state = 'downloading',
+              heartbeat_at = datetime('now', '-60 minutes') WHERE id = ?`,
+      [download.id]
+    );
+
+    db.updateComicDownloadProgress(download.id, 2048, 4096);
+
+    assert.deepStrictEqual(db.claimStalledComicDownloads(30), []);
+  });
+
   it('reset clears the counters so a spent download can be driven again', () => {
     const download = db.addComicDownload({
       volumeId: 501,

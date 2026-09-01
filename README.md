@@ -134,6 +134,12 @@ once those are spent does it fail — which is what lets the next search pick a
 different release. Anything stopped can be started again with **Retry** on
 `/comics/downloads`.
 
+A download that a restart or crash interrupted is picked back up on its own:
+live downloads leave a heartbeat, and a sweep under **Settings → Comics**
+(every 15 minutes, on by default) requeues any that have gone quiet for half an
+hour. Claiming is atomic, so it is safe with several server processes against
+one database.
+
 **Keeping it tidy.** Per volume: refresh metadata from ComicVine, rescan files,
 and preview-then-apply a rename to the naming template. Library-wide:
 `POST /api/comics/tasks` with `updateAll` or `searchAll`.

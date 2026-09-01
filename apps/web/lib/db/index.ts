@@ -73,6 +73,7 @@ export {
   setComicDownloadState,
   startComicDownloadAttempt,
   deferComicDownload,
+  claimStalledComicDownloads,
   switchComicDownloadLink,
   resetComicDownloadForRetry,
   deleteComicDownload,

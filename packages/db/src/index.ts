@@ -244,12 +244,23 @@ function runMigrations(database: Database.Database): void {
   const comicDownloadColumns: Array<[string, string]> = [
     ['alternate_links', 'TEXT'],
     ['attempts', 'INTEGER NOT NULL DEFAULT 0'],
+    // No DEFAULT: SQLite rejects a non-constant one in ALTER TABLE, so
+    // existing rows are backfilled below instead.
+    ['heartbeat_at', 'TEXT'],
   ];
   for (const [name, definition] of comicDownloadColumns) {
     if (comicDownloadsInfo.some((col) => col.name === name)) continue;
     console.log(`Running migration: adding ${name} column to comic_downloads`);
     database.exec(`ALTER TABLE comic_downloads ADD COLUMN ${name} ${definition}`);
+    if (name === 'heartbeat_at') {
+      // Anything already in the queue counts as alive from now, so the first
+      // resume sweep doesn't restart downloads that were only just running.
+      database.exec('UPDATE comic_downloads SET heartbeat_at = CURRENT_TIMESTAMP');
+    }
   }
+  database.exec(
+    'CREATE INDEX IF NOT EXISTS idx_comic_downloads_heartbeat ON comic_downloads(state, heartbeat_at)'
+  );
 
   const comicIssuesInfo = database.prepare('PRAGMA table_info(comic_issues)').all() as Array<{ name: string }>;
   if (!comicIssuesInfo.some((col) => col.name === 'comicvine_volume_id')) {
@@ -1494,6 +1505,7 @@ interface ComicDownloadRow {
   attempts: number;
   file_path: string | null;
   error: string | null;
+  heartbeat_at: string | null;
   created_at: string;
   completed_at: string | null;
 }
@@ -1535,6 +1547,7 @@ function rowToComicDownload(row: ComicDownloadRow): ComicDownload {
     size: row.size,
     attempts: row.attempts ?? 0,
     error: row.error,
+    heartbeatAt: row.heartbeat_at,
     createdAt: row.created_at,
     completedAt: row.completed_at,
   };
@@ -1619,11 +1632,12 @@ export function isComicDownloadActive(downloadLink: string): boolean {
 }
 
 export function updateComicDownloadProgress(id: number, progress: number, size: number | null): void {
-  execute('UPDATE comic_downloads SET progress = ?, size = COALESCE(?, size) WHERE id = ?', [
-    progress,
-    size,
-    id,
-  ]);
+  execute(
+    `UPDATE comic_downloads
+        SET progress = ?, size = COALESCE(?, size), heartbeat_at = CURRENT_TIMESTAMP
+      WHERE id = ?`,
+    [progress, size, id]
+  );
 }
 
 export function setComicDownloadState(
@@ -1637,6 +1651,7 @@ export function setComicDownloadState(
         SET state = ?,
             error = COALESCE(?, error),
             file_path = COALESCE(?, file_path),
+            heartbeat_at = CURRENT_TIMESTAMP,
             completed_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE completed_at END
       WHERE id = ?`,
     [state, extra.error ?? null, extra.filePath ?? null, terminal ? 1 : 0, id]
@@ -1652,7 +1667,8 @@ export function setComicDownloadState(
 export function startComicDownloadAttempt(id: number): number {
   execute(
     `UPDATE comic_downloads
-        SET state = 'downloading', attempts = attempts + 1, error = NULL
+        SET state = 'downloading', attempts = attempts + 1, error = NULL,
+            heartbeat_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
     [id]
   );
@@ -1671,7 +1687,8 @@ export function startComicDownloadAttempt(id: number): number {
 export function deferComicDownload(id: number, error: string): void {
   execute(
     `UPDATE comic_downloads
-        SET state = 'queued', error = ?, completed_at = NULL
+        SET state = 'queued', error = ?, completed_at = NULL,
+            heartbeat_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
     [error, id]
   );
@@ -1688,10 +1705,47 @@ export function switchComicDownloadLink(
 ): void {
   execute(
     `UPDATE comic_downloads
-        SET host = ?, download_link = ?, alternate_links = ?, progress = 0, size = NULL
+        SET host = ?, download_link = ?, alternate_links = ?, progress = 0, size = NULL,
+            heartbeat_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
     [next.host, next.link, remaining.length ? JSON.stringify(remaining) : null, id]
   );
+}
+
+/**
+ * Claim downloads that were left mid-flight when a process stopped.
+ *
+ * A live download stamps `heartbeat_at` as it goes — on every state change and
+ * every progress checkpoint — so anything non-terminal whose heartbeat has
+ * gone cold has nobody driving it. The claim is the same UPDATE that finds
+ * them, so two server processes sweeping at once cannot both take a row: the
+ * loser's subquery no longer matches once the winner's stamp lands.
+ *
+ * `staleMinutes` must stay above the longest rate-limit backoff, or a download
+ * quietly waiting out a host would be claimed from under the process that is
+ * already going to retry it.
+ */
+export function claimStalledComicDownloads(
+  staleMinutes: number,
+  limit = 25
+): ComicDownload[] {
+  const rows = getDb()
+    .prepare(
+      `UPDATE comic_downloads
+          SET state = 'queued', heartbeat_at = CURRENT_TIMESTAMP
+        WHERE id IN (
+          SELECT id FROM comic_downloads
+           WHERE state IN ('queued', 'downloading', 'importing')
+             AND (heartbeat_at IS NULL
+                  OR heartbeat_at <= datetime('now', ?))
+           ORDER BY id ASC
+           LIMIT ?
+        )
+        RETURNING *`
+    )
+    .all(`-${staleMinutes} minutes`, limit) as ComicDownloadRow[];
+
+  return rows.map(rowToComicDownload);
 }
 
 /**
@@ -1703,7 +1757,7 @@ export function resetComicDownloadForRetry(id: number): void {
   execute(
     `UPDATE comic_downloads
         SET state = 'queued', progress = 0, attempts = 0, error = NULL,
-            file_path = NULL, completed_at = NULL
+            file_path = NULL, completed_at = NULL, heartbeat_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
     [id]
   );

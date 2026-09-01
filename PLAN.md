@@ -503,6 +503,17 @@ derived from [Kapowarr](https://github.com/Casvt/Kapowarr) — see NOTICE.md.
       `RateLimitedError` with a per-task delay; it previously only recognised a
       rate limit by looking for "429" in the message, which never matched
       these.
+- [x] 9.35 Interrupted downloads resume themselves. A download is driven by a
+      task in one server process, so a restart or crash left its row parked in
+      `queued`/`downloading`/`importing` with nobody working on it, and
+      auto-search skipped it because a non-terminal download counts as already
+      in hand. Live downloads now stamp `comic_downloads.heartbeat_at` on every
+      state change and progress checkpoint, and a `comic_resume` sweep (15 min,
+      on by default) requeues anything cold for 30 minutes — longer than the
+      longest rate-limit backoff, so a download waiting out a host is not taken
+      from the process already retrying it. The claim is the same UPDATE that
+      finds the rows, as with `claimDueSchedules`, so several server processes
+      can sweep without doubling up.
 - [x] 9.34 Retry action on the download queue (`POST /api/comics/downloads/:id`
       and a button on `/comics/downloads`) to re-drive a spent or failed
       download without searching again

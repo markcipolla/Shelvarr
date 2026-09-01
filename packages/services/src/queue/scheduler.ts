@@ -45,6 +45,16 @@ export const DEFAULT_SCHEDULES: ScheduleDefinition[] = [
     enabledByDefault: true,
   },
   {
+    name: 'comic_resume',
+    taskType: 'comic_resume',
+    intervalSeconds: 15 * 60,
+    description: 'Pick up comic downloads interrupted by a restart',
+    // Longer than the longest rate-limit backoff, so a download waiting out a
+    // host is not taken from the process already retrying it.
+    payload: { staleMinutes: 30, limit: 25 },
+    enabledByDefault: true,
+  },
+  {
     name: 'comic_search_all',
     taskType: 'comic_search_all',
     intervalSeconds: 24 * HOUR,

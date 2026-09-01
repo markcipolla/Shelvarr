@@ -13,6 +13,7 @@ import {
   markWantedBookAsAcquired,
   addComicDownloadHistory,
   addToComicBlocklist,
+  claimStalledComicDownloads,
   deferComicDownload,
   getComicDownload,
   getComicVolumesNeedingRefresh,
@@ -1296,6 +1297,42 @@ const comicUpdateAllHandler: TaskHandler = async (taskId, onProgress, signal) =>
 };
 
 /**
+ * Pick up downloads that were interrupted rather than finished.
+ *
+ * A download is driven by a task in one server process. If that process stops
+ * — a restart, a crash, a container being replaced — the row is left sitting
+ * in `queued`, `downloading` or `importing` with nobody working on it, and
+ * nothing else notices: auto-search skips it, because a non-terminal download
+ * counts as already in hand.
+ *
+ * Every live download stamps a heartbeat as it goes, so this sweep can tell
+ * the orphans from the busy. Claiming is done in the same statement that finds
+ * them, so several server processes can run this tick without doubling up.
+ */
+const comicResumeHandler: TaskHandler = async (taskId, onProgress) => {
+  const data = comicTaskData<{ staleMinutes?: number; limit?: number }>(
+    taskId,
+    'comic resume configuration'
+  );
+
+  const stalled = claimStalledComicDownloads(data.staleMinutes ?? 30, data.limit ?? 25);
+  onProgress(0, stalled.length);
+
+  const resumed: number[] = [];
+  for (const [index, download] of stalled.entries()) {
+    enqueueTask('comic_download', { comicDownloadId: download.id });
+    resumed.push(download.id);
+    onProgress(index + 1, stalled.length);
+  }
+
+  if (resumed.length > 0) {
+    console.warn(`[comic-resume] restarted ${resumed.length} interrupted download(s)`);
+  }
+
+  return { resumed: resumed.length, downloadIds: resumed };
+};
+
+/**
  * Auto-search every monitored volume that is still missing issues, queueing
  * whatever it finds. This is the scheduled sweep.
  */
@@ -1448,6 +1485,7 @@ export function registerAllHandlers(): void {
   registerTaskHandler('comic_rename', comicRenameHandler);
   registerTaskHandler('comic_update_all', comicUpdateAllHandler);
   registerTaskHandler('comic_search_all', comicSearchAllHandler);
+  registerTaskHandler('comic_resume', comicResumeHandler);
   registerTaskHandler('comic_library_import', comicLibraryImportHandler);
   registerTaskHandler('comic_adopt', comicAdoptHandler);
 

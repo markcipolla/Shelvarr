@@ -129,6 +129,8 @@ export interface ComicDownload {
   /** How many times this download has been attempted. */
   attempts: number;
   error: string | null;
+  /** Last sign of life, used to spot downloads orphaned by a restart. */
+  heartbeatAt: string | null;
   createdAt: string;
   completedAt: string | null;
 }
