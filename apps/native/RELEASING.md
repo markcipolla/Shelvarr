@@ -21,6 +21,22 @@ keytool -genkeypair -v \
   -keyalg RSA -keysize 2048 -validity 10000
 ```
 
+Run this outside the repository. `*.keystore` is gitignored, but a signing key
+committed to a repository that later goes public has to be treated as burned,
+so it is worth keeping the file somewhere the repo can never reach.
+
+`keytool` prompts once for a password and uses it for both the keystore and the
+key. PKCS12 — the default format — cannot hold separate passwords, and passing
+`-keypass` is ignored with a warning:
+
+```
+Warning: Different store and key passwords not supported for PKCS12 KeyStores.
+         Ignoring user-specified -keypass value.
+```
+
+So `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_PASSWORD` below are the same
+value. Gradle needs both set regardless.
+
 Keep this file safe and backed up. Losing it means every user has to uninstall
 and reinstall the app to move to a new key.
 
@@ -31,9 +47,9 @@ Under **Settings → Secrets and variables → Actions**, add:
 | Secret | Value |
 | --- | --- |
 | `ANDROID_KEYSTORE_BASE64` | `base64 -w0 shelvarr-release.keystore` |
-| `ANDROID_KEYSTORE_PASSWORD` | The keystore password |
+| `ANDROID_KEYSTORE_PASSWORD` | The password you chose |
 | `ANDROID_KEY_ALIAS` | `shelvarr` (or whatever alias you chose) |
-| `ANDROID_KEY_PASSWORD` | The key password |
+| `ANDROID_KEY_PASSWORD` | The same password again (see above) |
 
 ### 3. Move your phone onto the release key
 
