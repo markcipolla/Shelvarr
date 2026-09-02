@@ -8,7 +8,7 @@ on:
 
 jobs:
   lint-and-typecheck:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -32,7 +32,7 @@ jobs:
         run: pnpm --filter @shelvarr/web typecheck
 
   test:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     env:
       HARDCOVER_API_TOKEN: test-token-for-ci
     steps:
@@ -55,7 +55,7 @@ jobs:
         run: pnpm --filter @shelvarr/web test
 
   e2e:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -75,65 +75,8 @@ jobs:
       - name: Build
         run: pnpm --filter @shelvarr/web build
 
-      - name: Free up disk space
-        run: |
-          echo "Disk usage before cleanup:"
-          df -h || true
-          # The self-hosted runner is tight on disk, so reclaim what we can
-          # before pulling the browser and its libraries.
-          # The E2E tests run `next dev` (see playwright.config webServer), so the
-          # production build output created above is dead weight here.
-          rm -rf apps/web/.next || true
-          # Clear apt caches/indexes.
-          sudo apt-get clean || true
-          sudo rm -rf /var/lib/apt/lists/* || true
-          # These paths only exist on GitHub-hosted runners; harmless if absent.
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
-          # Drop unreferenced packages and stale tool caches.
-          pnpm store prune || true
-          npm cache clean --force || true
-          # The Playwright browser cache is deliberately left alone. Clearing it
-          # freed ~150MB and then immediately spent it again on the re-download
-          # below — which is the worst thing to do on a runner with no room.
-          # Keeping it lets the install step no-op instead.
-          echo "Disk usage after cleanup:"
-          df -h || true
-
-      - name: Install Playwright system libraries
-        # `playwright install --with-deps` pulls ~650MB (fonts, xvfb, mesa, an
-        # X server) which does not fit on this runner. The headless Chromium
-        # shell only needs this handful of shared libraries, and
-        # --no-install-recommends keeps the footprint minimal.
-        #
-        # They persist between runs on a self-hosted runner, so a run that needs
-        # nothing installed skips apt entirely. That also keeps a full disk from
-        # failing the job for no reason: apt cannot write its indexes with no
-        # space and reports it as "At least one invalid signature was
-        # encountered", which then makes every package "unable to locate".
-        run: |
-          if (ldconfig -p 2>/dev/null || /sbin/ldconfig -p 2>/dev/null) | grep -q 'libnss3\.so'; then
-            echo "Browser libraries already present; skipping apt."
-            exit 0
-          fi
-
-          available=$(df --output=avail -k / | tail -1)
-          if [ "$available" -lt 1048576 ]; then
-            echo "::error::Runner has under 1GB free on /, so apt cannot install the browser libraries. Reclaim space on the runner host."
-            df -h
-            exit 1
-          fi
-
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
-            libdrm2 libgbm1 libxkbcommon0 libxcomposite1 libxdamage1 \
-            libxfixes3 libxrandr2 libxext6 libxcb1 libx11-6 \
-            libpango-1.0-0 libcairo2 libasound2t64 libatspi2.0-0
-
       - name: Install Playwright browser
-        # A no-op when the cached browser already matches the pinned version,
-        # which is why the cleanup step above no longer deletes it.
-        run: npx playwright install chromium
+        run: npx playwright install --with-deps chromium
 
       - name: Run E2E tests
         run: pnpm --filter @shelvarr/web test:e2e
