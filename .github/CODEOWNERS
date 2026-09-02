@@ -1,0 +1,10 @@
+# Code owners for Shelvarr.
+#
+# The repository ruleset sets require_code_owner_review, which does nothing
+# without this file. Listing an owner here is what activates it.
+#
+# Owners must have write access to the repository. Entries that do not
+# resolve are silently ignored by GitHub, so a typo here reads as "no owner"
+# rather than as an error.
+
+* @mark-cipolla
