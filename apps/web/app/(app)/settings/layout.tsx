@@ -14,7 +14,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
   const tabs: SettingsNavTab[] = [
     { href: '/settings/metadata', label: 'Metadata Sources' },
     { href: '/settings/downloads', label: 'Download Sources' },
-    { href: '/settings/organize', label: 'Organize' },
+    { href: '/settings/organize', label: 'Books' },
     { href: '/settings/comics', label: 'Comics' },
     ...(showUsers ? [{ href: '/settings/users', label: 'Users' }] : []),
     { href: '/settings/about', label: 'About' },

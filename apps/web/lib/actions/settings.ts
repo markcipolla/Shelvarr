@@ -275,6 +275,15 @@ export async function startComicLibraryImport(path: string) {
 // Recurring jobs
 // ---------------------------------------------------------------------------
 
+export type ScheduleCategory = 'books' | 'comics' | 'system';
+
+/** Both settings tabs list recurring jobs, so both go stale together. */
+function revalidateScheduleTabs() {
+  revalidatePath('/settings/comics');
+  revalidatePath('/settings/organize');
+  revalidatePath('/tasks');
+}
+
 export interface ScheduleView {
   name: string;
   description: string;
@@ -282,20 +291,28 @@ export interface ScheduleView {
   nextRun: number;
   lastRun: number | null;
   enabled: boolean;
+  category: ScheduleCategory;
 }
 
-export async function getSchedules(): Promise<ScheduleView[]> {
+/**
+ * Recurring jobs, optionally narrowed to the tab asking for them.
+ */
+export async function getSchedules(category?: ScheduleCategory): Promise<ScheduleView[]> {
   const { scheduler } = await import('@shelvarr/services');
 
   scheduler.ensureDefaultSchedules();
-  return scheduler.listSchedules().map((schedule) => ({
-    name: schedule.name,
-    description: schedule.description,
-    intervalSeconds: schedule.intervalSeconds,
-    nextRun: schedule.nextRun,
-    lastRun: schedule.lastRun,
-    enabled: schedule.enabled,
-  }));
+  return scheduler
+    .listSchedules()
+    .filter((schedule) => !category || schedule.category === category)
+    .map((schedule) => ({
+      name: schedule.name,
+      description: schedule.description,
+      intervalSeconds: schedule.intervalSeconds,
+      nextRun: schedule.nextRun,
+      lastRun: schedule.lastRun,
+      enabled: schedule.enabled,
+      category: schedule.category,
+    }));
 }
 
 export async function setScheduleEnabledAction(name: string, enabled: boolean) {
@@ -303,7 +320,7 @@ export async function setScheduleEnabledAction(name: string, enabled: boolean) {
 
   try {
     scheduler.setScheduleEnabled(name, enabled);
-    revalidatePath('/settings/comics');
+    revalidateScheduleTabs();
     return { success: true };
   } catch (error) {
     return {
@@ -318,7 +335,7 @@ export async function setScheduleIntervalAction(name: string, intervalSeconds: n
 
   try {
     scheduler.setScheduleInterval(name, intervalSeconds);
-    revalidatePath('/settings/comics');
+    revalidateScheduleTabs();
     return { success: true };
   } catch (error) {
     return {
@@ -334,7 +351,7 @@ export async function runScheduleNowAction(name: string) {
 
   try {
     const taskId = scheduler.runScheduleNow(name);
-    revalidatePath('/settings/comics');
+    revalidateScheduleTabs();
     return { success: true, taskId };
   } catch (error) {
     return {

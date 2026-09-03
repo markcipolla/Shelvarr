@@ -17,12 +17,20 @@ const log = createLogger('scheduler');
 
 const HOUR = 3600;
 
+/**
+ * Which settings tab a job belongs to. `system` jobs keep the library running
+ * rather than managing content, so no tab lists them.
+ */
+export type ScheduleCategory = 'books' | 'comics' | 'system';
+
 export interface ScheduleDefinition {
   name: string;
   taskType: TaskType;
   intervalSeconds: number;
   /** Shown in the settings UI. */
   description: string;
+  /** The settings tab this job is listed under. */
+  category: ScheduleCategory;
   payload?: Record<string, unknown>;
   /** Whether it runs unless switched off. */
   enabledByDefault: boolean;
@@ -32,15 +40,41 @@ export interface ScheduleDefinition {
  * The jobs Shelvarr knows how to run on a timer.
  *
  * Metadata refresh is on by default because it's cheap and keeps issue lists
- * current. The GetComics sweep is off by default: it downloads things, and
+ * current. The sweeps that touch files or download things are off by default:
  * that should be a decision, not a surprise.
  */
 export const DEFAULT_SCHEDULES: ScheduleDefinition[] = [
+  {
+    name: 'book_scan_all',
+    taskType: 'book_scan_all',
+    intervalSeconds: 24 * HOUR,
+    description: 'Scan every book library for new and removed files',
+    category: 'books',
+    enabledByDefault: true,
+  },
+  {
+    name: 'book_metadata_all',
+    taskType: 'metadata',
+    intervalSeconds: 24 * HOUR,
+    description: 'Look up metadata for books that still have none',
+    category: 'books',
+    payload: { unmatchedOnly: true },
+    enabledByDefault: true,
+  },
+  {
+    name: 'book_organize_all',
+    taskType: 'book_organize_all',
+    intervalSeconds: 24 * HOUR,
+    description: 'Rename and move book files to match the template',
+    category: 'books',
+    enabledByDefault: false,
+  },
   {
     name: 'comic_update_all',
     taskType: 'comic_update_all',
     intervalSeconds: 24 * HOUR,
     description: 'Refresh comic metadata from ComicVine',
+    category: 'comics',
     payload: { maxAgeHours: 24, limit: 25 },
     enabledByDefault: true,
   },
@@ -49,6 +83,7 @@ export const DEFAULT_SCHEDULES: ScheduleDefinition[] = [
     taskType: 'comic_resume',
     intervalSeconds: 15 * 60,
     description: 'Pick up comic downloads interrupted by a restart',
+    category: 'comics',
     // Longer than the longest rate-limit backoff, so a download waiting out a
     // host is not taken from the process already retrying it.
     payload: { staleMinutes: 30, limit: 25 },
@@ -59,6 +94,7 @@ export const DEFAULT_SCHEDULES: ScheduleDefinition[] = [
     taskType: 'comic_search_all',
     intervalSeconds: 24 * HOUR,
     description: 'Search GetComics for missing issues and download them',
+    category: 'comics',
     payload: { limit: 100 },
     enabledByDefault: false,
   },
@@ -67,6 +103,7 @@ export const DEFAULT_SCHEDULES: ScheduleDefinition[] = [
     taskType: 'auth_prune',
     intervalSeconds: 24 * HOUR,
     description: 'Remove expired sessions and sign-in links',
+    category: 'system',
     enabledByDefault: true,
   },
 ];
@@ -82,6 +119,8 @@ export interface Schedule {
   payload: Record<string, unknown> | null;
   /** From `DEFAULT_SCHEDULES`; empty for anything added by hand. */
   description: string;
+  /** From `DEFAULT_SCHEDULES`; guessed from the name for anything added by hand. */
+  category: ScheduleCategory;
 }
 
 interface ScheduleRow {
@@ -99,6 +138,8 @@ function nowSeconds(): number {
 }
 
 function rowToSchedule(row: ScheduleRow): Schedule {
+  const definition = DEFAULT_SCHEDULES.find((schedule) => schedule.name === row.name);
+
   let payload: Record<string, unknown> | null = null;
   if (row.payload) {
     try {
@@ -116,8 +157,10 @@ function rowToSchedule(row: ScheduleRow): Schedule {
     lastRun: row.last_run,
     enabled: row.enabled === 1,
     payload,
-    description:
-      DEFAULT_SCHEDULES.find((schedule) => schedule.name === row.name)?.description ?? '',
+    description: definition?.description ?? '',
+    // A row added by hand has no definition to read; the task type says which
+    // tab it belongs on well enough to keep it visible.
+    category: definition?.category ?? (row.task_type.startsWith('comic_') ? 'comics' : 'books'),
   };
 }
 

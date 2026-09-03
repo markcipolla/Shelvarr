@@ -345,6 +345,29 @@ describe('Scheduler', () => {
     assert.strictEqual(scheduler.getSchedule('comic_resume')!.enabled, true);
   });
 
+  it('sorts the book jobs onto the Books tab and the comic jobs onto Comics', () => {
+    scheduler.ensureDefaultSchedules();
+
+    const byName = new Map(
+      scheduler.listSchedules().map((schedule) => [schedule.name, schedule.category])
+    );
+    assert.strictEqual(byName.get('book_scan_all'), 'books');
+    assert.strictEqual(byName.get('book_metadata_all'), 'books');
+    assert.strictEqual(byName.get('book_organize_all'), 'books');
+    assert.strictEqual(byName.get('comic_update_all'), 'comics');
+    // Session cleanup keeps the app running rather than managing content, so
+    // it belongs to neither tab.
+    assert.strictEqual(byName.get('auth_prune'), 'system');
+  });
+
+  it('leaves the book rename sweep off, since it moves files', () => {
+    scheduler.ensureDefaultSchedules();
+
+    assert.strictEqual(scheduler.getSchedule('book_scan_all')!.enabled, true);
+    assert.strictEqual(scheduler.getSchedule('book_metadata_all')!.enabled, true);
+    assert.strictEqual(scheduler.getSchedule('book_organize_all')!.enabled, false);
+  });
+
   it('does not overwrite settings the user has changed', () => {
     scheduler.ensureDefaultSchedules();
     scheduler.setScheduleEnabled('comic_update_all', false);

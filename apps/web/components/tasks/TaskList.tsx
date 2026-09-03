@@ -53,6 +53,8 @@ function TaskRow({ task }: { task: Task }) {
     organize: 'File Organization',
     download: 'Download',
     author_sync: 'Author Sync',
+    book_scan_all: 'Scan All Libraries',
+    book_organize_all: 'Organize All Libraries',
     comic_search: 'Comic Search',
     comic_download: 'Comic Download',
     comic_refresh: 'Comic Metadata Refresh',
@@ -236,6 +238,7 @@ function OrganizeResultSummary({ result }: { result: OrganizeResult }) {
 function TaskIcon({ type }: { type: string }) {
   switch (type) {
     case 'scan':
+    case 'book_scan_all':
       return (
         <div className="w-10 h-10 bg-blue-600/20 rounded-lg flex items-center justify-center text-blue-400">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -252,6 +255,7 @@ function TaskIcon({ type }: { type: string }) {
         </div>
       );
     case 'organize':
+    case 'book_organize_all':
       return (
         <div className="w-10 h-10 bg-green-600/20 rounded-lg flex items-center justify-center text-green-400">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

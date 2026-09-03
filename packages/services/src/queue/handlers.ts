@@ -5,7 +5,7 @@
 
 import { registerTaskHandler, enqueueTask, RateLimitedError, type TaskHandler } from './index';
 import { scanLibrary, updateBook, addBook } from '../scanner';
-import { getLibraryById } from '../library';
+import { getAllLibraries, getLibraryById } from '../library';
 import { pruneExpired } from '../auth/sessions';
 import {
   query,
@@ -694,6 +694,49 @@ const organizeHandler: TaskHandler = async (taskId, onProgress, signal) => {
 };
 
 /**
+ * Scan every book library.
+ *
+ * The per-library `scan` handler already knows how to chain into metadata and
+ * organize, so this sweep queues one of those per library rather than
+ * repeating that logic.
+ */
+const bookScanAllHandler: TaskHandler = async (_taskId, onProgress) => {
+  const libraries = await getAllLibraries();
+  onProgress(0, libraries.length);
+
+  const queued: Array<{ libraryId: number; libraryName: string; taskId: number }> = [];
+
+  for (const [index, library] of libraries.entries()) {
+    const task = enqueueTask('scan', { libraryId: library.id, libraryName: library.name });
+    queued.push({ libraryId: library.id, libraryName: library.name, taskId: task.id });
+    onProgress(index + 1, libraries.length);
+  }
+
+  return { libraries: libraries.length, queued };
+};
+
+/**
+ * Rename and move files in every book library to match the stored template.
+ *
+ * Like the scan sweep, this queues the per-library handler so a run shows up
+ * on the Tasks page as one entry per library.
+ */
+const bookOrganizeAllHandler: TaskHandler = async (_taskId, onProgress) => {
+  const libraries = await getAllLibraries();
+  onProgress(0, libraries.length);
+
+  const queued: Array<{ libraryId: number; libraryName: string; taskId: number }> = [];
+
+  for (const [index, library] of libraries.entries()) {
+    const task = enqueueTask('organize', { libraryId: library.id, libraryName: library.name });
+    queued.push({ libraryId: library.id, libraryName: library.name, taskId: task.id });
+    onProgress(index + 1, libraries.length);
+  }
+
+  return { libraries: libraries.length, queued };
+};
+
+/**
  * Single book metadata handler - fetches metadata for one book
  */
 const bookMetadataHandler: TaskHandler = async (taskId, onProgress) => {
@@ -1362,6 +1405,10 @@ export function registerAllHandlers(): void {
   registerTaskHandler('organize', organizeHandler);
 
   registerTaskHandler('download', downloadHandler);
+
+  // Library-wide book sweeps, run on a timer from Settings -> Books.
+  registerTaskHandler('book_scan_all', bookScanAllHandler);
+  registerTaskHandler('book_organize_all', bookOrganizeAllHandler);
 
   // Comic acquisition: search GetComics, then fetch and import what it found.
   registerTaskHandler('comic_search', comicSearchHandler);
