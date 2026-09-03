@@ -574,5 +574,30 @@ describe('Database Operations', () => {
       assert.ok(result);
       assert.ok(result.id > 0);
     });
+
+    it('returns the conflicting row when an upsert updates instead of inserting', async () => {
+      if (!db) return;
+
+      const upsert = (name: string, path: string) =>
+        db.insertReturning<{ id: number; name: string }>(
+          `INSERT INTO libraries (name, path) VALUES (?, ?)
+           ON CONFLICT(path) DO UPDATE SET name = excluded.name
+           RETURNING id, name`,
+          [name, path]
+        );
+
+      const first = upsert('First', '/upsert/one');
+      const second = upsert('Second', '/upsert/two');
+      assert.ok(first && second);
+
+      // An INSERT elsewhere moves last_insert_rowid() off the libraries table,
+      // which is exactly when deriving the id from it goes wrong.
+      db.getDb().prepare("INSERT INTO tasks (type, status, progress) VALUES ('scan', 'pending', 0)").run();
+
+      const again = upsert('First renamed', '/upsert/one');
+      assert.ok(again);
+      assert.strictEqual(again.id, first.id);
+      assert.strictEqual(again.name, 'First renamed');
+    });
   });
 });

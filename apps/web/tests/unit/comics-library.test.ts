@@ -462,6 +462,32 @@ describe('Comic library', () => {
       assert.strictEqual(db.getComicFilesForVolume(volumeId).length, 0);
     });
 
+    it('keeps every file on its own issue when the folder is rescanned', async () => {
+      const { volumeId, folder } = seedVolume('Immortal Hulk');
+      for (const number of [1, 2, 3]) {
+        writeFileSync(join(folder, `Immortal Hulk (2018) Volume 01 Issue 00${number}.cbz`), 'x');
+      }
+
+      await scan.scanVolumeFiles(volumeId);
+      const rescan = await scan.scanVolumeFiles(volumeId);
+      assert.strictEqual(rescan.matched, 3);
+
+      const issueRows = db
+        .getDb()
+        .prepare('SELECT id, calculated_issue_number AS number FROM comic_issues WHERE volume_id = ? ORDER BY calculated_issue_number')
+        .all(volumeId) as Array<{ id: number; number: number }>;
+
+      for (const number of [1, 2, 3]) {
+        const issue = issueRows.find((row) => row.number === number)!;
+        const files = db.getComicFilesForIssue(issue.id);
+        assert.strictEqual(files.length, 1, `issue ${number} should still have one file`);
+        assert.ok(
+          files[0]!.filepath.endsWith(`Issue 00${number}.cbz`),
+          `issue ${number} is linked to ${files[0]!.filepath}`
+        );
+      }
+    });
+
     it('leaves a hand-made link alone on rescan', async () => {
       const { volumeId, folder } = seedVolume('Immortal Hulk');
       // A file whose name says nothing useful, linked by hand to issue 2.
