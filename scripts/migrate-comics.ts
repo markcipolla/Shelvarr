@@ -94,7 +94,6 @@ function buildConfig(): AppConfig {
       hostPreference: ['getcomics', 'pixeldrain'],
       renameDownloadedFiles: true,
     },
-    audiletome: { url: null, apiKey: null },
     supportedExtensions: ['.epub', '.pdf', '.cbz', '.cbr', '.mobi', '.azw3'],
     rateLimits: { hardcover: 60 },
     hardcoverToken: null,

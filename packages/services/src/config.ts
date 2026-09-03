@@ -42,10 +42,6 @@ export function getServiceConfig(): AppConfig {
           .filter(Boolean),
         renameDownloadedFiles: process.env['GETCOMICS_RENAME'] !== 'false',
       },
-      audiletome: {
-        url: process.env['AUDILETOME_URL'] || null,
-        apiKey: process.env['AUDILETOME_API_KEY'] || null,
-      },
       rateLimits: { hardcover: 60 },
     };
   }

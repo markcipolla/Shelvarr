@@ -16,7 +16,6 @@ export default async function SettingsLayout({ children }: { children: React.Rea
     { href: '/settings/downloads', label: 'Download Sources' },
     { href: '/settings/organize', label: 'Organize' },
     { href: '/settings/comics', label: 'Comics' },
-    { href: '/settings/audiletome', label: 'Audiletome' },
     ...(showUsers ? [{ href: '/settings/users', label: 'Users' }] : []),
     { href: '/settings/about', label: 'About' },
   ];

@@ -119,46 +119,6 @@ export async function syncHardcoverStatus(): Promise<{
   return result;
 }
 
-// Audiletome settings (audiobook generation)
-export async function getAudiletomeSettings() {
-  return {
-    url: await getSetting<string>('audiletome_url', null),
-    hasApiKey: !!(await getSetting<string>('audiletome_api_key', null)),
-  };
-}
-
-export async function setAudiletomeSettings(url: string, apiKey?: string) {
-  setSetting('audiletome_url', url);
-  if (apiKey) {
-    setSetting('audiletome_api_key', apiKey);
-  }
-
-  const { configureAudiletomeFromDb } = await import('@/lib/services/audiletome');
-  await configureAudiletomeFromDb();
-
-  revalidatePath('/settings');
-  return { success: true };
-}
-
-export async function testAudiletomeConnection() {
-  const { configureAudiletomeFromDb, audiletomeClient } = await import('@/lib/services/audiletome');
-  const configured = await configureAudiletomeFromDb();
-  if (!configured) {
-    return { success: false, error: 'Audiletome URL not configured' };
-  }
-
-  const result = await audiletomeClient.testConnection();
-  if (result.connected) {
-    const version = result.serverVersion ? ` (v${result.serverVersion})` : '';
-    return { success: true, message: `Connected to ${result.serverName ?? 'audiletome'}${version}` };
-  }
-  return { success: false, error: result.error ?? 'Connection failed' };
-}
-
-export async function isAudiletomeConfigured(): Promise<boolean> {
-  return !!(await getSetting<string>('audiletome_url', null));
-}
-
 // Organize settings
 import { DEFAULT_ORGANIZE_TEMPLATE, previewReorganization } from '@/lib/services/organizer';
 import type { ReorgPreviewItem } from '@/lib/services/organizer';
