@@ -103,24 +103,6 @@ export function ComicsTab({
 
   return (
     <div className="max-w-2xl space-y-10">
-      {/* ComicVine ------------------------------------------------------- */}
-      <section>
-        <h2 className="text-lg font-semibold text-white mb-1">ComicVine</h2>
-        <p className="text-shelvarr-text-muted text-sm">
-          Comic metadata comes from ComicVine. Its API key and issue date setting live with the
-          other providers on the{' '}
-          <a href="/settings/metadata" className="text-shelvarr-primary hover:underline">
-            Metadata Sources
-          </a>{' '}
-          tab.{' '}
-          {settings.hasApiKey ? (
-            <span className="text-green-400">An API key is configured.</span>
-          ) : (
-            <span className="text-yellow-400">No API key is configured yet.</span>
-          )}
-        </p>
-      </section>
-
       {/* Root folders ---------------------------------------------------- */}
       <section>
         <h2 className="text-lg font-semibold text-white mb-1">Root folders</h2>
