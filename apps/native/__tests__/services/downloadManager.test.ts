@@ -24,7 +24,7 @@ import { useSettingsStore } from '../../src/stores/useSettingsStore';
 import { useDownloadStore } from '../../src/stores/useDownloadStore';
 import { downloadBookFile } from '../../src/services/fileManager';
 import { prepareBookForReading } from '../../src/services/downloadManager';
-import { Book } from '../../src/types/komga';
+import { Book } from '../../src/types/api';
 
 const fsMock = jest.requireMock('expo-file-system/legacy');
 const mockedGetInfo = fsMock.getInfoAsync as jest.Mock;

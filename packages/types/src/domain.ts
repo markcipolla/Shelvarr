@@ -4,7 +4,6 @@ export interface Library {
   id: number;
   name: string;
   path: string;
-  komgaLibraryId: string | null;
   createdAt: string;
 }
 
@@ -25,7 +24,6 @@ export interface Book {
   description: string | null;
   coverUrl: string | null;
   extension: string | null;
-  komgaBookId: string | null;
   metadataSource: string | null;
   metadataId: string | null;
   createdAt: string;
@@ -70,7 +68,7 @@ export interface Task {
   completedAt: string | null;
 }
 
-export type TaskType = 'scan' | 'metadata' | 'book_metadata' | 'organize' | 'download' | 'author_sync' | 'komga_sync';
+export type TaskType = 'scan' | 'metadata' | 'book_metadata' | 'organize' | 'download' | 'author_sync';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface Author {
@@ -138,11 +136,6 @@ export interface HealthResponse {
 }
 
 // Config types
-export interface KomgaConfig {
-  url: string | null;
-  apiKey: string | null;
-}
-
 /**
  * Settings that only matter while migrating a library Shelvarr did not
  * organise itself.
@@ -184,7 +177,6 @@ export interface AppConfig {
   dataDir: string;
   libraryRoot: string;
   dbPath: string;
-  komga: KomgaConfig;
   comicMigration: ComicMigrationConfig;
   getcomics: GetComicsConfig;
   audiletome: AudiletomeConfig;
@@ -264,8 +256,6 @@ export interface Settings {
   _config?: {
     libraryRoot: string;
     supportedExtensions: string[];
-    komgaConfigured: boolean;
-    komgaUrl?: string | null;
   };
 }
 
@@ -315,7 +305,7 @@ export interface SourceStatusCache {
   last_updated: string;
 }
 
-// Read progress types (for Komga-compatible API)
+// Read progress types (for the reader API)
 export interface ReadProgress {
   id: number;
   bookId: number;

@@ -1,7 +1,7 @@
 /**
  * Unit tests for GET /api/books/next-up — the next unread book in each series
  * the user is partway through, merged with books marked "want to read" on
- * Hardcover, shaped as a Komga paged response.
+ * Hardcover, shaped as a paged response.
  */
 
 import { describe, it, beforeEach, afterEach, mock } from 'node:test';
@@ -19,9 +19,9 @@ mock.module('@shelvarr/services', {
   },
 });
 
-mock.module('@shelvarr/services/komga-response', {
+mock.module('@shelvarr/services/api-response', {
   namedExports: {
-    toKomgaBook: (row: { id: number }) => ({ id: String(row.id) }),
+    toApiBook: (row: { id: number }) => ({ id: String(row.id) }),
     toPagedResponse: (content: unknown[], page: number, size: number, totalElements: number) => ({
       content,
       number: page,

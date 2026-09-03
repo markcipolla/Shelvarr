@@ -1,4 +1,4 @@
-import { MediaFormat } from '../types/komga';
+import { MediaFormat } from '../types/api';
 
 const MEDIA_TYPE_MAP: Record<string, MediaFormat> = {
   'application/epub+zip': 'epub',

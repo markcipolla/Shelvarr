@@ -1,4 +1,4 @@
-// Re-export Komga types from shared package
+// Re-export the shared API response types
 export type {
   Library,
   Series,
@@ -13,4 +13,4 @@ export type {
   MediaFormat,
   AuthCredentials,
   DownloadedBook,
-} from '@shelvarr/types/komga';
+} from '@shelvarr/types/api';

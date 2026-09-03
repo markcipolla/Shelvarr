@@ -274,7 +274,6 @@ describe('Comic download import', () => {
       dataDir: root,
       libraryRoot: root,
       dbPath: join(root, 'db.sqlite'),
-      komga: { url: null, apiKey: null },
       comicMigration: { pathMap: null },
       getcomics: {
         baseUrl: 'https://getcomics.org',

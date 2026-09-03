@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
 import { query, queryOne, getReadProgress } from '@/lib/db';
 import { validateApiAuth } from '@shelvarr/services';
-import { toKomgaBook, toPagedResponse } from '@shelvarr/services/komga-response';
+import { toApiBook, toPagedResponse } from '@shelvarr/services/api-response';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,6 +79,6 @@ export function GET(request: NextRequest) {
     [...params, size, offset]
   );
 
-  const content = rows.map(b => toKomgaBook(b, getReadProgress(b.id)));
+  const content = rows.map(b => toApiBook(b, getReadProgress(b.id)));
   return NextResponse.json(toPagedResponse(content, page, size, totalElements));
 }

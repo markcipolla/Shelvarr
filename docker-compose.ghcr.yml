@@ -17,9 +17,6 @@ services:
       - PORT=3000
       - DATA_DIR=/app/data
       - LIBRARY_ROOT=/libraries
-      # Optional Komga integration:
-      # - KOMGA_URL=http://komga:25600
-      # - KOMGA_API_KEY=your-api-key
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]

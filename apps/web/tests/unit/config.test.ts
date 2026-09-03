@@ -23,12 +23,6 @@ describe('Config', () => {
     }
   });
 
-  it('should have komga config structure', () => {
-    assert.ok(config.komga !== undefined);
-    assert.ok('url' in config.komga);
-    assert.ok('apiKey' in config.komga);
-  });
-
   it('should have rate limits', () => {
     assert.ok(config.rateLimits !== undefined);
     assert.ok(typeof config.rateLimits.hardcover === 'number');

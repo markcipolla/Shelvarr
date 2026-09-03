@@ -93,59 +93,6 @@ export const hardcoverHandlers = [
   }),
 ];
 
-// Komga API handlers
-export const komgaHandlers = [
-  // Test connection
-  http.get('*/api/v1/libraries', ({ request }) => {
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader) {
-      return new HttpResponse(null, { status: 401 });
-    }
-    return HttpResponse.json([
-      { id: 'lib1', name: 'Test Library', root: '/books' }
-    ]);
-  }),
-
-  // Get libraries
-  http.get('*/api/v2/libraries', ({ request }) => {
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader) {
-      return new HttpResponse(null, { status: 401 });
-    }
-    return HttpResponse.json({
-      content: [
-        { id: 'lib1', name: 'Comics', root: '/comics' },
-        { id: 'lib2', name: 'Books', root: '/books' }
-      ]
-    });
-  }),
-
-  // Scan library
-  http.post('*/api/v1/libraries/:id/scan', () => {
-    return new HttpResponse(null, { status: 202 });
-  }),
-
-  // Get series
-  http.get('*/api/v1/series', () => {
-    return HttpResponse.json({
-      content: [
-        { id: 'series1', name: 'Test Series', booksCount: 3 }
-      ],
-      totalElements: 1
-    });
-  }),
-
-  // Get books
-  http.get('*/api/v1/books', () => {
-    return HttpResponse.json({
-      content: [
-        { id: 'book1', name: 'Test Book', seriesId: 'series1' }
-      ],
-      totalElements: 1
-    });
-  }),
-];
-
 // OpenLibrary API handlers
 export const openLibraryHandlers = [
   // Author search
@@ -274,7 +221,6 @@ export const downloadSourceHandlers = [
 // Combine all handlers
 export const handlers = [
   ...hardcoverHandlers,
-  ...komgaHandlers,
   ...openLibraryHandlers,
   ...downloadSourceHandlers,
 ];

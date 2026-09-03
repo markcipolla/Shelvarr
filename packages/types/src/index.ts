@@ -1,3 +1,3 @@
 export * from './domain';
-export * as Komga from './komga';
+export * as Api from './api';
 export * from './comics';
