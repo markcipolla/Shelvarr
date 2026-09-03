@@ -43,7 +43,7 @@ describe('getReadingUserId', () => {
     savedAuthEnabled = process.env['SHELVARR_AUTH_ENABLED'];
     process.env['SHELVARR_AUTH_ENABLED'] = 'true';
     db.getDb().exec(
-      'DELETE FROM login_tokens; DELETE FROM auth_sessions; DELETE FROM users; DELETE FROM settings;'
+      'DELETE FROM login_codes; DELETE FROM auth_sessions; DELETE FROM users; DELETE FROM settings;'
     );
   });
 
