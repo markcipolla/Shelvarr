@@ -1,6 +1,7 @@
 import { Book, DownloadedBook } from '../types/api';
 import { getMediaFormat, getFileExtension, isComicFormat, getFormatFromName } from '../utils/fileTypes';
 import { useSettingsStore } from '../stores/useSettingsStore';
+import { getAuthHeaders } from '../stores/useAuthStore';
 import { useDownloadStore } from '../stores/useDownloadStore';
 import { downloadBookFile, deleteBookFiles } from './fileManager';
 import { getBookExtractDir, getBookDownloadPath } from '../utils/paths';
@@ -53,7 +54,7 @@ async function downloadComicPages(book: Book): Promise<string> {
       }
 
       const url = `${serverUrl}/api/books/${book.id}/pages/${i}`;
-      const dl = createDownloadResumable(url, filePath, {});
+      const dl = createDownloadResumable(url, filePath, { headers: getAuthHeaders() });
       const result = await dl.downloadAsync();
       if (!result) throw new Error(`Failed to download page ${i}`);
 
@@ -113,7 +114,7 @@ async function ensureDownloaded(
   store.setActiveDownload(book.id, 0);
 
   try {
-    const filePath = await downloadBookFile(url, book.id, extension, {}, (progress) => {
+    const filePath = await downloadBookFile(url, book.id, extension, getAuthHeaders(), (progress) => {
       store.setActiveDownload(book.id, progress);
     });
     store.setActiveDownload(null);

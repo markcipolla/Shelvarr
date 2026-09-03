@@ -1,4 +1,5 @@
 import { useSettingsStore } from '../../stores/useSettingsStore';
+import { getAuthHeaders } from '../../stores/useAuthStore';
 
 export async function testShelvarrConnection(
   url: string
@@ -41,7 +42,7 @@ export async function updateReadingStatus(
     const url = `${shelvarrUrl.replace(/\/$/, '')}/api/reading-status/by-book`;
     await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ bookId, status }),
     });
   } catch (err) {

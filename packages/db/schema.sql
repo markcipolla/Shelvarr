@@ -430,3 +430,61 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
   enabled INTEGER NOT NULL DEFAULT 1,
   payload TEXT -- JSON passed to the task
 );
+
+-- User accounts
+-- Passwordless: there is no password column and never should be. A person
+-- proves who they are by receiving a magic link at their email address.
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  -- NOCASE so Bob@example.com and bob@example.com are the same account.
+  email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  name TEXT,
+  role TEXT NOT NULL DEFAULT 'user', -- admin|user
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  last_login_at TEXT
+);
+
+-- Live sessions. Only the SHA-256 of each token is stored, so a copy of the
+-- database does not hand out logins.
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  client TEXT NOT NULL DEFAULT 'web', -- web|native
+  label TEXT,                          -- user agent or device name
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  expires_at TEXT NOT NULL
+);
+
+-- Magic links, and the device-flow logins the native app starts.
+--
+-- A web login stores only the link token. A native login also stores a device
+-- code: the phone polls with it while the link is opened wherever the mail
+-- was read, which may be a different device entirely.
+CREATE TABLE IF NOT EXISTS login_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  client TEXT NOT NULL DEFAULT 'web', -- web|native
+  device_code_hash TEXT UNIQUE,        -- native only
+  user_code TEXT,                      -- native only; shown in the email
+  redirect_to TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  expires_at TEXT NOT NULL,
+  -- Set when the magic link is opened. A web login turns into a session
+  -- there and then; a native login waits for the phone's next poll, which
+  -- mints the session and deletes this row, so one link is good for one
+  -- session and no plaintext token is ever written down.
+  consumed_at TEXT,
+  -- Set when a link is retired without being used: superseded by a newer
+  -- request, or cancelled by the device that started it. Retired rows are
+  -- kept rather than deleted so the rate limit can still count how often
+  -- someone has asked.
+  revoked_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_login_tokens_user ON login_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_login_tokens_expires ON login_tokens(expires_at);

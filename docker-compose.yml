@@ -16,6 +16,18 @@ services:
       - PORT=3000
       - DATA_DIR=/app/data
       - LIBRARY_ROOT=/libraries
+      # User accounts. On by default; the first visit runs a setup wizard.
+      # Set the public URL so emailed sign-in links point somewhere reachable.
+      # - SHELVARR_URL=http://shelvarr.local:3000
+      # Set false to turn accounts off and leave the server open.
+      # - SHELVARR_AUTH_ENABLED=false
+      # - SHELVARR_ALLOW_SIGNUP=false
+      # Without SMTP, sign-in links are written to the container log instead.
+      # - SMTP_HOST=smtp.example.com
+      # - SMTP_PORT=587
+      # - SMTP_USER=shelvarr@example.com
+      # - SMTP_PASSWORD=your-password
+      # - SMTP_FROM=Shelvarr <shelvarr@example.com>
       # Comic sourcing from GetComics
       - COMIC_LIBRARY_ROOT=/libraries/comics
       # - GETCOMICS_HOST_PREFERENCE=getcomics,pixeldrain

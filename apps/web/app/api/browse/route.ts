@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readdirSync, statSync, type Dirent } from 'fs';
 import { resolve, join, dirname } from 'path';
 import config from '@/lib/config';
+import { validateApiAuth } from '@shelvarr/services';
 
 /**
  * The deepest existing directory at or above `startPath`. A half-typed path
@@ -25,6 +26,10 @@ function nearestExistingDirectory(startPath: string): string | null {
 }
 
 export async function GET(request: NextRequest) {
+  if (!validateApiAuth(request.headers)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const requestedPath = searchParams.get('path') || config.libraryRoot || '/';

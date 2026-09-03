@@ -33,6 +33,18 @@ export * as apiResponse from './api-response';
 // API auth
 export { validateApiAuth } from './api-auth';
 
+// User accounts and passwordless authentication
+export * as auth from './auth/index';
+export {
+  SESSION_COOKIE_NAME,
+  AuthError,
+  authenticateRequest,
+  getAuthStatus,
+  getRequestUser,
+  isAuthEnabled,
+} from './auth/index';
+export type { RequestAuth, HeaderReader } from './auth/request';
+
 // Utils
 export * as authors from './utils/authors';
 export * as logger from './utils/logger';

@@ -1,10 +1,6 @@
 import type { Metadata } from 'next';
-import { Suspense } from 'react';
 import './globals.css';
-import { SidebarWrapper } from '@/components/SidebarWrapper';
 import { ToastProvider } from '@/components/ui/Toast';
-import { GlobalSearch } from '@/components/GlobalSearch';
-import { ScrollRestorer } from '@/components/ScrollRestorer';
 
 // Force all pages to be dynamic — this app uses SQLite and has no static content
 export const dynamic = 'force-dynamic';
@@ -14,6 +10,11 @@ export const metadata: Metadata = {
   description: 'Self-hosted book and comic metadata management',
 };
 
+/**
+ * Only the document shell lives here. The application chrome — sidebar,
+ * search, scroll restoration — belongs to the `(app)` group, which is behind
+ * the sign-in check; the `(auth)` group is deliberately bare.
+ */
 export default function RootLayout({
   children,
 }: {
@@ -22,22 +23,7 @@ export default function RootLayout({
   return (
     <html className="h-full" lang="en">
       <body className="min-h-screen h-full flex bg-shelvarr-bg">
-        <ToastProvider>
-          <SidebarWrapper />
-          <div className="flex-1 flex flex-col min-h-screen h-full overflow-hidden">
-            <header className="sticky top-0 z-30 bg-shelvarr-bg/95 backdrop-blur border-b border-shelvarr-border px-4 py-3 pl-16 lg:pl-4">
-              <Suspense fallback={null}>
-                <GlobalSearch />
-              </Suspense>
-            </header>
-            <main id="main-scroll" className="flex-1 p-6 overflow-auto">
-              {children}
-            </main>
-            <Suspense fallback={null}>
-              <ScrollRestorer />
-            </Suspense>
-          </div>
-        </ToastProvider>
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );

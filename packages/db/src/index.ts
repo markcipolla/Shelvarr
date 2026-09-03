@@ -23,6 +23,11 @@ import type {
   ComicRootFolder,
   ComicVolume,
   ComicVolumeMetadata,
+  User,
+  UserRole,
+  Session,
+  AuthClient,
+  AuthenticatedSession,
 } from '@shelvarr/types';
 
 // Get directory of this file
@@ -2742,3 +2747,345 @@ export function getComicIssueDetail(issueId: number): ComicIssueSummary | null {
 // Aliases for compatibility
 export const getPool = getDb;
 export const initDatabaseAsync = initDatabase;
+
+// ---------------------------------------------------------------------------
+// User accounts and sessions
+//
+// Every timestamp here is a SQLite CURRENT_TIMESTAMP string
+// ("YYYY-MM-DD HH:MM:SS", always UTC), matching the rest of the schema.
+// Expiry is compared in SQL rather than JavaScript so the two never disagree
+// about a timezone: that format sorts lexicographically, so a plain string
+// comparison against CURRENT_TIMESTAMP is a correct chronological one.
+// ---------------------------------------------------------------------------
+
+/** Turn a stored timestamp into an ISO-8601 instant for API responses. */
+export function sqlTimeToIso(value: string): string {
+  return `${value.replace(' ', 'T')}Z`;
+}
+
+interface UserRow {
+  id: number;
+  email: string;
+  name: string | null;
+  role: string;
+  created_at: string;
+  last_login_at: string | null;
+}
+
+function mapUser(row: UserRow): User {
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    role: row.role === 'admin' ? 'admin' : 'user',
+    createdAt: row.created_at,
+    lastLoginAt: row.last_login_at,
+  };
+}
+
+export function countUsers(): number {
+  const row = queryOne<{ count: number }>('SELECT COUNT(*) AS count FROM users');
+  return row?.count ?? 0;
+}
+
+export function listUsers(): User[] {
+  return query<UserRow>('SELECT * FROM users ORDER BY id ASC').map(mapUser);
+}
+
+export function getUserById(id: number): User | null {
+  const row = queryOne<UserRow>('SELECT * FROM users WHERE id = ?', [id]);
+  return row ? mapUser(row) : null;
+}
+
+export function getUserByEmail(email: string): User | null {
+  // The column is COLLATE NOCASE, so this comparison is case-insensitive.
+  const row = queryOne<UserRow>('SELECT * FROM users WHERE email = ?', [email]);
+  return row ? mapUser(row) : null;
+}
+
+/** Throws if the email is already taken — the UNIQUE index is the guard. */
+export function createUser(email: string, name: string | null, role: UserRole): User {
+  const result = execute('INSERT INTO users (email, name, role) VALUES (?, ?, ?)', [
+    email,
+    name,
+    role,
+  ]);
+  const user = getUserById(result.lastInsertRowid);
+  if (!user) throw new Error('Failed to create user');
+  return user;
+}
+
+export function updateUser(
+  id: number,
+  changes: { name?: string | null; role?: UserRole }
+): boolean {
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  if (changes.name !== undefined) {
+    sets.push('name = ?');
+    params.push(changes.name);
+  }
+  if (changes.role !== undefined) {
+    sets.push('role = ?');
+    params.push(changes.role);
+  }
+  if (sets.length === 0) return false;
+  params.push(id);
+  return execute(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, params).rowCount > 0;
+}
+
+export function deleteUser(id: number): boolean {
+  return execute('DELETE FROM users WHERE id = ?', [id]).rowCount > 0;
+}
+
+export function countAdmins(): number {
+  const row = queryOne<{ count: number }>(
+    "SELECT COUNT(*) AS count FROM users WHERE role = 'admin'"
+  );
+  return row?.count ?? 0;
+}
+
+export function touchUserLogin(id: number): void {
+  execute('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
+}
+
+interface SessionRow {
+  id: number;
+  user_id: number;
+  token_hash: string;
+  client: string;
+  label: string | null;
+  created_at: string;
+  last_seen_at: string;
+  expires_at: string;
+}
+
+function mapSession(row: SessionRow): Session {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    client: row.client === 'native' ? 'native' : 'web',
+    label: row.label,
+    createdAt: row.created_at,
+    lastSeenAt: row.last_seen_at,
+    expiresAt: row.expires_at,
+  };
+}
+
+export function createSessionRecord(input: {
+  userId: number;
+  tokenHash: string;
+  client: AuthClient;
+  label?: string | null;
+  ttlSeconds: number;
+}): Session {
+  const result = execute(
+    `INSERT INTO auth_sessions (user_id, token_hash, client, label, expires_at)
+     VALUES (?, ?, ?, ?, datetime('now', ?))`,
+    [
+      input.userId,
+      input.tokenHash,
+      input.client,
+      input.label ?? null,
+      `+${Math.floor(input.ttlSeconds)} seconds`,
+    ]
+  );
+  const row = queryOne<SessionRow>('SELECT * FROM auth_sessions WHERE id = ?', [
+    result.lastInsertRowid,
+  ]);
+  if (!row) throw new Error('Failed to create session');
+  return mapSession(row);
+}
+
+/**
+ * Look up a live session by token hash. Expired rows are ignored, and swept
+ * as they are met so the table stays tidy without a separate reaper.
+ */
+export function getSessionByTokenHash(tokenHash: string): AuthenticatedSession | null {
+  const row = queryOne<SessionRow>('SELECT * FROM auth_sessions WHERE token_hash = ?', [
+    tokenHash,
+  ]);
+  if (!row) return null;
+
+  if (row.expires_at <= currentSqlTime()) {
+    execute('DELETE FROM auth_sessions WHERE id = ?', [row.id]);
+    return null;
+  }
+
+  const user = getUserById(row.user_id);
+  if (!user) return null;
+  return { user, session: mapSession(row) };
+}
+
+/** SQLite's idea of now, in the same format as every stored timestamp. */
+function currentSqlTime(): string {
+  const row = queryOne<{ now: string }>('SELECT CURRENT_TIMESTAMP AS now');
+  return row?.now ?? '';
+}
+
+/**
+ * Record that a session was just used. Written at most once a minute, so a
+ * page full of thumbnails does not become a page full of writes.
+ */
+export function touchSession(id: number): void {
+  execute(
+    `UPDATE auth_sessions SET last_seen_at = CURRENT_TIMESTAMP
+     WHERE id = ? AND last_seen_at < datetime('now', '-60 seconds')`,
+    [id]
+  );
+}
+
+export function listSessionsForUser(userId: number): Session[] {
+  return query<SessionRow>(
+    'SELECT * FROM auth_sessions WHERE user_id = ? ORDER BY last_seen_at DESC',
+    [userId]
+  ).map(mapSession);
+}
+
+export function deleteSessionByTokenHash(tokenHash: string): boolean {
+  return execute('DELETE FROM auth_sessions WHERE token_hash = ?', [tokenHash]).rowCount > 0;
+}
+
+/** Pass `userId` to make sure one person cannot revoke another's session. */
+export function deleteSession(id: number, userId?: number): boolean {
+  if (userId === undefined) {
+    return execute('DELETE FROM auth_sessions WHERE id = ?', [id]).rowCount > 0;
+  }
+  return (
+    execute('DELETE FROM auth_sessions WHERE id = ? AND user_id = ?', [id, userId]).rowCount > 0
+  );
+}
+
+export function deleteSessionsForUser(userId: number): number {
+  return execute('DELETE FROM auth_sessions WHERE user_id = ?', [userId]).rowCount;
+}
+
+export function pruneExpiredSessions(): number {
+  return execute('DELETE FROM auth_sessions WHERE expires_at <= CURRENT_TIMESTAMP').rowCount;
+}
+
+export interface LoginTokenRow {
+  id: number;
+  user_id: number;
+  token_hash: string;
+  client: string;
+  device_code_hash: string | null;
+  user_code: string | null;
+  redirect_to: string | null;
+  created_at: string;
+  expires_at: string;
+  consumed_at: string | null;
+  revoked_at: string | null;
+}
+
+export function createLoginToken(input: {
+  userId: number;
+  tokenHash: string;
+  client: AuthClient;
+  deviceCodeHash?: string | null;
+  userCode?: string | null;
+  redirectTo?: string | null;
+  ttlSeconds: number;
+}): LoginTokenRow {
+  const result = execute(
+    `INSERT INTO login_tokens
+       (user_id, token_hash, client, device_code_hash, user_code, redirect_to, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, datetime('now', ?))`,
+    [
+      input.userId,
+      input.tokenHash,
+      input.client,
+      input.deviceCodeHash ?? null,
+      input.userCode ?? null,
+      input.redirectTo ?? null,
+      `+${Math.floor(input.ttlSeconds)} seconds`,
+    ]
+  );
+  const row = queryOne<LoginTokenRow>('SELECT * FROM login_tokens WHERE id = ?', [
+    result.lastInsertRowid,
+  ]);
+  if (!row) throw new Error('Failed to create login token');
+  return row;
+}
+
+/** Retired links are invisible here, so a superseded one reads as unknown. */
+export function getLoginTokenByHash(tokenHash: string): LoginTokenRow | null {
+  return queryOne<LoginTokenRow>(
+    'SELECT * FROM login_tokens WHERE token_hash = ? AND revoked_at IS NULL',
+    [tokenHash]
+  );
+}
+
+export function getLoginTokenByDeviceCodeHash(deviceCodeHash: string): LoginTokenRow | null {
+  return queryOne<LoginTokenRow>(
+    'SELECT * FROM login_tokens WHERE device_code_hash = ? AND revoked_at IS NULL',
+    [deviceCodeHash]
+  );
+}
+
+export function isLoginTokenExpired(row: LoginTokenRow): boolean {
+  return row.expires_at <= currentSqlTime();
+}
+
+/**
+ * Mark a link as opened, refusing if it already was. The UPDATE ... WHERE
+ * consumed_at IS NULL is atomic, so two clicks on the same link cannot both
+ * win — which is what stops a forwarded email from minting a second session.
+ */
+export function consumeLoginToken(id: number): boolean {
+  return (
+    execute(
+      `UPDATE login_tokens SET consumed_at = CURRENT_TIMESTAMP
+       WHERE id = ?
+         AND consumed_at IS NULL
+         AND revoked_at IS NULL
+         AND expires_at > CURRENT_TIMESTAMP`,
+      [id]
+    ).rowCount > 0
+  );
+}
+
+export function deleteLoginToken(id: number): boolean {
+  return execute('DELETE FROM login_tokens WHERE id = ?', [id]).rowCount > 0;
+}
+
+/**
+ * Retire outstanding links for a person, so asking for a new one invalidates
+ * the old. The rows stay: deleting them would also delete the record the rate
+ * limit counts, letting someone request links forever by simply requesting
+ * them one at a time.
+ */
+export function revokePendingLoginTokens(userId: number, client: AuthClient): number {
+  return execute(
+    `UPDATE login_tokens SET revoked_at = CURRENT_TIMESTAMP
+     WHERE user_id = ? AND client = ? AND revoked_at IS NULL AND consumed_at IS NULL`,
+    [userId, client]
+  ).rowCount;
+}
+
+/** Retire a single link, by id. */
+export function revokeLoginToken(id: number): boolean {
+  return (
+    execute(
+      'UPDATE login_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND revoked_at IS NULL',
+      [id]
+    ).rowCount > 0
+  );
+}
+
+export function pruneExpiredLoginTokens(): number {
+  return execute('DELETE FROM login_tokens WHERE expires_at <= CURRENT_TIMESTAMP').rowCount;
+}
+
+/**
+ * How many links a person has asked for lately; the rate limit reads this.
+ * Counts every request in the window, retired and spent ones included.
+ */
+export function countRecentLoginTokens(userId: number, withinSeconds: number): number {
+  const row = queryOne<{ count: number }>(
+    `SELECT COUNT(*) AS count FROM login_tokens
+     WHERE user_id = ? AND created_at > datetime('now', ?)`,
+    [userId, `-${Math.floor(withinSeconds)} seconds`]
+  );
+  return row?.count ?? 0;
+}

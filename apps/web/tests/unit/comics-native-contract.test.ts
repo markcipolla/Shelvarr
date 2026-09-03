@@ -7,6 +7,10 @@
  * broken client that nothing else would catch.
  *
  * When one of these fails, the native app needs updating too.
+ *
+ * Requests carry a real session token, as the native app does: these routes
+ * are behind authentication, so a contract test that skipped it would be
+ * testing a path no client actually takes.
  */
 
 import { describe, it, before, after, beforeEach } from 'node:test';
@@ -26,6 +30,7 @@ let comicDetailRoute: { GET: Handler };
 let issueRoute: { GET: Handler };
 let inProgressRoute: { GET: Handler };
 let nextUpRoute: { GET: Handler };
+let sessionToken: string;
 
 /**
  * A request in the shape the route handlers read. Some reach for
@@ -35,7 +40,7 @@ function request(url = 'http://host/api/comics'): unknown {
   const parsed = new URL(url);
   return {
     url,
-    headers: new Headers(),
+    headers: new Headers({ Authorization: `Bearer ${sessionToken}` }),
     nextUrl: { searchParams: parsed.searchParams },
   };
 }
@@ -85,6 +90,13 @@ describe('Native app comic API contract', () => {
 
     db = await import('../../lib/db/index.js');
     db.initDatabase();
+
+    const { auth } = await import('@shelvarr/services');
+    sessionToken = auth.issueSession(
+      auth.createFirstAdmin('contract@example.com', 'Contract'),
+      'native',
+      'contract test'
+    ).token;
 
     comicsRoute = (await import('../../app/api/comics/route.js')) as unknown as { GET: Handler };
     comicDetailRoute = (await import('../../app/api/comics/[id]/route.js')) as unknown as {
