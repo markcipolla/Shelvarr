@@ -4,15 +4,49 @@ import { revalidatePath } from 'next/cache';
 import { getSetting, setSetting, getAllSettings } from '@/lib/db';
 import { getAllSourcesStatus, isConfigured } from '@/lib/services/metadata';
 
-// Only Hardcover is supported
-type MetadataSource = 'hardcover';
+/** Metadata providers configurable on the Metadata Sources tab. */
+export type MetadataSource = 'hardcover' | 'comicvine';
+
+export interface MetadataSourceStatus {
+  name: MetadataSource;
+  displayName: string;
+  /** What the source supplies metadata for, e.g. "Books". */
+  mediaType: string;
+  enabled: boolean;
+  configured: boolean;
+  requiresApiKey: boolean;
+  apiKeyUrl?: string;
+  /** Whether the stored key can be checked against the live API. */
+  canTest: boolean;
+}
 
 export async function getSettings() {
   return getAllSettings();
 }
 
-export async function getSourcesStatus() {
-  return getAllSourcesStatus();
+export async function getSourcesStatus(): Promise<MetadataSourceStatus[]> {
+  const { comicLibrary } = await import('@shelvarr/services');
+
+  const bookSources = await getAllSourcesStatus();
+  const comicVineConfigured = await comicLibrary.isComicVineConfigured();
+
+  return [
+    ...bookSources.map((source) => ({
+      ...source,
+      mediaType: 'Books',
+      canTest: false,
+    })),
+    {
+      name: 'comicvine' as const,
+      displayName: 'ComicVine',
+      mediaType: 'Comics',
+      enabled: comicVineConfigured,
+      configured: comicVineConfigured,
+      requiresApiKey: true,
+      apiKeyUrl: 'https://comicvine.gamespot.com/api/',
+      canTest: true,
+    },
+  ];
 }
 
 export async function toggleSource(source: MetadataSource, enabled: boolean) {
@@ -33,6 +67,7 @@ export async function setApiKey(source: MetadataSource, apiKey: string) {
   setSetting(key, apiKey);
 
   revalidatePath('/settings');
+  if (source === 'comicvine') revalidatePath('/comics');
   return { success: true };
 }
 
@@ -42,6 +77,10 @@ export async function getApiKey(source: MetadataSource): Promise<string | null> 
 }
 
 export async function testSourceConnection(source: MetadataSource) {
+  if (source === 'comicvine') {
+    return testComicVineConnection();
+  }
+
   if (source !== 'hardcover') {
     return { success: false, error: 'Unknown source' };
   }
@@ -227,7 +266,10 @@ export async function previewOrganizeForLibrary(
 }
 
 // ---------------------------------------------------------------------------
-// Comics: ComicVine metadata and library root folders
+// Comics: library root folders
+//
+// The ComicVine API key itself lives with the other metadata providers, on the
+// Metadata Sources tab — see getSourcesStatus/setApiKey above.
 // ---------------------------------------------------------------------------
 
 export async function getComicsSettings() {
@@ -235,8 +277,7 @@ export async function getComicsSettings() {
   const { countVolumesInRootFolder } = await import('@/lib/db');
 
   return {
-    hasApiKey: !!(await getSetting<string>('comicvine_api_key', null)),
-    dateType: (await getSetting<string>('comicvine_date_type', 'cover_date')) ?? 'cover_date',
+    hasApiKey: await comicLibrary.isComicVineConfigured(),
     rootFolders: comicLibrary.listRootFolders().map((folder) => ({
       ...folder,
       volumeCount: countVolumesInRootFolder(folder.id),
@@ -244,9 +285,13 @@ export async function getComicsSettings() {
   };
 }
 
-export async function setComicVineSettings(apiKey?: string, dateType?: string) {
-  if (apiKey) setSetting('comicvine_api_key', apiKey);
-  if (dateType) setSetting('comicvine_date_type', dateType);
+/** Which ComicVine date ComicVine issues are dated by. */
+export async function getComicVineDateType(): Promise<string> {
+  return (await getSetting<string>('comicvine_date_type', 'cover_date')) ?? 'cover_date';
+}
+
+export async function setComicVineDateType(dateType: string) {
+  setSetting('comicvine_date_type', dateType);
 
   revalidatePath('/settings');
   revalidatePath('/comics');

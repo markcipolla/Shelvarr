@@ -6,12 +6,10 @@ import {
   addComicRootFolderAction,
   removeComicRootFolderAction,
   runScheduleNowAction,
-  setComicVineSettings,
   setScheduleEnabledAction,
   setScheduleIntervalAction,
   startComicAdoption,
   startComicLibraryImport,
-  testComicVineConnection,
   type AdoptionCandidateView,
   type ScheduleView,
 } from '@/lib/actions/settings';
@@ -23,8 +21,8 @@ interface RootFolder {
 }
 
 interface ComicsSettings {
+  /** Whether ComicVine is configured on the Metadata Sources tab. */
   hasApiKey: boolean;
-  dateType: string;
   rootFolders: RootFolder[];
 }
 
@@ -64,34 +62,12 @@ export function ComicsTab({
   const readyToMigrate = adoptionCandidates.filter((candidate) => !candidate.blocker);
   const blockedFromMigrating = adoptionCandidates.filter((candidate) => candidate.blocker);
 
-  const [apiKey, setApiKey] = useState('');
-  const [dateType, setDateType] = useState(settings.dateType);
-  const [savingKey, setSavingKey] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null);
-
   const [newFolder, setNewFolder] = useState('');
   const [folderError, setFolderError] = useState<string | null>(null);
   const [busyFolder, setBusyFolder] = useState(false);
 
   const [importPath, setImportPath] = useState('');
   const [importMessage, setImportMessage] = useState<string | null>(null);
-
-  const handleSaveKey = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setSavingKey(true);
-    await setComicVineSettings(apiKey || undefined, dateType);
-    setApiKey('');
-    router.refresh();
-    setSavingKey(false);
-  };
-
-  const handleTest = async () => {
-    setTesting(true);
-    setTestResult(null);
-    setTestResult(await testComicVineConnection());
-    setTesting(false);
-  };
 
   const handleAddFolder = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -175,78 +151,19 @@ export function ComicsTab({
       {/* ComicVine ------------------------------------------------------- */}
       <section>
         <h2 className="text-lg font-semibold text-white mb-1">ComicVine</h2>
-        <p className="text-shelvarr-text-muted mb-4 text-sm">
-          Comic metadata comes from ComicVine. Get a free API key at{' '}
-          <a
-            href="https://comicvine.gamespot.com/api/"
-            target="_blank"
-            rel="noreferrer"
-            className="text-blue-400 hover:underline"
-          >
-            comicvine.gamespot.com/api
-          </a>
-          .
-        </p>
-
-        <form onSubmit={handleSaveKey} className="space-y-4">
-          <div>
-            <label htmlFor="cv-api-key" className="block text-sm font-medium text-shelvarr-text-muted mb-1">
-              API Key
-            </label>
-            <input
-              type="password"
-              id="cv-api-key"
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              placeholder={settings.hasApiKey ? '••••••••' : 'Enter API key'}
-              className={inputClass}
-            />
-            {settings.hasApiKey && (
-              <p className="mt-1 text-xs text-shelvarr-text-muted">
-                Leave blank to keep the existing key
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label htmlFor="cv-date-type" className="block text-sm font-medium text-shelvarr-text-muted mb-1">
-              Issue release date
-            </label>
-            <select
-              id="cv-date-type"
-              value={dateType}
-              onChange={(event) => setDateType(event.target.value)}
-              className={inputClass}
-            >
-              <option value="cover_date">Cover date</option>
-              <option value="store_date">Store date</option>
-            </select>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={savingKey}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium"
-            >
-              {savingKey ? 'Saving…' : 'Save'}
-            </button>
-            <button
-              type="button"
-              onClick={handleTest}
-              disabled={testing || !settings.hasApiKey}
-              className="px-4 py-2 bg-shelvarr-surface border border-shelvarr-border hover:border-blue-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium"
-            >
-              {testing ? 'Testing…' : 'Test connection'}
-            </button>
-          </div>
-
-          {testResult && (
-            <p className={`text-sm ${testResult.success ? 'text-green-400' : 'text-red-400'}`}>
-              {testResult.success ? 'Connected to ComicVine' : testResult.error}
-            </p>
+        <p className="text-shelvarr-text-muted text-sm">
+          Comic metadata comes from ComicVine. Its API key and issue date setting live with the
+          other providers on the{' '}
+          <a href="/settings/metadata" className="text-shelvarr-primary hover:underline">
+            Metadata Sources
+          </a>{' '}
+          tab.{' '}
+          {settings.hasApiKey ? (
+            <span className="text-green-400">An API key is configured.</span>
+          ) : (
+            <span className="text-yellow-400">No API key is configured yet.</span>
           )}
-        </form>
+        </p>
       </section>
 
       {/* Root folders ---------------------------------------------------- */}

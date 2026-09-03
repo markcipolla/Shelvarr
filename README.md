@@ -100,16 +100,16 @@ npm run test:e2e
 | `GETCOMICS_HOST_PREFERENCE` | getcomics,pixeldrain | Order to try download hosts in |
 | `GETCOMICS_RENAME` | true | Rename imported files to the naming template; set `false` to keep original names |
 | `SCHEDULER_ENABLED` | true | Set `false` to stop Shelvarr running recurring jobs in-process |
-| `COMICVINE_API_KEY` | - | ComicVine key; normally set in Settings → Comics instead |
+| `COMICVINE_API_KEY` | - | ComicVine key; normally set in Settings → Metadata Sources instead |
 | `COMIC_PATH_MAP` | - | `from:to` prefix remap for a library's recorded paths, used while migrating |
 
 ## Comics
 
 Shelvarr manages comics itself — it does not need Kapowarr.
 
-**Setup.** Add a ComicVine API key and at least one root folder under
-**Settings → Comics**. A key is free from
-[comicvine.gamespot.com/api](https://comicvine.gamespot.com/api/).
+**Setup.** Add a ComicVine API key under **Settings → Metadata Sources**,
+alongside Hardcover, and at least one root folder under **Settings → Comics**. A
+key is free from [comicvine.gamespot.com/api](https://comicvine.gamespot.com/api/).
 
 **Adding comics.** Search ComicVine from `/comics/add`. Shelvarr pulls the
 volume and its issues, creates the folder, and adopts any files already sitting

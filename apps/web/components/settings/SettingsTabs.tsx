@@ -7,15 +7,7 @@ import { KomgaTab } from './KomgaTab';
 import { AboutTab } from './AboutTab';
 import type { DownloadSourceConfig } from '@/lib/db';
 import type { SourceStatus as DownloadSourceStatus } from '@/lib/services/downloads';
-
-interface SourceStatus {
-  name: 'hardcover';
-  displayName: string;
-  enabled: boolean;
-  configured: boolean;
-  requiresApiKey: boolean;
-  apiKeyUrl?: string;
-}
+import type { MetadataSourceStatus } from '@/lib/actions/settings';
 
 interface KomgaSettings {
   url: string | null;
@@ -23,15 +15,22 @@ interface KomgaSettings {
 }
 
 interface SettingsTabsProps {
-  sources: SourceStatus[];
+  sources: MetadataSourceStatus[];
   komga: KomgaSettings;
   downloadConfigs?: DownloadSourceConfig[];
   downloadStatuses?: DownloadSourceStatus[];
+  comicVineDateType?: string;
 }
 
 type TabId = 'sources' | 'downloads' | 'komga' | 'about';
 
-export function SettingsTabs({ sources, komga, downloadConfigs = [], downloadStatuses = [] }: SettingsTabsProps) {
+export function SettingsTabs({
+  sources,
+  komga,
+  downloadConfigs = [],
+  downloadStatuses = [],
+  comicVineDateType = 'cover_date',
+}: SettingsTabsProps) {
   const [activeTab, setActiveTab] = useState<TabId>('sources');
 
   const tabs: { id: TabId; label: string }[] = [
@@ -62,7 +61,9 @@ export function SettingsTabs({ sources, komga, downloadConfigs = [], downloadSta
       </div>
 
       <div className="py-6">
-        {activeTab === 'sources' && <MetadataSourcesTab sources={sources} />}
+        {activeTab === 'sources' && (
+          <MetadataSourcesTab sources={sources} comicVineDateType={comicVineDateType} />
+        )}
         {activeTab === 'downloads' && <DownloadSourcesTab configs={downloadConfigs} statuses={downloadStatuses} />}
         {activeTab === 'komga' && <KomgaTab settings={komga} />}
         {activeTab === 'about' && <AboutTab />}
