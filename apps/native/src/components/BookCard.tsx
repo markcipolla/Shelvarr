@@ -15,7 +15,7 @@ interface StatusPill {
 }
 
 // Derive a Hardcover status pill, skipping cases the card already shows: "read"
-// (the corner triangle) and "reading" when a local progress bar is visible.
+// (the corner tick) and "reading" when a local progress bar is visible.
 function getStatusPill(book: Book, isRead: boolean, showBar: boolean): StatusPill | null {
   if (isRead) return null;
   switch (book.hardcoverStatus) {
@@ -95,8 +95,8 @@ export default function BookCard({ book, onPress, fill, placeholder, onRemove }:
           </View>
         )}
         {isRead && (
-          <View style={styles.readBadge}>
-            <View style={styles.readTriangle} />
+          <View style={styles.readBadge} accessibilityLabel="Read">
+            <Text style={styles.readTick}>✓</Text>
           </View>
         )}
         {statusPill && (
@@ -134,21 +134,16 @@ const styles = StyleSheet.create({
   coverFill: { width: '100%', height: '100%' },
   readBadge: {
     position: 'absolute',
-    top: 0,
-    right: 0,
-    width: 28,
-    height: 28,
-    overflow: 'hidden',
+    top: 6,
+    right: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#2e7d32',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  readTriangle: {
-    position: 'absolute',
-    top: -14,
-    right: -14,
-    width: 28,
-    height: 28,
-    backgroundColor: '#d4a017',
-    transform: [{ rotate: '45deg' }],
-  },
+  readTick: { color: '#fff', fontSize: 15, lineHeight: 18, fontWeight: '700' },
   statusPill: {
     position: 'absolute',
     bottom: 6,

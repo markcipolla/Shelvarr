@@ -64,12 +64,25 @@ describe('BookCard', () => {
     expect(onPress).toHaveBeenCalled();
   });
 
-  it('shows read badge when completed', () => {
+  it('shows a green tick read badge when completed', () => {
     const book = makeBook({
       readProgress: { page: 100, completed: true, readDate: '', created: '', lastModified: '' },
     });
-    const { toJSON } = render(<BookCard book={book} onPress={jest.fn()} />);
-    expect(toJSON()).toBeTruthy();
+    const { getByLabelText, getByText } = render(<BookCard book={book} onPress={jest.fn()} />);
+    const badge = getByLabelText('Read');
+    expect(badge).toHaveStyle({ backgroundColor: '#2e7d32' });
+    expect(getByText('\u2713')).toBeTruthy();
+  });
+
+  it('shows the read badge for a book marked read on Hardcover', () => {
+    const book = makeBook({ hardcoverStatus: 'read' });
+    const { getByLabelText } = render(<BookCard book={book} onPress={jest.fn()} />);
+    expect(getByLabelText('Read')).toBeTruthy();
+  });
+
+  it('shows no read badge for an unread book', () => {
+    const { queryByLabelText } = render(<BookCard book={makeBook()} onPress={jest.fn()} />);
+    expect(queryByLabelText('Read')).toBeNull();
   });
 
   it('shows progress bar when in progress', () => {
