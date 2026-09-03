@@ -201,6 +201,8 @@ export interface ComicGeneralFile extends ComicFileRef {
 /** A volume as the library list reports it. */
 export interface ComicVolumeSummary {
   id: number;
+  /** URL segment for this volume: `/comics/<slug>`. */
+  slug: string;
   comicvine_id: number;
   title: string;
   year: number | null;

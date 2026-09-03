@@ -48,6 +48,7 @@ const makeComicDownload = (
 
 const makeVolume = (id: number, title = `Volume ${id}`): ComicVolumeSummary => ({
   id,
+  slug: `volume-${id}`,
   comicvine_id: id,
   title,
   year: 2020,

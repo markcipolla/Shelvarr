@@ -16,6 +16,7 @@ import { _resetAllDatabases } from '../../../__mocks__/expo-sqlite';
 function makeVolume(overrides: Partial<ComicVolumeSummary> = {}): ComicVolumeSummary {
   return {
     id: 1,
+    slug: 'saga-2012',
     comicvine_id: 100,
     title: 'Saga',
     year: 2012,

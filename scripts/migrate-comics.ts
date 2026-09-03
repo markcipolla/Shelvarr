@@ -199,8 +199,8 @@ async function main(): Promise<number> {
   }
 
   console.log(
-    '\nDone. Kapowarr is no longer needed for these volumes — you can disconnect it\n' +
-      'under Settings → Kapowarr once you are happy with the result.'
+    '\nDone. Shelvarr owns these volumes now. Run --refresh, or use Refresh metadata\n' +
+      'on a volume, to pull fresh ComicVine data for them.'
   );
   return 0;
 }

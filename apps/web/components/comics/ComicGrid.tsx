@@ -33,7 +33,7 @@ export function ComicCard({ volume, progressLabel }: ComicCardProps) {
 
   return (
     <Link
-      href={`/comics/${volume.id}`}
+      href={`/comics/${volume.slug}`}
       className="group block bg-shelvarr-surface border border-shelvarr-border rounded-lg overflow-hidden hover:border-shelvarr-primary transition-colors"
     >
       <div className="aspect-[2/3] bg-shelvarr-bg relative">

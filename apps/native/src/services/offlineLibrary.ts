@@ -55,6 +55,7 @@ export function searchDownloadedBooks(
 function placeholderVolume(id: number, title: string): ComicVolumeSummary {
   return {
     id,
+    slug: String(id),
     comicvine_id: 0,
     title,
     year: null,

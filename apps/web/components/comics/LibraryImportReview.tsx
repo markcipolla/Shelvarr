@@ -207,7 +207,10 @@ export function LibraryImportReview({
                 type="checkbox"
                 className="mt-1.5"
                 checked={chosen !== null}
-                disabled={proposal.alreadyAdded !== null || proposal.candidates.length === 0}
+                disabled={
+                  (proposal.alreadyAdded !== null && proposal.alreadyAddedManaged === true) ||
+                  proposal.candidates.length === 0
+                }
                 onChange={(event) =>
                   setChoices((current) => ({
                     ...current,
@@ -230,11 +233,11 @@ export function LibraryImportReview({
                   {proposal.fileCount === 1 ? '' : 's'}
                 </p>
 
-                {proposal.alreadyAdded !== null ? (
+                {proposal.alreadyAdded !== null && proposal.alreadyAddedManaged === true ? (
                   <p className="text-xs text-shelvarr-text-muted mt-2">
                     Already in the library —{' '}
                     <Link
-                      href={`/comics/${proposal.alreadyAdded}`}
+                      href={`/comics/${proposal.alreadyAddedSlug ?? proposal.alreadyAdded}`}
                       className="text-shelvarr-primary hover:underline"
                     >
                       open it
@@ -245,28 +248,36 @@ export function LibraryImportReview({
                     ComicVine had no match. Add this one by hand from the Add Comic page.
                   </p>
                 ) : (
-                  <select
-                    value={chosen ?? ''}
-                    onChange={(event) =>
-                      setChoices((current) => ({
-                        ...current,
-                        [proposal.folder]: event.target.value
-                          ? Number(event.target.value)
-                          : null,
-                      }))
-                    }
-                    className="mt-2 w-full bg-shelvarr-bg border border-shelvarr-border rounded-lg px-2 py-1 text-sm text-white"
-                  >
-                    <option value="">Don&apos;t import this folder</option>
-                    {proposal.candidates.map((candidate) => (
-                      <option key={candidate.comicvineId} value={candidate.comicvineId}>
-                        {candidateLabel(candidate)}
-                        {candidate.comicvineId === proposal.suggestedComicvineId
-                          ? '  ← best guess'
-                          : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <>
+                    {proposal.alreadyAdded !== null && (
+                      <p className="text-xs text-amber-400 mt-2">
+                        Mirrored from a previous manager. Importing takes this volume over
+                        and refills its issues from ComicVine.
+                      </p>
+                    )}
+                    <select
+                      value={chosen ?? ''}
+                      onChange={(event) =>
+                        setChoices((current) => ({
+                          ...current,
+                          [proposal.folder]: event.target.value
+                            ? Number(event.target.value)
+                            : null,
+                        }))
+                      }
+                      className="mt-2 w-full bg-shelvarr-bg border border-shelvarr-border rounded-lg px-2 py-1 text-sm text-white"
+                    >
+                      <option value="">Don&apos;t import this folder</option>
+                      {proposal.candidates.map((candidate) => (
+                        <option key={candidate.comicvineId} value={candidate.comicvineId}>
+                          {candidateLabel(candidate)}
+                          {candidate.comicvineId === proposal.suggestedComicvineId
+                            ? '  ← best guess'
+                            : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </>
                 )}
               </div>
             </li>

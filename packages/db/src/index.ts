@@ -30,6 +30,10 @@ import type {
   AuthenticatedSession,
 } from '@shelvarr/types';
 
+import { uniqueComicSlug } from './comic-slug';
+
+export { slugify, baseComicSlug, uniqueComicSlug } from './comic-slug';
+
 // Get directory of this file
 let __dbDirname: string;
 try {
@@ -238,12 +242,19 @@ function runMigrations(database: Database.Database): void {
     ['last_cv_fetch', 'INTEGER NOT NULL DEFAULT 0'],
     ['cover', 'BLOB'],
     ['cover_url', 'TEXT'],
+    // What /comics/<slug> routes on. Nullable so the column can be added to an
+    // existing library; backfilled immediately below.
+    ['slug', 'TEXT'],
   ];
   for (const [name, definition] of comicColumns) {
     if (comicsInfo.some((col) => col.name === name)) continue;
     console.log(`Running migration: adding ${name} column to comics`);
     database.exec(`ALTER TABLE comics ADD COLUMN ${name} ${definition}`);
   }
+  // NULLs are distinct in SQLite, so this tolerates rows waiting to be
+  // backfilled while still keeping handed-out slugs unique.
+  database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_comics_slug ON comics(slug)');
+  backfillComicSlugs(database);
 
   // Download retries: alternate links to fall back to, and the attempt count
   // that bounds how often a rate-limited download is re-tried.
@@ -283,6 +294,46 @@ function runMigrations(database: Database.Database): void {
     console.log('Running migration: backfilling comics_fts');
     database.exec("INSERT INTO comics_fts(comics_fts) VALUES('rebuild')");
   }
+}
+
+/**
+ * Give every volume that lacks one a URL slug.
+ *
+ * Runs on open rather than only when the column is first added, so a row that
+ * somehow slipped in without a slug — an older build, a restored backup — is
+ * repaired instead of 404ing. Oldest volume first, so the plainest slug goes
+ * to the volume that has been around longest and is most likely to be linked.
+ */
+function backfillComicSlugs(database: Database.Database): void {
+  const rows = database
+    .prepare(
+      `SELECT id, title, year FROM comics
+        WHERE slug IS NULL OR slug = ''
+        ORDER BY id ASC`
+    )
+    .all() as Array<{ id: number; title: string; year: number | null }>;
+  if (rows.length === 0) return;
+
+  const taken = new Set(
+    (
+      database
+        .prepare("SELECT slug FROM comics WHERE slug IS NOT NULL AND slug != ''")
+        .all() as Array<{ slug: string }>
+    ).map((row) => row.slug)
+  );
+
+  console.log(`Running migration: assigning slugs to ${rows.length} comic volume(s)`);
+  const update = database.prepare('UPDATE comics SET slug = ? WHERE id = ?');
+  const txn = database.transaction(() => {
+    for (const row of rows) {
+      const slug = uniqueComicSlug({ title: row.title, year: row.year }, (candidate) =>
+        taken.has(candidate)
+      );
+      taken.add(slug);
+      update.run(slug, row.id);
+    }
+  });
+  txn();
 }
 
 /**
@@ -1035,6 +1086,7 @@ interface ComicRow {
   general_files: string | null;
   cached_at: string;
   updated_at: string;
+  slug: string | null;
   detail_cached_at: string | null;
   deleted_at: string | null;
 }
@@ -1058,6 +1110,9 @@ interface ComicIssueRow {
 function rowToVolume(row: ComicRow): ComicVolumeSummary {
   return {
     id: row.id,
+    // Rows read before the slug backfill ran would have none; falling back to
+    // the id keeps every /comics/<...> link resolvable either way.
+    slug: row.slug || String(row.id),
     comicvine_id: row.comicvine_id ?? 0,
     title: row.title,
     year: row.year,
@@ -1112,6 +1167,73 @@ function rowToVolumeDetail(row: ComicRow, issues: ComicIssueSummary[]): ComicVol
   };
 }
 
+// region Comic slugs
+
+/** Is any volume other than `exceptId` already using this slug? */
+function comicSlugIsTaken(slug: string, exceptId?: number): boolean {
+  const row = queryOne<{ id: number }>(
+    'SELECT id FROM comics WHERE slug = ? AND id IS NOT ?',
+    [slug, exceptId ?? null]
+  );
+  return row !== null;
+}
+
+/**
+ * Give a volume a slug if it does not have one, and return it.
+ *
+ * Called after every write that can create a volume. Existing slugs are never
+ * regenerated: a metadata refresh may rewrite the title, and links people have
+ * already saved must keep resolving.
+ */
+export function ensureComicSlug(volumeId: number): string {
+  const row = queryOne<{ slug: string | null; title: string; year: number | null }>(
+    'SELECT slug, title, year FROM comics WHERE id = ?',
+    [volumeId]
+  );
+  if (!row) return String(volumeId);
+  if (row.slug) return row.slug;
+
+  const slug = uniqueComicSlug({ title: row.title, year: row.year }, (candidate) =>
+    comicSlugIsTaken(candidate, volumeId)
+  );
+  execute('UPDATE comics SET slug = ? WHERE id = ?', [slug, volumeId]);
+  return slug;
+}
+
+/** The volume a `/comics/<slug>` URL refers to, or null if there is none. */
+export function getComicIdBySlug(slug: string): number | null {
+  const row = queryOne<{ id: number }>(
+    'SELECT id FROM comics WHERE slug = ? AND deleted_at IS NULL',
+    [slug]
+  );
+  return row?.id ?? null;
+}
+
+/** A volume's slug, for building its canonical URL. */
+export function getComicSlug(volumeId: number): string | null {
+  const row = queryOne<{ slug: string | null }>('SELECT slug FROM comics WHERE id = ?', [
+    volumeId,
+  ]);
+  if (!row) return null;
+  return row.slug || String(volumeId);
+}
+
+/** Slugs for a batch of volumes, for lists that link out by id. */
+export function getComicSlugs(volumeIds: number[]): Map<number, string> {
+  const slugs = new Map<number, string>();
+  if (volumeIds.length === 0) return slugs;
+
+  const placeholders = volumeIds.map(() => '?').join(', ');
+  const rows = query<{ id: number; slug: string | null }>(
+    `SELECT id, slug FROM comics WHERE id IN (${placeholders})`,
+    volumeIds
+  );
+  for (const row of rows) slugs.set(row.id, row.slug || String(row.id));
+  return slugs;
+}
+
+// endregion
+
 export function getCachedComic(id: number): ComicVolumeSummary | null {
   const row = queryOne<ComicRow>(
     'SELECT * FROM comics WHERE id = ? AND deleted_at IS NULL',
@@ -1120,12 +1242,20 @@ export function getCachedComic(id: number): ComicVolumeSummary | null {
   return row ? rowToVolume(row) : null;
 }
 
+/**
+ * A volume Shelvarr does not manage, as far as it knows it.
+ *
+ * The issue list is whatever has been cached; it can legitimately be empty for
+ * a volume that was only ever mirrored as a summary. The volume itself is
+ * still returned, because refusing to would leave a row that the library list
+ * happily shows with no page behind it.
+ */
 export function getCachedComicDetail(id: number): ComicVolumeDetail | null {
   const row = queryOne<ComicRow>(
     'SELECT * FROM comics WHERE id = ? AND deleted_at IS NULL',
     [id]
   );
-  if (!row || !row.detail_cached_at) return null;
+  if (!row) return null;
   const issueRows = query<ComicIssueRow>(
     'SELECT * FROM comic_issues WHERE volume_id = ? AND deleted_at IS NULL ORDER BY calculated_issue_number',
     [id]
@@ -1225,6 +1355,7 @@ export function upsertComicVolume(volume: ComicVolumeSummary): void {
       volume.total_size,
     ]
   );
+  ensureComicSlug(volume.id);
 }
 
 /** Ids of volumes Shelvarr owns, which a mirror import must never touch. */
@@ -1328,6 +1459,8 @@ export function upsertComicDetail(detail: ComicVolumeDetail): void {
         );
       }
     }
+
+    ensureComicSlug(detail.id);
   });
   txn();
 }
@@ -1472,6 +1605,7 @@ export function searchBooksFts(raw: string, limit = 20): BookSearchRow[] {
 
 export interface ComicSearchRow {
   id: number;
+  slug: string;
   title: string;
   year: number | null;
   publisher: string | null;
@@ -1481,7 +1615,8 @@ export function searchComicsFts(raw: string, limit = 20): ComicSearchRow[] {
   const match = buildFtsQuery(raw);
   if (!match) return [];
   return query<ComicSearchRow>(
-    `SELECT c.id, c.title, c.year, c.publisher
+    `SELECT c.id, COALESCE(NULLIF(c.slug, ''), CAST(c.id AS TEXT)) AS slug,
+            c.title, c.year, c.publisher
        FROM comics_fts f
        JOIN comics c ON c.id = f.rowid
       WHERE f.comics_fts MATCH ?
@@ -2177,6 +2312,7 @@ export function upsertManagedComicVolume(input: UpsertManagedVolumeInput): numbe
       ]
     );
     if (!row) throw new Error('Failed to create comic volume');
+    ensureComicSlug(row.id);
     return row.id;
   }
 
@@ -2217,6 +2353,9 @@ export function upsertManagedComicVolume(input: UpsertManagedVolumeInput): numbe
       input.id,
     ]
   );
+  // Only fills a gap: a refresh that rewrites the title leaves the slug — and
+  // so the volume's URL — as it was.
+  ensureComicSlug(input.id);
   return input.id;
 }
 
@@ -2535,6 +2674,7 @@ export function refreshComicVolumeStats(volumeId: number): void {
 export function getManagedComicDetail(id: number): ComicVolumeDetail | null {
   const row = queryOne<{
     id: number;
+    slug: string | null;
     comicvine_id: number | null;
     title: string;
     year: number | null;
@@ -2554,7 +2694,7 @@ export function getManagedComicDetail(id: number): ComicVolumeDetail | null {
     site_url: string | null;
     root_folder_id: number | null;
   }>(
-    `SELECT id, comicvine_id, title, year, publisher, volume_number, description,
+    `SELECT id, slug, comicvine_id, title, year, publisher, volume_number, description,
             monitored, monitor_new_issues, folder, issue_count, issue_count_monitored,
             issues_downloaded, issues_downloaded_monitored, total_size,
             special_version, special_version_locked, site_url, root_folder_id
@@ -2615,6 +2755,7 @@ export function getManagedComicDetail(id: number): ComicVolumeDetail | null {
 
   return {
     id: row.id,
+    slug: row.slug || String(row.id),
     comicvine_id: row.comicvine_id ?? 0,
     title: row.title,
     year: row.year,

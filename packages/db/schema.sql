@@ -186,6 +186,9 @@ CREATE TABLE IF NOT EXISTS comics (
   id INTEGER PRIMARY KEY,
   comicvine_id INTEGER,
   title TEXT NOT NULL,
+  -- What /comics/<slug> uses. Assigned once from the title and year, then
+  -- left alone so saved links keep working across metadata refreshes.
+  slug TEXT,
   year INTEGER,
   publisher TEXT,
   volume_number INTEGER,
@@ -258,6 +261,9 @@ CREATE INDEX IF NOT EXISTS idx_hardcover_status_status ON hardcover_reading_stat
 CREATE INDEX IF NOT EXISTS idx_comic_read_progress_issue ON comic_read_progress(issue_id);
 CREATE INDEX IF NOT EXISTS idx_epub_progression_book ON epub_progression(book_id);
 CREATE INDEX IF NOT EXISTS idx_comics_title ON comics(title);
+-- idx_comics_slug is created by the migration step instead: this file also runs
+-- against libraries whose comics table predates the slug column, and the index
+-- has to wait until the ALTER TABLE has added it.
 CREATE INDEX IF NOT EXISTS idx_comics_updated_at ON comics(updated_at);
 CREATE INDEX IF NOT EXISTS idx_comic_issues_volume ON comic_issues(volume_id);
 CREATE INDEX IF NOT EXISTS idx_comic_issues_updated_at ON comic_issues(updated_at);
