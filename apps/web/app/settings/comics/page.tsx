@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 export default async function ComicsSettingsPage() {
   const [settings, schedules, adoptionCandidates] = await Promise.all([
     getComicsSettings(),
-    getSchedules(),
+    getSchedules('comics'),
     getAdoptionCandidates(),
   ]);
 

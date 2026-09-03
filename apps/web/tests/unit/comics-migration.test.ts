@@ -347,6 +347,26 @@ describe('Scheduler', () => {
     assert.strictEqual(scheduler.getSchedule('comic_resume')!.enabled, true);
   });
 
+  it('sorts the book jobs onto the Books tab and the comic jobs onto Comics', () => {
+    scheduler.ensureDefaultSchedules();
+
+    const byName = new Map(
+      scheduler.listSchedules().map((schedule) => [schedule.name, schedule.category])
+    );
+    assert.strictEqual(byName.get('book_scan_all'), 'books');
+    assert.strictEqual(byName.get('book_metadata_all'), 'books');
+    assert.strictEqual(byName.get('book_organize_all'), 'books');
+    assert.strictEqual(byName.get('comic_update_all'), 'comics');
+  });
+
+  it('leaves the book rename sweep off, since it moves files', () => {
+    scheduler.ensureDefaultSchedules();
+
+    assert.strictEqual(scheduler.getSchedule('book_scan_all')!.enabled, true);
+    assert.strictEqual(scheduler.getSchedule('book_metadata_all')!.enabled, true);
+    assert.strictEqual(scheduler.getSchedule('book_organize_all')!.enabled, false);
+  });
+
   it('does not overwrite settings the user has changed', () => {
     scheduler.ensureDefaultSchedules();
     scheduler.setScheduleEnabled('comic_update_all', false);
@@ -372,10 +392,11 @@ describe('Scheduler', () => {
     const future = Math.floor(Date.now() / 1000) + 25 * 3600;
     const claimed = scheduler.claimDueSchedules(future);
 
-    // Only the enabled jobs come back; the download sweep is off by default.
+    // Only the enabled jobs come back; the sweeps that download things or
+    // move files are off by default.
     assert.deepStrictEqual(
       claimed.map((schedule) => schedule.name).sort(),
-      ['comic_resume', 'comic_update_all']
+      ['book_metadata_all', 'book_scan_all', 'comic_resume', 'comic_update_all']
     );
   });
 
