@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
+import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import SignInPanel from '../../src/components/SignInPanel';
 import { useAuthStore } from '../../src/stores/useAuthStore';
 
@@ -10,10 +10,23 @@ jest.mock('../../src/services/api/client', () => ({
 
 const authActions = {
   beginLogin: jest.fn(),
-  pollPendingLogin: jest.fn(),
+  submitCode: jest.fn(),
   cancelLogin: jest.fn(),
   clearError: jest.fn(),
 };
+
+/** What the store holds once a code has been sent and is being waited on. */
+const PENDING = { email: 'reader@example.com', emailSent: true, codeLength: 6 };
+
+/** Type a whole code into the row of boxes, one character per box. */
+function typeCode(getByLabelText: (label: string) => unknown, code: string) {
+  for (let index = 0; index < code.length; index++) {
+    fireEvent.changeText(
+      getByLabelText(`Character ${index + 1} of ${code.length}`) as never,
+      code[index]
+    );
+  }
+}
 
 const initialAuthState = useAuthStore.getState();
 
@@ -23,26 +36,26 @@ beforeEach(() => {
 });
 
 describe('SignInPanel', () => {
-  describe('asking for a link', () => {
+  describe('asking for a code', () => {
     it('opens in login wording by default', () => {
       const { getByText } = render(<SignInPanel />);
 
       expect(getByText('Welcome back')).toBeTruthy();
-      expect(getByText('Email me a login link')).toBeTruthy();
+      expect(getByText('Email me a code')).toBeTruthy();
     });
 
     it('opens in signup wording when asked to', () => {
       const { getByText } = render(<SignInPanel mode="signup" />);
 
       expect(getByText('Make yourself an account')).toBeTruthy();
-      expect(getByText('Email me a signup link')).toBeTruthy();
+      expect(getByText('Email me a code')).toBeTruthy();
     });
 
     it('sends the address the person typed', async () => {
       const { getByText, getByPlaceholderText } = render(<SignInPanel />);
 
       fireEvent.changeText(getByPlaceholderText('you@example.com'), 'reader@example.com');
-      fireEvent.press(getByText('Email me a login link'));
+      fireEvent.press(getByText('Email me a code'));
 
       await waitFor(() => {
         expect(authActions.beginLogin).toHaveBeenCalledWith('reader@example.com');
@@ -62,7 +75,7 @@ describe('SignInPanel', () => {
 
       const { queryByText } = render(<SignInPanel />);
 
-      expect(queryByText('Email me a login link')).toBeNull();
+      expect(queryByText('Email me a code')).toBeNull();
     });
   });
 
@@ -108,92 +121,95 @@ describe('SignInPanel', () => {
     });
   });
 
-  describe('while waiting for approval', () => {
+  describe('typing the code in', () => {
     beforeEach(() => {
-      jest.useFakeTimers();
-      useAuthStore.setState({
-        pending: {
-          email: 'reader@example.com',
-          deviceCode: 'device-1',
-          userCode: 'ABC-DEF',
-          emailSent: true,
-        },
-      });
-      authActions.pollPendingLogin.mockResolvedValue('pending');
+      useAuthStore.setState({ pending: PENDING });
+      authActions.submitCode.mockResolvedValue(true);
     });
 
-    afterEach(() => {
-      jest.useRealTimers();
-    });
-
-    it('shows the code so it can be matched against the email', () => {
+    it('says where the code went', () => {
       const { getByText } = render(<SignInPanel />);
 
-      expect(getByText('ABC-DEF')).toBeTruthy();
-      expect(getByText(/we sent a link to reader@example.com/i)).toBeTruthy();
+      expect(getByText(/we sent a 6-character code to reader@example.com/i)).toBeTruthy();
     });
 
     it('explains what to do when the server cannot send email', () => {
       useAuthStore.setState({
-        pending: {
-          email: 'reader@example.com',
-          deviceCode: 'device-1',
-          userCode: 'ABC-DEF',
-          emailSent: false,
-          message: 'Ask the administrator for the link.',
-        },
+        pending: { ...PENDING, emailSent: false, message: 'Ask the administrator for the code.' },
       });
 
       const { getByText } = render(<SignInPanel />);
 
-      expect(getByText('Ask the administrator for the link.')).toBeTruthy();
+      expect(getByText('Ask the administrator for the code.')).toBeTruthy();
     });
 
     it('falls back to its own wording when the server offers no message', () => {
-      useAuthStore.setState({
-        pending: {
-          email: 'reader@example.com',
-          deviceCode: 'device-1',
-          userCode: null,
-          emailSent: false,
-        },
-      });
+      useAuthStore.setState({ pending: { ...PENDING, emailSent: false } });
 
-      const { getByText, queryByText } = render(<SignInPanel />);
-
-      expect(getByText(/this server cannot send email/i)).toBeTruthy();
-      expect(queryByText("This device's code")).toBeNull();
-    });
-
-    it('polls until the link is opened', async () => {
-      render(<SignInPanel />);
-
-      await act(async () => {
-        jest.advanceTimersByTime(9000);
-      });
-
-      expect(authActions.pollPendingLogin).toHaveBeenCalledTimes(3);
-    });
-
-    it('stops polling once the wait is over', async () => {
-      const { rerender } = render(<SignInPanel />);
-      await act(async () => {
-        jest.advanceTimersByTime(3000);
-      });
-
-      useAuthStore.setState({ pending: null });
-      rerender(<SignInPanel />);
-      await act(async () => {
-        jest.advanceTimersByTime(9000);
-      });
-
-      expect(authActions.pollPendingLogin).toHaveBeenCalledTimes(1);
-    });
-
-    it('lets the wait be abandoned', () => {
       const { getByText } = render(<SignInPanel />);
 
-      fireEvent.press(getByText('Cancel'));
+      expect(getByText(/this server cannot send email/i)).toBeTruthy();
+    });
+
+    it('offers one box per character', () => {
+      const { getByLabelText } = render(<SignInPanel />);
+
+      expect(getByLabelText('Character 1 of 6')).toBeTruthy();
+      expect(getByLabelText('Character 6 of 6')).toBeTruthy();
+    });
+
+    it('submits the moment the last box is filled', async () => {
+      const { getByLabelText } = render(<SignInPanel />);
+
+      typeCode(getByLabelText, 'ABC234');
+
+      await waitFor(() => {
+        expect(authActions.submitCode).toHaveBeenCalledWith('ABC234');
+      });
+    });
+
+    it('spreads a code that arrives all at once across the boxes', async () => {
+      const { getByLabelText } = render(<SignInPanel />);
+
+      // Autofill from a mail notification drops the whole code into box one.
+      fireEvent.changeText(getByLabelText('Character 1 of 6'), 'ABC234');
+
+      await waitFor(() => {
+        expect(authActions.submitCode).toHaveBeenCalledWith('ABC234');
+      });
+    });
+
+    it('ignores characters a code can never contain', () => {
+      const { getByLabelText } = render(<SignInPanel />);
+
+      fireEvent.changeText(getByLabelText('Character 1 of 6'), '!');
+
+      expect(getByLabelText('Character 1 of 6').props.value).toBe('');
+    });
+
+    it('shows what the server said about a wrong code', () => {
+      useAuthStore.setState({
+        pending: PENDING,
+        error: 'That code is not right, or it has expired. Ask for a new one.',
+      });
+
+      const { getByText } = render(<SignInPanel />);
+
+      expect(getByText(/that code is not right/i)).toBeTruthy();
+    });
+
+    it('can ask for a fresh code without retyping the address', () => {
+      const { getByText } = render(<SignInPanel />);
+
+      fireEvent.press(getByText('Send a new code'));
+
+      expect(authActions.beginLogin).toHaveBeenCalledWith('reader@example.com');
+    });
+
+    it('lets the sign-in be abandoned', () => {
+      const { getByText } = render(<SignInPanel />);
+
+      fireEvent.press(getByText('Use a different email'));
 
       expect(authActions.cancelLogin).toHaveBeenCalled();
     });

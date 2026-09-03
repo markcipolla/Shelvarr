@@ -7,8 +7,8 @@ export * from './request';
 export {
   sendMail,
   verifyEmailConnection,
-  buildMagicLinkMessage,
+  buildLoginCodeMessage,
   type SendMailInput,
   type SendMailResult,
-  type MagicLinkMessage,
+  type LoginCodeMessage,
 } from './email';

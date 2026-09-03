@@ -82,40 +82,33 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
-export interface MagicLinkMessage {
+export interface LoginCodeMessage {
   subject: string;
   text: string;
   html: string;
 }
 
 /**
- * The body of a sign-in email. `userCode` is only present for a native login,
- * where the reader needs to check the code matches the one on their phone.
+ * The body of a sign-in email.
+ *
+ * The code goes in the subject line as well as the body: on a phone that
+ * often means the whole sign-in happens from the notification, without
+ * opening the mail at all.
  */
-export function buildMagicLinkMessage(options: {
-  link: string;
+export function buildLoginCodeMessage(options: {
+  code: string;
   ttlMinutes: number;
-  userCode?: string | null;
   isNewAccount?: boolean;
-}): MagicLinkMessage {
-  const { link, ttlMinutes, userCode, isNewAccount } = options;
+}): LoginCodeMessage {
+  const { code, ttlMinutes, isNewAccount } = options;
   const action = isNewAccount ? 'Finish setting up your Shelvarr account' : 'Sign in to Shelvarr';
 
-  const codeLineText = userCode
-    ? `\nThis is for the Shelvarr app showing the code ${userCode}. If that code does not match, ignore this email.\n`
-    : '';
-  const codeLineHtml = userCode
-    ? `<p style="margin:0 0 16px">This is for the Shelvarr app showing the code
-         <strong style="font-family:monospace;font-size:18px">${escapeHtml(userCode)}</strong>.
-         If that code does not match, ignore this email.</p>`
-    : '';
-
   const text = [
-    `${action} by opening this link:`,
+    `${action} with this code:`,
     '',
-    link,
-    codeLineText,
-    `The link works once and expires in ${ttlMinutes} minutes.`,
+    code,
+    '',
+    `Type it into the screen that asked for it. It works once and expires in ${ttlMinutes} minutes.`,
     '',
     'If you did not ask to sign in, you can ignore this email.',
   ].join('\n');
@@ -125,23 +118,19 @@ export function buildMagicLinkMessage(options: {
   <body style="margin:0;padding:24px;background:#12151a;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;color:#e6e8eb">
     <div style="max-width:480px;margin:0 auto;background:#1a1e26;border-radius:12px;padding:32px">
       <h1 style="margin:0 0 8px;font-size:20px;color:#fff">${escapeHtml(action)}</h1>
-      ${codeLineHtml}
       <p style="margin:0 0 24px;color:#9aa3ad">
-        The link below works once and expires in ${ttlMinutes} minutes.
+        Type this code into the screen that asked for it. It works once and
+        expires in ${ttlMinutes} minutes.
       </p>
-      <a href="${escapeHtml(link)}"
-         style="display:inline-block;background:#3b82f6;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600">
-        ${escapeHtml(action)}
-      </a>
-      <p style="margin:24px 0 0;font-size:12px;color:#6b7280;word-break:break-all">
-        Or paste this into your browser:<br>${escapeHtml(link)}
+      <p style="margin:0 0 24px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:34px;font-weight:700;letter-spacing:10px;color:#fff">
+        ${escapeHtml(code)}
       </p>
-      <p style="margin:24px 0 0;font-size:12px;color:#6b7280">
+      <p style="margin:0;font-size:12px;color:#6b7280">
         If you did not ask to sign in, you can ignore this email.
       </p>
     </div>
   </body>
 </html>`;
 
-  return { subject: action, text, html };
+  return { subject: `${code} is your Shelvarr sign-in code`, text, html };
 }

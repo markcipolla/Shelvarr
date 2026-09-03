@@ -7,7 +7,7 @@ import { LoginForm } from '@/components/auth/LoginForm';
 export const dynamic = 'force-dynamic';
 
 const ERRORS: Record<string, string> = {
-  'invalid-token': 'That sign-in link is not valid, has expired, or has already been used.',
+  'invalid-code': 'That code is not right, has expired, or has already been used.',
   'signed-out': 'You have been signed out.',
 };
 

@@ -2,7 +2,7 @@
  * Unit tests for user accounts and passwordless authentication.
  *
  * These run against a real SQLite database — the auth rules live in SQL as
- * much as in TypeScript (single-use links, expiry, the last-admin guard), so
+ * much as in TypeScript (single-use codes, expiry, the last-admin guard), so
  * mocking the database would test the wrong thing.
  */
 
@@ -19,8 +19,7 @@ let root: string;
 const AUTH_ENV_KEYS = [
   'SHELVARR_AUTH_ENABLED',
   'SHELVARR_ALLOW_SIGNUP',
-  'SHELVARR_URL',
-  'SHELVARR_LOGIN_LINK_TTL',
+  'SHELVARR_LOGIN_CODE_TTL',
   'SHELVARR_SESSION_TTL',
   'SMTP_HOST',
   'SMTP_FROM',
@@ -55,10 +54,9 @@ describe('Authentication', () => {
     delete process.env['SMTP_HOST'];
     process.env['SHELVARR_AUTH_ENABLED'] = 'true';
     delete process.env['SHELVARR_ALLOW_SIGNUP'];
-    process.env['SHELVARR_URL'] = 'https://books.example';
 
     db.getDb().exec(
-      'DELETE FROM login_tokens; DELETE FROM auth_sessions; DELETE FROM users; DELETE FROM settings;'
+      'DELETE FROM login_codes; DELETE FROM auth_sessions; DELETE FROM users; DELETE FROM settings;'
     );
   });
 
@@ -281,7 +279,7 @@ describe('Authentication', () => {
   });
 
   describe('housekeeping', () => {
-    it('clears out timed-out sessions and unopened links', async () => {
+    it('clears out timed-out sessions and unused codes', async () => {
       const user = auth.createFirstAdmin('admin@example.com', null);
       const live = auth.issueSession(user, 'web');
       auth.issueSession(user, 'native');
@@ -293,12 +291,12 @@ describe('Authentication', () => {
            WHERE token_hash != ?`
         )
         .run(auth.hashToken(live.token));
-      db.getDb().prepare("UPDATE login_tokens SET expires_at = datetime('now', '-1 day')").run();
+      db.getDb().prepare("UPDATE login_codes SET expires_at = datetime('now', '-1 day')").run();
 
       const removed = auth.pruneExpired();
 
       assert.strictEqual(removed.sessions, 1);
-      assert.strictEqual(removed.loginTokens, 1);
+      assert.strictEqual(removed.loginCodes, 1);
       assert.ok(auth.resolveSession(live.token), 'a live session must survive the sweep');
     });
 
@@ -306,7 +304,7 @@ describe('Authentication', () => {
       const user = auth.createFirstAdmin('admin@example.com', null);
       auth.issueSession(user, 'web');
 
-      assert.deepStrictEqual(auth.pruneExpired(), { sessions: 0, loginTokens: 0 });
+      assert.deepStrictEqual(auth.pruneExpired(), { sessions: 0, loginCodes: 0 });
     });
   });
 
@@ -390,82 +388,189 @@ describe('Authentication', () => {
     });
   });
 
-  describe('magic links', () => {
+  describe('sign-in codes', () => {
     beforeEach(() => {
       auth.createFirstAdmin('admin@example.com', 'Admin');
     });
 
-    it('builds a link on the configured public URL', async () => {
+    /** The code only exists in the result while mail is unconfigured. */
+    async function requestCode(email = 'admin@example.com', client?: 'web' | 'native') {
+      const result = await auth.requestLogin({ email, client });
+      return result.code!;
+    }
+
+    it('hands back a code of the advertised length, in the safe alphabet', async () => {
       const result = await auth.requestLogin({ email: 'admin@example.com' });
 
-      assert.ok(result.link?.startsWith('https://books.example/auth/verify?token='));
+      assert.strictEqual(result.code!.length, result.codeLength);
+      assert.match(result.code!, /^[A-Z2-9]{6}$/);
+      assert.doesNotMatch(result.code!, /[IO01]/);
     });
 
-    it('falls back to the address the request arrived on', async () => {
-      delete process.env['SHELVARR_URL'];
+    it('says when the code stops working', async () => {
+      const result = await auth.requestLogin({ email: 'admin@example.com' });
 
-      const result = await auth.requestLogin({
+      const remaining = Date.parse(result.expiresAt) - Date.now();
+      assert.ok(remaining > 0 && remaining <= 10 * 60 * 1000, `got ${result.expiresAt}`);
+    });
+
+    it('stores only a hash, never the code itself', async () => {
+      const code = await requestCode();
+
+      const rows = db
+        .getDb()
+        .prepare('SELECT code_hash FROM login_codes')
+        .all() as Array<{ code_hash: string }>;
+
+      assert.strictEqual(rows.length, 1);
+      assert.notStrictEqual(rows[0]!.code_hash, code);
+      assert.strictEqual(rows[0]!.code_hash, auth.hashToken(code));
+    });
+
+    it('signs a browser in when the right code is typed', async () => {
+      const code = await requestCode();
+
+      const result = auth.verifyLoginCode({
         email: 'admin@example.com',
-        origin: 'http://nas.local:3000/',
+        code,
+        label: 'Firefox',
       });
 
-      assert.ok(result.link?.startsWith('http://nas.local:3000/auth/verify?token='));
-    });
-
-    it('signs a browser in when the link is opened', async () => {
-      const requested = await auth.requestLogin({ email: 'admin@example.com' });
-      const token = new URL(requested.link!).searchParams.get('token')!;
-
-      const result = auth.verifyLoginToken(token, 'Firefox');
-
-      assert.strictEqual(result.kind, 'web');
       assert.strictEqual(result.user.email, 'admin@example.com');
-      assert.ok(auth.resolveSession(result.issued!.token));
+      const resolved = auth.resolveSession(result.issued.token);
+      assert.strictEqual(resolved?.session.client, 'web');
+      assert.strictEqual(resolved?.session.label, 'Firefox');
     });
 
-    it('refuses a link that has already been opened', async () => {
-      const requested = await auth.requestLogin({ email: 'admin@example.com' });
-      const token = new URL(requested.link!).searchParams.get('token')!;
-      auth.verifyLoginToken(token);
+    it('accepts a code typed in lower case, with the spacing people add', async () => {
+      const code = await requestCode();
 
-      assert.throws(
-        () => auth.verifyLoginToken(token),
-        (error: unknown) => error instanceof auth.AuthError && error.code === 'invalid-token'
+      const result = auth.verifyLoginCode({
+        email: 'ADMIN@example.com',
+        code: ` ${code.slice(0, 3).toLowerCase()}-${code.slice(3).toLowerCase()} `,
+      });
+
+      assert.strictEqual(result.user.email, 'admin@example.com');
+    });
+
+    it('gives a native client a native session', async () => {
+      const code = await requestCode('admin@example.com', 'native');
+
+      const result = auth.verifyLoginCode({
+        email: 'admin@example.com',
+        code,
+        client: 'native',
+        label: 'Stackarr on Android',
+      });
+
+      const resolved = auth.resolveSession(result.issued.token);
+      assert.strictEqual(resolved?.session.client, 'native');
+      assert.strictEqual(resolved?.session.label, 'Stackarr on Android');
+    });
+
+    it('keeps a web and a native sign-in separate, so both can be in flight', async () => {
+      const webCode = await requestCode('admin@example.com', 'web');
+      const nativeCode = await requestCode('admin@example.com', 'native');
+
+      assert.ok(auth.verifyLoginCode({ email: 'admin@example.com', code: webCode }));
+      assert.ok(
+        auth.verifyLoginCode({
+          email: 'admin@example.com',
+          code: nativeCode,
+          client: 'native',
+        })
       );
     });
 
-    it('refuses an expired link', async () => {
-      const requested = await auth.requestLogin({ email: 'admin@example.com' });
-      const token = new URL(requested.link!).searchParams.get('token')!;
-      db.getDb().prepare("UPDATE login_tokens SET expires_at = datetime('now', '-1 second')").run();
+    it('refuses a code that has already been used', async () => {
+      const code = await requestCode();
+      auth.verifyLoginCode({ email: 'admin@example.com', code });
 
       assert.throws(
-        () => auth.verifyLoginToken(token),
-        (error: unknown) => error instanceof auth.AuthError && error.code === 'invalid-token'
+        () => auth.verifyLoginCode({ email: 'admin@example.com', code }),
+        (error: unknown) => error instanceof auth.AuthError && error.code === 'invalid-code'
       );
     });
 
-    it('refuses a token it has never seen', () => {
+    it('refuses an expired code', async () => {
+      const code = await requestCode();
+      db.getDb().prepare("UPDATE login_codes SET expires_at = datetime('now', '-1 second')").run();
+
       assert.throws(
-        () => auth.verifyLoginToken('made-up'),
-        (error: unknown) => error instanceof auth.AuthError && error.code === 'invalid-token'
+        () => auth.verifyLoginCode({ email: 'admin@example.com', code }),
+        (error: unknown) => error instanceof auth.AuthError && error.code === 'invalid-code'
       );
     });
 
-    it('retires the previous link when a new one is asked for', async () => {
-      const requested = await auth.requestLogin({ email: 'admin@example.com' });
-      const first = new URL(requested.link!).searchParams.get('token')!;
+    it('refuses a code that belongs to somebody else', async () => {
+      auth.createAccount('other@example.com', null);
+      const code = await requestCode('admin@example.com');
 
-      await auth.requestLogin({ email: 'admin@example.com' });
+      assert.throws(
+        () => auth.verifyLoginCode({ email: 'other@example.com', code }),
+        (error: unknown) => error instanceof auth.AuthError && error.code === 'invalid-code'
+      );
+    });
 
-      assert.throws(() => auth.verifyLoginToken(first));
+    it('says the same thing for a wrong code and an address with no account', async () => {
+      await requestCode();
+
+      const complain = (email: string): string => {
+        try {
+          auth.verifyLoginCode({ email, code: 'ZZZZZZ' });
+          return 'no error';
+        } catch (error) {
+          return (error as Error).message;
+        }
+      };
+
+      // Different wording here would let an anonymous caller work out which
+      // addresses have accounts, one guess at a time.
+      assert.strictEqual(complain('admin@example.com'), complain('stranger@example.com'));
+      assert.notStrictEqual(complain('admin@example.com'), 'no error');
+    });
+
+    it('retires a code after too many wrong guesses', async () => {
+      const code = await requestCode();
+
+      for (let attempt = 0; attempt < 5; attempt++) {
+        assert.throws(() => auth.verifyLoginCode({ email: 'admin@example.com', code: 'ZZZZZZ' }));
+      }
+
+      assert.throws(
+        () => auth.verifyLoginCode({ email: 'admin@example.com', code }),
+        (error: unknown) => error instanceof auth.AuthError && error.code === 'invalid-code',
+        'the real code must stop working once it has been guessed at too often'
+      );
+    });
+
+    it('retires the previous code when a new one is asked for', async () => {
+      const first = await requestCode();
+
+      await requestCode();
+
+      assert.throws(() => auth.verifyLoginCode({ email: 'admin@example.com', code: first }));
+    });
+
+    it('carries the redirect through to the session it mints', async () => {
+      const result = await auth.requestLogin({
+        email: 'admin@example.com',
+        redirectTo: '/comics/7',
+      });
+
+      const verified = auth.verifyLoginCode({
+        email: 'admin@example.com',
+        code: result.code!,
+      });
+
+      assert.strictEqual(verified.redirectTo, '/comics/7');
     });
 
     it('sends nothing to an unknown address while self-signup is off', async () => {
       const result = await auth.requestLogin({ email: 'stranger@example.com' });
 
       assert.strictEqual(result.emailSent, false);
-      assert.strictEqual(result.link, undefined, 'no link should exist for a non-account');
+      assert.strictEqual(result.code, undefined, 'no code should exist for a non-account');
       assert.strictEqual(auth.getUserByEmail('stranger@example.com'), null);
     });
 
@@ -474,7 +579,7 @@ describe('Authentication', () => {
 
       const result = await auth.requestLogin({ email: 'stranger@example.com' });
 
-      assert.ok(result.link);
+      assert.ok(result.code);
       const created = auth.getUserByEmail('stranger@example.com');
       assert.strictEqual(created?.role, 'user', 'a self-signup is never an admin');
     });
@@ -498,90 +603,15 @@ describe('Authentication', () => {
         (error: unknown) => error instanceof auth.AuthError && error.code === 'auth-disabled'
       );
     });
-  });
 
-  describe('device login for the native app', () => {
-    beforeEach(() => {
-      auth.createFirstAdmin('admin@example.com', 'Admin');
-    });
+    it('refuses to verify a code when authentication is switched off', async () => {
+      const code = await requestCode();
+      process.env['SHELVARR_AUTH_ENABLED'] = 'false';
 
-    it('hands back a device code and a code to read off the screen', async () => {
-      const result = await auth.requestLogin({ email: 'admin@example.com', client: 'native' });
-
-      assert.ok(result.device?.deviceCode);
-      assert.match(result.device!.userCode, /^[A-Z2-9]{3}-[A-Z2-9]{3}$/);
-      assert.ok(result.device!.intervalSeconds > 0);
-    });
-
-    it('stays pending until the emailed link is opened', async () => {
-      const result = await auth.requestLogin({ email: 'admin@example.com', client: 'native' });
-
-      assert.deepStrictEqual(auth.pollDeviceLogin(result.device!.deviceCode), {
-        status: 'pending',
-      });
-    });
-
-    it('does not sign the browser in that opens the link', async () => {
-      const result = await auth.requestLogin({ email: 'admin@example.com', client: 'native' });
-      const token = new URL(result.link!).searchParams.get('token')!;
-
-      const verified = auth.verifyLoginToken(token);
-
-      assert.strictEqual(verified.kind, 'native');
-      assert.strictEqual(verified.issued, undefined);
-      assert.strictEqual(verified.userCode, result.device!.userCode);
-    });
-
-    it('hands the session to the device on the poll after approval', async () => {
-      const result = await auth.requestLogin({ email: 'admin@example.com', client: 'native' });
-      auth.verifyLoginToken(new URL(result.link!).searchParams.get('token')!);
-
-      const poll = auth.pollDeviceLogin(result.device!.deviceCode, 'Stackarr on Android');
-
-      assert.strictEqual(poll.status, 'approved');
-      if (poll.status !== 'approved') return;
-      assert.strictEqual(poll.user.email, 'admin@example.com');
-      const resolved = auth.resolveSession(poll.token);
-      assert.strictEqual(resolved?.session.client, 'native');
-      assert.strictEqual(resolved?.session.label, 'Stackarr on Android');
-    });
-
-    it('gives a second poll nothing, so one approval means one session', async () => {
-      const result = await auth.requestLogin({ email: 'admin@example.com', client: 'native' });
-      auth.verifyLoginToken(new URL(result.link!).searchParams.get('token')!);
-      auth.pollDeviceLogin(result.device!.deviceCode);
-
-      assert.deepStrictEqual(auth.pollDeviceLogin(result.device!.deviceCode), {
-        status: 'expired',
-      });
-    });
-
-    it('reports an unknown device code as expired', () => {
-      assert.deepStrictEqual(auth.pollDeviceLogin('never-issued'), { status: 'expired' });
-    });
-
-    it('reports a timed-out request as expired', async () => {
-      const result = await auth.requestLogin({ email: 'admin@example.com', client: 'native' });
-      db.getDb().prepare("UPDATE login_tokens SET expires_at = datetime('now', '-1 second')").run();
-
-      assert.deepStrictEqual(auth.pollDeviceLogin(result.device!.deviceCode), {
-        status: 'expired',
-      });
-    });
-
-    it('lets the app abandon a request, killing the emailed link', async () => {
-      const result = await auth.requestLogin({ email: 'admin@example.com', client: 'native' });
-      const token = new URL(result.link!).searchParams.get('token')!;
-
-      assert.strictEqual(auth.cancelDeviceLogin(result.device!.deviceCode), true);
-
-      assert.throws(() => auth.verifyLoginToken(token));
-    });
-
-    it('offers no device code for an unknown address while self-signup is off', async () => {
-      const result = await auth.requestLogin({ email: 'stranger@example.com', client: 'native' });
-
-      assert.strictEqual(result.device, undefined);
+      assert.throws(
+        () => auth.verifyLoginCode({ email: 'admin@example.com', code }),
+        (error: unknown) => error instanceof auth.AuthError && error.code === 'auth-disabled'
+      );
     });
   });
 
@@ -597,10 +627,16 @@ describe('Authentication', () => {
       }
     });
 
-    it('leaves out characters that are easy to misread in a user code', () => {
+    it('leaves out characters that are easy to misread in a sign-in code', () => {
       for (let attempt = 0; attempt < 50; attempt++) {
-        assert.doesNotMatch(auth.generateUserCode(), /[IO01]/);
+        const code = auth.generateLoginCode();
+        assert.strictEqual(code.length, auth.LOGIN_CODE_LENGTH);
+        assert.doesNotMatch(code, /[IO01]/);
       }
+    });
+
+    it('tidies up a code as people actually type it', () => {
+      assert.strictEqual(auth.normaliseLoginCode(' ab c-de f '), 'ABCDEF');
     });
 
     it('compares digests without an early exit', () => {

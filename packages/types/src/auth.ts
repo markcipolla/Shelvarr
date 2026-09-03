@@ -1,4 +1,4 @@
-// User accounts and passwordless (magic-link) authentication.
+// User accounts and passwordless (one-time code) authentication.
 
 export type UserRole = 'admin' | 'user';
 
@@ -43,7 +43,7 @@ export interface AuthStatus {
   setupRequired: boolean;
   /** Whether an unknown email may create its own account. */
   allowSignup: boolean;
-  /** Whether magic-link emails can actually be delivered. */
+  /** Whether sign-in code emails can actually be delivered. */
   emailConfigured: boolean;
 }
 
@@ -62,10 +62,8 @@ export interface AuthConfig {
   enabled: boolean;
   /** Default for the self-signup toggle; the stored setting wins once set. */
   allowSignupDefault: boolean;
-  /** Absolute base URL used to build magic links. */
-  appUrl: string | null;
-  /** How long a magic link stays valid. */
-  loginTokenTtlSeconds: number;
+  /** How long an emailed sign-in code stays valid. */
+  loginCodeTtlSeconds: number;
   /** How long a browser session lasts. */
   sessionTtlSeconds: number;
   /** How long a native session lasts — longer, since phones sign in rarely. */
@@ -73,19 +71,15 @@ export interface AuthConfig {
   email: EmailConfig;
 }
 
-/** A pending device-flow login, as reported to the native app that started it. */
-export interface DeviceLoginRequest {
-  /** Secret the app polls with. Never leaves the device that started it. */
-  deviceCode: string;
-  /** Shown to the user so they can confirm the email is for this device. */
-  userCode: string;
+/**
+ * What a client learns after asking for a sign-in code. Deliberately says
+ * nothing about whether the address has an account.
+ */
+export interface LoginCodeChallenge {
+  /** Whether the code was actually emailed. False when SMTP is unconfigured. */
+  emailSent: boolean;
+  /** When the code stops working, so a client can show a countdown. */
   expiresAt: string;
-  intervalSeconds: number;
+  /** How many characters the code has, so a client can size its input. */
+  codeLength: number;
 }
-
-/** The answer to a device-flow poll. */
-export type DeviceLoginPoll =
-  | { status: 'pending' }
-  | { status: 'expired' }
-  | { status: 'denied' }
-  | { status: 'approved'; token: string; expiresAt: string; user: User };

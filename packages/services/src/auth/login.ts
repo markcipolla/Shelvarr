@@ -1,25 +1,25 @@
-import type {
-  AuthClient,
-  DeviceLoginPoll,
-  DeviceLoginRequest,
-  User,
-} from '@shelvarr/types';
+import type { AuthClient, LoginCodeChallenge, User } from '@shelvarr/types';
 import {
-  consumeLoginToken,
-  countRecentLoginTokens,
-  createLoginToken,
-  revokeLoginToken,
-  revokePendingLoginTokens,
-  getLoginTokenByDeviceCodeHash,
-  getLoginTokenByHash,
-  getUserById,
-  isLoginTokenExpired,
+  consumeLoginCode,
+  countRecentLoginCodes,
+  createLoginCode,
+  getPendingLoginCode,
+  isLoginCodeExpired,
+  recordLoginCodeAttempt,
+  revokeLoginCode,
+  revokePendingLoginCodes,
   sqlTimeToIso,
 } from '@shelvarr/db';
 import { createLogger } from '../utils/logger';
 import { getAuthConfig } from './config';
-import { buildMagicLinkMessage, sendMail } from './email';
-import { generateToken, generateUserCode, hashToken } from './tokens';
+import { buildLoginCodeMessage, sendMail } from './email';
+import {
+  LOGIN_CODE_LENGTH,
+  generateLoginCode,
+  hashToken,
+  normaliseLoginCode,
+  tokensMatch,
+} from './tokens';
 import {
   AuthError,
   createAccount,
@@ -33,49 +33,35 @@ const log = createLogger('auth');
 
 // Enough for a few honest retries, few enough that the mailbox of someone
 // being targeted does not fill up.
-const MAX_LINKS_PER_WINDOW = 5;
+const MAX_CODES_PER_WINDOW = 5;
 const RATE_LIMIT_WINDOW_SECONDS = 15 * 60;
 
-/** How often the native app should poll while waiting for approval. */
-const DEVICE_POLL_INTERVAL_SECONDS = 3;
+/**
+ * Guesses one code will tolerate before it is retired.
+ *
+ * This is the number that makes a six-character code safe. The alphabet has
+ * 32 symbols, so there are 32^6 ≈ 1.07 billion codes; five guesses against
+ * one of them is a chance of about 1 in 215 million, and burning through
+ * codes to get more guesses runs into the rate limit above.
+ */
+const MAX_ATTEMPTS_PER_CODE = 5;
 
 export interface RequestLoginOptions {
   email: string;
   client?: AuthClient;
   redirectTo?: string | null;
-  /** Absolute base URL of this server, used when SHELVARR_URL is unset. */
-  origin?: string | null;
 }
 
-export interface RequestLoginResult {
+export interface RequestLoginResult extends LoginCodeChallenge {
   /**
-   * Whether a magic link was actually delivered. False when SMTP is not
-   * configured — the link is written to the server log instead, so a
-   * self-hosted install without mail is still recoverable.
+   * Present only when mail is unconfigured, for the admin to read from the
+   * log or pass on by hand. Never handed to an anonymous caller.
    */
-  emailSent: boolean;
-  /** Present only when mail is unconfigured, for the admin to read from the log. */
-  link?: string;
-  device?: DeviceLoginRequest;
-}
-
-function resolveBaseUrl(origin?: string | null): string {
-  const configured = getAuthConfig().appUrl;
-  if (configured) return configured;
-  if (origin) return origin.replace(/\/+$/, '');
-  // Last resort. The link will be wrong for anyone not on the server itself,
-  // which is why SHELVARR_URL is worth setting.
-  return 'http://localhost:3000';
-}
-
-export function buildMagicLink(token: string, origin?: string | null): string {
-  const url = new URL('/auth/verify', `${resolveBaseUrl(origin)}/`);
-  url.searchParams.set('token', token);
-  return url.toString();
+  code?: string;
 }
 
 /**
- * Start a passwordless login.
+ * Ask for a one-time sign-in code.
  *
  * Deliberately says the same thing whether or not the address has an account:
  * the caller is unauthenticated, so telling it which emails are registered
@@ -94,46 +80,50 @@ export async function requestLogin(
   const email = requireValidEmail(options.email);
   const client: AuthClient = options.client ?? 'web';
 
+  // Every answer carries the same shape, including the ones where nothing
+  // happened, so the caller cannot tell them apart.
+  const challenge = (expiresAt: string, emailSent: boolean): LoginCodeChallenge => ({
+    emailSent,
+    expiresAt,
+    codeLength: LOGIN_CODE_LENGTH,
+  });
+  const expiryFromNow = () =>
+    new Date(Date.now() + config.loginCodeTtlSeconds * 1000).toISOString();
+
   let user = getUserByEmail(email);
   let isNewAccount = false;
 
   if (!user) {
     if (!isSignupAllowed()) {
       // Same shape of answer as the success case; nothing was created.
-      log.info(`Login requested for unknown address; signup is disabled`);
-      return { emailSent: false };
+      log.info('Sign-in code requested for unknown address; signup is disabled');
+      return challenge(expiryFromNow(), false);
     }
     user = createAccount(email, null, 'user');
     isNewAccount = true;
   }
 
-  if (countRecentLoginTokens(user.id, RATE_LIMIT_WINDOW_SECONDS) >= MAX_LINKS_PER_WINDOW) {
+  if (countRecentLoginCodes(user.id, RATE_LIMIT_WINDOW_SECONDS) >= MAX_CODES_PER_WINDOW) {
     throw new AuthError('Too many sign-in emails requested. Try again later.', 'rate-limited');
   }
 
-  // Asking for a new link retires the old ones, so a link left in an inbox
+  // Asking for a new code retires the old ones, so a code left in an inbox
   // stops working as soon as a fresher one is requested.
-  revokePendingLoginTokens(user.id, client);
+  revokePendingLoginCodes(user.id, client);
 
-  const token = generateToken();
-  const deviceCode = client === 'native' ? generateToken() : null;
-  const userCode = client === 'native' ? generateUserCode() : null;
-
-  const row = createLoginToken({
+  const code = generateLoginCode();
+  const row = createLoginCode({
     userId: user.id,
-    tokenHash: hashToken(token),
+    codeHash: hashToken(code),
     client,
-    deviceCodeHash: deviceCode ? hashToken(deviceCode) : null,
-    userCode,
     redirectTo: options.redirectTo ?? null,
-    ttlSeconds: config.loginTokenTtlSeconds,
+    ttlSeconds: config.loginCodeTtlSeconds,
   });
+  const expiresAt = sqlTimeToIso(row.expires_at);
 
-  const link = buildMagicLink(token, options.origin);
-  const message = buildMagicLinkMessage({
-    link,
-    ttlMinutes: Math.round(config.loginTokenTtlSeconds / 60),
-    userCode,
+  const message = buildLoginCodeMessage({
+    code,
+    ttlMinutes: Math.round(config.loginCodeTtlSeconds / 60),
     isNewAccount,
   });
 
@@ -144,119 +134,81 @@ export async function requestLogin(
     html: message.html,
   });
 
-  const device: DeviceLoginRequest | undefined = deviceCode
-    ? {
-        deviceCode,
-        userCode: userCode!,
-        expiresAt: sqlTimeToIso(row.expires_at),
-        intervalSeconds: DEVICE_POLL_INTERVAL_SECONDS,
-      }
-    : undefined;
-
   if (result.sent) {
-    return { emailSent: true, device };
+    return challenge(expiresAt, true);
   }
 
-  // No mail, so the link would otherwise be lost. Print it where the person
+  // No mail, so the code would otherwise be lost. Print it where the person
   // running the server can find it, and tell the caller it did not send.
   log.warn(
-    `Email is not configured (or failed to send), so this sign-in link was not delivered. ` +
-      `Open it manually to sign in as ${user.email}: ${link}`
+    'Email is not configured (or failed to send), so this sign-in code was not delivered. ' +
+      `Type it in to sign in as ${user.email}: ${code}`
   );
-  return { emailSent: false, link, device };
+  return { ...challenge(expiresAt, false), code };
 }
 
-export interface VerifyResult {
-  /** A web login is signed in immediately; a native one waits for the phone. */
-  kind: 'web' | 'native';
+export interface VerifyLoginOptions {
+  email: string;
+  code: string;
+  client?: AuthClient;
+  /** Names the session in the device list — a user agent or a device name. */
+  label?: string | null;
+}
+
+export interface VerifyLoginResult {
   user: User;
   redirectTo: string | null;
-  /** Only for a web login. */
-  issued?: IssuedSession;
-  /** Only for a native login, so the page can confirm which device was approved. */
-  userCode?: string | null;
+  issued: IssuedSession;
 }
 
 /**
- * Open a magic link.
+ * Redeem a code for a session.
  *
- * For a web login this mints the session there and then. For a native login it
- * only marks the request approved: the phone that started it collects the
- * session on its next poll, which is what lets the email be opened on a laptop.
+ * Every failure raises the same `invalid-code` error with the same wording.
+ * Saying "no such account" would leak who is registered, and saying "wrong
+ * code" versus "expired" would tell someone guessing which of their two
+ * problems to fix.
  */
-export function verifyLoginToken(token: string, label?: string | null): VerifyResult {
-  const row = getLoginTokenByHash(hashToken(token));
-  if (!row) {
-    throw new AuthError('That sign-in link is not valid', 'invalid-token');
-  }
-  if (isLoginTokenExpired(row)) {
-    revokeLoginToken(row.id);
-    throw new AuthError('That sign-in link has expired. Request a new one.', 'invalid-token');
-  }
-  if (!consumeLoginToken(row.id)) {
-    throw new AuthError('That sign-in link has already been used', 'invalid-token');
+export function verifyLoginCode(options: VerifyLoginOptions): VerifyLoginResult {
+  const config = getAuthConfig();
+  if (!config.enabled) {
+    throw new AuthError('Authentication is disabled on this server', 'auth-disabled');
   }
 
-  const user = getUserById(row.user_id);
-  if (!user) {
-    revokeLoginToken(row.id);
-    throw new AuthError('That account no longer exists', 'invalid-token');
+  const invalid = () =>
+    new AuthError('That code is not right, or it has expired. Ask for a new one.', 'invalid-code');
+
+  const email = requireValidEmail(options.email);
+  const code = normaliseLoginCode(options.code ?? '');
+  const client: AuthClient = options.client ?? 'web';
+
+  const user = getUserByEmail(email);
+  if (!user) throw invalid();
+
+  const row = getPendingLoginCode(user.id, client);
+  if (!row) throw invalid();
+
+  if (isLoginCodeExpired(row)) {
+    revokeLoginCode(row.id);
+    throw invalid();
   }
 
-  if (row.client === 'native') {
-    // Leave the row usable; the poll below turns it into a session.
-    return { kind: 'native', user, redirectTo: null, userCode: row.user_code };
+  if (!tokensMatch(row.code_hash, hashToken(code))) {
+    // Retire the code once it has been guessed at enough times. Without this
+    // a six-character code would be brute-forceable in an afternoon.
+    if (recordLoginCodeAttempt(row.id) >= MAX_ATTEMPTS_PER_CODE) {
+      revokeLoginCode(row.id);
+      log.warn(`Retired a sign-in code for ${user.email} after too many wrong guesses`);
+    }
+    throw invalid();
   }
 
-  revokeLoginToken(row.id);
+  // Atomic, so two clients racing the same code cannot both get a session.
+  if (!consumeLoginCode(row.id)) throw invalid();
+
   return {
-    kind: 'web',
     user,
     redirectTo: row.redirect_to,
-    issued: issueSession(user, 'web', label),
+    issued: issueSession(user, client, options.label),
   };
-}
-
-/**
- * The native app asking whether its login has been approved yet.
- *
- * The session is minted here rather than at approval time so no plaintext
- * token is ever stored; the row is deleted in the same breath, so a second
- * poll with the same device code gets nothing.
- */
-export function pollDeviceLogin(deviceCode: string, label?: string | null): DeviceLoginPoll {
-  const row = getLoginTokenByDeviceCodeHash(hashToken(deviceCode));
-  if (!row) return { status: 'expired' };
-
-  if (isLoginTokenExpired(row)) {
-    revokeLoginToken(row.id);
-    return { status: 'expired' };
-  }
-
-  if (!row.consumed_at) return { status: 'pending' };
-
-  const user = getUserById(row.user_id);
-  if (!user) {
-    revokeLoginToken(row.id);
-    return { status: 'denied' };
-  }
-
-  const issued = issueSession(user, 'native', label);
-  // Retire the request in the same breath, so one approval means exactly one
-  // session even if the app polls twice.
-  revokeLoginToken(row.id);
-
-  return {
-    status: 'approved',
-    token: issued.token,
-    expiresAt: sqlTimeToIso(issued.session.expiresAt),
-    user,
-  };
-}
-
-/** Give up on a pending device login, so the link in the email stops working. */
-export function cancelDeviceLogin(deviceCode: string): boolean {
-  const row = getLoginTokenByDeviceCodeHash(hashToken(deviceCode));
-  if (!row) return false;
-  return revokeLoginToken(row.id);
 }

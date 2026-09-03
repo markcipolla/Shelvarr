@@ -132,42 +132,53 @@ describe('useAuthStore', () => {
   });
 
   describe('beginLogin', () => {
-    it('remembers the pending request so the screen can wait on it', async () => {
-      mockedApi.startDeviceLogin.mockResolvedValue({
-        deviceCode: 'device-1',
-        userCode: 'ABC-DEF',
+    it('remembers the pending request so the code screen can open', async () => {
+      mockedApi.requestLoginCode.mockResolvedValue({
         emailSent: true,
+        expiresAt: '2026-01-01T00:10:00.000Z',
+        codeLength: 6,
       });
 
       const started = await useAuthStore.getState().beginLogin('  reader@example.com  ');
 
       expect(started).toBe(true);
-      expect(mockedApi.startDeviceLogin).toHaveBeenCalledWith('reader@example.com');
+      expect(mockedApi.requestLoginCode).toHaveBeenCalledWith('reader@example.com');
       expect(useAuthStore.getState().pending).toMatchObject({
-        deviceCode: 'device-1',
-        userCode: 'ABC-DEF',
         email: 'reader@example.com',
+        emailSent: true,
+        codeLength: 6,
       });
       expect(useAuthStore.getState().busy).toBe(false);
     });
 
-    it('does not reveal that an address has no account', async () => {
-      mockedApi.startDeviceLogin.mockResolvedValue({
-        deviceCode: null,
-        userCode: null,
+    it('opens the code screen for an unknown address too, revealing nothing', async () => {
+      mockedApi.requestLoginCode.mockResolvedValue({
         emailSent: false,
-        message: 'If that address has an account, a sign-in link is on its way.',
+        expiresAt: '2026-01-01T00:10:00.000Z',
+        codeLength: 6,
+        message: 'If that address has an account, a sign-in code is on its way.',
       });
 
       const started = await useAuthStore.getState().beginLogin('stranger@example.com');
 
-      expect(started).toBe(false);
-      expect(useAuthStore.getState().pending).toBeNull();
-      expect(useAuthStore.getState().error).toMatch(/if that address has an account/i);
+      expect(started).toBe(true);
+      expect(useAuthStore.getState().pending).not.toBeNull();
+      expect(useAuthStore.getState().error).toBeNull();
+    });
+
+    it('falls back to six boxes if the server does not say how many', async () => {
+      mockedApi.requestLoginCode.mockResolvedValue({
+        emailSent: true,
+        expiresAt: '2026-01-01T00:10:00.000Z',
+      } as never);
+
+      await useAuthStore.getState().beginLogin('reader@example.com');
+
+      expect(useAuthStore.getState().pending?.codeLength).toBe(6);
     });
 
     it('surfaces a request failure and stops being busy', async () => {
-      mockedApi.startDeviceLogin.mockRejectedValue(new Error('Could not reach the server'));
+      mockedApi.requestLoginCode.mockRejectedValue(new Error('Could not reach the server'));
 
       const started = await useAuthStore.getState().beginLogin('reader@example.com');
 
@@ -177,7 +188,7 @@ describe('useAuthStore', () => {
     });
 
     it('still says something when what was thrown is not an error', async () => {
-      mockedApi.startDeviceLogin.mockRejectedValue('nope');
+      mockedApi.requestLoginCode.mockRejectedValue('nope');
 
       await useAuthStore.getState().beginLogin('reader@example.com');
 
@@ -185,87 +196,73 @@ describe('useAuthStore', () => {
     });
   });
 
-  describe('pollPendingLogin', () => {
+  describe('submitCode', () => {
     beforeEach(() => {
       useAuthStore.setState({
         pending: {
           email: 'reader@example.com',
-          deviceCode: 'device-1',
-          userCode: 'ABC-DEF',
           emailSent: true,
+          codeLength: 6,
         },
       });
     });
 
-    it('keeps waiting while nobody has opened the link', async () => {
-      mockedApi.pollDeviceLogin.mockResolvedValue({ status: 'pending' });
-
-      await expect(useAuthStore.getState().pollPendingLogin()).resolves.toBe('pending');
-      expect(useAuthStore.getState().pending).not.toBeNull();
-    });
-
-    it('stores the session once the link is opened', async () => {
-      mockedApi.pollDeviceLogin.mockResolvedValue({
-        status: 'approved',
+    it('stores the session the code buys', async () => {
+      mockedApi.submitLoginCode.mockResolvedValue({
         token: 'fresh-token',
         expiresAt: '2027-01-01T00:00:00.000Z',
         user: USER,
       });
 
-      await expect(useAuthStore.getState().pollPendingLogin()).resolves.toBe('approved');
+      await expect(useAuthStore.getState().submitCode('ABC234')).resolves.toBe(true);
 
+      expect(mockedApi.submitLoginCode).toHaveBeenCalledWith(
+        'reader@example.com',
+        'ABC234',
+        expect.stringContaining('Stackarr')
+      );
       expect(useAuthStore.getState().state).toBe('signed-in');
       expect(useAuthStore.getState().pending).toBeNull();
       expect(await SecureStore.getItemAsync('auth_sessionToken')).toBe('fresh-token');
       expect(await SecureStore.getItemAsync('auth_user')).toBe(JSON.stringify(USER));
     });
 
-    it('gives up and explains when the request times out', async () => {
-      mockedApi.pollDeviceLogin.mockResolvedValue({ status: 'expired' });
+    it('keeps the pending login alive so a wrong code can be retyped', async () => {
+      mockedApi.submitLoginCode.mockRejectedValue(
+        new Error('That code is not right, or it has expired. Ask for a new one.')
+      );
 
-      await expect(useAuthStore.getState().pollPendingLogin()).resolves.toBe('expired');
+      await expect(useAuthStore.getState().submitCode('ZZZZZZ')).resolves.toBe(false);
 
-      expect(useAuthStore.getState().pending).toBeNull();
-      expect(useAuthStore.getState().error).toMatch(/expired/i);
-    });
-
-    it('reports a refused request', async () => {
-      mockedApi.pollDeviceLogin.mockResolvedValue({ status: 'denied' });
-
-      await expect(useAuthStore.getState().pollPendingLogin()).resolves.toBe('denied');
-      expect(useAuthStore.getState().error).toMatch(/refused/i);
-    });
-
-    it('treats a network blip as still waiting, not as a failure', async () => {
-      mockedApi.pollDeviceLogin.mockRejectedValue(new Error('flaky wifi'));
-
-      await expect(useAuthStore.getState().pollPendingLogin()).resolves.toBe('pending');
       expect(useAuthStore.getState().pending).not.toBeNull();
+      expect(useAuthStore.getState().busy).toBe(false);
+      expect(useAuthStore.getState().error).toMatch(/not right/i);
     });
 
     it('does nothing when there is no request in flight', async () => {
       useAuthStore.setState({ pending: null });
 
-      await expect(useAuthStore.getState().pollPendingLogin()).resolves.toBe('error');
-      expect(mockedApi.pollDeviceLogin).not.toHaveBeenCalled();
+      await expect(useAuthStore.getState().submitCode('ABC234')).resolves.toBe(false);
+      expect(mockedApi.submitLoginCode).not.toHaveBeenCalled();
     });
   });
 
   describe('cancelLogin', () => {
-    it('tells the server to kill the emailed link', async () => {
+    it('goes back to the email step', () => {
       useAuthStore.setState({
-        pending: { email: 'r@e.com', deviceCode: 'device-1', userCode: null, emailSent: true },
+        pending: { email: 'r@e.com', emailSent: true, codeLength: 6 },
+        error: 'that code was wrong',
       });
 
-      await useAuthStore.getState().cancelLogin();
+      useAuthStore.getState().cancelLogin();
 
-      expect(mockedApi.cancelDeviceLogin).toHaveBeenCalledWith('device-1');
       expect(useAuthStore.getState().pending).toBeNull();
+      expect(useAuthStore.getState().error).toBeNull();
     });
 
-    it('is harmless with nothing pending', async () => {
-      await useAuthStore.getState().cancelLogin();
-      expect(mockedApi.cancelDeviceLogin).not.toHaveBeenCalled();
+    it('is harmless with nothing pending', () => {
+      useAuthStore.getState().cancelLogin();
+      expect(useAuthStore.getState().pending).toBeNull();
     });
   });
 

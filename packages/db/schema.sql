@@ -449,7 +449,7 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
 
 -- User accounts
 -- Passwordless: there is no password column and never should be. A person
--- proves who they are by receiving a magic link at their email address.
+-- proves who they are by receiving a one-time code at their email address.
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   -- NOCASE so Bob@example.com and bob@example.com are the same account.
@@ -473,34 +473,36 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
   expires_at TEXT NOT NULL
 );
 
--- Magic links, and the device-flow logins the native app starts.
+-- One-time sign-in codes.
 --
--- A web login stores only the link token. A native login also stores a device
--- code: the phone polls with it while the link is opened wherever the mail
--- was read, which may be a different device entirely.
-CREATE TABLE IF NOT EXISTS login_tokens (
+-- The code is six characters read out of an email and typed back in, so it is
+-- far weaker than a session token. Three things make that safe: it expires in
+-- minutes, it is bound to the address that asked for it, and `attempts` caps
+-- how many guesses one code will tolerate before it is retired.
+--
+-- code_hash is deliberately not UNIQUE: six characters collide, and two
+-- people holding the same code at once must not be an error. Lookup is always
+-- by user, so a collision is invisible.
+CREATE TABLE IF NOT EXISTS login_codes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  token_hash TEXT NOT NULL UNIQUE,
+  code_hash TEXT NOT NULL,
   client TEXT NOT NULL DEFAULT 'web', -- web|native
-  device_code_hash TEXT UNIQUE,        -- native only
-  user_code TEXT,                      -- native only; shown in the email
   redirect_to TEXT,
+  -- Wrong guesses so far. Brute force is the whole risk with a short code.
+  attempts INTEGER NOT NULL DEFAULT 0,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   expires_at TEXT NOT NULL,
-  -- Set when the magic link is opened. A web login turns into a session
-  -- there and then; a native login waits for the phone's next poll, which
-  -- mints the session and deletes this row, so one link is good for one
-  -- session and no plaintext token is ever written down.
+  -- Set when the code is accepted, in the same statement that mints the
+  -- session, so one code is good for exactly one sign-in.
   consumed_at TEXT,
-  -- Set when a link is retired without being used: superseded by a newer
-  -- request, or cancelled by the device that started it. Retired rows are
-  -- kept rather than deleted so the rate limit can still count how often
-  -- someone has asked.
+  -- Set when a code is retired without being used: superseded by a newer
+  -- request, expired, or guessed at too often. Retired rows are kept rather
+  -- than deleted so the rate limit can still count how often someone asked.
   revoked_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions(expires_at);
-CREATE INDEX IF NOT EXISTS idx_login_tokens_user ON login_tokens(user_id);
-CREATE INDEX IF NOT EXISTS idx_login_tokens_expires ON login_tokens(expires_at);
+CREATE INDEX IF NOT EXISTS idx_login_codes_user ON login_codes(user_id);
+CREATE INDEX IF NOT EXISTS idx_login_codes_expires ON login_codes(expires_at);

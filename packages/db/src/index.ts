@@ -277,6 +277,17 @@ function runMigrations(database: Database.Database): void {
     database.exec('ALTER TABLE comic_issues ADD COLUMN comicvine_volume_id INTEGER');
   }
 
+  // Magic links became six-character codes. The old table only ever held
+  // links that expire within minutes, so there is nothing worth carrying over
+  // — anyone mid-sign-in simply asks for a code instead.
+  const hasLoginTokens = database
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'login_tokens'")
+    .get();
+  if (hasLoginTokens) {
+    console.log('Running migration: replacing login_tokens with login_codes');
+    database.exec('DROP TABLE login_tokens');
+  }
+
   const comicsFtsCount = database.prepare('SELECT COUNT(*) AS c FROM comics_fts').get() as { c: number };
   const comicsCount = database.prepare('SELECT COUNT(*) AS c FROM comics').get() as { c: number };
   if (comicsFtsCount.c === 0 && comicsCount.c > 0) {
@@ -3210,78 +3221,80 @@ export function pruneExpiredSessions(): number {
   return execute('DELETE FROM auth_sessions WHERE expires_at <= CURRENT_TIMESTAMP').rowCount;
 }
 
-export interface LoginTokenRow {
+export interface LoginCodeRow {
   id: number;
   user_id: number;
-  token_hash: string;
+  code_hash: string;
   client: string;
-  device_code_hash: string | null;
-  user_code: string | null;
   redirect_to: string | null;
+  attempts: number;
   created_at: string;
   expires_at: string;
   consumed_at: string | null;
   revoked_at: string | null;
 }
 
-export function createLoginToken(input: {
+export function createLoginCode(input: {
   userId: number;
-  tokenHash: string;
+  codeHash: string;
   client: AuthClient;
-  deviceCodeHash?: string | null;
-  userCode?: string | null;
   redirectTo?: string | null;
   ttlSeconds: number;
-}): LoginTokenRow {
+}): LoginCodeRow {
   const result = execute(
-    `INSERT INTO login_tokens
-       (user_id, token_hash, client, device_code_hash, user_code, redirect_to, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?, datetime('now', ?))`,
+    `INSERT INTO login_codes (user_id, code_hash, client, redirect_to, expires_at)
+     VALUES (?, ?, ?, ?, datetime('now', ?))`,
     [
       input.userId,
-      input.tokenHash,
+      input.codeHash,
       input.client,
-      input.deviceCodeHash ?? null,
-      input.userCode ?? null,
       input.redirectTo ?? null,
       `+${Math.floor(input.ttlSeconds)} seconds`,
     ]
   );
-  const row = queryOne<LoginTokenRow>('SELECT * FROM login_tokens WHERE id = ?', [
+  const row = queryOne<LoginCodeRow>('SELECT * FROM login_codes WHERE id = ?', [
     result.lastInsertRowid,
   ]);
-  if (!row) throw new Error('Failed to create login token');
+  if (!row) throw new Error('Failed to create login code');
   return row;
 }
 
-/** Retired links are invisible here, so a superseded one reads as unknown. */
-export function getLoginTokenByHash(tokenHash: string): LoginTokenRow | null {
-  return queryOne<LoginTokenRow>(
-    'SELECT * FROM login_tokens WHERE token_hash = ? AND revoked_at IS NULL',
-    [tokenHash]
+/**
+ * The code a person is currently expected to type, if any.
+ *
+ * Looked up by account rather than by code: six characters are not unique
+ * enough to index on, and requiring the address as well as the code is what
+ * keeps a guess from being a global one.
+ */
+export function getPendingLoginCode(userId: number, client: AuthClient): LoginCodeRow | null {
+  return queryOne<LoginCodeRow>(
+    `SELECT * FROM login_codes
+     WHERE user_id = ? AND client = ? AND revoked_at IS NULL AND consumed_at IS NULL
+     ORDER BY id DESC LIMIT 1`,
+    [userId, client]
   );
 }
 
-export function getLoginTokenByDeviceCodeHash(deviceCodeHash: string): LoginTokenRow | null {
-  return queryOne<LoginTokenRow>(
-    'SELECT * FROM login_tokens WHERE device_code_hash = ? AND revoked_at IS NULL',
-    [deviceCodeHash]
-  );
-}
-
-export function isLoginTokenExpired(row: LoginTokenRow): boolean {
+export function isLoginCodeExpired(row: LoginCodeRow): boolean {
   return row.expires_at <= currentSqlTime();
 }
 
+/** Count a wrong guess, and report how many this code has now had. */
+export function recordLoginCodeAttempt(id: number): number {
+  execute('UPDATE login_codes SET attempts = attempts + 1 WHERE id = ?', [id]);
+  const row = queryOne<{ attempts: number }>('SELECT attempts FROM login_codes WHERE id = ?', [id]);
+  return row?.attempts ?? 0;
+}
+
 /**
- * Mark a link as opened, refusing if it already was. The UPDATE ... WHERE
- * consumed_at IS NULL is atomic, so two clicks on the same link cannot both
- * win — which is what stops a forwarded email from minting a second session.
+ * Spend a code, refusing if it has already been spent. The UPDATE ... WHERE
+ * consumed_at IS NULL is atomic, so two clients racing the same code cannot
+ * both win — which is what makes one code mean exactly one session.
  */
-export function consumeLoginToken(id: number): boolean {
+export function consumeLoginCode(id: number): boolean {
   return (
     execute(
-      `UPDATE login_tokens SET consumed_at = CURRENT_TIMESTAMP
+      `UPDATE login_codes SET consumed_at = CURRENT_TIMESTAMP
        WHERE id = ?
          AND consumed_at IS NULL
          AND revoked_at IS NULL
@@ -3291,45 +3304,40 @@ export function consumeLoginToken(id: number): boolean {
   );
 }
 
-export function deleteLoginToken(id: number): boolean {
-  return execute('DELETE FROM login_tokens WHERE id = ?', [id]).rowCount > 0;
-}
-
 /**
- * Retire outstanding links for a person, so asking for a new one invalidates
+ * Retire outstanding codes for a person, so asking for a new one invalidates
  * the old. The rows stay: deleting them would also delete the record the rate
- * limit counts, letting someone request links forever by simply requesting
- * them one at a time.
+ * limit counts, letting someone request codes forever by asking one at a time.
  */
-export function revokePendingLoginTokens(userId: number, client: AuthClient): number {
+export function revokePendingLoginCodes(userId: number, client: AuthClient): number {
   return execute(
-    `UPDATE login_tokens SET revoked_at = CURRENT_TIMESTAMP
+    `UPDATE login_codes SET revoked_at = CURRENT_TIMESTAMP
      WHERE user_id = ? AND client = ? AND revoked_at IS NULL AND consumed_at IS NULL`,
     [userId, client]
   ).rowCount;
 }
 
-/** Retire a single link, by id. */
-export function revokeLoginToken(id: number): boolean {
+/** Retire a single code, by id. */
+export function revokeLoginCode(id: number): boolean {
   return (
     execute(
-      'UPDATE login_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND revoked_at IS NULL',
+      'UPDATE login_codes SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND revoked_at IS NULL',
       [id]
     ).rowCount > 0
   );
 }
 
-export function pruneExpiredLoginTokens(): number {
-  return execute('DELETE FROM login_tokens WHERE expires_at <= CURRENT_TIMESTAMP').rowCount;
+export function pruneExpiredLoginCodes(): number {
+  return execute('DELETE FROM login_codes WHERE expires_at <= CURRENT_TIMESTAMP').rowCount;
 }
 
 /**
- * How many links a person has asked for lately; the rate limit reads this.
+ * How many codes a person has asked for lately; the rate limit reads this.
  * Counts every request in the window, retired and spent ones included.
  */
-export function countRecentLoginTokens(userId: number, withinSeconds: number): number {
+export function countRecentLoginCodes(userId: number, withinSeconds: number): number {
   const row = queryOne<{ count: number }>(
-    `SELECT COUNT(*) AS count FROM login_tokens
+    `SELECT COUNT(*) AS count FROM login_codes
      WHERE user_id = ? AND created_at > datetime('now', ?)`,
     [userId, `-${Math.floor(withinSeconds)} seconds`]
   );

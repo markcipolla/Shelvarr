@@ -45,7 +45,7 @@ export type RootStackParamList = {
     issueId?: number;
   };
   Settings: undefined;
-  /** `mode` only picks the opening wording; both send the same magic link. */
+  /** `mode` only picks the opening wording; both send the same sign-in code. */
   Login: { mode?: AuthMode } | undefined;
 };
 

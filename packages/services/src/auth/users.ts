@@ -27,7 +27,7 @@ export class AuthError extends Error {
       | 'setup-complete'
       | 'last-admin'
       | 'rate-limited'
-      | 'invalid-token'
+      | 'invalid-code'
       | 'auth-disabled'
   ) {
     super(message);
