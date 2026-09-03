@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { APP_VERSION, APP_NAME, APP_DESCRIPTION, BUILD_VERSION } from '../../lib/constants.js';
+import { APP_VERSION, APP_NAME, APP_DESCRIPTION, BUILD_VERSION, FRAMEWORK, REPOSITORY_URL } from '../../lib/constants.js';
 
 describe('Application Constants', () => {
   describe('APP_VERSION', () => {
@@ -69,6 +69,27 @@ describe('Application Constants', () => {
       } else {
         assert.strictEqual(BUILD_VERSION, fromEnv);
       }
+    });
+  });
+
+  describe('FRAMEWORK', () => {
+    it('should name Next.js', () => {
+      assert.ok(FRAMEWORK.startsWith('Next.js'));
+    });
+
+    it('should append the injected framework version when present', () => {
+      const fromEnv = process.env.NEXT_PUBLIC_FRAMEWORK_VERSION;
+      if (fromEnv) {
+        assert.strictEqual(FRAMEWORK, `Next.js ${fromEnv}`);
+      } else {
+        assert.strictEqual(FRAMEWORK, 'Next.js');
+      }
+    });
+  });
+
+  describe('REPOSITORY_URL', () => {
+    it('should point at the real repository, not a placeholder', () => {
+      assert.strictEqual(REPOSITORY_URL, 'https://github.com/markcipolla/Shelvarr');
     });
   });
 });

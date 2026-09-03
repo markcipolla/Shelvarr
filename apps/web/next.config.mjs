@@ -1,4 +1,7 @@
 import { execSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
 
 function resolveBuildVersion() {
   if (process.env.BUILD_VERSION) return process.env.BUILD_VERSION;
@@ -13,6 +16,16 @@ function resolveBuildVersion() {
   }
 }
 
+// Read from the installed dependency so the About screen can't drift from
+// what actually shipped.
+function resolveFrameworkVersion() {
+  try {
+    return require('next/package.json').version;
+  } catch {
+    return '';
+  }
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Use standalone output for Docker
@@ -21,6 +34,7 @@ const nextConfig = {
   // Build-time injected values available in client + server bundles.
   env: {
     NEXT_PUBLIC_BUILD_VERSION: resolveBuildVersion(),
+    NEXT_PUBLIC_FRAMEWORK_VERSION: resolveFrameworkVersion(),
   },
 
   // Transpile workspace packages

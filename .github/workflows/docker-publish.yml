@@ -45,6 +45,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve build version
+        id: build_version
+        run: |
+          sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "value=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${sha:0:7}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Extract metadata (tags, labels)
         id: meta
         uses: docker/metadata-action@v5
@@ -63,6 +73,8 @@ jobs:
         with:
           context: .
           target: web
+          build-args: |
+            BUILD_VERSION=${{ steps.build_version.outputs.value }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

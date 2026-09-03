@@ -9,7 +9,13 @@ import '../../../tests/setup-react.js';
 import React from 'react';
 import { render, screen, cleanup } from '@testing-library/react';
 import { AboutTab } from '../../../components/settings/AboutTab.js';
-import { APP_NAME, APP_VERSION, BUILD_VERSION } from '../../../lib/constants.js';
+import {
+  APP_NAME,
+  APP_VERSION,
+  BUILD_VERSION,
+  FRAMEWORK,
+  REPOSITORY_URL,
+} from '../../../lib/constants.js';
 
 describe('AboutTab Component', () => {
   afterEach(() => {
@@ -60,7 +66,7 @@ describe('AboutTab Component', () => {
     it('should render the framework label and value', () => {
       render(<AboutTab />);
       assert.ok(screen.getByText('Framework'));
-      assert.ok(screen.getByText('Next.js 16'));
+      assert.ok(screen.getByText(FRAMEWORK));
     });
 
     it('should render the database label and value', () => {
@@ -74,7 +80,7 @@ describe('AboutTab Component', () => {
     it('should render the GitHub Repository link', () => {
       render(<AboutTab />);
       const link = screen.getByRole('link', { name: 'GitHub Repository' });
-      assert.ok(link);
+      assert.strictEqual(link.getAttribute('href'), REPOSITORY_URL);
       assert.strictEqual(link.getAttribute('target'), '_blank');
       assert.ok(link.getAttribute('rel')?.includes('noopener'));
     });
@@ -82,7 +88,7 @@ describe('AboutTab Component', () => {
     it('should render the Report an Issue link', () => {
       render(<AboutTab />);
       const link = screen.getByRole('link', { name: 'Report an Issue' });
-      assert.ok(link);
+      assert.strictEqual(link.getAttribute('href'), `${REPOSITORY_URL}/issues`);
       assert.strictEqual(link.getAttribute('target'), '_blank');
     });
   });

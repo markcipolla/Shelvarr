@@ -1,4 +1,10 @@
-import { APP_VERSION, APP_NAME, BUILD_VERSION } from '@/lib/constants';
+import {
+  APP_VERSION,
+  APP_NAME,
+  BUILD_VERSION,
+  FRAMEWORK,
+  REPOSITORY_URL,
+} from '@/lib/constants';
 
 export function AboutTab() {
   return (
@@ -21,7 +27,7 @@ export function AboutTab() {
         </div>
         <div className="flex justify-between">
           <span className="text-shelvarr-text-muted">Framework</span>
-          <span className="text-white">Next.js 16</span>
+          <span className="text-white">{FRAMEWORK}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-shelvarr-text-muted">Database</span>
@@ -33,7 +39,7 @@ export function AboutTab() {
         <h3 className="text-md font-semibold text-white mb-2">Links</h3>
         <div className="space-y-2">
           <a
-            href="https://github.com/your-repo/shelvarr"
+            href={REPOSITORY_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="block text-blue-400 hover:text-blue-300 transition-colors"
@@ -41,7 +47,7 @@ export function AboutTab() {
             GitHub Repository
           </a>
           <a
-            href="https://github.com/your-repo/shelvarr/issues"
+            href={`${REPOSITORY_URL}/issues`}
             target="_blank"
             rel="noopener noreferrer"
             className="block text-blue-400 hover:text-blue-300 transition-colors"
