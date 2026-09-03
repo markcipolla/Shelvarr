@@ -1383,12 +1383,12 @@ const comicAdoptHandler: TaskHandler = async (taskId, onProgress, signal) => {
   };
 };
 
-/** Housekeeping for expired sessions and unopened sign-in links. */
+/** Housekeeping for expired sessions and unused sign-in codes. */
 const authPruneHandler: TaskHandler = async (_taskId, onProgress) => {
   const removed = pruneExpired();
   onProgress(1, 1);
   return {
-    message: `Removed ${removed.sessions} expired sessions and ${removed.loginTokens} expired sign-in links`,
+    message: `Removed ${removed.sessions} expired sessions and ${removed.loginCodes} expired sign-in codes`,
     ...removed,
   };
 };
@@ -1429,7 +1429,7 @@ export function registerAllHandlers(): void {
     return { message: 'Author sync handler not yet implemented' };
   });
 
-  // Housekeeping: drop timed-out sessions and sign-in links. Sessions are
+  // Housekeeping: drop timed-out sessions and sign-in codes. Sessions are
   // also swept as they are met, but nothing else ever revisits a link that
   // was emailed and never opened.
   registerTaskHandler('auth_prune', authPruneHandler);

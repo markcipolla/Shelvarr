@@ -6,7 +6,7 @@ import {
   deleteSessionsForUser,
   getSessionByTokenHash,
   listSessionsForUser,
-  pruneExpiredLoginTokens,
+  pruneExpiredLoginCodes,
   pruneExpiredSessions,
   touchSession,
   touchUserLogin,
@@ -73,9 +73,9 @@ export function getSessions(userId: number): Session[] {
 }
 
 /** Housekeeping: drop everything that has timed out. */
-export function pruneExpired(): { sessions: number; loginTokens: number } {
+export function pruneExpired(): { sessions: number; loginCodes: number } {
   return {
     sessions: pruneExpiredSessions(),
-    loginTokens: pruneExpiredLoginTokens(),
+    loginCodes: pruneExpiredLoginCodes(),
   };
 }

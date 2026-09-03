@@ -1,4 +1,4 @@
-import type { AuthStatus, DeviceLoginPoll, User } from '@shelvarr/types';
+import type { AuthStatus, LoginCodeChallenge, User } from '@shelvarr/types';
 import { useSettingsStore } from '../../stores/useSettingsStore';
 
 /**
@@ -39,9 +39,11 @@ async function postJson<T>(path: string, body: unknown, serverUrl?: string): Pro
 
   const payload = (await response.json().catch(() => null)) as (T & { error?: string }) | null;
 
-  // 202 is the "we are not telling you whether that address exists" answer.
-  if (!response.ok && response.status !== 202) {
-    throw new AuthRequestError(payload?.error || `Server responded with ${response.status}`, response.status);
+  if (!response.ok) {
+    throw new AuthRequestError(
+      payload?.error || `Server responded with ${response.status}`,
+      response.status
+    );
   }
   if (!payload) throw new AuthRequestError('Unexpected response from the server');
   return payload;
@@ -73,40 +75,39 @@ export async function fetchAuthStatus(serverUrl?: string): Promise<AuthStatus> {
   return (await response.json()) as AuthStatus;
 }
 
-export interface DeviceLoginStart {
-  deviceCode: string | null;
-  userCode: string | null;
-  expiresAt?: string;
-  intervalSeconds?: number;
-  emailSent: boolean;
+export interface LoginCodeRequest extends LoginCodeChallenge {
   message?: string;
 }
 
-/** Ask the server to email a sign-in link that will approve this device. */
-export function startDeviceLogin(email: string, serverUrl?: string): Promise<DeviceLoginStart> {
-  return postJson<DeviceLoginStart>('/api/auth/device/start', { email }, serverUrl);
+/** Ask the server to email a one-time sign-in code. */
+export function requestLoginCode(email: string, serverUrl?: string): Promise<LoginCodeRequest> {
+  return postJson<LoginCodeRequest>('/api/auth/login', { email, client: 'native' }, serverUrl);
 }
 
-/** Ask whether the link has been opened yet. */
-export function pollDeviceLogin(
-  deviceCode: string,
+export interface LoginCodeResult {
+  token: string;
+  expiresAt: string;
+  user: User;
+}
+
+/**
+ * Trade the emailed code for a session.
+ *
+ * The address goes up with the code: six characters on their own are weak,
+ * and pinning them to one account is what keeps the server's guess limit
+ * meaningful.
+ */
+export function submitLoginCode(
+  email: string,
+  code: string,
   label: string,
   serverUrl?: string
-): Promise<DeviceLoginPoll> {
-  return postJson<DeviceLoginPoll>('/api/auth/device/poll', { deviceCode, label }, serverUrl);
-}
-
-/** Abandon a pending sign-in so the emailed link stops working. */
-export async function cancelDeviceLogin(deviceCode: string, serverUrl?: string): Promise<void> {
-  const url = baseUrl(serverUrl);
-  if (!url) return;
-  try {
-    await fetch(`${url}/api/auth/device/poll?deviceCode=${encodeURIComponent(deviceCode)}`, {
-      method: 'DELETE',
-    });
-  } catch {
-    // Nothing to do: the request expires on its own.
-  }
+): Promise<LoginCodeResult> {
+  return postJson<LoginCodeResult>(
+    '/api/auth/verify',
+    { email, code, client: 'native', label },
+    serverUrl
+  );
 }
 
 export type SessionCheck =

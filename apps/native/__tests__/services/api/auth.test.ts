@@ -7,12 +7,11 @@ jest.mock('../../../src/services/api/client', () => ({
 
 import {
   AuthRequestError,
-  cancelDeviceLogin,
   checkSession,
   fetchAuthStatus,
-  pollDeviceLogin,
+  requestLoginCode,
   revokeSession,
-  startDeviceLogin,
+  submitLoginCode,
 } from '../../../src/services/api/auth';
 import { useSettingsStore } from '../../../src/stores/useSettingsStore';
 
@@ -94,38 +93,28 @@ describe('fetchAuthStatus', () => {
   });
 });
 
-describe('startDeviceLogin', () => {
-  it('asks the server to email a link for this device', async () => {
+describe('requestLoginCode', () => {
+  it('asks the server to email a code, naming itself as a native client', async () => {
     mockFetch.mockResolvedValue(
-      response(200, { deviceCode: 'device-1', userCode: 'ABC-DEF', emailSent: true })
+      response(200, { emailSent: true, expiresAt: '2026-01-01T00:10:00.000Z', codeLength: 6 })
     );
 
-    const result = await startDeviceLogin('reader@example.com');
+    const result = await requestLoginCode('reader@example.com');
 
-    expect(result.deviceCode).toBe('device-1');
+    expect(result.codeLength).toBe(6);
     expect(mockFetch).toHaveBeenCalledWith(
-      'http://books.local/api/auth/device/start',
+      'http://books.local/api/auth/login',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ email: 'reader@example.com' }),
+        body: JSON.stringify({ email: 'reader@example.com', client: 'native' }),
       })
     );
-  });
-
-  it('accepts the 202 the server gives an unknown address', async () => {
-    // 202 is deliberately not an error: the server will not say whether the
-    // address exists, and neither should this.
-    mockFetch.mockResolvedValue(response(202, { deviceCode: null, emailSent: false }));
-
-    await expect(startDeviceLogin('stranger@example.com')).resolves.toMatchObject({
-      deviceCode: null,
-    });
   });
 
   it('surfaces the server’s reason for refusing', async () => {
     mockFetch.mockResolvedValue(response(429, { error: 'Too many sign-in emails requested.' }));
 
-    await expect(startDeviceLogin('reader@example.com')).rejects.toThrow(
+    await expect(requestLoginCode('reader@example.com')).rejects.toThrow(
       'Too many sign-in emails requested.'
     );
   });
@@ -133,7 +122,7 @@ describe('startDeviceLogin', () => {
   it('falls back to the status code when the server explains nothing', async () => {
     mockFetch.mockResolvedValue(response(500, {}));
 
-    await expect(startDeviceLogin('reader@example.com')).rejects.toThrow(
+    await expect(requestLoginCode('reader@example.com')).rejects.toThrow(
       'Server responded with 500'
     );
   });
@@ -141,7 +130,7 @@ describe('startDeviceLogin', () => {
   it('rejects an empty body it cannot act on', async () => {
     mockFetch.mockResolvedValue(response(200, null));
 
-    await expect(startDeviceLogin('reader@example.com')).rejects.toThrow(
+    await expect(requestLoginCode('reader@example.com')).rejects.toThrow(
       'Unexpected response from the server'
     );
   });
@@ -149,7 +138,7 @@ describe('startDeviceLogin', () => {
   it('needs a server to talk to', async () => {
     useSettingsStore.setState({ shelvarrUrl: '' });
 
-    await expect(startDeviceLogin('reader@example.com')).rejects.toThrow(
+    await expect(requestLoginCode('reader@example.com')).rejects.toThrow(
       'Server URL not configured'
     );
   });
@@ -157,49 +146,42 @@ describe('startDeviceLogin', () => {
   it('reports an unreachable server', async () => {
     mockFetch.mockRejectedValue(new TypeError('Network request failed'));
 
-    await expect(startDeviceLogin('reader@example.com')).rejects.toThrow(
+    await expect(requestLoginCode('reader@example.com')).rejects.toThrow(
       'Could not reach the server'
     );
   });
 });
 
-describe('pollDeviceLogin', () => {
-  it('sends the device code and a name for the session', async () => {
-    mockFetch.mockResolvedValue(response(200, { status: 'pending' }));
+describe('submitLoginCode', () => {
+  it('sends the address alongside the code, and a name for the session', async () => {
+    const user = { id: 1, email: 'r@e.com', name: null, role: 'user', createdAt: '', lastLoginAt: null };
+    mockFetch.mockResolvedValue(
+      response(200, { token: 'fresh', expiresAt: '2027-01-01T00:00:00.000Z', user })
+    );
 
-    await expect(pollDeviceLogin('device-1', 'Stackarr on Android')).resolves.toEqual({
-      status: 'pending',
-    });
+    await expect(
+      submitLoginCode('reader@example.com', 'ABC234', 'Stackarr on Android')
+    ).resolves.toMatchObject({ token: 'fresh' });
+
+    expect(mockFetch.mock.calls[0][0]).toBe('http://books.local/api/auth/verify');
     expect(mockFetch.mock.calls[0][1].body).toBe(
-      JSON.stringify({ deviceCode: 'device-1', label: 'Stackarr on Android' })
-    );
-  });
-});
-
-describe('cancelDeviceLogin', () => {
-  it('asks the server to drop the pending request', async () => {
-    mockFetch.mockResolvedValue(response(200, { cancelled: true }));
-
-    await cancelDeviceLogin('device 1');
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      'http://books.local/api/auth/device/poll?deviceCode=device%201',
-      { method: 'DELETE' }
+      JSON.stringify({
+        email: 'reader@example.com',
+        code: 'ABC234',
+        client: 'native',
+        label: 'Stackarr on Android',
+      })
     );
   });
 
-  it('shrugs off a failure — the request expires by itself', async () => {
-    mockFetch.mockRejectedValue(new Error('offline'));
+  it('passes on the server’s complaint about a wrong code', async () => {
+    mockFetch.mockResolvedValue(
+      response(401, { error: 'That code is not right, or it has expired. Ask for a new one.' })
+    );
 
-    await expect(cancelDeviceLogin('device-1')).resolves.toBeUndefined();
-  });
-
-  it('does nothing without a server', async () => {
-    useSettingsStore.setState({ shelvarrUrl: '' });
-
-    await cancelDeviceLogin('device-1');
-
-    expect(mockFetch).not.toHaveBeenCalled();
+    await expect(submitLoginCode('reader@example.com', 'ZZZZZZ', 'Phone')).rejects.toThrow(
+      /not right/
+    );
   });
 });
 

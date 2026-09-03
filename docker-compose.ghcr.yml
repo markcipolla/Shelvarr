@@ -22,12 +22,10 @@ services:
       # sitting next to this one. Unset is the same as absent — each falls
       # back to the default documented in the README, so leave them out of
       # .env rather than setting them empty to mean something.
-      # Public URL, so emailed sign-in links point somewhere reachable.
-      - SHELVARR_URL=${SHELVARR_URL:-}
       # Set false to turn accounts off and leave the server open.
       - SHELVARR_AUTH_ENABLED=${SHELVARR_AUTH_ENABLED:-}
       - SHELVARR_ALLOW_SIGNUP=${SHELVARR_ALLOW_SIGNUP:-}
-      # Without SMTP_HOST, sign-in links are written to the container log.
+      # Without SMTP_HOST, sign-in codes are written to the container log.
       - SMTP_HOST=${SMTP_HOST:-}
       - SMTP_PORT=${SMTP_PORT:-}
       - SMTP_SECURE=${SMTP_SECURE:-}

@@ -4,12 +4,11 @@ import * as SecureStore from 'expo-secure-store';
 import type { AuthStatus, User } from '@shelvarr/types';
 import {
   AuthRequestError,
-  cancelDeviceLogin,
   checkSession,
   fetchAuthStatus,
-  pollDeviceLogin,
+  requestLoginCode,
   revokeSession,
-  startDeviceLogin,
+  submitLoginCode,
 } from '../services/api/auth';
 
 const TOKEN_KEY = 'auth_sessionToken';
@@ -24,11 +23,12 @@ const USER_KEY = 'auth_user';
  */
 export type AuthState = 'unknown' | 'disabled' | 'signed-out' | 'signed-in';
 
+/** A code has been sent, and we are waiting for it to be typed in. */
 export interface PendingLogin {
   email: string;
-  deviceCode: string;
-  userCode: string | null;
   emailSent: boolean;
+  /** How many characters to ask for; the server decides. */
+  codeLength: number;
   message?: string;
 }
 
@@ -39,14 +39,14 @@ interface AuthStore {
   serverStatus: AuthStatus | null;
   pending: PendingLogin | null;
   error: string | null;
-  /** True while a sign-in request or poll is in flight. */
+  /** True while a sign-in request is in flight. */
   busy: boolean;
 
   loadAuth: () => Promise<void>;
   refresh: () => Promise<void>;
   beginLogin: (email: string) => Promise<boolean>;
-  pollPendingLogin: () => Promise<'pending' | 'approved' | 'expired' | 'denied' | 'error'>;
-  cancelLogin: () => Promise<void>;
+  submitCode: (code: string) => Promise<boolean>;
+  cancelLogin: () => void;
   signOut: () => Promise<void>;
   /** Called by the API client when the server rejects our token. */
   handleUnauthorized: () => void;
@@ -151,31 +151,17 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     set({ state: 'signed-in', error: null });
   },
 
-  /** Ask the server to email a link that will approve this device. */
+  /** Ask the server to email a one-time code. */
   beginLogin: async (email: string) => {
     set({ busy: true, error: null });
     try {
-      const result = await startDeviceLogin(email.trim());
-
-      if (!result.deviceCode) {
-        // The address is unknown and self-signup is off. The server will not
-        // say so outright, and neither do we.
-        set({
-          busy: false,
-          error:
-            result.message ??
-            'If that address has an account, a sign-in link is on its way.',
-        });
-        return false;
-      }
-
+      const result = await requestLoginCode(email.trim());
       set({
         busy: false,
         pending: {
           email: email.trim(),
-          deviceCode: result.deviceCode,
-          userCode: result.userCode,
           emailSent: result.emailSent,
+          codeLength: result.codeLength ?? 6,
           message: result.message,
         },
       });
@@ -186,50 +172,38 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     }
   },
 
-  /** One tick of the wait for someone to open the emailed link. */
-  pollPendingLogin: async () => {
+  /**
+   * Redeem the code that was typed in.
+   *
+   * A wrong code leaves the pending login in place so it can be retyped; only
+   * the server counts the guesses, and it retires the code once there have
+   * been too many.
+   */
+  submitCode: async (code: string) => {
     const { pending } = get();
-    if (!pending) return 'error';
+    if (!pending) return false;
 
-    let result;
+    set({ busy: true, error: null });
     try {
-      result = await pollDeviceLogin(pending.deviceCode, deviceLabel());
-    } catch {
-      // A blip in the network is not a failed sign-in; keep waiting.
-      return 'pending';
-    }
-
-    if (result.status === 'approved') {
+      const result = await submitLoginCode(pending.email, code, deviceLabel());
       await persist(result.token, result.user);
       set({
         state: 'signed-in',
         token: result.token,
         user: result.user,
         pending: null,
+        busy: false,
         error: null,
       });
-      return 'approved';
+      return true;
+    } catch (error) {
+      set({ busy: false, error: describe(error) });
+      return false;
     }
-
-    if (result.status === 'expired' || result.status === 'denied') {
-      set({
-        pending: null,
-        error:
-          result.status === 'expired'
-            ? 'That sign-in request expired. Try again.'
-            : 'That sign-in request was refused.',
-      });
-      return result.status;
-    }
-
-    return 'pending';
   },
 
-  cancelLogin: async () => {
-    const { pending } = get();
-    if (pending) await cancelDeviceLogin(pending.deviceCode);
-    set({ pending: null, error: null });
-  },
+  /** Give up and go back to the email step. Nothing to tell the server. */
+  cancelLogin: () => set({ pending: null, error: null }),
 
   signOut: async () => {
     const { token } = get();

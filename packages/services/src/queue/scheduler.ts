@@ -102,7 +102,7 @@ export const DEFAULT_SCHEDULES: ScheduleDefinition[] = [
     name: 'auth_prune',
     taskType: 'auth_prune',
     intervalSeconds: 24 * HOUR,
-    description: 'Remove expired sessions and sign-in links',
+    description: 'Remove expired sessions and sign-in codes',
     category: 'system',
     enabledByDefault: true,
   },

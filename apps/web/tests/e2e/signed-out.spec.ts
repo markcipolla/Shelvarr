@@ -65,13 +65,51 @@ test.describe('Signed out', () => {
     const known = await request.post('/api/auth/login', { data: { email: 'e2e@example.com' } });
     const unknown = await request.post('/api/auth/login', { data: { email: 'nobody@example.com' } });
 
-    expect(await known.json()).toEqual(await unknown.json());
+    const [knownBody, unknownBody] = [await known.json(), await unknown.json()];
+    // expiresAt differs by milliseconds between the two calls; everything
+    // else has to match, or the response tells you who has an account.
+    expect({ ...knownBody, expiresAt: null }).toEqual({ ...unknownBody, expiresAt: null });
   });
 
-  test('rejects a made-up sign-in link', async ({ page }) => {
-    await page.goto('/auth/verify?token=not-a-real-token');
+  test('never hands the code back to whoever asked for it', async ({ request }) => {
+    const response = await request.post('/api/auth/login', {
+      data: { email: 'e2e@example.com' },
+    });
 
-    await expect(page).toHaveURL('/login?error=invalid-token');
-    await expect(page.getByText(/not valid, has expired, or has already been used/i)).toBeVisible();
+    expect(await response.json()).not.toHaveProperty('code');
+  });
+
+  test('rejects a made-up sign-in code', async ({ request }) => {
+    const response = await request.post('/api/auth/verify', {
+      data: { email: 'e2e@example.com', code: 'ZZZZZZ' },
+    });
+
+    expect(response.status()).toBe(401);
+    expect((await response.json()).error).toMatch(/not right/i);
+  });
+
+  test('walks from the email step to the code step', async ({ page }) => {
+    // The only spec here that needs the sign-in form to be interactive rather
+    // than merely rendered. Under `next dev` with several workers warming
+    // routes at once, first-hit compile plus hydration can outlast the
+    // default budget.
+    test.setTimeout(90_000);
+
+    await page.goto('/login');
+
+    // Retried: the form is a client component, and typing into it before
+    // React has hydrated leaves the button disabled on an empty state.
+    await expect(async () => {
+      await page.getByLabel('Email').fill('e2e@example.com');
+      await expect(page.getByRole('button', { name: 'Email me a code' })).toBeEnabled({
+        timeout: 1000,
+      });
+    }).toPass();
+
+    await page.getByRole('button', { name: 'Email me a code' }).click();
+
+    // Six boxes, and the first one holding the caret.
+    await expect(page.getByLabel('Character 1 of 6')).toBeFocused();
+    await expect(page.getByLabel('Character 6 of 6')).toBeVisible();
   });
 });

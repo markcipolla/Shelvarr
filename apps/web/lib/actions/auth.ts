@@ -10,7 +10,6 @@ import {
   getCurrentUser,
   getSessionToken,
   isSecureRequest,
-  requestOrigin,
   setSessionCookie,
 } from '@/lib/auth';
 
@@ -18,11 +17,11 @@ export interface ActionResult {
   ok: boolean;
   message?: string;
   /**
-   * Set when mail is not configured and the link had to be shown instead of
+   * Set when mail is not configured and the code had to be shown instead of
    * sent. Only ever returned to someone who has just proved they can act —
-   * the first-run wizard — never to an anonymous sign-in attempt.
+   * an admin inviting somebody — never to an anonymous sign-in attempt.
    */
-  link?: string;
+  code?: string;
 }
 
 function describe(error: unknown): string {
@@ -33,7 +32,7 @@ function describe(error: unknown): string {
 /**
  * Create the first admin and sign them straight in.
  *
- * Signing in without a magic link is safe exactly once: this only works while
+ * Signing in without a code is safe exactly once: this only works while
  * the server has no accounts at all, so there is nobody to impersonate. It
  * also means the wizard works before SMTP is configured, which matters — an
  * admin who cannot receive mail could otherwise never get in.
@@ -64,12 +63,12 @@ export async function completeSetup(formData: FormData): Promise<ActionResult> {
 }
 
 /**
- * Ask for a magic link.
+ * Ask for a one-time sign-in code.
  *
  * The answer is the same whether or not the address has an account, so this
  * cannot be used to find out who is registered.
  */
-export async function requestMagicLink(formData: FormData): Promise<ActionResult> {
+export async function requestLoginCode(formData: FormData): Promise<ActionResult> {
   if (!auth.isAuthEnabled()) {
     return { ok: false, message: 'Authentication is disabled on this server' };
   }
@@ -85,14 +84,13 @@ export async function requestMagicLink(formData: FormData): Promise<ActionResult
       email,
       client: 'web',
       redirectTo: auth.isSafeRedirect(next) ? next : null,
-      origin: await requestOrigin(),
     });
 
     if (!result.emailSent && !auth.isEmailConfigured()) {
       return {
         ok: true,
         message:
-          'Email is not configured on this server, so the link could not be sent. ' +
+          'Email is not configured on this server, so the code could not be sent. ' +
           'The administrator can find it in the server log.',
       };
     }
@@ -105,10 +103,42 @@ export async function requestMagicLink(formData: FormData): Promise<ActionResult
     return { ok: false, message: describe(error) };
   }
 
-  return {
-    ok: true,
-    message: 'Check your email for a sign-in link. It expires shortly.',
-  };
+  return { ok: true, message: 'Check your email for a sign-in code.' };
+}
+
+/**
+ * Redeem a code and sign the browser in.
+ *
+ * Returns rather than redirects on success: the form clears its own state and
+ * navigates, which keeps the redirect out of a server action's error path.
+ */
+export async function submitLoginCode(
+  formData: FormData
+): Promise<ActionResult & { redirectTo?: string }> {
+  if (!auth.isAuthEnabled()) {
+    return { ok: false, message: 'Authentication is disabled on this server' };
+  }
+
+  const email = String(formData.get('email') ?? '');
+  const code = String(formData.get('code') ?? '');
+  const next = String(formData.get('next') ?? '');
+
+  let result;
+  try {
+    result = auth.verifyLoginCode({ email, code, client: 'web' });
+  } catch (error) {
+    return { ok: false, message: describe(error) };
+  }
+
+  await setSessionCookie(result.issued.token, await isSecureRequest());
+  revalidatePath('/', 'layout');
+
+  const destination = auth.isSafeRedirect(result.redirectTo)
+    ? result.redirectTo
+    : auth.isSafeRedirect(next)
+      ? next
+      : '/';
+  return { ok: true, redirectTo: destination };
 }
 
 export async function signOut(): Promise<void> {
@@ -142,7 +172,7 @@ async function requireAdminUser(): Promise<User> {
   return user;
 }
 
-/** Add an account and email its owner a link to sign in with. */
+/** Add an account and email its owner a code to sign in with. */
 export async function inviteUser(formData: FormData): Promise<ActionResult> {
   try {
     await requireAdminUser();
@@ -160,26 +190,22 @@ export async function inviteUser(formData: FormData): Promise<ActionResult> {
     return { ok: false, message: describe(error) };
   }
 
-  const result = await auth.requestLogin({
-    email,
-    client: 'web',
-    origin: await requestOrigin(),
-  });
+  const result = await auth.requestLogin({ email, client: 'web' });
 
   revalidatePath('/settings/users');
 
   if (result.emailSent) {
-    return { ok: true, message: `Invited ${email}. A sign-in link is on its way.` };
+    return { ok: true, message: `Invited ${email}. A sign-in code is on its way.` };
   }
-  // The admin asked for this, so they get the link rather than a dead end.
+  // The admin asked for this, so they get the code rather than a dead end.
   return {
     ok: true,
-    message: `Created the account for ${email}, but email is not configured. Send them this link yourself — it expires shortly.`,
-    link: result.link,
+    message: `Created the account for ${email}, but email is not configured. Pass them this code yourself — it expires shortly.`,
+    code: result.code,
   };
 }
 
-/** Email an existing account a fresh sign-in link. */
+/** Email an existing account a fresh sign-in code. */
 export async function resendInvite(userId: number): Promise<ActionResult> {
   try {
     await requireAdminUser();
@@ -191,18 +217,14 @@ export async function resendInvite(userId: number): Promise<ActionResult> {
   if (!target) return { ok: false, message: 'No such account' };
 
   try {
-    const result = await auth.requestLogin({
-      email: target.email,
-      client: 'web',
-      origin: await requestOrigin(),
-    });
+    const result = await auth.requestLogin({ email: target.email, client: 'web' });
     if (result.emailSent) {
-      return { ok: true, message: `Sent a fresh sign-in link to ${target.email}.` };
+      return { ok: true, message: `Sent a fresh sign-in code to ${target.email}.` };
     }
     return {
       ok: true,
-      message: `Email is not configured. Send ${target.email} this link yourself — it expires shortly.`,
-      link: result.link,
+      message: `Email is not configured. Pass ${target.email} this code yourself — it expires shortly.`,
+      code: result.code,
     };
   } catch (error) {
     return { ok: false, message: describe(error) };

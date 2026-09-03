@@ -36,17 +36,17 @@ export function UsersTab({
   const [name, setName] = useState('');
   const [role, setRole] = useState<UserRole>('user');
   const [signup, setSignup] = useState(allowSignup);
-  // Shown when mail is unconfigured and the admin has to pass a link on by hand.
-  const [manualLink, setManualLink] = useState<string | null>(null);
+  // Shown when mail is unconfigured and the admin has to pass a code on by hand.
+  const [manualCode, setManualCode] = useState<string | null>(null);
 
-  const run = (action: () => Promise<{ ok: boolean; message?: string; link?: string }>) => {
+  const run = (action: () => Promise<{ ok: boolean; message?: string; code?: string }>) => {
     startTransition(async () => {
       const result = await action();
       if (result.message) {
         if (result.ok) toast.success(result.message);
         else toast.error(result.message);
       }
-      setManualLink(result.link ?? null);
+      setManualCode(result.code ?? null);
       if (result.ok) router.refresh();
     });
   };
@@ -83,15 +83,15 @@ export function UsersTab({
       <div>
         <h2 className="text-lg font-semibold text-white">User accounts</h2>
         <p className="text-sm text-shelvarr-text-muted mt-1">
-          Everyone signs in with a link emailed to them — there are no passwords to manage.
+          Everyone signs in with a code emailed to them — there are no passwords to manage.
         </p>
       </div>
 
       {!emailConfigured && (
         <div className="text-sm text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 space-y-1">
           <p>
-            No mail server is configured, so sign-in links cannot be delivered. Set{' '}
-            <code className="px-1 rounded bg-black/30">SMTP_HOST</code> and friends, or pass links
+            No mail server is configured, so sign-in codes cannot be delivered. Set{' '}
+            <code className="px-1 rounded bg-black/30">SMTP_HOST</code> and friends, or pass codes
             to people yourself — they are shown here and written to the server log.
           </p>
           <button
@@ -158,10 +158,12 @@ export function UsersTab({
           </button>
         </form>
 
-        {manualLink && (
+        {manualCode && (
           <div className="text-sm bg-shelvarr-surface border border-shelvarr-border rounded-lg px-3 py-2 space-y-1">
-            <p className="text-shelvarr-text-muted">Send them this link:</p>
-            <code className="block break-all text-blue-400">{manualLink}</code>
+            <p className="text-shelvarr-text-muted">
+              Give them this code, to enter on the sign-in screen with their email address:
+            </p>
+            <code className="block text-2xl tracking-[0.3em] text-blue-400">{manualCode}</code>
           </div>
         )}
       </section>
@@ -211,7 +213,7 @@ export function UsersTab({
                   onClick={() => run(() => resendInvite(user.id))}
                   className="text-sm text-shelvarr-text-muted hover:text-white disabled:opacity-50"
                 >
-                  Send link
+                  Send code
                 </button>
 
                 {!isSelf && (

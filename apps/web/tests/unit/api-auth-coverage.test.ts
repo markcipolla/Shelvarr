@@ -23,11 +23,10 @@ const apiRoot = join(import.meta.dirname, '..', '..', 'app', 'api');
 const PUBLIC_ROUTES: Record<string, string> = {
   'health/route.ts': 'the Docker healthcheck and the native connection test call it first',
   'auth/status/route.ts': 'a client must learn whether this server wants a login',
-  'auth/login/route.ts': 'asking for a magic link is by definition unauthenticated',
+  'auth/login/route.ts': 'asking for a sign-in code is by definition unauthenticated',
   'auth/logout/route.ts': 'ending a session must work even with a dead token',
   'auth/session/route.ts': 'answers 401 itself rather than deferring to the shared gate',
-  'auth/device/start/route.ts': 'starts a sign-in, so there is no session yet',
-  'auth/device/poll/route.ts': 'the device code is the credential here',
+  'auth/verify/route.ts': 'the emailed code is the credential here',
 };
 
 function findRoutes(directory: string): string[] {

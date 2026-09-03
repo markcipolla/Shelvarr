@@ -21,10 +21,9 @@ let statusRoute: { GET: () => Promise<Response> };
 let sessionRoute: { GET: Handler };
 let logoutRoute: { POST: Handler };
 let loginRoute: { POST: Handler };
-let deviceStartRoute: { POST: Handler };
-let devicePollRoute: { POST: Handler; DELETE: Handler };
+let verifyRoute: { POST: Handler };
 
-const AUTH_ENV_KEYS = ['SHELVARR_AUTH_ENABLED', 'SHELVARR_ALLOW_SIGNUP', 'SHELVARR_URL', 'SMTP_HOST'] as const;
+const AUTH_ENV_KEYS = ['SHELVARR_AUTH_ENABLED', 'SHELVARR_ALLOW_SIGNUP', 'SMTP_HOST'] as const;
 let savedEnv: Record<string, string | undefined>;
 
 /** A stand-in for NextRequest carrying just what these handlers read. */
@@ -73,12 +72,8 @@ describe('Auth API routes', () => {
     loginRoute = (await import('../../app/api/auth/login/route.js')) as unknown as {
       POST: Handler;
     };
-    deviceStartRoute = (await import('../../app/api/auth/device/start/route.js')) as unknown as {
+    verifyRoute = (await import('../../app/api/auth/verify/route.js')) as unknown as {
       POST: Handler;
-    };
-    devicePollRoute = (await import('../../app/api/auth/device/poll/route.js')) as unknown as {
-      POST: Handler;
-      DELETE: Handler;
     };
   });
 
@@ -91,11 +86,10 @@ describe('Auth API routes', () => {
     savedEnv = Object.fromEntries(AUTH_ENV_KEYS.map((key) => [key, process.env[key]]));
     process.env['SHELVARR_AUTH_ENABLED'] = 'true';
     delete process.env['SHELVARR_ALLOW_SIGNUP'];
-    delete process.env['SHELVARR_URL'];
     delete process.env['SMTP_HOST'];
 
     db.getDb().exec(
-      'DELETE FROM login_tokens; DELETE FROM auth_sessions; DELETE FROM users; DELETE FROM settings;'
+      'DELETE FROM login_codes; DELETE FROM auth_sessions; DELETE FROM users; DELETE FROM settings;'
     );
   });
 
@@ -199,7 +193,7 @@ describe('Auth API routes', () => {
       assert.strictEqual(response.status, 400);
     });
 
-    it('answers the same for a known and an unknown address', async () => {
+    it('answers the same shape for a known and an unknown address', async () => {
       const known = await (
         await loginRoute.POST(request({ body: { email: 'admin@example.com' } }))
       ).json();
@@ -207,16 +201,20 @@ describe('Auth API routes', () => {
         await loginRoute.POST(request({ body: { email: 'stranger@example.com' } }))
       ).json();
 
-      assert.deepStrictEqual(known, unknown);
+      assert.deepStrictEqual(Object.keys(known).sort(), Object.keys(unknown).sort());
+      assert.strictEqual(known.emailSent, unknown.emailSent);
+      assert.strictEqual(known.message, unknown.message);
     });
 
-    it('never returns the link itself to an anonymous caller', async () => {
+    it('never returns the code itself to an anonymous caller', async () => {
       const body = await (
         await loginRoute.POST(request({ body: { email: 'admin@example.com' } }))
       ).json();
 
-      assert.strictEqual(body.link, undefined);
-      assert.strictEqual(JSON.stringify(body).includes('/auth/verify'), false);
+      assert.strictEqual(body.code, undefined);
+      // The stored hash is the only copy the server keeps, so nothing in the
+      // response can be checked against it — which is the point.
+      assert.strictEqual(body.codeLength, 6);
     });
 
     it('refuses when authentication is switched off', async () => {
@@ -238,131 +236,93 @@ describe('Auth API routes', () => {
     });
   });
 
-  describe('the native device flow', () => {
+  describe('POST /api/auth/verify', () => {
     beforeEach(() => {
       auth.createFirstAdmin('admin@example.com', 'Admin');
     });
 
-    async function start(email = 'admin@example.com') {
-      const response = await deviceStartRoute.POST(
-        request({ url: 'http://books.example/api/auth/device/start', body: { email } })
-      );
-      return { response, body: await response.json() };
+    /**
+     * The route never reveals the code, so ask the service directly. With no
+     * SMTP configured it hands the code back for exactly this reason.
+     */
+    async function codeFor(email = 'admin@example.com', client?: 'web' | 'native') {
+      const result = await auth.requestLogin({ email, client });
+      return result.code!;
     }
 
-    it('hands the app a device code and a code to display', async () => {
-      const { response, body } = await start();
-
-      assert.strictEqual(response.status, 200);
-      assert.ok(body.deviceCode);
-      assert.match(body.userCode, /^[A-Z2-9]{3}-[A-Z2-9]{3}$/);
-    });
+    function verify(body: Record<string, unknown>) {
+      return verifyRoute.POST(
+        request({ url: 'http://books.example/api/auth/verify', body })
+      );
+    }
 
     it('rejects a body that is not JSON', async () => {
-      const response = await deviceStartRoute.POST(
-        request({ url: 'http://books.example/api/auth/device/start' })
+      const response = await verifyRoute.POST(
+        request({ url: 'http://books.example/api/auth/verify' })
       );
       assert.strictEqual(response.status, 400);
     });
 
-    it('rejects an unusable address', async () => {
-      const { response } = await start('nope');
-      assert.strictEqual(response.status, 400);
+    it('needs both an address and a code', async () => {
+      assert.strictEqual((await verify({ email: 'admin@example.com' })).status, 400);
+      assert.strictEqual((await verify({ code: 'ABCDEF' })).status, 400);
     });
 
-    it('withholds a device code for an unknown address, without saying so', async () => {
-      const { response, body } = await start('stranger@example.com');
+    it('answers 401 for a code that is not right', async () => {
+      await codeFor();
 
-      assert.strictEqual(response.status, 202);
-      assert.strictEqual(body.deviceCode, null);
-      assert.strictEqual(body.error, undefined);
+      const response = await verify({ email: 'admin@example.com', code: 'ZZZZZZ' });
+
+      assert.strictEqual(response.status, 401);
+      assert.ok((await response.json()).error);
     });
 
-    it('stays pending until the emailed link is opened', async () => {
-      const { body } = await start();
+    it('returns a working session and sets a cookie for a browser', async () => {
+      const code = await codeFor();
 
-      const poll = await (
-        await devicePollRoute.POST(
-          request({
-            url: 'http://books.example/api/auth/device/poll',
-            body: { deviceCode: body.deviceCode },
-          })
-        )
+      const response = await verify({ email: 'admin@example.com', code });
+      const body = await response.json();
+
+      assert.strictEqual(response.status, 200);
+      assert.strictEqual(body.user.email, 'admin@example.com');
+      assert.ok(auth.resolveSession(body.token));
+      assert.strictEqual(response.cookies.get(auth.SESSION_COOKIE_NAME)?.value, body.token);
+    });
+
+    it('leaves the cookie off a native sign-in and labels the session', async () => {
+      const code = await codeFor('admin@example.com', 'native');
+
+      const response = await verify({
+        email: 'admin@example.com',
+        code,
+        client: 'native',
+        label: 'Pixel 8',
+      });
+      const body = await response.json();
+
+      assert.strictEqual(response.cookies.get(auth.SESSION_COOKIE_NAME), undefined);
+      assert.strictEqual(auth.resolveSession(body.token)?.session.label, 'Pixel 8');
+    });
+
+    it('passes on where the sign-in was headed, if it is safe', async () => {
+      const requested = await auth.requestLogin({
+        email: 'admin@example.com',
+        redirectTo: '/comics/7',
+      });
+
+      const body = await (
+        await verify({ email: 'admin@example.com', code: requested.code! })
       ).json();
 
-      assert.deepStrictEqual(poll, { status: 'pending' });
+      assert.strictEqual(body.redirectTo, '/comics/7');
     });
 
-    it('returns a working session once the link has been opened', async () => {
-      const { body } = await start();
-      // Stands in for someone opening the emailed link in a browser, which
-      // is the only thing that marks a device request approved. The plaintext
-      // token is unrecoverable by design, so it cannot be replayed here.
-      db.getDb().prepare('UPDATE login_tokens SET consumed_at = CURRENT_TIMESTAMP').run();
-
-      const poll = await (
-        await devicePollRoute.POST(
-          request({
-            url: 'http://books.example/api/auth/device/poll',
-            body: { deviceCode: body.deviceCode, label: 'Pixel 8' },
-          })
-        )
-      ).json();
-
-      assert.strictEqual(poll.status, 'approved');
-      assert.strictEqual(auth.resolveSession(poll.token)?.session.label, 'Pixel 8');
-    });
-
-    it('needs a device code to poll with', async () => {
-      const response = await devicePollRoute.POST(
-        request({ url: 'http://books.example/api/auth/device/poll', body: {} })
-      );
-
-      assert.strictEqual(response.status, 400);
-    });
-
-    it('lets the app cancel, which kills the emailed link', async () => {
-      const { body } = await start();
-
-      const response = await devicePollRoute.DELETE(
-        request({
-          url: `http://books.example/api/auth/device/poll?deviceCode=${encodeURIComponent(body.deviceCode)}`,
-        })
-      );
-
-      assert.deepStrictEqual(await response.json(), { cancelled: true });
-      const poll = await (
-        await devicePollRoute.POST(
-          request({
-            url: 'http://books.example/api/auth/device/poll',
-            body: { deviceCode: body.deviceCode },
-          })
-        )
-      ).json();
-      assert.deepStrictEqual(poll, { status: 'expired' });
-    });
-
-    it('needs a device code to cancel', async () => {
-      const response = await devicePollRoute.DELETE(
-        request({ url: 'http://books.example/api/auth/device/poll' })
-      );
-
-      assert.strictEqual(response.status, 400);
-    });
-
-    it('refuses the whole flow when authentication is switched off', async () => {
+    it('refuses when authentication is switched off', async () => {
       process.env['SHELVARR_AUTH_ENABLED'] = 'false';
 
-      const { response } = await start();
-      const pollResponse = await devicePollRoute.POST(
-        request({
-          url: 'http://books.example/api/auth/device/poll',
-          body: { deviceCode: 'anything' },
-        })
-      );
+      const response = await verify({ email: 'admin@example.com', code: 'ABCDEF' });
 
       assert.strictEqual(response.status, 400);
-      assert.strictEqual(pollResponse.status, 400);
     });
   });
 });

@@ -103,8 +103,8 @@ export function SetupForm({ allowSignupDefault, emailConfigured }: SetupFormProp
 
         {!emailConfigured && (
           <p className="text-sm text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
-            No email is configured yet, so sign-in links cannot be delivered. Set the SMTP
-            environment variables when you can — until then, links are written to the server log.
+            No email is configured yet, so sign-in codes cannot be delivered. Set the SMTP
+            environment variables when you can — until then, codes are written to the server log.
           </p>
         )}
 

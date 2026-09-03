@@ -94,12 +94,3 @@ export async function isSecureRequest(): Promise<boolean> {
   if (forwardedProto) return forwardedProto.split(',')[0]?.trim() === 'https';
   return (list.get('origin') || list.get('referer') || '').startsWith('https://');
 }
-
-/** The absolute base URL this server is being reached on, for magic links. */
-export async function requestOrigin(): Promise<string | null> {
-  const list = await headers();
-  const host = list.get('x-forwarded-host') || list.get('host');
-  if (!host) return null;
-  const proto = list.get('x-forwarded-proto')?.split(',')[0]?.trim() || 'http';
-  return `${proto}://${host}`;
-}

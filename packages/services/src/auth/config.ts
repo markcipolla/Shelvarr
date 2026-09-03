@@ -38,8 +38,9 @@ export function getAuthConfig(): AuthConfig {
     // proxy that already authenticates.
     enabled: envFlag('SHELVARR_AUTH_ENABLED', true),
     allowSignupDefault: envFlag('SHELVARR_ALLOW_SIGNUP', false),
-    appUrl: (envText('SHELVARR_URL') || envText('APP_URL'))?.replace(/\/+$/, '') || null,
-    loginTokenTtlSeconds: envInt('SHELVARR_LOGIN_LINK_TTL', 15 * 60),
+    // Ten minutes: long enough to fetch an email on another device, short
+    // enough that a six-character code is not sitting around to be guessed.
+    loginCodeTtlSeconds: envInt('SHELVARR_LOGIN_CODE_TTL', 10 * 60),
     sessionTtlSeconds: envInt('SHELVARR_SESSION_TTL', 30 * 24 * 60 * 60),
     // Phones sign in rarely and are hard to sign in on; a year is kinder.
     nativeSessionTtlSeconds: envInt('SHELVARR_NATIVE_SESSION_TTL', 365 * 24 * 60 * 60),
