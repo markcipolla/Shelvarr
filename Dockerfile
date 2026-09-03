@@ -4,7 +4,7 @@
 # ==============================================================================
 
 # --- Base stage: install pnpm and build dependencies ---
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 
 RUN apk add --no-cache python3 make g++
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
@@ -34,7 +34,7 @@ WORKDIR /app/apps/web
 RUN pnpm build
 
 # --- Web runtime ---
-FROM node:20-alpine AS web
+FROM node:24-alpine AS web
 
 WORKDIR /app
 

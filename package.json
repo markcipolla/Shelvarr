@@ -31,7 +31,7 @@
   "author": "",
   "license": "GPL-3.0-only",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.0.0"
   },
   "packageManager": "pnpm@9.15.0",
   "devDependencies": {
