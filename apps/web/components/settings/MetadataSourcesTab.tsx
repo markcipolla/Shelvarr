@@ -2,40 +2,50 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { toggleSource, setApiKey, syncHardcoverStatus } from '@/lib/actions/settings';
-
-interface SourceStatus {
-  name: 'hardcover';
-  displayName: string;
-  enabled: boolean;
-  configured: boolean;
-  requiresApiKey: boolean;
-  apiKeyUrl?: string;
-}
+import {
+  setApiKey,
+  setComicVineDateType,
+  syncHardcoverStatus,
+  testSourceConnection,
+  toggleSource,
+  type MetadataSourceStatus,
+} from '@/lib/actions/settings';
 
 interface MetadataSourcesTabProps {
-  sources: SourceStatus[];
+  sources: MetadataSourceStatus[];
+  /** Which ComicVine date issues are dated by. */
+  comicVineDateType: string;
 }
 
-export function MetadataSourcesTab({ sources }: MetadataSourcesTabProps) {
+export function MetadataSourcesTab({ sources, comicVineDateType }: MetadataSourcesTabProps) {
   return (
     <div className="space-y-4">
       <div className="space-y-3">
         {sources.map((source) => (
-          <SourceRow key={source.name} source={source} />
+          <SourceRow key={source.name} source={source} comicVineDateType={comicVineDateType} />
         ))}
       </div>
     </div>
   );
 }
 
-function SourceRow({ source }: { source: SourceStatus }) {
+function SourceRow({
+  source,
+  comicVineDateType,
+}: {
+  source: MetadataSourceStatus;
+  comicVineDateType: string;
+}) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKey, setApiKeyValue] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null);
+  const [dateType, setDateType] = useState(comicVineDateType);
+  const [savingDateType, setSavingDateType] = useState(false);
 
   const handleSyncStatus = async () => {
     setSyncing(true);
@@ -48,6 +58,13 @@ function SourceRow({ source }: { source: SourceStatus }) {
     );
     router.refresh();
     setSyncing(false);
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    setTestResult(await testSourceConnection(source.name));
+    setTesting(false);
   };
 
   const handleToggle = async () => {
@@ -66,12 +83,28 @@ function SourceRow({ source }: { source: SourceStatus }) {
     setApiKeyValue('');
   };
 
+  const handleDateTypeChange = async (value: string) => {
+    setDateType(value);
+    setSavingDateType(true);
+    await setComicVineDateType(value);
+    router.refresh();
+    setSavingDateType(false);
+  };
+
   return (
-    <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-4">
+    <div
+      data-testid={`source-${source.name}`}
+      className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-4"
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div>
-            <div className="font-medium text-white">{source.displayName}</div>
+            <div className="font-medium text-white">
+              {source.displayName}
+              <span className="ml-2 text-xs text-shelvarr-text-muted font-normal">
+                {source.mediaType}
+              </span>
+            </div>
             <div className="text-sm text-shelvarr-text-muted">
               {source.requiresApiKey ? (
                 source.configured ? (
@@ -94,6 +127,16 @@ function SourceRow({ source }: { source: SourceStatus }) {
               className="text-sm text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50"
             >
               {syncing ? 'Syncing…' : 'Sync reading status'}
+            </button>
+          )}
+
+          {source.canTest && (
+            <button
+              onClick={handleTest}
+              disabled={testing || !source.configured}
+              className="text-sm text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50"
+            >
+              {testing ? 'Testing…' : 'Test connection'}
             </button>
           )}
 
@@ -130,6 +173,14 @@ function SourceRow({ source }: { source: SourceStatus }) {
         <p className="mt-3 text-sm text-shelvarr-text-muted">{syncMessage}</p>
       )}
 
+      {testResult && (
+        <p className={`mt-3 text-sm ${testResult.success ? 'text-green-400' : 'text-red-400'}`}>
+          {testResult.success
+            ? `Connected to ${source.displayName}`
+            : testResult.error ?? 'Connection failed'}
+        </p>
+      )}
+
       {showApiKey && (
         <div className="mt-4 pt-4 border-t border-shelvarr-border">
           <div className="flex gap-2">
@@ -161,6 +212,27 @@ function SourceRow({ source }: { source: SourceStatus }) {
               </a>
             </p>
           )}
+        </div>
+      )}
+
+      {source.name === 'comicvine' && (
+        <div className="mt-4 pt-4 border-t border-shelvarr-border">
+          <label
+            htmlFor="cv-date-type"
+            className="block text-sm font-medium text-shelvarr-text-muted mb-1"
+          >
+            Issue release date
+          </label>
+          <select
+            id="cv-date-type"
+            value={dateType}
+            disabled={savingDateType}
+            onChange={(e) => handleDateTypeChange(e.target.value)}
+            className="bg-shelvarr-bg border border-shelvarr-border rounded-lg px-3 py-2 text-white focus:outline-none focus:border-blue-500 disabled:opacity-50"
+          >
+            <option value="cover_date">Cover date</option>
+            <option value="store_date">Store date</option>
+          </select>
         </div>
       )}
     </div>
