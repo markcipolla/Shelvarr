@@ -639,6 +639,92 @@ describe('Download Services', () => {
         const result = await libgen.downloadFile('abc123');
         assert.strictEqual(result, null);
       });
+
+      it('should fail over to the next mirror when a host errors', async () => {
+        const firstDomain = libgen.getLibGenDomains()[0];
+        const requested: string[] = [];
+
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          requested.push(url);
+
+          // The first mirror is down for both attempts at the ads page.
+          if (url.includes(firstDomain!)) {
+            return new Response('', { status: 500 });
+          }
+
+          if (url.includes('ads.php')) {
+            return new Response('<a href="get.php?md5=abc123&key=xyz">Download</a>', { status: 200 });
+          }
+
+          return new Response(Buffer.from('book'), {
+            status: 200,
+            headers: new Headers({ 'content-type': 'application/epub+zip' }),
+          });
+        });
+
+        const result = await libgen.downloadFile('abc123');
+        assert.ok(result !== null);
+        assert.ok(requested.some(u => !u.includes(firstDomain!)));
+      });
+
+      it('should retry a transient 500 on the file itself', async () => {
+        let downloadAttempts = 0;
+
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          if (url.includes('ads.php')) {
+            return new Response('<a href="get.php?md5=abc123&key=xyz">Download</a>', { status: 200 });
+          }
+
+          downloadAttempts++;
+          if (downloadAttempts === 1) {
+            return new Response('', { status: 500 });
+          }
+
+          return new Response(Buffer.from('book'), {
+            status: 200,
+            headers: new Headers({ 'content-type': 'application/epub+zip' }),
+          });
+        });
+
+        const result = await libgen.downloadFile('abc123');
+        assert.ok(result !== null);
+        assert.strictEqual(downloadAttempts, 2);
+      });
+
+      it('should skip a mirror that serves an HTML error page', async () => {
+        const firstDomain = libgen.getLibGenDomains()[0];
+
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          if (url.includes('ads.php')) {
+            return new Response('<a href="get.php?md5=abc123&key=xyz">Download</a>', { status: 200 });
+          }
+
+          if (url.includes(firstDomain!)) {
+            return new Response('<html>Too many downloads</html>', {
+              status: 200,
+              headers: new Headers({ 'content-type': 'text/html' }),
+            });
+          }
+
+          return new Response(Buffer.from('book'), {
+            status: 200,
+            headers: new Headers({ 'content-type': 'application/epub+zip' }),
+          });
+        });
+
+        const result = await libgen.downloadFile('abc123');
+        assert.ok(result !== null);
+        assert.strictEqual(result?.contentType, 'application/epub+zip');
+      });
+    });
+
+    describe('getLibGenDomains', () => {
+      it('should list every mirror, best-first', () => {
+        const domains = libgen.getLibGenDomains();
+        assert.ok(domains.length >= 4);
+        assert.ok(domains.every(d => d.includes('libgen')));
+        assert.ok(domains.includes('libgen.vg'));
+      });
     });
   });
 
@@ -901,36 +987,38 @@ describe('Download Services', () => {
     });
 
     describe('refreshSourceStatuses', () => {
-      it('should fetch from API endpoints', async () => {
-        const apiResponse = {
-          heartbeatList: {
-            14: [{ status: 1, time: '2024-01-01', msg: 'OK', ping: 50 }],
-          },
-          uptimeList: {},
-        };
+      it('should probe every source and mirror directly', async () => {
+        const probed: string[] = [];
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          probed.push(url);
+          return new Response('', { status: 200 });
+        });
 
-        mockFetch.mock.mockImplementationOnce(async () =>
-          new Response(JSON.stringify(apiResponse), { status: 200 })
+        await sourceStatus.refreshSourceStatuses();
+
+        assert.ok(probed.some(u => u.includes('libgen.vg')));
+        assert.ok(probed.some(u => u.includes('libgen.la')));
+        assert.ok(probed.some(u => u.includes('annas-archive')));
+        assert.ok(probed.some(u => u.includes('z-library')));
+      });
+
+      it('should roll mirror statuses up into the libgen source', async () => {
+        mockFetch.mock.mockImplementation(async (url: string) =>
+          url.includes('libgen.la')
+            ? new Response('', { status: 200 })
+            : new Response('', { status: 404 })
         );
 
         await sourceStatus.refreshSourceStatuses();
-        assert.ok(mockFetch.mock.callCount() >= 1);
+
+        const statuses = await sourceStatus.getSourceStatuses();
+        assert.strictEqual(statuses.find(s => s.name === 'libgen')?.status, 'up');
       });
 
-      it('should handle all endpoints failing gracefully', async () => {
+      it('should handle all probes failing gracefully', async () => {
         mockFetch.mock.mockImplementation(async () => {
           throw new Error('Network error');
         });
-
-        // Should not throw
-        await sourceStatus.refreshSourceStatuses();
-        assert.ok(true);
-      });
-
-      it('should handle JSON parsing errors', async () => {
-        mockFetch.mock.mockImplementationOnce(async () =>
-          new Response('invalid json', { status: 200 })
-        );
 
         // Should not throw
         await sourceStatus.refreshSourceStatuses();

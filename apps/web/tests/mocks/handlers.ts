@@ -206,16 +206,17 @@ export const downloadSourceHandlers = [
     `);
   }),
 
-  // Source status check (open-slum.org)
-  http.get('https://open-slum.org/api/status', () => {
-    return HttpResponse.json({
-      sources: [
-        { name: 'libgen', status: 'up', responseTime: 150 },
-        { name: 'annas', status: 'up', responseTime: 200 },
-        { name: 'zlibrary', status: 'degraded', responseTime: 500 }
-      ]
-    });
-  }),
+  // Source status probes: each source is HEAD-probed at its landing page
+  ...[
+    'https://z-library.sk',
+    'https://z-lib.gl',
+    'https://annas-archive.org',
+    'https://annas-archive.li',
+    'https://libgen.vg',
+    'https://libgen.la',
+    'https://libgen.bz',
+    'https://libgen.gl',
+  ].map((url) => http.head(url, () => new HttpResponse(null, { status: 200 }))),
 ];
 
 // Combine all handlers

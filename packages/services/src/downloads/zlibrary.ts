@@ -2,7 +2,7 @@
  * Z-Library Integration
  *
  * Z-Library requires authentication for downloads but search is available.
- * Uses open-slum.org status to determine working mirrors.
+ * Mirror choice follows the cached source statuses (see source-status.ts).
  * Reference: https://github.com/sertraline/zlibrary
  */
 
@@ -27,7 +27,7 @@ export interface ZLibraryResult {
   searchUrl: string;
 }
 
-// Z-Library source names from open-slum.org and their domains
+// Z-Library source names (as cached by the status service) and their domains
 const ZLIB_SOURCES: Record<string, string> = {
   zlibrary: 'z-library.sk',
   zlib_gl: 'z-lib.gl',
@@ -40,7 +40,7 @@ const ZLIB_FALLBACK = 'z-library.sk';
 const ZLIB_LOGIN_DOMAIN = 'singlelogin.re';
 
 /**
- * Get the current working Z-Library domain based on open-slum.org status
+ * Get the current working Z-Library domain based on cached source status
  */
 export function getZLibraryDomain(): string {
   try {

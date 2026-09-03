@@ -2,7 +2,7 @@
  * Anna's Archive Integration
  *
  * Anna's Archive is a search engine for shadow libraries.
- * Uses open-slum.org status to check availability.
+ * Uses the cached source statuses (see source-status.ts) to check availability.
  */
 
 import { getSourceStatusCache } from '@shelvarr/db';
@@ -20,7 +20,7 @@ export interface AnnasResult {
   searchUrl: string;
 }
 
-// Anna's Archive source names from open-slum.org and their domains
+// Anna's Archive source names (as cached by the status service) and their domains
 const ANNAS_SOURCES: Record<string, string> = {
   annas: 'annas-archive.org',
   annas_li: 'annas-archive.li',
@@ -30,7 +30,7 @@ const ANNAS_SOURCES: Record<string, string> = {
 const ANNAS_FALLBACK = 'annas-archive.li';
 
 /**
- * Get the current working Anna's Archive domain based on open-slum.org status
+ * Get the current working Anna's Archive domain based on cached source status
  */
 export function getAnnasDomain(): string {
   try {
@@ -59,7 +59,7 @@ export function getAnnasDomain(): string {
 }
 
 /**
- * Check if Anna's Archive is available based on open-slum.org status
+ * Check if Anna's Archive is available based on cached source status
  */
 export function isAnnasAvailable(): boolean {
   try {
