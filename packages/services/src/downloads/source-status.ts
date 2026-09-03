@@ -1,7 +1,12 @@
 /**
  * Source Status Service
  *
- * Fetches availability status from open-slum.org API and caches it.
+ * Probes each source's domain directly and caches the result.
+ *
+ * This used to read open-slum.org's Uptime Kuma API. That API is gone — the
+ * site is now a statically rendered page with no JSON endpoint — so every
+ * refresh 404'd and left the cache empty, which in turn made mirror selection
+ * fall back to a hardcoded domain.
  */
 
 import {
@@ -21,25 +26,6 @@ export interface SourceStatus {
   url: string;
 }
 
-// Mapping of open-slum.org monitor IDs to our source names
-// Check https://open-slum.org/ for current monitor IDs
-const MONITOR_ID_MAP: Record<number, { source: string; displayName: string; url: string }> = {
-  // Anna's Archive
-  14: { source: 'annas_li', displayName: "Anna's Archive .li", url: 'https://annas-archive.li' },
-  15: { source: 'annas', displayName: "Anna's Archive", url: 'https://annas-archive.org' },
-  // Library Genesis+
-  7: { source: 'libgen_vg', displayName: 'LibGen.vg', url: 'https://libgen.vg' },
-  39: { source: 'libgen_la', displayName: 'LibGen.la', url: 'https://libgen.la' },
-  40: { source: 'libgen_bz', displayName: 'LibGen.bz', url: 'https://libgen.bz' },
-  41: { source: 'libgen_gl', displayName: 'LibGen.gl', url: 'https://libgen.gl' },
-  // Z-Library
-  36: { source: 'zlibrary', displayName: 'Z-Library', url: 'https://z-library.sk' },
-  45: { source: 'zlib_gl', displayName: 'Z-Lib.gl', url: 'https://z-lib.gl' },
-  // Others
-  29: { source: 'liber3', displayName: 'Liber3', url: 'https://liber3.eth.limo' },
-  38: { source: 'motw', displayName: 'Memory of the World', url: 'https://library.memoryoftheworld.org' },
-};
-
 interface KnownSource {
   displayName: string;
   url: string;
@@ -47,16 +33,34 @@ interface KnownSource {
   healthUrl?: string;
   /** Some hosts don't answer HEAD; default is HEAD. */
   healthMethod?: 'HEAD' | 'GET';
+  /**
+   * Sources whose statuses roll up into this one. An aggregate is not probed
+   * itself — it reports the best status among its mirrors.
+   */
+  mirrors?: string[];
 }
 
-// Known sources for display (subset we care about)
+// Sources shown in the UI
 const KNOWN_SOURCES: Record<string, KnownSource> = {
   zlibrary: { displayName: 'Z-Library', url: 'https://z-library.sk' },
   annas: { displayName: "Anna's Archive", url: 'https://annas-archive.org' },
   annas_li: { displayName: "Anna's Archive .li", url: 'https://annas-archive.li' },
-  libgen: { displayName: 'Library Genesis', url: 'https://libgen.vg' },
-  libgen_vg: { displayName: 'Library Genesis', url: 'https://libgen.vg' },
+  libgen: {
+    displayName: 'Library Genesis',
+    url: 'https://libgen.vg',
+    mirrors: ['libgen_vg', 'libgen_la', 'libgen_bz', 'libgen_gl'],
+  },
   getcomics: { displayName: 'GetComics', url: 'https://getcomics.org' },
+};
+
+// Individual mirrors. Probed so the download code can pick a working domain,
+// but they aren't surfaced as headline sources.
+const MIRROR_SOURCES: Record<string, KnownSource> = {
+  libgen_vg: { displayName: 'LibGen.vg', url: 'https://libgen.vg' },
+  libgen_la: { displayName: 'LibGen.la', url: 'https://libgen.la' },
+  libgen_bz: { displayName: 'LibGen.bz', url: 'https://libgen.bz' },
+  libgen_gl: { displayName: 'LibGen.gl', url: 'https://libgen.gl' },
+  zlib_gl: { displayName: 'Z-Lib.gl', url: 'https://z-lib.gl' },
 };
 
 /**
@@ -64,7 +68,7 @@ const KNOWN_SOURCES: Record<string, KnownSource> = {
  * mirror is what gets linked and probed.
  */
 function knownSource(source: string): KnownSource | undefined {
-  const info = KNOWN_SOURCES[source];
+  const info = KNOWN_SOURCES[source] || MIRROR_SOURCES[source];
   if (!info) return undefined;
   if (source !== 'getcomics') return info;
 
@@ -77,18 +81,6 @@ function knownSource(source: string): KnownSource | undefined {
     healthUrl: `${baseUrl}/wp-json/wp/v2/posts?per_page=1&_fields=id`,
     healthMethod: 'GET',
   };
-}
-
-interface HeartbeatEntry {
-  status: number; // 0 = down, 1 = up, 2 = degraded
-  time: string;
-  msg: string;
-  ping: number | null;
-}
-
-interface ApiResponse {
-  heartbeatList: Record<string, HeartbeatEntry[]>;
-  uptimeList: Record<string, number>;
 }
 
 /**
@@ -137,104 +129,88 @@ export async function getSourceStatuses(forceRefresh = false): Promise<SourceSta
 }
 
 /**
- * Refresh source statuses from open-slum API (tries .org then .pages.dev as fallback)
+ * Probe one source's domain. Bot-protection responses (403/429/503) mean the
+ * host is alive but gate-keeping, which is 'degraded' rather than 'down'.
  */
-export async function refreshSourceStatuses(): Promise<void> {
-  // Try both domains (primary and fallback)
-  const apiUrls = [
-    'https://open-slum.org/api/status-page/heartbeat/slum',
-    'https://open-slum.pages.dev/api/status-page/heartbeat/slum',
-  ];
-
-  let data: ApiResponse | null = null;
-  let lastError: Error | null = null;
-
-  for (const url of apiUrls) {
-    try {
-      const response = await fetch(url, {
-        headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'Shelvarr/1.0',
-        },
-        signal: AbortSignal.timeout(10000),
-      });
-
-      if (!response.ok) {
-        console.warn(`API fetch from ${url} failed: ${response.status}`);
-        continue;
-      }
-
-      data = await response.json();
-      console.log(`Successfully fetched source statuses from ${url}`);
-      break; // Success, exit loop
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      console.warn(`Failed to fetch from ${url}:`, error);
-      // Continue to next URL
-    }
-  }
-
-  if (!data) {
-    console.error('Failed to refresh source statuses from all endpoints:', lastError);
-    return;
-  }
+async function probeSource(info: KnownSource): Promise<{
+  status: 'up' | 'down' | 'degraded';
+  responseTime: number;
+}> {
+  const start = Date.now();
 
   try {
-    // Process each monitor we care about
-    for (const [idStr, monitorInfo] of Object.entries(MONITOR_ID_MAP)) {
-      const id = parseInt(idStr);
-      const heartbeats = data.heartbeatList[id];
+    const response = await fetch(info.healthUrl || info.url, {
+      method: info.healthMethod || 'HEAD',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+    const responseTime = Date.now() - start;
 
-      if (!heartbeats || heartbeats.length === 0) {
-        updateSourceStatus(monitorInfo.source, 'unknown');
-        continue;
-      }
-
-      // Get the most recent heartbeat
-      const latest = heartbeats[heartbeats.length - 1];
-      if (!latest) {
-        updateSourceStatus(monitorInfo.source, 'unknown');
-        continue;
-      }
-
-      // Map status: 0 = down, 1 = up, 2 = degraded
-      let status: 'up' | 'down' | 'degraded';
-      switch (latest.status) {
-        case 1:
-          status = 'up';
-          break;
-        case 2:
-          status = 'degraded';
-          break;
-        case 0:
-        default:
-          status = 'down';
-          break;
-      }
-
-      // Get response time from ping
-      const responseTime = latest.ping ?? undefined;
-
-      updateSourceStatus(monitorInfo.source, status, responseTime);
+    if (response.ok) {
+      return { status: responseTime > 3000 ? 'degraded' : 'up', responseTime };
     }
-
-    // For sources without direct monitoring, set to unknown
-    for (const source of Object.keys(KNOWN_SOURCES)) {
-      const hasMonitor = Object.values(MONITOR_ID_MAP).some(m => m.source === source);
-      if (!hasMonitor) {
-        // Check if we have a related source that's up
-        // e.g., if zlibrary is monitored via ID 36, use that
-      }
+    if ([401, 403, 429, 503].includes(response.status)) {
+      return { status: 'degraded', responseTime };
     }
-
-  } catch (error) {
-    console.error('Failed to process source statuses:', error);
-    // On error, don't change existing cache - it's better than marking everything unknown
+    return { status: 'down', responseTime };
+  } catch {
+    return { status: 'down', responseTime: Date.now() - start };
   }
 }
 
 /**
- * Direct health check for a source (bypasses open-slum.org)
+ * Refresh source statuses by probing every source and mirror in parallel
+ */
+export async function refreshSourceStatuses(): Promise<void> {
+  const toProbe = [
+    ...Object.keys(KNOWN_SOURCES).filter((name) => !KNOWN_SOURCES[name]!.mirrors),
+    ...Object.keys(MIRROR_SOURCES),
+  ];
+
+  const results = new Map<string, 'up' | 'down' | 'degraded'>();
+
+  await Promise.all(
+    toProbe.map(async (name) => {
+      const info = knownSource(name);
+      if (!info) return;
+
+      const { status, responseTime } = await probeSource(info);
+      results.set(name, status);
+
+      try {
+        updateSourceStatus(name, status, responseTime);
+      } catch (error) {
+        console.error(`Failed to cache status for ${name}:`, error);
+      }
+    })
+  );
+
+  // Roll mirrors up into their aggregate source (e.g. libgen_* -> libgen)
+  const rank: Record<string, number> = { up: 0, degraded: 1, down: 2 };
+
+  for (const [name, info] of Object.entries(KNOWN_SOURCES)) {
+    if (!info.mirrors) continue;
+
+    const mirrorStatuses = info.mirrors
+      .map((mirror) => results.get(mirror))
+      .filter((s): s is 'up' | 'down' | 'degraded' => s !== undefined);
+
+    if (mirrorStatuses.length === 0) continue;
+
+    const best = mirrorStatuses.reduce((a, b) => (rank[a]! <= rank[b]! ? a : b));
+
+    try {
+      updateSourceStatus(name, best);
+    } catch (error) {
+      console.error(`Failed to cache status for ${name}:`, error);
+    }
+  }
+}
+
+/**
+ * Direct health check for a single source
  */
 export async function checkSourceHealth(source: string): Promise<SourceStatus> {
   const sourceInfo = knownSource(source);
@@ -248,45 +224,48 @@ export async function checkSourceHealth(source: string): Promise<SourceStatus> {
     };
   }
 
-  try {
-    const start = Date.now();
-    const response = await fetch(sourceInfo.healthUrl || sourceInfo.url, {
-      method: sourceInfo.healthMethod || 'HEAD',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
-      signal: AbortSignal.timeout(5000),
-    });
-    const responseTime = Date.now() - start;
+  // An aggregate has no endpoint of its own; probe its mirrors and roll up.
+  if (sourceInfo.mirrors) {
+    const rank: Record<string, number> = { up: 0, degraded: 1, down: 2 };
+    let best: 'up' | 'down' | 'degraded' = 'down';
+    let bestTime: number | undefined;
 
-    let status: 'up' | 'down' | 'degraded';
-    if (response.ok) {
-      status = responseTime > 3000 ? 'degraded' : 'up';
-    } else {
-      status = 'down';
+    for (const mirror of sourceInfo.mirrors) {
+      const info = knownSource(mirror);
+      if (!info) continue;
+
+      const { status, responseTime } = await probeSource(info);
+      updateSourceStatus(mirror, status, responseTime);
+
+      if (rank[status]! < rank[best]!) {
+        best = status;
+        bestTime = responseTime;
+      }
     }
 
-    updateSourceStatus(source, status, responseTime);
+    updateSourceStatus(source, best, bestTime);
 
     return {
       name: source,
       displayName: sourceInfo.displayName,
-      status,
-      responseTime,
-      lastChecked: new Date(),
-      url: sourceInfo.url,
-    };
-  } catch {
-    updateSourceStatus(source, 'down');
-
-    return {
-      name: source,
-      displayName: sourceInfo.displayName,
-      status: 'down',
+      status: best,
+      responseTime: bestTime,
       lastChecked: new Date(),
       url: sourceInfo.url,
     };
   }
+
+  const { status, responseTime } = await probeSource(sourceInfo);
+  updateSourceStatus(source, status, responseTime);
+
+  return {
+    name: source,
+    displayName: sourceInfo.displayName,
+    status,
+    responseTime,
+    lastChecked: new Date(),
+    url: sourceInfo.url,
+  };
 }
 
 export default {

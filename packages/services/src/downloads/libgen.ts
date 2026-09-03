@@ -2,7 +2,7 @@
  * Library Genesis (LibGen) Integration
  *
  * LibGen has a JSON API for searching books.
- * Uses open-slum.org status to determine working mirrors.
+ * Mirror choice follows the cached source statuses (see source-status.ts).
  */
 
 import { getSourceStatusCache } from '@shelvarr/db';
@@ -23,7 +23,7 @@ export interface LibGenResult {
   searchUrl: string;
 }
 
-// LibGen source names from open-slum.org and their domains
+// LibGen source names (as cached by the status service) and their domains
 const LIBGEN_SOURCES: Record<string, string> = {
   libgen_vg: 'libgen.vg',
   libgen_la: 'libgen.la',
@@ -35,32 +35,36 @@ const LIBGEN_SOURCES: Record<string, string> = {
 const LIBGEN_FALLBACK = 'libgen.vg';
 
 /**
- * Get the current working LibGen domain based on open-slum.org status
+ * Get every LibGen mirror, best-first: sources last probed as up, then
+ * degraded, then unchecked, then known-down. Callers that can fail over walk
+ * the whole list; `getLibGenDomain` just takes the head.
  */
-export function getLibGenDomain(): string {
+export function getLibGenDomains(): string[] {
+  const rank: Record<string, number> = { up: 0, degraded: 1, unknown: 2, down: 3 };
+
+  const entries = Object.entries(LIBGEN_SOURCES).map(([source, domain]) => ({ source, domain }));
+
   try {
     const statuses = getSourceStatusCache();
-
-    // Find a libgen source that's up
-    for (const [source, domain] of Object.entries(LIBGEN_SOURCES)) {
-      const status = statuses.find(s => s.source === source);
-      if (status?.status === 'up') {
-        return domain;
-      }
-    }
-
-    // If none are up, try degraded
-    for (const [source, domain] of Object.entries(LIBGEN_SOURCES)) {
-      const status = statuses.find(s => s.source === source);
-      if (status?.status === 'degraded') {
-        return domain;
-      }
-    }
+    entries.sort((a, b) => {
+      const aRank = rank[statuses.find(s => s.source === a.source)?.status ?? 'unknown'] ?? 2;
+      const bRank = rank[statuses.find(s => s.source === b.source)?.status ?? 'unknown'] ?? 2;
+      return aRank - bRank;
+    });
   } catch {
-    // Ignore errors, use fallback
+    // Ignore errors, keep the declared order
   }
 
-  return LIBGEN_FALLBACK;
+  const domains = entries.map(e => e.domain);
+  if (!domains.includes(LIBGEN_FALLBACK)) domains.push(LIBGEN_FALLBACK);
+  return domains;
+}
+
+/**
+ * Get the current best LibGen domain
+ */
+export function getLibGenDomain(): string {
+  return getLibGenDomains()[0] ?? LIBGEN_FALLBACK;
 }
 
 /**
@@ -231,100 +235,136 @@ export function getLibGenDownloadUrl(md5: string): string {
   return `https://${getLibGenDomain()}/ads.php?md5=${md5}`;
 }
 
+const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+
 /**
- * Get the actual direct download URL by scraping the ads.php page
- * Returns the get.php URL with the required key parameter
+ * Fetch that retries once on a transient failure. LibGen mirrors intermittently
+ * answer 500 under load, which is not a reason to fail a whole download task.
  */
-export async function getActualDownloadUrl(md5: string): Promise<string | null> {
-  try {
-    const adsUrl = `https://${getLibGenDomain()}/ads.php?md5=${md5}`;
+async function fetchWithRetry(url: string, init: RequestInit, attempts = 2): Promise<Response | null> {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const response = await fetch(url, init);
+      if (response.ok) return response;
 
-    const response = await fetch(adsUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-      },
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (!response.ok) {
-      console.warn(`LibGen ads page fetch failed: ${response.status}`);
-      return null;
+      console.warn(`LibGen request to ${url} failed: ${response.status}`);
+      if (!RETRYABLE_STATUSES.has(response.status)) return null;
+    } catch (error) {
+      console.warn(`LibGen request to ${url} errored:`, error);
     }
 
-    const html = await response.text();
-
-    // Look for the GET link: href="get.php?md5=XXX&key=YYY"
-    const getPattern = /href="(get\.php\?md5=[a-f0-9]+&key=[^"]+)"/i;
-    const match = html.match(getPattern);
-
-    if (match?.[1]) {
-      return `https://${getLibGenDomain()}/${match[1]}`;
+    if (attempt < attempts) {
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
     }
-
-    // Fallback: look for any direct download link
-    const directPattern = /href="(https?:\/\/[^"]+\/get[^"]+)"/i;
-    const directMatch = html.match(directPattern);
-
-    if (directMatch?.[1]) {
-      return directMatch[1];
-    }
-
-    return null;
-  } catch (error) {
-    console.error('Error getting actual download URL:', error);
-    return null;
   }
+
+  return null;
+}
+
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+};
+
+/**
+ * Scrape the ads.php page on one mirror for the get.php URL (which carries a
+ * short-lived key). Returns null if that mirror won't serve the page.
+ */
+async function getDownloadUrlFromDomain(domain: string, md5: string): Promise<string | null> {
+  const response = await fetchWithRetry(`https://${domain}/ads.php?md5=${md5}`, {
+    headers: { ...BROWSER_HEADERS, 'Accept': 'text/html,application/xhtml+xml' },
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!response) return null;
+
+  const html = await response.text();
+
+  // Look for the GET link: href="get.php?md5=XXX&key=YYY"
+  const getPattern = /href="(get\.php\?md5=[a-f0-9]+&key=[^"]+)"/i;
+  const match = html.match(getPattern);
+  if (match?.[1]) {
+    return `https://${domain}/${match[1]}`;
+  }
+
+  // Fallback: look for any direct download link
+  const directPattern = /href="(https?:\/\/[^"]+\/get[^"]+)"/i;
+  const directMatch = html.match(directPattern);
+  if (directMatch?.[1]) {
+    return directMatch[1];
+  }
+
+  return null;
 }
 
 /**
- * Download a file from LibGen and return the buffer and filename
+ * Get the actual direct download URL by scraping the ads.php page.
+ * Tries each mirror in turn so one flaky host doesn't sink the download.
+ */
+export async function getActualDownloadUrl(md5: string): Promise<string | null> {
+  for (const domain of getLibGenDomains()) {
+    const url = await getDownloadUrlFromDomain(domain, md5);
+    if (url) return url;
+  }
+
+  console.error('Could not get download URL for', md5);
+  return null;
+}
+
+/**
+ * Download a file from LibGen and return the buffer and filename.
+ * Falls over to the next mirror if a host fails at either step.
  */
 export async function downloadFile(md5: string): Promise<{
   buffer: Buffer;
   filename: string;
   contentType: string;
 } | null> {
-  try {
-    const downloadUrl = await getActualDownloadUrl(md5);
-    if (!downloadUrl) {
-      console.error('Could not get download URL for', md5);
-      return null;
-    }
+  for (const domain of getLibGenDomains()) {
+    try {
+      const downloadUrl = await getDownloadUrlFromDomain(domain, md5);
+      if (!downloadUrl) continue;
 
-    const response = await fetch(downloadUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': '*/*',
-      },
-      redirect: 'follow',
-    });
+      const response = await fetchWithRetry(downloadUrl, {
+        headers: { ...BROWSER_HEADERS, 'Accept': '*/*', 'Referer': `https://${domain}/ads.php?md5=${md5}` },
+        redirect: 'follow',
+      });
+      if (!response) continue;
 
-    if (!response.ok) {
-      console.warn(`LibGen download failed: ${response.status}`);
-      return null;
-    }
+      const contentType = response.headers.get('content-type') || 'application/octet-stream';
 
-    // Get filename from Content-Disposition header or URL
-    const contentDisposition = response.headers.get('content-disposition');
-    let filename = `${md5}.epub`; // Default
-
-    if (contentDisposition) {
-      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-      if (filenameMatch?.[1]) {
-        filename = filenameMatch[1].replace(/['"]/g, '');
+      // A HTML body here is a rate-limit or error page, not the book.
+      if (contentType.includes('text/html')) {
+        console.warn(`LibGen mirror ${domain} served HTML instead of a file for ${md5}`);
+        continue;
       }
+
+      // Get filename from Content-Disposition header or URL
+      const contentDisposition = response.headers.get('content-disposition');
+      let filename = `${md5}.epub`; // Default
+
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (filenameMatch?.[1]) {
+          filename = filenameMatch[1].replace(/['"]/g, '');
+        }
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      if (buffer.length === 0) {
+        console.warn(`LibGen mirror ${domain} returned an empty file for ${md5}`);
+        continue;
+      }
+
+      return { buffer, filename, contentType };
+    } catch (error) {
+      console.error(`Error downloading ${md5} from ${domain}:`, error);
     }
-
-    const contentType = response.headers.get('content-type') || 'application/octet-stream';
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    return { buffer, filename, contentType };
-  } catch (error) {
-    console.error('Error downloading file:', error);
-    return null;
   }
+
+  console.error('All LibGen mirrors failed for', md5);
+  return null;
 }
 
 export default {
@@ -334,4 +374,5 @@ export default {
   getActualDownloadUrl,
   downloadFile,
   getLibGenDomain,
+  getLibGenDomains,
 };

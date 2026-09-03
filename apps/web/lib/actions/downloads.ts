@@ -84,7 +84,7 @@ export async function getDownloadSourceStatuses(forceRefresh = false): Promise<S
 }
 
 /**
- * Refresh source statuses from open-slum.org
+ * Refresh source statuses by probing each source
  */
 export async function refreshDownloadSourceStatuses(): Promise<{ success: boolean }> {
   try {
