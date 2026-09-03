@@ -20,6 +20,21 @@ function folderLabel(folder: string): string {
   return parts.slice(-2).join('/') || folder;
 }
 
+/** The match the scan liked most, falling back to its first candidate. */
+function bestGuess(proposal: ImportProposalView): number | null {
+  return proposal.suggestedComicvineId ?? proposal.candidates[0]?.comicvineId ?? null;
+}
+
+/**
+ * Whether this folder is still on offer. Volumes Shelvarr already owns are
+ * not — re-importing one would be a no-op at best — and neither are folders
+ * ComicVine could not match at all.
+ */
+function isImportable(proposal: ImportProposalView): boolean {
+  if (proposal.alreadyAdded !== null && proposal.alreadyAddedManaged === true) return false;
+  return bestGuess(proposal) !== null;
+}
+
 function candidateLabel(candidate: ImportProposalView['candidates'][number]): string {
   return [
     candidate.title,
@@ -47,7 +62,7 @@ export function LibraryImportReview({
       // Pre-select the suggestion, but never one that is already in the
       // library — importing it again would be a no-op at best.
       initial[proposal.folder] =
-        proposal.alreadyAdded === null ? proposal.suggestedComicvineId : null;
+        proposal.alreadyAdded === null ? bestGuess(proposal) : null;
     }
     return initial;
   });
@@ -68,12 +83,24 @@ export function LibraryImportReview({
     [choices]
   );
 
-  const handleApply = async () => {
+  // Every folder still on offer, matched to the scan's own pick. Mirrored
+  // volumes are in here even though they start unticked: taking them over is
+  // the whole point of the page, and the button's count says how many.
+  const bestGuesses = useMemo(
+    () =>
+      (run?.proposals ?? []).filter(isImportable).map((proposal) => ({
+        folder: proposal.folder,
+        comicvineId: bestGuess(proposal) as number,
+      })),
+    [run]
+  );
+
+  const handleApply = async (selection: typeof selected) => {
     setApplying(true);
     setError(null);
     setResult(null);
 
-    const response = await applyLibraryImportAction(selected, rootFolderId);
+    const response = await applyLibraryImportAction(selection, rootFolderId);
     if (response.success) {
       setResult({ imported: response.imported ?? 0, failed: response.failed ?? [] });
       router.refresh();
@@ -81,6 +108,12 @@ export function LibraryImportReview({
       setError(response.error ?? 'Import failed');
     }
     setApplying(false);
+  };
+
+  const handleImportAllBestGuesses = async () => {
+    // Tick the boxes too, so the list matches what is being imported.
+    setChoices(Object.fromEntries(bestGuesses.map((s) => [s.folder, s.comicvineId])));
+    await handleApply(bestGuesses);
   };
 
   if (!run) {
@@ -158,7 +191,16 @@ export function LibraryImportReview({
           )}
           <button
             type="button"
-            onClick={handleApply}
+            onClick={handleImportAllBestGuesses}
+            disabled={applying || bestGuesses.length === 0}
+            title="Import every matched folder using the match ComicVine ranked first"
+            className="px-4 py-1.5 text-sm rounded-lg border border-shelvarr-border text-white hover:border-blue-500 disabled:opacity-50"
+          >
+            Import all {bestGuesses.length} best guesses
+          </button>
+          <button
+            type="button"
+            onClick={() => handleApply(selected)}
             disabled={applying || selected.length === 0}
             className="px-4 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium"
           >
@@ -207,18 +249,11 @@ export function LibraryImportReview({
                 type="checkbox"
                 className="mt-1.5"
                 checked={chosen !== null}
-                disabled={
-                  (proposal.alreadyAdded !== null && proposal.alreadyAddedManaged === true) ||
-                  proposal.candidates.length === 0
-                }
+                disabled={!isImportable(proposal)}
                 onChange={(event) =>
                   setChoices((current) => ({
                     ...current,
-                    [proposal.folder]: event.target.checked
-                      ? proposal.suggestedComicvineId ??
-                        proposal.candidates[0]?.comicvineId ??
-                        null
-                      : null,
+                    [proposal.folder]: event.target.checked ? bestGuess(proposal) : null,
                   }))
                 }
               />
