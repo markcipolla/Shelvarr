@@ -6,7 +6,6 @@ interface LibraryRow {
   id: number;
   name: string;
   path: string;
-  komga_library_id: string | null;
   created_at: string;
 }
 
@@ -15,7 +14,6 @@ function rowToLibrary(row: LibraryRow): Library {
     id: row.id,
     name: row.name,
     path: row.path,
-    komgaLibraryId: row.komga_library_id,
     createdAt: row.created_at,
   };
 }
@@ -38,7 +36,6 @@ export async function getLibraryByPath(path: string): Promise<Library | null> {
 export interface CreateLibraryInput {
   name: string;
   path: string;
-  komgaLibraryId?: string;
 }
 
 export interface CreateLibraryResult {
@@ -48,7 +45,7 @@ export interface CreateLibraryResult {
 }
 
 export async function createLibrary(input: CreateLibraryInput): Promise<CreateLibraryResult> {
-  const { name, path, komgaLibraryId } = input;
+  const { name, path } = input;
 
   // Validate name
   if (!name || name.trim().length === 0) {
@@ -78,8 +75,8 @@ export async function createLibrary(input: CreateLibraryInput): Promise<CreateLi
 
   try {
     const row = await insertReturning<LibraryRow>(
-      'INSERT INTO libraries (name, path, komga_library_id) VALUES (?, ?, ?) RETURNING *',
-      [name.trim(), path, komgaLibraryId || null]
+      'INSERT INTO libraries (name, path) VALUES (?, ?) RETURNING *',
+      [name.trim(), path]
     );
 
     if (!row) {
@@ -95,7 +92,7 @@ export async function createLibrary(input: CreateLibraryInput): Promise<CreateLi
 
 export async function updateLibrary(
   id: number,
-  updates: Partial<Pick<Library, 'name' | 'komgaLibraryId'>>
+  updates: Partial<Pick<Library, 'name'>>
 ): Promise<CreateLibraryResult> {
   const existing = await getLibraryById(id);
   if (!existing) {
@@ -103,14 +100,11 @@ export async function updateLibrary(
   }
 
   const name = updates.name?.trim() || existing.name;
-  const komgaLibraryId = updates.komgaLibraryId !== undefined
-    ? updates.komgaLibraryId
-    : existing.komgaLibraryId;
 
   try {
     await execute(
-      'UPDATE libraries SET name = ?, komga_library_id = ? WHERE id = ?',
-      [name, komgaLibraryId, id]
+      'UPDATE libraries SET name = ? WHERE id = ?',
+      [name, id]
     );
 
     const library = await getLibraryById(id);

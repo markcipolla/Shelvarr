@@ -24,14 +24,25 @@ export * as queue from './queue/index';
 export * as queueHandlers from './queue/handlers';
 export * as scheduler from './queue/scheduler';
 export * as downloads from './downloads/index';
-export * as komga from './komga/index';
 export * as sourceStatus from './downloads/source-status';
 
-// Komga response adapters
-export * as komgaResponse from './komga-response';
+// API response adapters
+export * as apiResponse from './api-response';
 
 // API auth
 export { validateApiAuth } from './api-auth';
+
+// User accounts and passwordless authentication
+export * as auth from './auth/index';
+export {
+  SESSION_COOKIE_NAME,
+  AuthError,
+  authenticateRequest,
+  getAuthStatus,
+  getRequestUser,
+  isAuthEnabled,
+} from './auth/index';
+export type { RequestAuth, HeaderReader } from './auth/request';
 
 // Utils
 export * as authors from './utils/authors';

@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import { Book, Series } from '../types/komga';
+import { Book, Series } from '../types/api';
 import { fetchBook, getBookThumbnailUrl, deleteReadProgress, updateReadProgress } from '../services/api/books';
 import { fetchSeries } from '../services/api/series';
 import { getMediaFormat, getFormatFromName } from '../utils/fileTypes';
@@ -21,6 +21,13 @@ import { prepareBookForReading, downloadBook, removeDownloadedBook } from '../se
 import { updateReadingStatus, ReadingStatus } from '../services/api/shelvarr';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BookDetail'>;
+
+const HARDCOVER_STATUSES: Array<{ status: ReadingStatus; label: string }> = [
+  { status: 'want-to-read', label: 'Want to Read' },
+  { status: 'reading', label: 'Reading' },
+  { status: 'read', label: 'Read' },
+  { status: 'dnf', label: 'Did Not Finish' },
+];
 
 /**
  * Download button label. Shows a percentage once progress advances, but falls
@@ -143,6 +150,7 @@ export default function BookDetailScreen({ route, navigation }: Props) {
     if (!book) return;
     try {
       await updateReadingStatus(book.id, status);
+      setBook({ ...book, hardcoverStatus: status });
       Alert.alert('Hardcover', `Marked as ${label}`);
     } catch {
       Alert.alert('Error', 'Failed to sync to Hardcover');
@@ -286,30 +294,22 @@ export default function BookDetailScreen({ route, navigation }: Props) {
 
       <Text style={styles.statusLabel}>Hardcover status</Text>
       <View style={styles.statusGrid}>
-        <TouchableOpacity
-          style={styles.statusButton}
-          onPress={() => handleSetStatus('want-to-read', 'Want to Read')}
-        >
-          <Text style={styles.statusButtonText}>Want to Read</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.statusButton}
-          onPress={() => handleSetStatus('reading', 'Reading')}
-        >
-          <Text style={styles.statusButtonText}>Reading</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.statusButton}
-          onPress={() => handleSetStatus('read', 'Read')}
-        >
-          <Text style={styles.statusButtonText}>Read</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.statusButton}
-          onPress={() => handleSetStatus('dnf', 'Did Not Finish')}
-        >
-          <Text style={styles.statusButtonText}>Did Not Finish</Text>
-        </TouchableOpacity>
+        {HARDCOVER_STATUSES.map(({ status, label }) => {
+          const selected = book.hardcoverStatus === status;
+          return (
+            <TouchableOpacity
+              key={status}
+              style={[styles.statusButton, selected && styles.statusButtonSelected]}
+              onPress={() => handleSetStatus(status, label)}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+            >
+              <Text style={[styles.statusButtonText, selected && styles.statusButtonTextSelected]}>
+                {selected ? `✓ ${label}` : label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </ScrollView>
   );
@@ -371,5 +371,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#d5d0c8',
   },
+  statusButtonSelected: { backgroundColor: '#e8f0e8', borderColor: '#2e7d32' },
   statusButtonText: { color: '#333', fontSize: 18, fontWeight: '500' },
+  statusButtonTextSelected: { color: '#2e6b30', fontWeight: '700' },
 });

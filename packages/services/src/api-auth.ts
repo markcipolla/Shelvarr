@@ -1,33 +1,15 @@
-import { getSetting } from '@shelvarr/db';
+import { authenticateRequest, type HeaderReader } from './auth/request';
 
 /**
- * Framework-agnostic API auth validation.
- * Checks X-API-Key header and Basic Auth against the configured api_key setting.
- * Returns true if auth is valid (or no auth is configured).
+ * Framework-agnostic API auth gate, used by every route handler.
+ *
+ * Accepts a session (cookie for the web app, bearer token for the native app)
+ * or the legacy shared API key. Returns true when authentication is switched
+ * off entirely, which is the escape hatch for a trusted network.
+ *
+ * Note this is now a real gate: before user accounts existed it let every
+ * request through unless an API key happened to be configured.
  */
-export function validateApiAuth(headers: { get(name: string): string | null }): boolean {
-  const configuredApiKey = getSetting<string>('api_key', null);
-
-  // If no API key is configured, allow all requests
-  if (!configuredApiKey) {
-    return true;
-  }
-
-  // Check X-API-Key header
-  const apiKey = headers.get('X-API-Key');
-  if (apiKey === configuredApiKey) {
-    return true;
-  }
-
-  // Check Basic Auth
-  const authHeader = headers.get('Authorization');
-  if (authHeader?.startsWith('Basic ')) {
-    const decoded = Buffer.from(authHeader.slice(6), 'base64').toString('utf-8');
-    const [, password] = decoded.split(':');
-    if (password === configuredApiKey) {
-      return true;
-    }
-  }
-
-  return false;
+export function validateApiAuth(headers: HeaderReader): boolean {
+  return authenticateRequest(headers) !== null;
 }

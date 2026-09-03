@@ -1,4 +1,5 @@
 import { useSettingsStore } from '../../stores/useSettingsStore';
+import { getAuthHeaders } from '../../stores/useAuthStore';
 
 export async function testShelvarrConnection(
   url: string
@@ -38,11 +39,11 @@ export async function updateReadingStatus(
   if (!shelvarrUrl) return;
 
   try {
-    const url = `${shelvarrUrl.replace(/\/$/, '')}/api/reading-status/by-komga`;
+    const url = `${shelvarrUrl.replace(/\/$/, '')}/api/reading-status/by-book`;
     await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ komgaBookId: bookId, status }),
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ bookId, status }),
     });
   } catch (err) {
     console.warn('Shelvarr status sync failed (non-blocking):', err);

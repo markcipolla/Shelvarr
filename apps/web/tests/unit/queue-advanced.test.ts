@@ -190,7 +190,7 @@ if (canRunTests) {
 
     describe('Task progress tracking', () => {
       it('should update progress during task execution', async () => {
-        registerTaskHandler('komga_sync', async (taskId, onProgress) => {
+        registerTaskHandler('author_sync', async (taskId, onProgress) => {
           for (let i = 1; i <= 5; i++) {
             onProgress(i, 5);
             await new Promise(resolve => setTimeout(resolve, 10));
@@ -198,7 +198,7 @@ if (canRunTests) {
           return { success: true };
         });
 
-        const task = createTask('komga_sync');
+        const task = createTask('author_sync');
         await runTask(task.id);
 
         const updated = getTask(task.id);
@@ -318,11 +318,11 @@ if (canRunTests) {
       });
 
       it('should handle empty result data', async () => {
-        registerTaskHandler('komga_sync', async () => {
+        registerTaskHandler('author_sync', async () => {
           return {};
         });
 
-        const task = createTask('komga_sync');
+        const task = createTask('author_sync');
         await runTask(task.id);
 
         const updated = getTask(task.id);

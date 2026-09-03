@@ -4,7 +4,7 @@ import {
   listDownloadedComicVolumes,
   withDownloadedComicVolumes,
 } from '../../src/services/offlineLibrary';
-import type { Book, DownloadedBook } from '../../src/types/komga';
+import type { Book, DownloadedBook } from '../../src/types/api';
 import type { DownloadedComic } from '../../src/stores/useComicDownloadStore';
 import type { ComicVolumeSummary } from '@shelvarr/types';
 

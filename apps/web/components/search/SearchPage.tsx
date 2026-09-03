@@ -9,7 +9,7 @@ import { BookIcon, LoadingSpinner } from '@/components/ui/Icons';
 import { HardcoverNotConfigured } from '@/components/ui/HardcoverNotConfigured';
 import { BookCard } from '@/components/books/BookGrid';
 import { ComicCard } from '@/components/comics/ComicGrid';
-import type { SearchResultWithStatus } from '@/app/search/page';
+import type { SearchResultWithStatus } from '@/app/(app)/search/page';
 import type { Book } from '@/types';
 import type { ComicVolumeSummary } from '@shelvarr/types';
 

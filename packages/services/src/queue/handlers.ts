@@ -6,6 +6,7 @@
 import { registerTaskHandler, enqueueTask, RateLimitedError, type TaskHandler } from './index';
 import { scanLibrary, updateBook, addBook } from '../scanner';
 import { getLibraryById } from '../library';
+import { pruneExpired } from '../auth/sessions';
 import {
   query,
   queryOne,
@@ -34,7 +35,6 @@ import { adoptAllVolumes, adoptVolume, listAdoptionCandidates } from '../comics/
 import { getServiceConfig } from '../config';
 import * as metadataService from '../metadata';
 import { downloadFile as downloadFromLibgen } from '../downloads/libgen';
-import { komgaClient } from '../komga';
 import { applyReorganization } from '../organizer';
 import { getOrCreateAuthor, fetchAuthorMetadata, getAuthorByName } from '../authors';
 import * as fs from 'fs';
@@ -602,14 +602,6 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
 
   onProgress(6, 6);
 
-  // Queue Komga sync if configured
-  if (komgaClient.isConfigured()) {
-    enqueueTask('komga_sync', {
-      bookId,
-      libraryPath: library.path,
-    });
-  }
-
   return {
     success: true,
     bookId,
@@ -686,11 +678,6 @@ const organizeHandler: TaskHandler = async (taskId, onProgress, signal) => {
     template,
     onProgress,
     signal,
-    enqueueKomgaSync: (bookId, libraryPath) => {
-      if (komgaClient.isConfigured()) {
-        enqueueTask('komga_sync', { bookId, libraryPath });
-      }
-    },
   });
 
   return {
@@ -825,115 +812,6 @@ const bookMetadataHandler: TaskHandler = async (taskId, onProgress) => {
 
   onProgress(1, 1);
   return { status: 'matched', bookId: book.id, title: metadata.title, source: metadata.source };
-};
-
-/**
- * Komga sync task handler
- * Syncs a book's metadata and cover to Komga after organizing
- */
-const komgaSyncHandler: TaskHandler = async (taskId, onProgress) => {
-  const taskRow = queryOne<{ result: string | null }>(
-    'SELECT result FROM tasks WHERE id = ?',
-    [taskId]
-  );
-
-  if (!taskRow?.result) {
-    throw new Error('Task missing configuration');
-  }
-
-  const data = JSON.parse(taskRow.result) as {
-    bookId: number;
-    libraryPath?: string;
-  };
-
-  onProgress(0, 3);
-
-  // Check if Komga is configured
-  if (!komgaClient.isConfigured()) {
-    return { status: 'skipped', reason: 'Komga not configured' };
-  }
-
-  // Step 1: Get book details from database
-  const book = queryOne<{
-    id: number;
-    file_path: string;
-    title: string | null;
-    authors: string | null;
-    description: string | null;
-    isbn: string | null;
-    publish_date: string | null;
-    cover_url: string | null;
-    series_number: number | null;
-  }>(
-    'SELECT id, file_path, title, authors, description, isbn, publish_date, cover_url, series_number FROM books WHERE id = ?',
-    [data.bookId]
-  );
-
-  if (!book) {
-    throw new Error(`Book ${data.bookId} not found`);
-  }
-
-  if (!book.file_path) {
-    return { status: 'skipped', reason: 'Book has no file path' };
-  }
-
-  onProgress(1, 3);
-
-  // Step 2: Parse authors from JSON
-  let authors: string[] = [];
-  if (book.authors) {
-    try {
-      const parsed = JSON.parse(book.authors);
-      if (Array.isArray(parsed)) {
-        authors = parsed.filter(a => a && typeof a === 'string');
-      }
-    } catch {
-      authors = [book.authors];
-    }
-  }
-
-  // Step 3: Sync to Komga
-  const filename = path.basename(book.file_path);
-  const result = await komgaClient.syncBookToKomga(
-    filename,
-    {
-      title: book.title || undefined,
-      description: book.description || undefined,
-      authors: authors.length > 0 ? authors : undefined,
-      isbn: book.isbn || undefined,
-      publishDate: book.publish_date || undefined,
-      coverUrl: book.cover_url || undefined,
-      seriesNumber: book.series_number || undefined,
-    },
-    data.libraryPath
-  );
-
-  onProgress(3, 3);
-
-  if (result.success) {
-    // Persist the Komga book ID back to the database
-    if (result.komgaBookId) {
-      execute(
-        'UPDATE books SET komga_book_id = ? WHERE id = ?',
-        [result.komgaBookId, book.id]
-      );
-    }
-
-    return {
-      status: 'synced',
-      bookId: book.id,
-      komgaBookId: result.komgaBookId,
-      filename,
-    };
-  } else {
-    // Don't throw - just report the error in result
-    return {
-      status: 'failed',
-      bookId: book.id,
-      error: result.error,
-      filename,
-    };
-  }
 };
 
 /**
@@ -1462,6 +1340,16 @@ const comicAdoptHandler: TaskHandler = async (taskId, onProgress, signal) => {
   };
 };
 
+/** Housekeeping for expired sessions and unopened sign-in links. */
+const authPruneHandler: TaskHandler = async (_taskId, onProgress) => {
+  const removed = pruneExpired();
+  onProgress(1, 1);
+  return {
+    message: `Removed ${removed.sessions} expired sessions and ${removed.loginTokens} expired sign-in links`,
+    ...removed,
+  };
+};
+
 /**
  * Register all task handlers
  */
@@ -1494,8 +1382,10 @@ export function registerAllHandlers(): void {
     return { message: 'Author sync handler not yet implemented' };
   });
 
-  // Komga sync handler - syncs book metadata and cover to Komga
-  registerTaskHandler('komga_sync', komgaSyncHandler);
+  // Housekeeping: drop timed-out sessions and sign-in links. Sessions are
+  // also swept as they are met, but nothing else ever revisits a link that
+  // was emailed and never opened.
+  registerTaskHandler('auth_prune', authPruneHandler);
 }
 
 export default { registerAllHandlers };

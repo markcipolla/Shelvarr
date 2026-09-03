@@ -24,7 +24,6 @@ interface BookRow {
   description: string | null;
   cover_url: string | null;
   extension: string | null;
-  komga_book_id: string | null;
   metadata_source: string | null;
   metadata_id: string | null;
   created_at: string;
@@ -78,7 +77,6 @@ function rowToBook(row: BookRow): Book {
     description: row.description,
     coverUrl: row.cover_url,
     extension: row.extension,
-    komgaBookId: row.komga_book_id,
     metadataSource: row.metadata_source,
     metadataId: row.metadata_id,
     createdAt: row.created_at,

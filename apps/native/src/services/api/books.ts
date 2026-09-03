@@ -1,5 +1,5 @@
 import { getApiClient } from './client';
-import { Book, Page, PagedResponse } from '../../types/komga';
+import { Book, Page, PagedResponse } from '../../types/api';
 import { PAGE_SIZE } from '../../utils/constants';
 
 export async function fetchBooksForSeries(

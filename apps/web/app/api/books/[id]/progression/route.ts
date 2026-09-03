@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
 import { queryOne, getEpubProgression, getLatestEpubProgression, upsertEpubProgression, upsertReadProgress } from '@/lib/db';
 import { validateApiAuth } from '@shelvarr/services';
-import { toEpubProgression } from '@shelvarr/services/komga-response';
+import { toEpubProgression } from '@shelvarr/services/api-response';
 import { syncReadingProgress } from '@/lib/services/metadata/hardcover';
 
 export const dynamic = 'force-dynamic';
@@ -46,7 +46,7 @@ export async function PUT(
     // Legacy flat shape (web reader).
     deviceId?: string;
     progression?: number;
-    // Komga/Readium nested shape (native client).
+    // Readium nested shape (native client).
     device?: { id?: string; name?: string };
     modified?: string;
     locator: string | { locations?: { totalProgression?: number; progression?: number } };
@@ -71,7 +71,7 @@ export async function PUT(
 
   const completed = progression >= 0.98;
   upsertEpubProgression(bookId, deviceId, locator, progression);
-  // Mirror into read_progress so Komga-style IN_PROGRESS filters (page > 0) match.
+  // Mirror into read_progress so IN_PROGRESS filters (page > 0) match.
   upsertReadProgress(bookId, completed ? 0 : 1, completed);
 
   // Fire-and-forget Hardcover sync — throttled per-book inside syncReadingProgress.

@@ -17,10 +17,12 @@
     "@shelvarr/db": "workspace:*",
     "@shelvarr/types": "workspace:*",
     "fflate": "^0.8.3",
-    "node-unrar-js": "^2.0.2"
+    "node-unrar-js": "^2.0.2",
+    "nodemailer": "^9.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "@types/nodemailer": "^8.0.1",
     "typescript": "^5.7.2"
   }
 }

@@ -26,10 +26,6 @@ export function getServiceConfig(): AppConfig {
       port: parseInt(process.env['PORT'] || '3000', 10),
       supportedExtensions: ['.epub', '.pdf', '.cbz', '.cbr', '.mobi', '.azw3'],
       hardcoverToken: process.env['HARDCOVER_API_TOKEN'] || null,
-      komga: {
-        url: process.env['KOMGA_URL'] || null,
-        apiKey: process.env['KOMGA_API_KEY'] || null,
-      },
       comicMigration: {
         // KAPOWARR_PATH_MAP is the old name, kept so existing deployments
         // keep working through the migration.

@@ -62,6 +62,13 @@ export const DEFAULT_SCHEDULES: ScheduleDefinition[] = [
     payload: { limit: 100 },
     enabledByDefault: false,
   },
+  {
+    name: 'auth_prune',
+    taskType: 'auth_prune',
+    intervalSeconds: 24 * HOUR,
+    description: 'Remove expired sessions and sign-in links',
+    enabledByDefault: true,
+  },
 ];
 
 export interface Schedule {
