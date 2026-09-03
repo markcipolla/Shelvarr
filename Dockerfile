@@ -30,6 +30,11 @@ COPY apps/web/ apps/web/
 # --- Web build stage ---
 FROM base AS web-builder
 
+# The build context has no .git, so the About screen's build id has to be
+# handed in. Defaults to "dev" for ad-hoc local builds.
+ARG BUILD_VERSION=dev
+ENV BUILD_VERSION=$BUILD_VERSION
+
 WORKDIR /app/apps/web
 RUN pnpm build
 

@@ -49,6 +49,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Always the commit, never the tag: v* tags belong to the native app's
+      # release train, so "v1.2.0" would name a version the web app isn't on.
+      - name: Resolve build version
+        id: build_version
+        run: |
+          sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+          echo "value=${sha:0:7}" >> "$GITHUB_OUTPUT"
+
       - name: Extract metadata (tags, labels)
         id: meta
         uses: docker/metadata-action@v5
@@ -67,6 +75,8 @@ jobs:
         with:
           context: .
           target: web
+          build-args: |
+            BUILD_VERSION=${{ steps.build_version.outputs.value }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

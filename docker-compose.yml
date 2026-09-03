@@ -3,6 +3,9 @@ services:
     build:
       context: .
       target: web
+      args:
+        # Shown as "Build" under Settings > About.
+        - BUILD_VERSION=${BUILD_VERSION:-dev}
     container_name: shelvarr
     ports:
       - "3000:3000"

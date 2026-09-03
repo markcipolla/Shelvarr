@@ -1,6 +1,6 @@
 {
   "name": "shelvarr-monorepo",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "description": "Self-hosted *arr-style app for book/comic metadata management and file organization",
   "type": "module",
