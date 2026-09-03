@@ -42,3 +42,13 @@ apps/web/tests/.e2e-data/
 
 # pnpm
 .pnpm-store/
+
+# Signing keys — never commit these. apps/native/.gitignore covers some of
+# these patterns, but only within that directory, so a key left at the repo
+# root would otherwise be committable.
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.pem
+*.key

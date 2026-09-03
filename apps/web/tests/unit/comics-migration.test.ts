@@ -342,6 +342,9 @@ describe('Scheduler', () => {
     assert.strictEqual(scheduler.getSchedule('comic_update_all')!.enabled, true);
     // Downloading things unprompted should be opt-in.
     assert.strictEqual(scheduler.getSchedule('comic_search_all')!.enabled, false);
+    // Finishing a download that was already asked for is not unprompted, so
+    // the resume sweep runs by default.
+    assert.strictEqual(scheduler.getSchedule('comic_resume')!.enabled, true);
   });
 
   it('does not overwrite settings the user has changed', () => {
@@ -371,13 +374,15 @@ describe('Scheduler', () => {
 
     // Only the jobs that are on by default come back. Derived rather than
     // written out, so adding a scheduled job does not fail this test for
-    // saying something it never meant to say.
+    // saying something it never meant to say — which is what a hardcoded
+    // list did twice over.
     assert.deepStrictEqual(
       claimed.map((schedule) => schedule.name).sort(),
       scheduler.DEFAULT_SCHEDULES.filter((entry) => entry.enabledByDefault)
         .map((entry) => entry.name)
         .sort()
     );
+    // The download sweep is off by default, so it must not appear.
     assert.strictEqual(
       claimed.some((schedule) => schedule.name === 'comic_search_all'),
       false,

@@ -3,7 +3,7 @@
  * Register handlers for different task types
  */
 
-import { registerTaskHandler, enqueueTask, type TaskHandler } from './index';
+import { registerTaskHandler, enqueueTask, RateLimitedError, type TaskHandler } from './index';
 import { scanLibrary, updateBook, addBook } from '../scanner';
 import { getLibraryById } from '../library';
 import { pruneExpired } from '../auth/sessions';
@@ -13,12 +13,18 @@ import {
   execute,
   markWantedBookAsAcquired,
   addComicDownloadHistory,
+  addToComicBlocklist,
+  claimStalledComicDownloads,
+  deferComicDownload,
   getComicDownload,
   getComicVolumesNeedingRefresh,
   getComicVolumesWithMissingIssues,
   setComicDownloadState,
+  startComicDownloadAttempt,
+  switchComicDownloadLink,
   updateComicDownloadProgress,
 } from '@shelvarr/db';
+import type { ComicDownloadLink } from '@shelvarr/types';
 import * as getcomics from '../comics/getcomics/index';
 import * as comicLibrary from '../comics/library';
 import { importComicDownload } from '../comics/import';
@@ -969,11 +975,42 @@ const comicSearchHandler: TaskHandler = async (taskId, onProgress, signal) => {
 };
 
 /**
+ * How many times a download is attempted before it is given up on.
+ *
+ * Only rate limits consume an attempt without a link changing: a dead link
+ * moves on to the next alternate instead. Once the attempts are spent the
+ * download fails properly, which is what lets the next auto-search sweep pick
+ * a different release for the same issue.
+ */
+const MAX_DOWNLOAD_ATTEMPTS = 5;
+
+/**
+ * How long to wait out a host's download limit, by attempt number. A limit is
+ * usually measured in minutes, so the first retries are spaced accordingly
+ * rather than hammering the host back immediately.
+ */
+const RATE_LIMIT_BACKOFF_MS = [60_000, 120_000, 240_000, 480_000, 900_000];
+
+function rateLimitBackoff(attempt: number): number {
+  const index = Math.min(Math.max(attempt, 1), RATE_LIMIT_BACKOFF_MS.length) - 1;
+  return RATE_LIMIT_BACKOFF_MS[index]!;
+}
+
+/**
  * Fetch one queued comic download and import it into the library.
  *
  * Progress is reported in bytes so the UI can show a real progress bar; the
  * `comic_downloads` row carries the same figures for anything reading the
  * queue directly.
+ *
+ * Two things can go wrong without the download being a write-off, and neither
+ * is treated as one:
+ *
+ * - **The link dies between search and download.** The article's other links
+ *   for the same issues were recorded when the download was queued, so the
+ *   next one is tried; a broken link is blocklisted on the way past.
+ * - **The host rate-limits us.** The download goes back in the queue with the
+ *   partial file intact, and the task is retried after a backoff.
  */
 const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
   const taskRow = queryOne<{ result: string | null }>(
@@ -1010,14 +1047,33 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
     throw new Error(message);
   };
 
-  try {
-    setComicDownloadState(download.id, 'downloading');
+  /** Whether the queue UI cancelled this download out from under us. */
+  const cancelled = (): boolean =>
+    signal.aborted || getComicDownload(download.id)?.state === 'cancelled';
 
-    const resolved = await getcomics.resolveDownload(
-      download.host,
-      download.downloadLink,
-      signal
-    );
+  /**
+   * Remove this download's partial file, if any. Called before falling back to
+   * another link: two links can resolve to the same filename, and resuming one
+   * host's bytes from another's would append rather than overwrite.
+   */
+  const clearScratch = (): void => {
+    const scratchDir = getServiceConfig().getcomics.downloadDir;
+    if (!fs.existsSync(scratchDir)) return;
+    for (const entry of fs.readdirSync(scratchDir)) {
+      if (!entry.startsWith(`${download.id}-`)) continue;
+      try {
+        fs.unlinkSync(path.join(scratchDir, entry));
+      } catch {
+        // Best effort: a leftover partial is untidy, not fatal.
+      }
+    }
+  };
+
+  /** Resolve one link and stream it to the scratch directory. */
+  const fetchLink = async (
+    candidate: ComicDownloadLink
+  ): Promise<{ path: string; bytes: number }> => {
+    const resolved = await getcomics.resolveDownload(candidate.host, candidate.link, signal);
 
     const scratchDir = getServiceConfig().getcomics.downloadDir;
     const scratchPath = path.join(
@@ -1053,9 +1109,70 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
     if (cancelledByUser) throw new Error('Download cancelled');
 
     updateComicDownloadProgress(download.id, result.bytes, resolved.size);
+    return result;
+  };
+
+  const attempt = startComicDownloadAttempt(download.id);
+
+  let candidate: ComicDownloadLink = { host: download.host, link: download.downloadLink };
+  const alternates = [...download.alternateLinks];
+  let fetched: { path: string; bytes: number } | null = null;
+
+  while (!fetched) {
+    try {
+      fetched = await fetchLink(candidate);
+    } catch (error) {
+      if (cancelled()) {
+        setComicDownloadState(download.id, 'cancelled');
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+
+      // The host is only refusing us for now: keep the partial file, put the
+      // download back in the queue, and let the task be retried later.
+      if (error instanceof getcomics.DownloadLimitReachedError) {
+        if (attempt >= MAX_DOWNLOAD_ATTEMPTS) {
+          return fail(`${message} — gave up after ${attempt} attempts`);
+        }
+        const retryAfterMs = rateLimitBackoff(attempt);
+        deferComicDownload(
+          download.id,
+          `${message} — retrying in ${Math.round(retryAfterMs / 60_000)} min ` +
+            `(attempt ${attempt} of ${MAX_DOWNLOAD_ATTEMPTS})`
+        );
+        throw new RateLimitedError(message, retryAfterMs);
+      }
+
+      if (error instanceof getcomics.LinkBrokenError) {
+        addToComicBlocklist({
+          downloadLink: candidate.link,
+          reason: 'link-broken',
+          volumeId: download.volumeId,
+          issueId: download.issueId,
+          webLink: download.webLink,
+          webTitle: download.webTitle,
+          webSubTitle: download.webSubTitle,
+          host: candidate.host,
+        });
+      }
+
+      const next = alternates.shift();
+      if (!next) return fail(message);
+
+      console.warn(
+        `[comic-download] ${candidate.link} failed (${message}); trying ${next.link}`
+      );
+      clearScratch();
+      switchComicDownloadLink(download.id, next, alternates);
+      candidate = next;
+    }
+  }
+
+  try {
     setComicDownloadState(download.id, 'importing');
 
-    const imported = await importComicDownload(download, result.path, {
+    const imported = await importComicDownload(download, fetched.path, {
       title: loaded.volume.title,
       year: loaded.volume.year,
       volumeNumber: loaded.volume.volumeNumber,
@@ -1072,7 +1189,7 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
       webTitle: download.webTitle,
       webSubTitle: download.webSubTitle,
       fileTitle: imported.path.split('/').pop() ?? null,
-      host: download.host,
+      host: candidate.host,
       success: true,
     });
 
@@ -1082,12 +1199,15 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
       path: imported.path,
       bytes: imported.bytes,
       renamed: imported.renamed,
+      attempts: attempt,
     };
   } catch (error) {
-    if (signal.aborted || getComicDownload(download.id)?.state === 'cancelled') {
+    if (cancelled()) {
       setComicDownloadState(download.id, 'cancelled');
       throw error;
     }
+    // The bytes are on disk; only the move into the library went wrong, so
+    // another link would not help.
     return fail(error instanceof Error ? error.message : String(error));
   }
 };
@@ -1175,6 +1295,42 @@ const comicUpdateAllHandler: TaskHandler = async (taskId, onProgress, signal) =>
   }
 
   return { considered: volumeIds.length, refreshed: refreshed.length, failed };
+};
+
+/**
+ * Pick up downloads that were interrupted rather than finished.
+ *
+ * A download is driven by a task in one server process. If that process stops
+ * — a restart, a crash, a container being replaced — the row is left sitting
+ * in `queued`, `downloading` or `importing` with nobody working on it, and
+ * nothing else notices: auto-search skips it, because a non-terminal download
+ * counts as already in hand.
+ *
+ * Every live download stamps a heartbeat as it goes, so this sweep can tell
+ * the orphans from the busy. Claiming is done in the same statement that finds
+ * them, so several server processes can run this tick without doubling up.
+ */
+const comicResumeHandler: TaskHandler = async (taskId, onProgress) => {
+  const data = comicTaskData<{ staleMinutes?: number; limit?: number }>(
+    taskId,
+    'comic resume configuration'
+  );
+
+  const stalled = claimStalledComicDownloads(data.staleMinutes ?? 30, data.limit ?? 25);
+  onProgress(0, stalled.length);
+
+  const resumed: number[] = [];
+  for (const [index, download] of stalled.entries()) {
+    enqueueTask('comic_download', { comicDownloadId: download.id });
+    resumed.push(download.id);
+    onProgress(index + 1, stalled.length);
+  }
+
+  if (resumed.length > 0) {
+    console.warn(`[comic-resume] restarted ${resumed.length} interrupted download(s)`);
+  }
+
+  return { resumed: resumed.length, downloadIds: resumed };
 };
 
 /**
@@ -1340,6 +1496,7 @@ export function registerAllHandlers(): void {
   registerTaskHandler('comic_rename', comicRenameHandler);
   registerTaskHandler('comic_update_all', comicUpdateAllHandler);
   registerTaskHandler('comic_search_all', comicSearchAllHandler);
+  registerTaskHandler('comic_resume', comicResumeHandler);
   registerTaskHandler('comic_library_import', comicLibraryImportHandler);
   registerTaskHandler('comic_adopt', comicAdoptHandler);
 
