@@ -3,33 +3,35 @@ import { readdirSync, statSync, type Dirent } from 'fs';
 import { resolve, join, dirname } from 'path';
 import config from '@/lib/config';
 
+/**
+ * The deepest existing directory at or above `startPath`. A half-typed path
+ * lands the folder picker as close to where the user was aiming as possible,
+ * rather than dumping them back at `/`.
+ */
+function nearestExistingDirectory(startPath: string): string | null {
+  let current = startPath;
+
+  for (;;) {
+    try {
+      if (statSync(current).isDirectory()) return current;
+    } catch {
+      // Doesn't exist (or isn't readable) — try the parent.
+    }
+
+    const parent = dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const requestedPath = searchParams.get('path') || config.libraryRoot || '/';
 
-    // Resolve to absolute path
-    let absPath = resolve(requestedPath);
-
-    // Check if path exists and is a directory, fall back to root if not
-    let stats;
-    try {
-      stats = statSync(absPath);
-      if (!stats.isDirectory()) {
-        absPath = '/';
-        stats = statSync(absPath);
-      }
-    } catch {
-      absPath = '/';
-      try {
-        stats = statSync(absPath);
-      } catch {
-        return NextResponse.json({ error: 'Path not found' }, { status: 404 });
-      }
-    }
-
-    if (!stats.isDirectory()) {
-      return NextResponse.json({ error: 'Path is not a directory' }, { status: 400 });
+    const absPath = nearestExistingDirectory(resolve(requestedPath));
+    if (!absPath) {
+      return NextResponse.json({ error: 'Path not found' }, { status: 404 });
     }
 
     // List directory contents
