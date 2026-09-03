@@ -293,7 +293,6 @@ describe('Comic library', () => {
         hostPreference: ['getcomics'],
         renameDownloadedFiles: true,
       },
-      audiletome: { url: null, apiKey: null },
       supportedExtensions: ['.cbz'],
       rateLimits: { hardcover: 60 },
       hardcoverToken: null,

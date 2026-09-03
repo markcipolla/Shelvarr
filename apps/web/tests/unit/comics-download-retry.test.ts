@@ -144,7 +144,6 @@ describe('Comic download retries', () => {
         hostPreference: ['getcomics', 'pixeldrain'],
         renameDownloadedFiles: true,
       },
-      audiletome: { url: null, apiKey: null },
       supportedExtensions: ['.cbz'],
       rateLimits: { hardcover: 60 },
       hardcoverToken: null,

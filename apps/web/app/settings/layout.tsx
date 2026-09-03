@@ -12,7 +12,6 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
     { href: '/settings/organize', label: 'Organize' },
     { href: '/settings/comics', label: 'Comics' },
     { href: '/settings/komga', label: 'Komga' },
-    { href: '/settings/audiletome', label: 'Audiletome' },
     { href: '/settings/about', label: 'About' },
   ];
 

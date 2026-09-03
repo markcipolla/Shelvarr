@@ -42,12 +42,6 @@ const config: AppConfig = {
     renameDownloadedFiles: process.env['GETCOMICS_RENAME'] !== 'false',
   },
 
-  // Audiletome audiobook-generation integration (optional)
-  audiletome: {
-    url: process.env['AUDILETOME_URL'] || null,
-    apiKey: process.env['AUDILETOME_API_KEY'] || null,
-  },
-
   // Supported file extensions
   supportedExtensions: ['.epub', '.pdf', '.mobi', '.azw', '.azw3'],
 

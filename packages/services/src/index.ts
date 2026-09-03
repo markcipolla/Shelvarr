@@ -25,7 +25,6 @@ export * as queueHandlers from './queue/handlers';
 export * as scheduler from './queue/scheduler';
 export * as downloads from './downloads/index';
 export * as komga from './komga/index';
-export * as audiletome from './audiletome/index';
 export * as sourceStatus from './downloads/source-status';
 
 // Komga response adapters
