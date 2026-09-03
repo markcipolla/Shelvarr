@@ -4,13 +4,12 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { createLibrary } from '@/lib/actions/libraries';
 import { isHardcoverConfigured } from '@/lib/actions/settings';
-import { FolderBrowser } from './FolderBrowser';
+import { FolderPicker } from '@/components/ui/FolderPicker';
 
 export function AddLibraryButton() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showBrowser, setShowBrowser] = useState(false);
   const [pathValue, setPathValue] = useState('');
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
 
@@ -36,19 +35,12 @@ export function AddLibraryButton() {
     } else {
       setOpen(false);
       setPathValue('');
-      setShowBrowser(false);
     }
-  };
-
-  const handleSelectPath = (path: string) => {
-    setPathValue(path);
-    setShowBrowser(false);
   };
 
   const handleClose = () => {
     setOpen(false);
     setPathValue('');
-    setShowBrowser(false);
     setError(null);
   };
 
@@ -107,32 +99,15 @@ export function AddLibraryButton() {
                 <label htmlFor="path" className="block text-sm font-medium text-shelvarr-text-muted mb-1">
                   Path
                 </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    id="path"
-                    name="path"
-                    required
-                    placeholder="/libraries/ebooks"
-                    value={pathValue}
-                    onChange={(e) => setPathValue(e.target.value)}
-                    className="flex-1 bg-shelvarr-bg border border-shelvarr-border rounded-lg px-3 py-2 text-white placeholder-shelvarr-text-muted focus:outline-none focus:border-blue-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowBrowser(!showBrowser)}
-                    className="bg-shelvarr-bg hover:bg-shelvarr-border text-white border border-shelvarr-border px-3 py-2 rounded-lg transition-colors flex items-center gap-2"
-                  >
-                    <FolderIcon />
-                    Browse
-                  </button>
-                </div>
-                {showBrowser && (
-                  <FolderBrowser
-                    onSelect={handleSelectPath}
-                    onClose={() => setShowBrowser(false)}
-                  />
-                )}
+                <FolderPicker
+                  id="path"
+                  name="path"
+                  required
+                  placeholder="/libraries/ebooks"
+                  value={pathValue}
+                  onChange={setPathValue}
+                  inputClassName="flex-1 min-w-0 bg-shelvarr-bg border border-shelvarr-border rounded-lg px-3 py-2 text-white placeholder-shelvarr-text-muted focus:outline-none focus:border-blue-500"
+                />
               </div>
 
               {error && (
@@ -163,15 +138,3 @@ export function AddLibraryButton() {
   );
 }
 
-function FolderIcon() {
-  return (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-      />
-    </svg>
-  );
-}
