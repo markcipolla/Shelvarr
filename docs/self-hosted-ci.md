@@ -44,45 +44,48 @@ the price of the boundary. To trade it away, narrow `ci-self-hosted.yml` to
 ## Runner group setup (one-time, org settings)
 
 By default org runner groups refuse public repositories, and the `markcipolla`
-org's `Default` group is no exception:
+org's `Default` group is no exception. Until a group accepts this repository,
+`runs-on: self-hosted` here does not fail — the jobs sit `queued` with no runner
+assigned until GitHub's 24-hour self-hosted queue limit kills them. Scheduling
+is a pull model with label matching, and GitHub cannot distinguish "no eligible
+runner will ever exist" from "the runner is powered off right now", so it waits.
+
+`Default` must stay as it is. It holds the `dokploy-runner-*` fleet, which has
+deploy access, and its `visibility: all` means enabling public repositories
+there would expose those runners to every public repository in the org. So a
+dedicated group already exists instead:
 
 ```console
-$ gh api orgs/markcipolla/actions/runner-groups --jq '.runner_groups[] | {name, allows_public_repositories}'
-{"name":"Default","allows_public_repositories":false}
-```
+$ gh api orgs/markcipolla/actions/runner-groups/3 \
+    --jq '{name, visibility, allows_public_repositories}'
+{"name":"public-ci","visibility":"selected","allows_public_repositories":true}
 
-Until that changes, `runs-on: self-hosted` in this repository queues forever
-rather than failing — the job just never gets picked up.
-
-**Do not flip that flag on `Default`.** `Default` holds the `dokploy-runner-*`
-fleet, which has deploy access, and `visibility: all` means enabling public
-repositories there would expose those runners to every public repository in the
-org. Make a dedicated group instead:
-
-```sh
-# 1. A group only Shelvarr can use, that accepts a public repository.
-REPO_ID=$(gh api repos/markcipolla/Shelvarr --jq .id)
-gh api --method POST orgs/markcipolla/actions/runner-groups \
-  -f name='public-ci' \
-  -f visibility='selected' \
-  -F allows_public_repositories=true \
-  -F "selected_repository_ids[]=$REPO_ID"
-
-GROUP_ID=$(gh api orgs/markcipolla/actions/runner-groups \
-  --jq '.runner_groups[] | select(.name=="public-ci") | .id')
-
-# 2. Move the runners you are willing to expose into it, one at a time.
-gh api orgs/markcipolla/actions/runners --jq '.runners[] | "\(.id)\t\(.name)"'
-gh api --method PUT "orgs/markcipolla/actions/runner-groups/$GROUP_ID/runners/<RUNNER_ID>"
-
-# 3. Confirm.
-gh api "orgs/markcipolla/actions/runner-groups/$GROUP_ID/runners" \
-  --jq '.runners[] | .name'
+$ gh api orgs/markcipolla/actions/runner-groups/3/repositories --jq '.repositories[].full_name'
+markcipolla/Shelvarr
 ```
 
 Group membership is what gates access, so `runs-on: self-hosted` in
 `ci-self-hosted.yml` resolves only to runners in a group this repository can
 reach. No custom labels are needed.
+
+### Putting runners in it
+
+A runner belongs to exactly one group, so moving one into `public-ci` takes it
+*out* of `Default` and the private repos lose it from their pool. With ten in
+the fleet, moving one or two is cheap.
+
+```sh
+gh api orgs/markcipolla/actions/runners --jq '.runners[] | "\(.id)\t\(.name)"'
+
+# Move a runner in (repeat per runner ID).
+gh api --method PUT orgs/markcipolla/actions/runner-groups/3/runners/<RUNNER_ID>
+
+# Put one back.
+gh api --method PUT orgs/markcipolla/actions/runner-groups/1/runners/<RUNNER_ID>
+
+# Confirm.
+gh api orgs/markcipolla/actions/runner-groups/3/runners --jq '.runners[].name'
+```
 
 ### Harden the runners in that group
 
