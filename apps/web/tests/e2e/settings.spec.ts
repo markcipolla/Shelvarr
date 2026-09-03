@@ -17,7 +17,6 @@ test.describe('Settings Page', () => {
     // Check for settings tabs as links (not buttons)
     await expect(page.getByRole('link', { name: /Metadata Sources/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /Download Sources/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Komga/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /About/i })).toBeVisible();
   });
 
@@ -36,25 +35,6 @@ test.describe('Settings Page', () => {
     await expect(
       page.getByText(/API key configured|API key required/i)
     ).toBeVisible();
-  });
-
-  test('should navigate to Komga section', async ({ page }) => {
-    // Click Komga tab link
-    await page.getByRole('link', { name: /Komga/i }).click();
-
-    // Should navigate to /settings/komga
-    await expect(page).toHaveURL(/\/settings\/komga/);
-
-    // Look for Komga URL input label specifically
-    await expect(page.getByText('Komga URL')).toBeVisible();
-  });
-
-  test('should have Test Connection button for Komga', async ({ page }) => {
-    // Navigate to Komga section
-    await page.goto('/settings/komga');
-
-    const testButton = page.getByRole('button', { name: /Test Connection/i });
-    await expect(testButton).toBeVisible();
   });
 
   test('should navigate to Download Sources section', async ({ page }) => {

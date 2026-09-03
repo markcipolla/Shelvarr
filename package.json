@@ -21,7 +21,6 @@
     "comics:migrate": "tsx scripts/migrate-comics.ts"
   },
   "keywords": [
-    "komga",
     "books",
     "ebooks",
     "comics",

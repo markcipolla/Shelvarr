@@ -1,8 +1,8 @@
 /**
- * Transform Shelvarr DB rows into Komga-compatible JSON responses
+ * Transform Shelvarr DB rows into the JSON the library API returns
  */
 
-import type * as Komga from '@shelvarr/types/komga';
+import type * as Api from '@shelvarr/types/api';
 import type { ReadProgressRow, EpubProgressionRow } from '@shelvarr/db';
 import { getEpubProgression, getHardcoverStatusId, hardcoverStatusLabel } from '@shelvarr/db';
 
@@ -37,7 +37,6 @@ interface DbLibrary {
   name: string;
   path: string;
   type: string | null;
-  komga_library_id: string | null;
   created_at: string;
 }
 
@@ -79,7 +78,7 @@ function extensionToMediaType(ext: string | null, filePath?: string): string {
   return 'application/octet-stream';
 }
 
-function parseAuthors(authorsField: string | null): Komga.Author[] {
+function parseAuthors(authorsField: string | null): Api.Author[] {
   if (!authorsField) return [];
   try {
     const parsed = JSON.parse(authorsField);
@@ -95,7 +94,7 @@ function parseAuthors(authorsField: string | null): Komga.Author[] {
 function formatReadProgress(
   progress: ReadProgressRow | null,
   epub: EpubProgressionRow | null = null,
-): Komga.ReadProgress | null {
+): Api.ReadProgress | null {
   if (!progress && !epub) return null;
   const completed = progress?.completed === 1 || (epub ? epub.progression >= 0.98 : false);
   const lastModified = epub?.updated_at ?? progress?.updated_at ?? new Date().toISOString();
@@ -112,7 +111,7 @@ function formatReadProgress(
 
 // The user's cached Hardcover reading status for a book. Prefers a status id the
 // query already joined in (`hc_status`); otherwise looks it up by Hardcover id.
-function resolveHardcoverStatus(row: DbBook): Komga.Book['hardcoverStatus'] {
+function resolveHardcoverStatus(row: DbBook): Api.Book['hardcoverStatus'] {
   if (row.hc_status !== undefined) return hardcoverStatusLabel(row.hc_status);
   if (row.metadata_source === 'hardcover' && row.metadata_id) {
     return hardcoverStatusLabel(getHardcoverStatusId(row.metadata_id));
@@ -120,7 +119,7 @@ function resolveHardcoverStatus(row: DbBook): Komga.Book['hardcoverStatus'] {
   return null;
 }
 
-export function toKomgaBook(row: DbBook, readProgress: ReadProgressRow | null = null): Komga.Book {
+export function toApiBook(row: DbBook, readProgress: ReadProgressRow | null = null): Api.Book {
   const epub = getEpubProgression(row.id);
   return {
     id: String(row.id),
@@ -144,14 +143,14 @@ export function toKomgaBook(row: DbBook, readProgress: ReadProgressRow | null = 
   };
 }
 
-export function toKomgaLibrary(row: DbLibrary): Komga.Library {
+export function toApiLibrary(row: DbLibrary): Api.Library {
   return {
     id: String(row.id),
     name: row.name,
   };
 }
 
-export function toKomgaSeries(row: DbSeries): Komga.Series {
+export function toApiSeries(row: DbSeries): Api.Series {
   return {
     id: String(row.id),
     libraryId: row.library_id ? String(row.library_id) : '0',
@@ -172,7 +171,7 @@ export function toPagedResponse<T>(
   page: number,
   size: number,
   totalElements: number
-): Komga.PagedResponse<T> {
+): Api.PagedResponse<T> {
   const totalPages = Math.ceil(totalElements / size);
   return {
     content,

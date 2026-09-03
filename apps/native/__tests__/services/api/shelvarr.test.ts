@@ -24,11 +24,11 @@ describe('updateReadingStatus', () => {
     mockFetch.mockResolvedValue({ ok: true });
     await updateReadingStatus('book1', 'reading');
     expect(mockFetch).toHaveBeenCalledWith(
-      'http://shelvarr.example.com/api/reading-status/by-komga',
+      'http://shelvarr.example.com/api/reading-status/by-book',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ komgaBookId: 'book1', status: 'reading' }),
+        body: JSON.stringify({ bookId: 'book1', status: 'reading' }),
       }
     );
   });

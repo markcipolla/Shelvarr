@@ -584,59 +584,6 @@ if (canRunTests) {
       });
     });
 
-    describe('Komga Sync Handler - Full Coverage', () => {
-      it('should handle invalid JSON in authors field', async () => {
-        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
-        registerAllHandlers();
-
-        execute(
-          'INSERT INTO books (id, library_id, file_path, title, authors, extension, file_size) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [1, 1, '/path/book.epub', 'Book', 'invalid[json', 'epub', 100]
-        );
-
-        const task = createTask('komga_sync', { bookId: 1 });
-        await runTask(task.id);
-
-        const updated = getTask(task.id);
-        assert.ok(updated);
-        assert.strictEqual(updated.status, 'completed');
-      });
-
-      it('should filter out non-string authors', async () => {
-        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
-        registerAllHandlers();
-
-        execute(
-          'INSERT INTO books (id, library_id, file_path, title, authors, extension, file_size) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [1, 1, '/path/book.epub', 'Book', '["Valid Author", null, "", 123]', 'epub', 100]
-        );
-
-        const task = createTask('komga_sync', { bookId: 1 });
-        await runTask(task.id);
-
-        const updated = getTask(task.id);
-        assert.ok(updated);
-        assert.strictEqual(updated.status, 'completed');
-      });
-
-      it('should include all book metadata fields', async () => {
-        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
-        registerAllHandlers();
-
-        execute(
-          'INSERT INTO books (id, library_id, file_path, title, authors, description, isbn, publish_date, cover_url, series_number, extension, file_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [1, 1, '/path/book.epub', 'Full Book', '["Author"]', 'Description', '9780000000000', '2024-01-01', 'http://cover.jpg', 3, 'epub', 100]
-        );
-
-        const task = createTask('komga_sync', { bookId: 1, libraryPath: testLibPath });
-        await runTask(task.id);
-
-        const updated = getTask(task.id);
-        assert.ok(updated);
-        assert.strictEqual(updated.status, 'completed');
-      });
-    });
-
     describe('Edge Cases and Error Handling', () => {
       it('should handle organize with missing extension field', async () => {
         const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');

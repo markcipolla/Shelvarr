@@ -5,7 +5,7 @@ import {
   readAsStringAsync,
   writeAsStringAsync,
 } from 'expo-file-system/legacy';
-import { DownloadedBook } from '../types/komga';
+import { DownloadedBook } from '../types/api';
 
 const MANIFEST_PATH = `${documentDirectory}downloads.json`;
 
