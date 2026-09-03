@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Switch, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../navigation/types';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { cleanAllDownloads } from '../services/fileManager';
 import { useUpdateStore } from '../stores/useUpdateStore';
@@ -8,15 +11,18 @@ import { testShelvarrConnection } from '../services/api/shelvarr';
 import { useAuthStore } from '../stores/useAuthStore';
 
 export default function SettingsScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const autoDelete = useSettingsStore((s) => s.autoDeleteAfterReading);
   const setAutoDelete = useSettingsStore((s) => s.setAutoDelete);
   const shelvarrUrl = useSettingsStore((s) => s.shelvarrUrl);
   const setShelvarrUrl = useSettingsStore((s) => s.setShelvarrUrl);
   const loadSettings = useSettingsStore((s) => s.loadSettings);
+  const setOnboardingComplete = useSettingsStore((s) => s.setOnboardingComplete);
   const [shelvarrUrlInput, setShelvarrUrlInput] = useState(shelvarrUrl);
   const [testing, setTesting] = useState(false);
   const authState = useAuthStore((s) => s.state);
   const account = useAuthStore((s) => s.user);
+  const allowSignup = useAuthStore((s) => s.serverStatus?.allowSignup ?? false);
   const signOut = useAuthStore((s) => s.signOut);
   const updateStatus = useUpdateStore((s) => s.status);
   const availableUpdate = useUpdateStore((s) => s.update);
@@ -47,9 +53,9 @@ export default function SettingsScreen() {
   };
 
   const handleSignOut = () => {
-    Alert.alert('Sign out', 'You will need a new sign-in link to get back in.', [
+    Alert.alert('Log out?', "You'll need a new link emailed to you to get back in.", [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: () => void signOut() },
+      { text: 'Log out', style: 'destructive', onPress: () => void signOut() },
     ]);
   };
 
@@ -91,16 +97,42 @@ export default function SettingsScreen() {
           <Text style={styles.buttonText}>Save</Text>
         )}
       </TouchableOpacity>
+      <TouchableOpacity style={styles.linkButton} onPress={() => setOnboardingComplete(false)}>
+        <Text style={styles.linkButtonText}>Run setup again</Text>
+      </TouchableOpacity>
 
-      {authState !== 'disabled' && (
+      {authState === 'signed-out' && (
         <>
           <Text style={styles.sectionTitle}>Account</Text>
           <View style={styles.aboutRow}>
-            <Text style={styles.label}>Signed in as</Text>
+            <Text style={styles.label}>Not logged in</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.button}
+            onPress={() => navigation.navigate('Login', { mode: 'login' })}
+          >
+            <Text style={styles.buttonText}>Log in</Text>
+          </TouchableOpacity>
+          {allowSignup && (
+            <TouchableOpacity
+              style={styles.linkButton}
+              onPress={() => navigation.navigate('Login', { mode: 'signup' })}
+            >
+              <Text style={styles.linkButtonText}>Sign up</Text>
+            </TouchableOpacity>
+          )}
+        </>
+      )}
+
+      {authState === 'signed-in' && (
+        <>
+          <Text style={styles.sectionTitle}>Account</Text>
+          <View style={styles.aboutRow}>
+            <Text style={styles.label}>Logged in as</Text>
             <Text style={styles.aboutValue}>{account?.email ?? 'Unknown'}</Text>
           </View>
           <TouchableOpacity style={styles.button} onPress={handleSignOut}>
-            <Text style={styles.buttonText}>Sign out</Text>
+            <Text style={styles.buttonText}>Log out</Text>
           </TouchableOpacity>
         </>
       )}
@@ -183,6 +215,8 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { color: '#333', fontSize: 15 },
+  linkButton: { marginTop: 12, alignItems: 'center', paddingVertical: 6 },
+  linkButtonText: { color: '#8b5e3c', fontSize: 14, fontWeight: '500' },
   updateNote: { fontSize: 13, color: '#777', marginTop: 10 },
   updateError: { fontSize: 13, color: '#a03c2c', marginTop: 10 },
   input: {

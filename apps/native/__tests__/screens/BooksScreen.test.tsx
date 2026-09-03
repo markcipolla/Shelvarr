@@ -5,6 +5,7 @@ import BooksScreen from '../../src/screens/BooksScreen';
 import { fetchBooks } from '../../src/services/api/books';
 import { useColumns } from '../../src/hooks/useColumns';
 import { useSettingsStore } from '../../src/stores/useSettingsStore';
+import { useAuthStore } from '../../src/stores/useAuthStore';
 import { useDownloadStore } from '../../src/stores/useDownloadStore';
 import { padDataForGrid } from '../../src/utils/gridHelpers';
 
@@ -77,6 +78,7 @@ describe('BooksScreen', () => {
       selector({ shelvarrUrl: 'http://shelvarr:3000' })
     );
     setDownloads({});
+    useAuthStore.setState({ state: 'signed-in' });
   });
 
   it('prompts for a server URL when none is configured', () => {
@@ -84,7 +86,18 @@ describe('BooksScreen', () => {
     const { getByText } = render(
       <BooksScreen navigation={mockNavigation} route={mockRoute} />
     );
-    expect(getByText(/No Shelvarr server configured/)).toBeTruthy();
+    expect(getByText('No server yet')).toBeTruthy();
+    expect(mockFetchBooks).not.toHaveBeenCalled();
+  });
+
+  it('says who is missing rather than an empty shelf when signed out', () => {
+    useAuthStore.setState({ state: 'signed-out' });
+
+    const { getByText } = render(
+      <BooksScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    expect(getByText('Not logged in')).toBeTruthy();
     expect(mockFetchBooks).not.toHaveBeenCalled();
   });
 
@@ -102,7 +115,7 @@ describe('BooksScreen', () => {
     const { getByText } = render(
       <BooksScreen navigation={mockNavigation} route={mockRoute} />
     );
-    await waitFor(() => expect(getByText('No books found.')).toBeTruthy());
+    await waitFor(() => expect(getByText('No books here yet.')).toBeTruthy());
   });
 
   it('falls back to downloaded books when the server is unreachable', async () => {
@@ -114,7 +127,7 @@ describe('BooksScreen', () => {
       <BooksScreen navigation={mockNavigation} route={mockRoute} />
     );
     await waitFor(() => expect(getByTestId('book-7')).toBeTruthy());
-    expect(getByText(/Offline — showing books downloaded to this device\./)).toBeTruthy();
+    expect(getByText(/showing what's saved on this device/)).toBeTruthy();
   });
 
   it('says so when offline with nothing downloaded', async () => {
@@ -122,9 +135,7 @@ describe('BooksScreen', () => {
     const { getByText } = render(
       <BooksScreen navigation={mockNavigation} route={mockRoute} />
     );
-    await waitFor(() =>
-      expect(getByText('Offline, and no books are downloaded to this device.')).toBeTruthy()
-    );
+    await waitFor(() => expect(getByText("You're offline")).toBeTruthy());
   });
 
   it('opens a book from the grid', async () => {

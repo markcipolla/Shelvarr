@@ -27,7 +27,8 @@ import {
 import BookCard from '../components/BookCard';
 import ComicCard from '../components/ComicCard';
 import { useColumns } from '../hooks/useColumns';
-import { useSettingsStore } from '../stores/useSettingsStore';
+import { useConnectionStatus } from '../hooks/useConnectionStatus';
+import ConnectionNotice from '../components/ConnectionNotice';
 import { useDownloadStore } from '../stores/useDownloadStore';
 import { useNextUpStore } from '../stores/useNextUpStore';
 import { searchDownloadedBooks } from '../services/offlineLibrary';
@@ -44,7 +45,7 @@ function inProgressComicLabel(item: InProgressComic): string {
 }
 
 export default function HomeScreen({ navigation }: Props) {
-  const shelvarrUrl = useSettingsStore((s) => s.shelvarrUrl);
+  const connection = useConnectionStatus();
   const downloadsMap = useDownloadStore((s) => s.downloads);
   const downloadedBooks = useMemo(
     () =>
@@ -78,7 +79,7 @@ export default function HomeScreen({ navigation }: Props) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadData = useCallback(async () => {
-    if (!shelvarrUrl) {
+    if (connection !== 'ready') {
       setLoading(false);
       setRefreshing(false);
       return;
@@ -122,7 +123,7 @@ export default function HomeScreen({ navigation }: Props) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [shelvarrUrl]);
+  }, [connection]);
 
   useFocusEffect(
     useCallback(() => {
@@ -229,14 +230,8 @@ export default function HomeScreen({ navigation }: Props) {
     [nextUpComics, dismissedComics]
   );
 
-  if (!shelvarrUrl) {
-    return (
-      <View style={styles.center}>
-        <Text style={{ fontSize: 18, color: '#666', textAlign: 'center', paddingHorizontal: 32 }}>
-          No server configured.{'\n'}Tap the gear icon to set your Shelvarr URL.
-        </Text>
-      </View>
-    );
+  if (connection !== 'ready') {
+    return <ConnectionNotice status={connection} />;
   }
 
   if (loading) {
@@ -568,7 +563,7 @@ export default function HomeScreen({ navigation }: Props) {
           refreshing ? (
             <ActivityIndicator size="large" color="#8b5e3c" style={styles.inlineSpinner} />
           ) : (
-            <Text style={styles.emptyText}>No books yet</Text>
+            <Text style={styles.emptyText}>Nothing on your shelves yet</Text>
           )
         )}
       </ScrollView>

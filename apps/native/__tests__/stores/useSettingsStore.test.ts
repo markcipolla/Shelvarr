@@ -44,6 +44,24 @@ describe('useSettingsStore', () => {
     });
   });
 
+  describe('setOnboardingComplete', () => {
+    it('remembers that setup is done', async () => {
+      useSettingsStore.getState().setOnboardingComplete(true);
+      expect(useSettingsStore.getState().onboardingComplete).toBe(true);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(await SecureStore.getItemAsync('settings_onboardingComplete')).toBe('true');
+    });
+
+    it('sends the app back through setup when asked', async () => {
+      useSettingsStore.setState({ onboardingComplete: true });
+
+      useSettingsStore.getState().setOnboardingComplete(false);
+      expect(useSettingsStore.getState().onboardingComplete).toBe(false);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(await SecureStore.getItemAsync('settings_onboardingComplete')).toBe('false');
+    });
+  });
+
   describe('loadSettings', () => {
     it('parses stored values', async () => {
       await SecureStore.setItemAsync('settings_autoDelete', 'false');
@@ -67,6 +85,38 @@ describe('useSettingsStore', () => {
       // shelvarrUrl not set
       await useSettingsStore.getState().loadSettings();
       expect(useSettingsStore.getState().shelvarrUrl).toBe('');
+    });
+
+    it('marks itself loaded, so nothing renders on defaults', async () => {
+      expect(useSettingsStore.getState().loaded).toBe(false);
+
+      await useSettingsStore.getState().loadSettings();
+
+      expect(useSettingsStore.getState().loaded).toBe(true);
+    });
+
+    it('reads back whether setup was finished', async () => {
+      await SecureStore.setItemAsync('settings_onboardingComplete', 'true');
+
+      await useSettingsStore.getState().loadSettings();
+
+      expect(useSettingsStore.getState().onboardingComplete).toBe(true);
+    });
+
+    it('spares an existing install the wizard it never saw', async () => {
+      // Upgrades from before the wizard have no flag but do have a server,
+      // which is the same thing setup would have produced.
+      await SecureStore.setItemAsync('settings_shelvarrUrl', 'http://shelvarr.local');
+
+      await useSettingsStore.getState().loadSettings();
+
+      expect(useSettingsStore.getState().onboardingComplete).toBe(true);
+    });
+
+    it('runs setup on a fresh install', async () => {
+      await useSettingsStore.getState().loadSettings();
+
+      expect(useSettingsStore.getState().onboardingComplete).toBe(false);
     });
   });
 });

@@ -26,6 +26,7 @@ jest.mock('../../src/services/api/shelvarr', () => ({
 const mockSetAutoDelete = jest.fn();
 const mockSetShelvarrUrl = jest.fn();
 const mockLoadSettings = jest.fn();
+const mockSetOnboardingComplete = jest.fn();
 
 const mockCheckForUpdates = jest.fn();
 const mockStartUpdate = jest.fn();
@@ -59,6 +60,14 @@ function mockAuthState(overrides: Record<string, unknown> = {}) {
   );
 }
 
+// The global setup hands back a fresh jest.fn each render, which can't be
+// asserted on; this one keeps the same spy across the whole test.
+const mockNavigate = jest.fn();
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual('@react-navigation/native'),
+  useNavigation: () => ({ navigate: mockNavigate }),
+}));
+
 const mockCleanAllDownloads = cleanAllDownloads as jest.Mock;
 const mockTestShelvarrConnection = testShelvarrConnection as jest.Mock;
 
@@ -79,6 +88,7 @@ describe('SettingsScreen', () => {
         shelvarrUrl: 'http://shelvarr:3000',
         setShelvarrUrl: mockSetShelvarrUrl,
         loadSettings: mockLoadSettings,
+        setOnboardingComplete: mockSetOnboardingComplete,
       })
     );
   });
@@ -92,7 +102,47 @@ describe('SettingsScreen', () => {
     expect(getByText('Updates')).toBeTruthy();
   });
 
+  it('offers setup again, for moving to another server', () => {
+    const { getByText } = render(<SettingsScreen />);
+
+    fireEvent.press(getByText('Run setup again'));
+
+    expect(mockSetOnboardingComplete).toHaveBeenCalledWith(false);
+  });
+
   describe('the account section', () => {
+    it('says plainly when nobody is signed in, and offers a way in', () => {
+      mockAuthState({ state: 'signed-out', user: null });
+
+      const { getByText } = render(<SettingsScreen />);
+
+      expect(getByText('Not logged in')).toBeTruthy();
+      fireEvent.press(getByText('Log in'));
+
+      expect(mockNavigate).toHaveBeenCalledWith('Login', { mode: 'login' });
+    });
+
+    it('offers signing up where the server takes new accounts', () => {
+      mockAuthState({
+        state: 'signed-out',
+        user: null,
+        serverStatus: { enabled: true, setupRequired: false, allowSignup: true, emailConfigured: true },
+      });
+
+      const { getByText } = render(<SettingsScreen />);
+      fireEvent.press(getByText('Sign up'));
+
+      expect(mockNavigate).toHaveBeenCalledWith('Login', { mode: 'signup' });
+    });
+
+    it('keeps quiet about signing up when the server will not have it', () => {
+      mockAuthState({ state: 'signed-out', user: null });
+
+      const { queryByText } = render(<SettingsScreen />);
+
+      expect(queryByText('Sign up')).toBeNull();
+    });
+
     it('names who is signed in', () => {
       const { getByText } = render(<SettingsScreen />);
 
@@ -114,17 +164,17 @@ describe('SettingsScreen', () => {
       const { queryByText } = render(<SettingsScreen />);
 
       expect(queryByText('Account')).toBeNull();
-      expect(queryByText('Sign out')).toBeNull();
+      expect(queryByText('Log out')).toBeNull();
     });
 
     it('asks before signing out, since getting back in needs a new link', () => {
       const { getByText } = render(<SettingsScreen />);
 
-      fireEvent.press(getByText('Sign out'));
+      fireEvent.press(getByText('Log out'));
 
       expect(Alert.alert).toHaveBeenCalledWith(
-        'Sign out',
-        'You will need a new sign-in link to get back in.',
+        'Log out?',
+        "You'll need a new link emailed to you to get back in.",
         expect.any(Array)
       );
       expect(mockSignOut).not.toHaveBeenCalled();
@@ -132,13 +182,13 @@ describe('SettingsScreen', () => {
 
     it('signs out once confirmed', () => {
       const { getByText } = render(<SettingsScreen />);
-      fireEvent.press(getByText('Sign out'));
+      fireEvent.press(getByText('Log out'));
 
       const buttons = (Alert.alert as jest.Mock).mock.calls[0][2] as Array<{
         text: string;
         onPress?: () => void;
       }>;
-      buttons.find((button) => button.text === 'Sign out')?.onPress?.();
+      buttons.find((button) => button.text === 'Log out')?.onPress?.();
 
       expect(mockSignOut).toHaveBeenCalled();
     });

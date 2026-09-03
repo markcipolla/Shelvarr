@@ -100,7 +100,7 @@ describe('ComicsScreen', () => {
   it('shows "no server configured" message when shelvarrUrl is empty', () => {
     mockUseSettingsStore.mockImplementation((selector: any) => selector({ shelvarrUrl: '' }));
     const { getByText } = render(<ComicsScreen navigation={mockNavigation} route={mockRoute} />);
-    expect(getByText(/No Shelvarr server configured/)).toBeTruthy();
+    expect(getByText('No server yet')).toBeTruthy();
   });
 
   it('shows the skeleton grid while loading with no cache', async () => {
@@ -181,6 +181,19 @@ describe('ComicsScreen', () => {
     });
   });
 
+  it('says the grid came from this device when the server was unreachable', async () => {
+    mockFetchComics.mockResolvedValue({
+      volumes: [makeVolume(42, { title: 'Batman' })],
+      cached: true,
+    });
+
+    const { getByText } = render(<ComicsScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => {
+      expect(getByText(/showing what's saved on this device/)).toBeTruthy();
+    });
+  });
+
   it('navigates to ComicDetail when a volume is tapped', async () => {
     mockFetchComics.mockResolvedValue({
       volumes: [makeVolume(42, { title: 'Batman' })],
@@ -202,7 +215,7 @@ describe('ComicsScreen', () => {
     const { getByText } = render(<ComicsScreen navigation={mockNavigation} route={mockRoute} />);
 
     await waitFor(() => {
-      expect(getByText('No comics found.')).toBeTruthy();
+      expect(getByText('No comics here yet.')).toBeTruthy();
     });
   });
 
