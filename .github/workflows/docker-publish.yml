@@ -1,8 +1,12 @@
 name: Build and Publish Docker Images
 
 on:
+  # Follows the self-hosted suite, not the pull-request one: CI now only runs
+  # on pull requests, so a push to master produces no "CI" run to key off.
+  # "CI (self-hosted)" is what runs on push, and it is fork-unreachable, so a
+  # pull request cannot make it succeed and trigger a publish.
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["CI (self-hosted)"]
     branches: [main, master]
     types:
       - completed

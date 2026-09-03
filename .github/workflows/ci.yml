@@ -1,10 +1,26 @@
 name: CI
 
+# The fork-facing half of CI, and the gate the `Shelvarr rules` ruleset
+# requires. Shelvarr is public, and a `pull_request` run executes the workflow
+# file from the *fork's* head — so a fork can rewrite anything in this file,
+# including `runs-on`. That makes GitHub-hosted runners the only safe choice
+# here, and it is why routing forks away with a `runs-on` expression would be
+# theatre rather than a boundary. Self-hosted runs live in ci-self-hosted.yml,
+# behind a trigger forks cannot reach.
+#
+# Job IDs are load-bearing: the ruleset's required status checks match them by
+# name. Renaming one silently stops gating merges.
+
 on:
-  push:
-    branches: [main, master]
   pull_request:
     branches: [main, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint-and-typecheck:
