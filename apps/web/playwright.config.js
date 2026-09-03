@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 /**
  * A throwaway data directory, emptied at the start of every run.
@@ -70,6 +71,30 @@ export default defineConfig({
       SHELVARR_AUTH_ENABLED: 'true',
       // Recurring jobs would reach out to ComicVine and GetComics mid-test.
       SCHEDULER_ENABLED: 'false',
+      // Page renders reach out too — /settings/downloads probes every download
+      // source to report its status. That happens on the server side of the
+      // suite, out of reach of page.route(), so both the mocks and the guard
+      // behind them have to load in the dev server. NODE_OPTIONS is the only
+      // way in to a process Playwright spawns for us.
+      //
+      // Order matters. Whichever of the two patches fetch last ends up
+      // outermost and runs first, and we want msw to have the first look:
+      // requests it has a handler for are answered, and the rest fall through
+      // to the guard, which blocks them. File URLs keep the paths intact if
+      // the checkout has spaces in it.
+      //
+      // --import=<url> rather than --import <url>: next dev passes NODE_OPTIONS
+      // on to a child process, and with two space-separated flags the child
+      // reads the second path as part of the first one's value and dies.
+      NODE_OPTIONS: [
+        process.env.NODE_OPTIONS,
+        ...['no-network.mjs', join('mocks', 'e2e-server.mjs')].map(
+          (file) => `--import=${pathToFileURL(join(import.meta.dirname, 'tests', file)).href}`
+        ),
+      ]
+        .filter(Boolean)
+        .join(' '),
+      NEXT_TELEMETRY_DISABLED: '1',
     },
   },
 });

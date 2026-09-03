@@ -51,10 +51,31 @@ describe('Hardcover Service Integration', { timeout: 30_000 }, () => {
     it('should return null and log error when no token configured', async () => {
       delete process.env.HARDCOVER_TOKEN;
       delete process.env.HARDCOVER_API_TOKEN;
-      const { getBookById } = await import('../../lib/services/metadata/hardcover.js');
 
-      const result = await getBookById('123');
-      assert.strictEqual(result, null);
+      // The service config caches the token the first time it is read, and the
+      // test above has already put one there. Clearing the environment on its
+      // own leaves that copy in place, so the request went out to the real
+      // Hardcover API and this passed on the 401 rather than on the missing
+      // token it means to be checking.
+      const { initServiceConfig, getServiceConfig } = await import('@shelvarr/services');
+      const config = getServiceConfig();
+      initServiceConfig({ ...config, hardcoverToken: null });
+
+      let requested = false;
+      global.fetch = async () => {
+        requested = true;
+        return new Response('{}', { headers: { 'content-type': 'application/json' } });
+      };
+
+      try {
+        const { getBookById } = await import('../../lib/services/metadata/hardcover.js');
+
+        const result = await getBookById('123');
+        assert.strictEqual(result, null);
+        assert.strictEqual(requested, false, 'should not call the API without a token');
+      } finally {
+        initServiceConfig(config);
+      }
     });
   });
 
