@@ -2,7 +2,7 @@ import { readdirSync, statSync } from 'fs';
 import { join, extname, basename } from 'path';
 import { createHash } from 'crypto';
 import { readFileSync } from 'fs';
-import { query, queryOne, execute, hardcoverStatusLabel } from '@shelvarr/db';
+import { query, queryOne, execute, hardcoverStatusLabel, progressUserId } from '@shelvarr/db';
 import { getLibraryById } from '../library';
 import { getServiceConfig } from '../config';
 import type { Book } from '@shelvarr/types';
@@ -86,8 +86,16 @@ function rowToBook(row: BookRow): Book {
   };
 }
 
+// Joins each book to one person's reading position. Aliased as `b`, exposing
+// `rp_*` and `ep_progression`. Takes two parameters — the user id, twice —
+// which must be bound before anything else in the query.
+const PROGRESS_JOIN = `
+  LEFT JOIN read_progress rp ON rp.book_id = b.id AND rp.user_id = ?
+  LEFT JOIN epub_progression ep ON ep.book_id = b.id AND ep.user_id = ?`;
+
 // Joins each book to its cached Hardcover reading status (when the book is
 // matched to a Hardcover record). Aliased as `b`, exposing `hc_status`.
+// Server-wide: Hardcover is configured once, with one account's token.
 const HARDCOVER_STATUS_JOIN = `
   LEFT JOIN hardcover_reading_status hs
     ON hs.hardcover_id = b.metadata_id AND b.metadata_source = 'hardcover'`;
@@ -364,7 +372,7 @@ export async function getBooks(queryParams: BookQuery = {}): Promise<BookListRes
   };
 }
 
-export async function getRecentBooks(limit: number): Promise<Book[]> {
+export async function getRecentBooks(userId: number, limit: number): Promise<Book[]> {
   const rows = query<BookRow>(
     `SELECT b.*,
        rp.page AS rp_page,
@@ -372,20 +380,20 @@ export async function getRecentBooks(limit: number): Promise<Book[]> {
        ep.progression AS ep_progression,
        hs.status_id AS hc_status
      FROM books b
-     LEFT JOIN read_progress rp ON b.id = rp.book_id
-     LEFT JOIN epub_progression ep ON b.id = ep.book_id
+     ${PROGRESS_JOIN}
      ${HARDCOVER_STATUS_JOIN}
      WHERE b.metadata_source IS NOT NULL
      ORDER BY b.created_at DESC
      LIMIT ?`,
-    [Math.max(1, Math.min(100, limit))]
+    [progressUserId(userId), progressUserId(userId), Math.max(1, Math.min(100, limit))]
   );
   return rows.map(rowToBook);
 }
 
-// "Currently reading" spans local reading progress and books the user marked
-// "currently reading" on Hardcover (status 2) that have no local progress yet.
-export async function getCurrentlyReadingBooks(limit: number): Promise<Book[]> {
+// "Currently reading" spans this person's own reading progress and books
+// marked "currently reading" on Hardcover (status 2) that nobody has started
+// locally. The Hardcover half is server-wide; the progress half is not.
+export async function getCurrentlyReadingBooks(userId: number, limit: number): Promise<Book[]> {
   const rows = query<BookRow>(
     `SELECT b.*,
        rp.page AS rp_page,
@@ -393,8 +401,7 @@ export async function getCurrentlyReadingBooks(limit: number): Promise<Book[]> {
        ep.progression AS ep_progression,
        hs.status_id AS hc_status
      FROM books b
-     LEFT JOIN read_progress rp ON b.id = rp.book_id
-     LEFT JOIN epub_progression ep ON b.id = ep.book_id
+     ${PROGRESS_JOIN}
      ${HARDCOVER_STATUS_JOIN}
      WHERE (rp.completed IS NULL OR rp.completed = 0)
        AND ((rp.page IS NOT NULL AND rp.page > 0)
@@ -402,14 +409,14 @@ export async function getCurrentlyReadingBooks(limit: number): Promise<Book[]> {
             OR hs.status_id = 2)
      ORDER BY COALESCE(ep.updated_at, rp.updated_at, hs.synced_at) DESC
      LIMIT ?`,
-    [Math.max(1, Math.min(100, limit))]
+    [progressUserId(userId), progressUserId(userId), Math.max(1, Math.min(100, limit))]
   );
   return rows.map(rowToBook);
 }
 
-// Books the user marked "want to read" on Hardcover and hasn't started locally
-// — surfaced on the home "Next Up" row. Newest-tracked first.
-export async function getWantToReadBooks(limit: number): Promise<Book[]> {
+// Books marked "want to read" on Hardcover that this person hasn't started
+// locally — surfaced on the home "Next Up" row. Newest-tracked first.
+export async function getWantToReadBooks(userId: number, limit: number): Promise<Book[]> {
   const rows = query<BookRow>(
     `SELECT b.*,
        rp.page AS rp_page,
@@ -418,13 +425,13 @@ export async function getWantToReadBooks(limit: number): Promise<Book[]> {
      FROM books b
      JOIN hardcover_reading_status hs
        ON hs.hardcover_id = b.metadata_id AND b.metadata_source = 'hardcover'
-     LEFT JOIN read_progress rp ON b.id = rp.book_id
+     LEFT JOIN read_progress rp ON b.id = rp.book_id AND rp.user_id = ?
      WHERE hs.status_id = 1
        AND (rp.completed IS NULL OR rp.completed = 0)
        AND (rp.page IS NULL OR rp.page = 0)
      ORDER BY hs.synced_at DESC, b.title COLLATE NOCASE
      LIMIT ?`,
-    [Math.max(1, Math.min(100, limit))]
+    [progressUserId(userId), Math.max(1, Math.min(100, limit))]
   );
   return rows.map(rowToBook);
 }

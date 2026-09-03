@@ -1,7 +1,7 @@
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { AuthStatus, User } from '@shelvarr/types';
-import { auth } from '@shelvarr/services';
+import { auth, SHARED_USER_ID } from '@shelvarr/services';
 import '@/lib/config';
 
 export const SESSION_COOKIE = auth.SESSION_COOKIE_NAME;
@@ -48,6 +48,18 @@ export async function getCurrentUser(): Promise<User | null> {
 
 export function getAuthStatus(): AuthStatus {
   return auth.getAuthStatus();
+}
+
+/**
+ * Whose read progress this page should show.
+ *
+ * The server-component counterpart of `getReadingUserId` in @shelvarr/services:
+ * a signed-in person sees their own shelf, and a server without accounts falls
+ * back to the shared one, which is how it behaved before accounts existed.
+ */
+export async function getReadingUserId(): Promise<number> {
+  const user = await getCurrentUser();
+  return user?.id ?? SHARED_USER_ID;
 }
 
 /**

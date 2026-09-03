@@ -119,8 +119,18 @@ function resolveHardcoverStatus(row: DbBook): Api.Book['hardcoverStatus'] {
   return null;
 }
 
-export function toApiBook(row: DbBook, readProgress: ReadProgressRow | null = null): Api.Book {
-  const epub = getEpubProgression(row.id);
+/**
+ * Map a book row into the shape the native app expects.
+ *
+ * `userId` says whose reading position to attach — a real account id, or
+ * `SHARED_USER_ID` on a server without accounts. See `getReadingUserId`.
+ */
+export function toApiBook(
+  row: DbBook,
+  userId: number,
+  readProgress: ReadProgressRow | null = null
+): Api.Book {
+  const epub = getEpubProgression(userId, row.id);
   return {
     id: String(row.id),
     seriesId: row.series_name ? String(row.series_name) : String(row.library_id),

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
 import { queryOne, getEpubProgression, getLatestEpubProgression, upsertEpubProgression, upsertReadProgress } from '@/lib/db';
-import { validateApiAuth } from '@shelvarr/services';
+import { validateApiAuth, getReadingUserId } from '@shelvarr/services';
 import { toEpubProgression } from '@shelvarr/services/api-response';
 import { syncReadingProgress } from '@/lib/services/metadata/hardcover';
 
@@ -20,11 +20,13 @@ export async function GET(
   const deviceId = request.nextUrl.searchParams.get('device_id');
 
   // With an explicit device_id, return that device's progression; otherwise
-  // return the latest progression across devices so reading resumes wherever
-  // it was last left off, even on a device that's never opened this book.
+  // return the latest progression across this person's devices, so reading
+  // resumes wherever they last left off — including on a device that has
+  // never opened this book.
+  const userId = getReadingUserId(request.headers);
   const progression = deviceId
-    ? getEpubProgression(bookId, deviceId)
-    : getLatestEpubProgression(bookId);
+    ? getEpubProgression(userId, bookId, deviceId)
+    : getLatestEpubProgression(userId, bookId);
   if (!progression) {
     return NextResponse.json(null);
   }
@@ -40,6 +42,7 @@ export async function PUT(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const userId = getReadingUserId(request.headers);
   const { id } = await params;
   const bookId = parseInt(id);
   const body = await request.json() as {
@@ -70,9 +73,9 @@ export async function PUT(
   const locator = typeof body.locator === 'string' ? body.locator : JSON.stringify(body.locator);
 
   const completed = progression >= 0.98;
-  upsertEpubProgression(bookId, deviceId, locator, progression);
+  upsertEpubProgression(userId, bookId, deviceId, locator, progression);
   // Mirror into read_progress so IN_PROGRESS filters (page > 0) match.
-  upsertReadProgress(bookId, completed ? 0 : 1, completed);
+  upsertReadProgress(userId, bookId, completed ? 0 : 1, completed);
 
   // Fire-and-forget Hardcover sync — throttled per-book inside syncReadingProgress.
   if (book.metadata_id && book.metadata_source === 'hardcover') {
@@ -81,6 +84,6 @@ export async function PUT(
     });
   }
 
-  const result = getEpubProgression(bookId, deviceId);
+  const result = getEpubProgression(userId, bookId, deviceId);
   return NextResponse.json(toEpubProgression(result));
 }

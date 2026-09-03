@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
 import { getNextUpBooks, getWantToReadBooks, getReadProgress } from '@/lib/db';
-import { validateApiAuth } from '@shelvarr/services';
+import { validateApiAuth, getReadingUserId } from '@shelvarr/services';
 import { toApiBook, toPagedResponse } from '@shelvarr/services/api-response';
 
 // Cap on how many books are gathered before in-memory pagination. This home row
@@ -46,8 +46,10 @@ function dedupeById(rows: BookRow[]): BookRow[] {
   return out;
 }
 
-// "Next Up" = the next unread book in each series the user is partway through,
-// plus books the user marked "want to read" on Hardcover and hasn't started.
+// "Next Up" = the next unread book in each series this person is partway
+// through, plus books marked "want to read" on Hardcover that they have not
+// started. Both halves are filtered by the caller's own progress, so two
+// people sharing a server get different rows.
 export function GET(request: NextRequest) {
   if (!validateApiAuth(request.headers)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -58,12 +60,13 @@ export function GET(request: NextRequest) {
   const size = parseInt(searchParams.get('size') || '20');
   const offset = page * size;
 
-  const seriesRows = getNextUpBooks<BookRow>(MAX_ROWS, 0);
-  const wantToReadRows = getWantToReadBooks<BookRow>(MAX_ROWS, 0);
+  const userId = getReadingUserId(request.headers);
+  const seriesRows = getNextUpBooks<BookRow>(userId, MAX_ROWS, 0);
+  const wantToReadRows = getWantToReadBooks<BookRow>(userId, MAX_ROWS, 0);
 
   const merged = dedupeById([...seriesRows, ...wantToReadRows]);
   const pageRows = merged.slice(offset, offset + size);
-  const content = pageRows.map((b) => toApiBook(b, getReadProgress(b.id)));
+  const content = pageRows.map((b) => toApiBook(b, userId, getReadProgress(userId, b.id)));
 
   return NextResponse.json(toPagedResponse(content, page, size, merged.length));
 }

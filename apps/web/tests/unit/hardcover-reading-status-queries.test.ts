@@ -52,6 +52,11 @@ if (canRunTests) {
   }
 
   describe('hardcover reading-status queries (@shelvarr/db)', () => {
+    // The Hardcover snapshot is server-wide, but the local progress that
+    // filters it belongs to one reader.
+    const READER = 7;
+    const OTHER_READER = 8;
+
     beforeEach(() => {
       db.getDb().exec(
         'DELETE FROM hardcover_reading_status; DELETE FROM read_progress; DELETE FROM books;'
@@ -84,11 +89,11 @@ if (canRunTests) {
     it('replaces the previous snapshot on each sync', () => {
       addBook('Want', '100');
       db.replaceHardcoverStatuses([{ hardcoverId: '100', statusId: 1 }]);
-      assert.strictEqual(db.countWantToReadBooks(), 1);
+      assert.strictEqual(db.countWantToReadBooks(READER), 1);
 
       // A later sync where the book is now "read" clears the want-to-read entry.
       db.replaceHardcoverStatuses([{ hardcoverId: '100', statusId: 3 }]);
-      assert.strictEqual(db.countWantToReadBooks(), 0);
+      assert.strictEqual(db.countWantToReadBooks(READER), 0);
     });
 
     it('returns want-to-read books matched to a Hardcover id', () => {
@@ -100,18 +105,18 @@ if (canRunTests) {
         { hardcoverId: '201', statusId: 2 },
       ]);
 
-      const rows = db.getWantToReadBooks<Row>(10, 0);
+      const rows = db.getWantToReadBooks<Row>(READER, 10, 0);
       assert.deepStrictEqual(rows.map((r) => r.title), ['Wanted']);
-      assert.strictEqual(db.countWantToReadBooks(), 1);
+      assert.strictEqual(db.countWantToReadBooks(READER), 1);
     });
 
     it('returns Hardcover "currently reading" books with no local progress', () => {
       addBook('ReadingNow', '300');
       db.replaceHardcoverStatuses([{ hardcoverId: '300', statusId: 2 }]);
 
-      const rows = db.getHardcoverReadingBooks<Row>(10, 0);
+      const rows = db.getHardcoverReadingBooks<Row>(READER, 10, 0);
       assert.deepStrictEqual(rows.map((r) => r.title), ['ReadingNow']);
-      assert.strictEqual(db.countHardcoverReadingBooks(), 1);
+      assert.strictEqual(db.countHardcoverReadingBooks(READER), 1);
     });
 
     it('excludes books already started or finished locally', () => {
@@ -122,11 +127,26 @@ if (canRunTests) {
         { hardcoverId: '401', statusId: 2 },
       ]);
 
-      db.upsertReadProgress(want, 20, false); // started locally
-      db.upsertReadProgress(reading, 100, true); // finished locally
+      db.upsertReadProgress(READER, want, 20, false); // started locally
+      db.upsertReadProgress(READER, reading, 100, true); // finished locally
 
-      assert.strictEqual(db.countWantToReadBooks(), 0);
-      assert.strictEqual(db.countHardcoverReadingBooks(), 0);
+      assert.strictEqual(db.countWantToReadBooks(READER), 0);
+      assert.strictEqual(db.countHardcoverReadingBooks(READER), 0);
+    });
+
+    it("only excludes books the asking reader has started", () => {
+      const want = addBook('WantButStartedByAnother', '500');
+      db.replaceHardcoverStatuses([{ hardcoverId: '500', statusId: 1 }]);
+      db.upsertReadProgress(OTHER_READER, want, 20, false);
+
+      // Someone else reading it says nothing about whether this reader has.
+      assert.strictEqual(db.countWantToReadBooks(READER), 1);
+      assert.strictEqual(db.countWantToReadBooks(OTHER_READER), 0);
+      assert.deepStrictEqual(
+        db.getWantToReadBooks<Row>(READER, 10, 0).map((r) => r.title),
+        ['WantButStartedByAnother']
+      );
+      assert.deepStrictEqual(db.getWantToReadBooks<Row>(OTHER_READER, 10, 0), []);
     });
   });
 }

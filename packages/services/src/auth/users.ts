@@ -1,5 +1,6 @@
 import type { User, UserRole } from '@shelvarr/types';
 import {
+  adoptSharedReadProgress,
   countAdmins,
   countUsers,
   createUser as dbCreateUser,
@@ -87,12 +88,20 @@ export function setSignupAllowed(allowed: boolean): void {
  * Only possible while no accounts exist. That window is the whole security
  * model for the setup wizard: the moment the first admin is created, this
  * closes for good.
+ *
+ * Whatever reading the server has recorded so far sits on the shared shelf,
+ * because until now there was nobody to attribute it to. The person turning
+ * accounts on is the person who did that reading, so it comes with them —
+ * otherwise adding accounts would look like losing every book you were
+ * partway through. Everyone invited afterwards starts empty.
  */
 export function createFirstAdmin(email: string, name: string | null): User {
   if (!isSetupRequired()) {
     throw new AuthError('Setup has already been completed', 'setup-complete');
   }
-  return dbCreateUser(requireValidEmail(email), name?.trim() || null, 'admin');
+  const admin = dbCreateUser(requireValidEmail(email), name?.trim() || null, 'admin');
+  adoptSharedReadProgress(admin.id);
+  return admin;
 }
 
 /** Create an account for an address an admin has invited. */

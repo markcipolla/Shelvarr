@@ -150,6 +150,20 @@ one on the phone, and the app finishes signing in within a few seconds.
 It is unset by default, and unlike before, leaving it unset no longer means the
 API is open.
 
+**Reading is per person.** Everyone gets their own read progress, so **Currently
+Reading** and **Next Up** on the home screen — and the resume position in the
+reader, on the web and in the app — follow you, not the server. Two people can
+be on different issues of the same comic without moving each other's place.
+
+With `SHELVARR_AUTH_ENABLED=false` there is nobody to tell apart, so reading is
+shared across everyone, exactly as it was before accounts existed. Requests
+using the `api_key` read and write that same shared progress, since the key
+names nobody. When you create the first admin account, whatever the server had
+already recorded comes with you — turning accounts on does not lose your place.
+
+Two things stay server-wide by design: Hardcover, which is configured once with
+a single account's token, and the green *read* tick that comes from it.
+
 ## Comics
 
 Shelvarr manages comics itself — it does not need Kapowarr.

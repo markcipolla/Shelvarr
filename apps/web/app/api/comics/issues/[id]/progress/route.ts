@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
 import { getComicReadProgress, upsertComicReadProgress } from '@/lib/db';
-import { validateApiAuth } from '@shelvarr/services';
+import { validateApiAuth, getReadingUserId } from '@shelvarr/services';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +19,7 @@ export async function GET(
     return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
   }
 
-  const row = getComicReadProgress(issueId);
+  const row = getComicReadProgress(getReadingUserId(request.headers), issueId);
   return NextResponse.json(row ?? null);
 }
 
@@ -39,12 +39,14 @@ export async function PATCH(
 
   const body = await request.json() as { page?: number; completed?: boolean; total?: number };
 
+  const userId = getReadingUserId(request.headers);
   upsertComicReadProgress(
+    userId,
     issueId,
     body.page ?? 0,
     body.completed ?? false,
     body.total ?? null,
   );
 
-  return NextResponse.json(getComicReadProgress(issueId));
+  return NextResponse.json(getComicReadProgress(userId, issueId));
 }

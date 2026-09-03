@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import '@/lib/config';
 import { queryOne, getReadProgress, upsertReadProgress, deleteReadProgress } from '@/lib/db';
-import { validateApiAuth } from '@shelvarr/services';
+import { validateApiAuth, getReadingUserId } from '@shelvarr/services';
 import { upsertReadingStatus } from '@/lib/services/metadata/hardcover';
 
 export const dynamic = 'force-dynamic';
@@ -14,6 +14,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const userId = getReadingUserId(request.headers);
   const { id } = await params;
   const bookId = parseInt(id);
   const body = await request.json() as { page?: number; completed?: boolean };
@@ -26,9 +27,11 @@ export async function PATCH(
     return NextResponse.json({ error: 'Book not found' }, { status: 404 });
   }
 
-  upsertReadProgress(bookId, body.page || 0, body.completed || false);
+  upsertReadProgress(userId, bookId, body.page || 0, body.completed || false);
 
-  // Sync status to Hardcover on transitions (start reading / finish).
+  // Sync status to Hardcover on transitions (start reading / finish). Hardcover
+  // is configured once for the whole server, so this mirrors whoever read the
+  // book into the one linked account — it is not per-user, and cannot be.
   if (book.metadata_id && book.metadata_source === 'hardcover') {
     const today = new Date().toISOString().split('T')[0];
     if (body.completed) {
@@ -42,7 +45,7 @@ export async function PATCH(
     }
   }
 
-  return NextResponse.json(getReadProgress(bookId));
+  return NextResponse.json(getReadProgress(userId, bookId));
 }
 
 export async function DELETE(
@@ -54,6 +57,6 @@ export async function DELETE(
   }
 
   const { id } = await params;
-  deleteReadProgress(parseInt(id));
+  deleteReadProgress(getReadingUserId(request.headers), parseInt(id));
   return new NextResponse(null, { status: 204 });
 }

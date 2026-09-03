@@ -31,6 +31,7 @@ let issueRoute: { GET: Handler };
 let inProgressRoute: { GET: Handler };
 let nextUpRoute: { GET: Handler };
 let sessionToken: string;
+let sessionUserId: number;
 
 /**
  * A request in the shape the route handlers read. Some reach for
@@ -92,11 +93,9 @@ describe('Native app comic API contract', () => {
     db.initDatabase();
 
     const { auth } = await import('@shelvarr/services');
-    sessionToken = auth.issueSession(
-      auth.createFirstAdmin('contract@example.com', 'Contract'),
-      'native',
-      'contract test'
-    ).token;
+    const admin = auth.createFirstAdmin('contract@example.com', 'Contract');
+    sessionUserId = admin.id;
+    sessionToken = auth.issueSession(admin, 'native', 'contract test').token;
 
     comicsRoute = (await import('../../app/api/comics/route.js')) as unknown as { GET: Handler };
     comicDetailRoute = (await import('../../app/api/comics/[id]/route.js')) as unknown as {
@@ -306,12 +305,13 @@ describe('Native app comic API contract', () => {
   describe('home screen rows', () => {
     it('GET /api/comics/in-progress returns { comics }', async () => {
       const { issueIds } = await seedVolume();
-      db.upsertComicReadProgress(issueIds[0]!, 5, false, 20);
+      db.upsertComicReadProgress(sessionUserId, issueIds[0]!, 5, false, 20);
 
       const body = (await (await inProgressRoute.GET(request())).json()) as {
         comics: unknown[];
       };
       assert.ok(Array.isArray(body.comics), 'native reads data.comics');
+      assert.strictEqual(body.comics.length, 1, "the session's own progress shows up");
     });
 
     it('GET /api/comics/next-up returns { comics }', async () => {
@@ -319,6 +319,25 @@ describe('Native app comic API contract', () => {
 
       const body = (await (await nextUpRoute.GET(request())).json()) as { comics: unknown[] };
       assert.ok(Array.isArray(body.comics), 'native reads data.comics');
+    });
+
+    it('shows the session its own rows, not another account\'s', async () => {
+      const { issueIds } = await seedVolume();
+      // Somebody else is partway through issue 1 and has finished nothing.
+      db.upsertComicReadProgress(sessionUserId + 1, issueIds[0]!, 5, false, 20);
+
+      const inProgress = (await (await inProgressRoute.GET(request())).json()) as {
+        comics: unknown[];
+      };
+      assert.deepStrictEqual(inProgress.comics, []);
+
+      // ...and once this session finishes issue 1, next-up is its own.
+      db.upsertComicReadProgress(sessionUserId, issueIds[0]!, 20, true, 20);
+      const nextUp = (await (await nextUpRoute.GET(request())).json()) as {
+        comics: Array<{ issueId: number }>;
+      };
+      assert.strictEqual(nextUp.comics.length, 1);
+      assert.strictEqual(nextUp.comics[0]!.issueId, issueIds[1]);
     });
   });
 });
