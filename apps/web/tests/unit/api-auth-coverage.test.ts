@@ -61,9 +61,12 @@ describe('API authentication coverage', () => {
 
     it(`checks authentication in ${name}`, () => {
       const source = readFileSync(route, 'utf-8');
+      // `authoriseAdminRequest` is the diagnostics gate: a stricter one than
+      // `validateApiAuth`, since it also demands the feature be switched on
+      // and the caller be an admin.
       assert.match(
         source,
-        /validateApiAuth\(|authenticateRequest\(/,
+        /validateApiAuth\(|authenticateRequest\(|authoriseAdminRequest\(/,
         `${name} serves requests without checking who is asking. Add a ` +
           'validateApiAuth guard, or list it in PUBLIC_ROUTES with a reason.'
       );
