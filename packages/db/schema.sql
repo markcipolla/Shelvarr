@@ -6,7 +6,6 @@ CREATE TABLE IF NOT EXISTS libraries (
   name TEXT NOT NULL,
   path TEXT NOT NULL UNIQUE,
   type TEXT DEFAULT 'book', -- 'book' or 'comic'
-  komga_library_id TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -28,7 +27,6 @@ CREATE TABLE IF NOT EXISTS books (
   publish_date TEXT,
   description TEXT,
   cover_url TEXT,
-  komga_book_id TEXT,
   metadata_source TEXT,
   metadata_id TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -150,7 +148,7 @@ CREATE TABLE IF NOT EXISTS source_status_cache (
   last_updated TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
--- Read progress (page-based, for Komga-compatible API)
+-- Read progress (page-based, for the reader API)
 CREATE TABLE IF NOT EXISTS read_progress (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
@@ -259,7 +257,6 @@ CREATE INDEX IF NOT EXISTS idx_read_progress_book ON read_progress(book_id);
 CREATE INDEX IF NOT EXISTS idx_hardcover_status_status ON hardcover_reading_status(status_id);
 CREATE INDEX IF NOT EXISTS idx_comic_read_progress_issue ON comic_read_progress(issue_id);
 CREATE INDEX IF NOT EXISTS idx_epub_progression_book ON epub_progression(book_id);
-CREATE INDEX IF NOT EXISTS idx_books_komga_book_id ON books(komga_book_id);
 CREATE INDEX IF NOT EXISTS idx_comics_title ON comics(title);
 CREATE INDEX IF NOT EXISTS idx_comics_updated_at ON comics(updated_at);
 CREATE INDEX IF NOT EXISTS idx_comic_issues_volume ON comic_issues(volume_id);

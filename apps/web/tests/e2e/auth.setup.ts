@@ -50,7 +50,6 @@ async function warmRoutes(page: import('@playwright/test').Page) {
     '/tasks',
     '/settings/metadata',
     '/settings/downloads',
-    '/settings/komga',
     '/settings/about',
     '/login',
   ];

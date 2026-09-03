@@ -67,18 +67,6 @@ describe('Library Service', () => {
       assert.strictEqual(result.library.path, libraryPath);
     });
 
-    it('should create a library with komgaLibraryId', async () => {
-      const result = await libraryService.createLibrary({
-        name: 'Komga Library',
-        path: libraryPath,
-        komgaLibraryId: 'komga-123'
-      });
-
-      assert.ok(result.success);
-      assert.ok(result.library);
-      assert.strictEqual(result.library.komgaLibraryId, 'komga-123');
-    });
-
     it('should reject empty name', async () => {
       const result = await libraryService.createLibrary({
         name: '',
@@ -226,43 +214,6 @@ describe('Library Service', () => {
       assert.strictEqual(updateResult.library.name, 'Updated Name');
     });
 
-    it('should update komgaLibraryId', async () => {
-      const createResult = await libraryService.createLibrary({
-        name: 'Test Library',
-        path: libraryPath
-      });
-
-      assert.ok(createResult.library);
-
-      const updateResult = await libraryService.updateLibrary(createResult.library.id, {
-        komgaLibraryId: 'new-komga-id'
-      });
-
-      assert.ok(updateResult.success);
-      assert.ok(updateResult.library);
-      assert.strictEqual(updateResult.library.komgaLibraryId, 'new-komga-id');
-    });
-
-    it('should update both name and komgaLibraryId', async () => {
-      const createResult = await libraryService.createLibrary({
-        name: 'Original',
-        path: libraryPath,
-        komgaLibraryId: 'old-id'
-      });
-
-      assert.ok(createResult.library);
-
-      const updateResult = await libraryService.updateLibrary(createResult.library.id, {
-        name: 'New Name',
-        komgaLibraryId: 'new-id'
-      });
-
-      assert.ok(updateResult.success);
-      assert.ok(updateResult.library);
-      assert.strictEqual(updateResult.library.name, 'New Name');
-      assert.strictEqual(updateResult.library.komgaLibraryId, 'new-id');
-    });
-
     it('should trim updated name', async () => {
       const createResult = await libraryService.createLibrary({
         name: 'Original',
@@ -288,49 +239,11 @@ describe('Library Service', () => {
 
       assert.ok(createResult.library);
 
-      const updateResult = await libraryService.updateLibrary(createResult.library.id, {
-        komgaLibraryId: 'some-id'
-      });
+      const updateResult = await libraryService.updateLibrary(createResult.library.id, {});
 
       assert.ok(updateResult.success);
       assert.ok(updateResult.library);
       assert.strictEqual(updateResult.library.name, 'Keep This Name');
-    });
-
-    it('should preserve existing komgaLibraryId when not provided', async () => {
-      const createResult = await libraryService.createLibrary({
-        name: 'Test',
-        path: libraryPath,
-        komgaLibraryId: 'original-id'
-      });
-
-      assert.ok(createResult.library);
-
-      const updateResult = await libraryService.updateLibrary(createResult.library.id, {
-        name: 'Updated Name'
-      });
-
-      assert.ok(updateResult.success);
-      assert.ok(updateResult.library);
-      assert.strictEqual(updateResult.library.komgaLibraryId, 'original-id');
-    });
-
-    it('should clear komgaLibraryId when set to null', async () => {
-      const createResult = await libraryService.createLibrary({
-        name: 'Test',
-        path: libraryPath,
-        komgaLibraryId: 'to-be-cleared'
-      });
-
-      assert.ok(createResult.library);
-
-      const updateResult = await libraryService.updateLibrary(createResult.library.id, {
-        komgaLibraryId: null as any
-      });
-
-      assert.ok(updateResult.success);
-      assert.ok(updateResult.library);
-      assert.strictEqual(updateResult.library.komgaLibraryId, null);
     });
 
     it('should return error for non-existent library', async () => {

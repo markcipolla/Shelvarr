@@ -4,7 +4,7 @@ import BookCard from '../../src/components/BookCard';
 import { useAuthHeaders } from '../../src/hooks/useAuthHeaders';
 import { useConnectivityStore } from '../../src/stores/useConnectivityStore';
 import { useDownloadStore } from '../../src/stores/useDownloadStore';
-import { Book } from '../../src/types/komga';
+import { Book } from '../../src/types/api';
 
 jest.mock('../../src/hooks/useAuthHeaders');
 jest.mock('../../src/services/api/books', () => ({

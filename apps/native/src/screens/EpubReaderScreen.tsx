@@ -30,7 +30,7 @@ const PADDING_TOP = 48;
 const PADDING_BOTTOM = 48;
 
 export default function EpubReaderScreen({ route, navigation }: Props) {
-  const { bookId, filePath, totalPages: komgaTotalPages } = route.params;
+  const { bookId, filePath, totalPages: serverTotalPages } = route.params;
   const { onReaderExit, startReading } = useBookReader(bookId);
   const { width } = useWindowDimensions();
   const [book, setBook] = useState<EpubBook | null>(null);
@@ -60,7 +60,7 @@ export default function EpubReaderScreen({ route, navigation }: Props) {
     Promise.all([parseEpub(filePath, bookId), getEpubPosition(bookId), getEpubProgression(bookId)])
       .then(async ([parsed, localPos, serverPos]) => {
         setBook(parsed);
-        startReading(bookId, 1, komgaTotalPages);
+        startReading(bookId, 1, serverTotalPages);
 
         // Restore position: prefer local, fall back to server
         let resumeChapter = 0;

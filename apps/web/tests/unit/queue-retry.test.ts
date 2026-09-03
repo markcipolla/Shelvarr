@@ -224,7 +224,7 @@ if (canRunTests) {
       it('should handle multiple 429 errors in sequence', async () => {
         let attempts = 0;
 
-        registerTaskHandler('komga_sync', async () => {
+        registerTaskHandler('author_sync', async () => {
           attempts++;
           if (attempts < 3) {
             throw new Error('API returned 429 status code');
@@ -232,7 +232,7 @@ if (canRunTests) {
           return { success: true, attempts };
         });
 
-        const task = createTask('komga_sync');
+        const task = createTask('author_sync');
         await runTask(task.id);
 
         // First attempt should fail with 429
@@ -377,7 +377,7 @@ if (canRunTests) {
       });
 
       it('should handle undefined values in task data', async () => {
-        registerTaskHandler('komga_sync', async () => {
+        registerTaskHandler('author_sync', async () => {
           return { success: true };
         });
 
@@ -387,7 +387,7 @@ if (canRunTests) {
           nullValue: null,
         };
 
-        const task = createTask('komga_sync', data);
+        const task = createTask('author_sync', data);
         assert.ok(task.data);
 
         // undefined gets removed in JSON serialization

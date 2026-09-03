@@ -1,4 +1,4 @@
-// Komga API types - defines the shape of Komga-compatible API responses
+// Shelvarr API types - the shape of the JSON the library API returns to clients
 
 import type { HardcoverReadingStatus } from './domain';
 

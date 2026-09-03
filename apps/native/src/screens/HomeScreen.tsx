@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import { Book } from '../types/komga';
+import { Book } from '../types/api';
 import { searchBooks, fetchInProgressBooks, fetchNextUpBooks, fetchRecentlyAdded } from '../services/api/books';
 import {
   fetchComics,

@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import { Book, Series } from '../types/komga';
+import { Book, Series } from '../types/api';
 import { fetchBook, getBookThumbnailUrl, deleteReadProgress, updateReadProgress } from '../services/api/books';
 import { fetchSeries } from '../services/api/series';
 import { getMediaFormat, getFormatFromName } from '../utils/fileTypes';

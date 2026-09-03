@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { MetadataSourcesTab } from './MetadataSourcesTab';
 import { DownloadSourcesTab } from './DownloadSourcesTab';
-import { KomgaTab } from './KomgaTab';
 import { AboutTab } from './AboutTab';
 import type { DownloadSourceConfig } from '@/lib/db';
 import type { SourceStatus as DownloadSourceStatus } from '@/lib/services/downloads';
@@ -17,27 +16,20 @@ interface SourceStatus {
   apiKeyUrl?: string;
 }
 
-interface KomgaSettings {
-  url: string | null;
-  hasApiKey: boolean;
-}
-
 interface SettingsTabsProps {
   sources: SourceStatus[];
-  komga: KomgaSettings;
   downloadConfigs?: DownloadSourceConfig[];
   downloadStatuses?: DownloadSourceStatus[];
 }
 
-type TabId = 'sources' | 'downloads' | 'komga' | 'about';
+type TabId = 'sources' | 'downloads' | 'about';
 
-export function SettingsTabs({ sources, komga, downloadConfigs = [], downloadStatuses = [] }: SettingsTabsProps) {
+export function SettingsTabs({ sources, downloadConfigs = [], downloadStatuses = [] }: SettingsTabsProps) {
   const [activeTab, setActiveTab] = useState<TabId>('sources');
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'sources', label: 'Metadata Sources' },
     { id: 'downloads', label: 'Download Sources' },
-    { id: 'komga', label: 'Komga' },
     { id: 'about', label: 'About' },
   ];
 
@@ -64,7 +56,6 @@ export function SettingsTabs({ sources, komga, downloadConfigs = [], downloadSta
       <div className="py-6">
         {activeTab === 'sources' && <MetadataSourcesTab sources={sources} />}
         {activeTab === 'downloads' && <DownloadSourcesTab configs={downloadConfigs} statuses={downloadStatuses} />}
-        {activeTab === 'komga' && <KomgaTab settings={komga} />}
         {activeTab === 'about' && <AboutTab />}
       </div>
     </div>

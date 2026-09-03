@@ -19,12 +19,6 @@ const config: AppConfig = {
   // SQLite database path
   dbPath: process.env['DB_PATH'] || '',
 
-  // Komga integration (optional)
-  komga: {
-    url: process.env['KOMGA_URL'] || null,
-    apiKey: process.env['KOMGA_API_KEY'] || null,
-  },
-
   // Only used while adopting a library organised by something else.
   comicMigration: {
     pathMap: process.env['COMIC_PATH_MAP'] || process.env['KAPOWARR_PATH_MAP'] || null,

@@ -17,10 +17,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const body = await request.json() as { komgaBookId?: string; status?: string };
+  const body = await request.json() as { bookId?: string; status?: string };
 
-  if (!body.komgaBookId) {
-    return NextResponse.json({ error: 'Missing komgaBookId' }, { status: 400 });
+  if (!body.bookId) {
+    return NextResponse.json({ error: 'Missing bookId' }, { status: 400 });
   }
 
   const statusId = body.status ? STATUS_MAP[body.status] : undefined;
@@ -36,12 +36,12 @@ export async function POST(request: NextRequest) {
     metadata_id: string | null;
     metadata_source: string | null;
   }>(
-    'SELECT id, metadata_id, metadata_source FROM books WHERE komga_book_id = ?',
-    [body.komgaBookId]
+    'SELECT id, metadata_id, metadata_source FROM books WHERE id = ?',
+    [body.bookId]
   );
 
   if (!book) {
-    return NextResponse.json({ error: 'Book not found for Komga ID' }, { status: 404 });
+    return NextResponse.json({ error: 'Book not found' }, { status: 404 });
   }
 
   if (!book.metadata_id || book.metadata_source !== 'hardcover') {

@@ -9,7 +9,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./domain": "./src/domain.ts",
-    "./komga": "./src/komga.ts"
+    "./api": "./src/api.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

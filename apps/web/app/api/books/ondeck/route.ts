@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
 import { query, getReadProgress, getHardcoverReadingBooks } from '@/lib/db';
 import { validateApiAuth } from '@shelvarr/services';
-import { toKomgaBook, toPagedResponse } from '@shelvarr/services/komga-response';
+import { toApiBook, toPagedResponse } from '@shelvarr/services/api-response';
 
 // Cap on how many books are gathered before in-memory pagination. These home
 // rows are short, so this is effectively "all" while bounding the query.
@@ -71,6 +71,6 @@ export function GET(request: NextRequest) {
 
   const merged = dedupeById([...localRows, ...hardcoverRows]);
   const pageRows = merged.slice(offset, offset + size);
-  const content = pageRows.map(b => toKomgaBook(b, getReadProgress(b.id)));
+  const content = pageRows.map(b => toApiBook(b, getReadProgress(b.id)));
   return NextResponse.json(toPagedResponse(content, page, size, merged.length));
 }

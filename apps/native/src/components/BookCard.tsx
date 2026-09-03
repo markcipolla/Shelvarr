@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet, ViewStyle } from 'react-native';
-import { Book } from '../types/komga';
+import { Book } from '../types/api';
 import { getBookThumbnailUrl } from '../services/api/books';
 import { useAuthHeaders } from '../hooks/useAuthHeaders';
 import { useConnectivityStore } from '../stores/useConnectivityStore';

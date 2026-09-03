@@ -85,7 +85,6 @@ describe('Migrating a mirrored library', () => {
       dataDir: root,
       libraryRoot: root,
       dbPath: join(root, 'test.db'),
-      komga: { url: null, apiKey: null },
       comicMigration: { pathMap: `${LEGACY_PREFIX}:${libraryRoot}` },
       getcomics: {
         baseUrl: 'https://getcomics.example',

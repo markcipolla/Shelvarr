@@ -1,5 +1,5 @@
 import { getApiClient } from './client';
-import { PagedResponse, Series } from '../../types/komga';
+import { PagedResponse, Series } from '../../types/api';
 import { PAGE_SIZE } from '../../utils/constants';
 
 export async function fetchSeriesForLibrary(

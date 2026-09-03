@@ -1,6 +1,6 @@
 /**
- * Unit tests for Hardcover status resolution in toKomgaBook (@shelvarr/services).
- * Every native-facing book endpoint maps rows through toKomgaBook, so this is
+ * Unit tests for Hardcover status resolution in toApiBook (@shelvarr/services).
+ * Every native-facing book endpoint maps rows through toApiBook, so this is
  * what surfaces the user's Hardcover status (read / reading / want-to-read) on
  * the native cards.
  */
@@ -18,7 +18,7 @@ try {
   const checkDb = new Database(join(checkDir, 'check.db'));
   checkDb.close();
 } catch (err) {
-  console.warn('⚠️  Skipping komga-response hardcover tests: better-sqlite3 not available');
+  console.warn('⚠️  Skipping api-response hardcover tests: better-sqlite3 not available');
   console.warn('   Error:', err instanceof Error ? err.message : String(err));
   canRunTests = false;
 } finally {
@@ -26,13 +26,13 @@ try {
 }
 
 if (canRunTests) {
-  const testDir = mkdtempSync(join(tmpdir(), 'shelvarr-komga-hc-test-'));
+  const testDir = mkdtempSync(join(tmpdir(), 'shelvarr-api-hc-test-'));
   process.env['DATA_DIR'] = testDir;
   process.env['DB_PATH'] = join(testDir, 'test.db');
 
   const db = await import('../../lib/db/index.js');
   db.initDatabase();
-  const { toKomgaBook } = await import('@shelvarr/services/komga-response');
+  const { toApiBook } = await import('@shelvarr/services/api-response');
 
   const libId = db.execute('INSERT INTO libraries (name, path) VALUES (?, ?)', [
     'Lib',
@@ -49,7 +49,7 @@ if (canRunTests) {
     return db.queryOne('SELECT * FROM books WHERE id = ?', [id]) as Record<string, unknown>;
   }
 
-  describe('toKomgaBook Hardcover status', () => {
+  describe('toApiBook Hardcover status', () => {
     beforeEach(() => {
       db.getDb().exec('DELETE FROM hardcover_reading_status; DELETE FROM books;');
     });
@@ -62,25 +62,25 @@ if (canRunTests) {
     it('maps a cached status id to a label', () => {
       const row = addBook('Wanted', '500');
       db.replaceHardcoverStatuses([{ hardcoverId: '500', statusId: 1 }]);
-      assert.strictEqual(toKomgaBook(row).hardcoverStatus, 'want-to-read');
+      assert.strictEqual(toApiBook(row).hardcoverStatus, 'want-to-read');
     });
 
     it('is null when the book is not tracked on Hardcover', () => {
       const row = addBook('Untracked', '501');
-      assert.strictEqual(toKomgaBook(row).hardcoverStatus, null);
+      assert.strictEqual(toApiBook(row).hardcoverStatus, null);
     });
 
     it('is null for a book with no Hardcover match', () => {
       const row = addBook('Unmatched', null);
       db.replaceHardcoverStatuses([{ hardcoverId: '999', statusId: 3 }]);
-      assert.strictEqual(toKomgaBook(row).hardcoverStatus, null);
+      assert.strictEqual(toApiBook(row).hardcoverStatus, null);
     });
 
     it('prefers a status id already joined onto the row', () => {
       const row = addBook('Joined', '502');
       db.replaceHardcoverStatuses([{ hardcoverId: '502', statusId: 1 }]);
       // A query that joined hs.status_id AS hc_status wins over a fresh lookup.
-      assert.strictEqual(toKomgaBook({ ...row, hc_status: 3 }).hardcoverStatus, 'read');
+      assert.strictEqual(toApiBook({ ...row, hc_status: 3 }).hardcoverStatus, 'read');
     });
   });
 }

@@ -184,13 +184,17 @@ function runMigrations(database: Database.Database): void {
     database.exec("ALTER TABLE books ADD COLUMN extension TEXT");
   }
 
-  // Check if books table has 'komga_book_id' column
-  const hasKomgaBookIdColumn = booksInfo.some(col => col.name === 'komga_book_id');
+  // Komga integration was removed; drop the ids it left behind. The index goes
+  // first because SQLite refuses to drop an indexed column.
+  if (booksInfo.some(col => col.name === 'komga_book_id')) {
+    console.log('Running migration: dropping komga_book_id column from books');
+    database.exec('DROP INDEX IF EXISTS idx_books_komga_book_id');
+    database.exec('ALTER TABLE books DROP COLUMN komga_book_id');
+  }
 
-  if (!hasKomgaBookIdColumn) {
-    console.log('Running migration: adding komga_book_id column to books');
-    database.exec("ALTER TABLE books ADD COLUMN komga_book_id TEXT");
-    database.exec("CREATE INDEX IF NOT EXISTS idx_books_komga_book_id ON books(komga_book_id)");
+  if (librariesInfo.some(col => col.name === 'komga_library_id')) {
+    console.log('Running migration: dropping komga_library_id column from libraries');
+    database.exec('ALTER TABLE libraries DROP COLUMN komga_library_id');
   }
 
   // Check if author_works table has 'language' column

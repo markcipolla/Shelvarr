@@ -1,6 +1,6 @@
 # Shelvarr
 
-A self-hosted *arr-style web application for book/comic metadata management and file organization, designed to work alongside [Komga](https://komga.org/) and [Komf](https://github.com/Snd-R/komf).
+A self-hosted *arr-style web application for book/comic metadata management and file organization. Shelvarr serves its own library over an HTTP API, which [Stackarr](apps/native), the companion mobile app, reads from.
 
 ## Features
 
@@ -11,7 +11,6 @@ A self-hosted *arr-style web application for book/comic metadata management and 
 - **Series Detection**: Automatically group books into series
 - **Author Tracking**: Track authors and find missing books in your collection
 - **Book Acquisition**: Search Z-Library, Anna's Archive, and Library Genesis (planned)
-- **Komga Integration**: Trigger library scans after reorganization
 
 ## Quick Start
 
@@ -31,10 +30,6 @@ services:
       # Mount your book libraries:
       - /path/to/ebooks:/libraries/ebooks:rw
       - /path/to/comics:/libraries/comics:rw
-    environment:
-      # Optional Komga integration:
-      - KOMGA_URL=http://your-komga-server:25600
-      - KOMGA_API_KEY=your-api-key
     restart: unless-stopped
 
 volumes:
@@ -92,8 +87,6 @@ npm run test:e2e
 | `PORT` | 3000 | Server port |
 | `DATA_DIR` | ./data | Data directory for SQLite database and app files |
 | `LIBRARY_ROOT` | /libraries | Base path for library mounts |
-| `KOMGA_URL` | - | Komga server URL |
-| `KOMGA_API_KEY` | - | Komga Personal Access Token (create in Komga account settings) |
 | `GETCOMICS_URL` | https://getcomics.org | GetComics base URL (change to use a mirror) |
 | `GETCOMICS_DOWNLOAD_DIR` | `$DATA_DIR/downloads` | Scratch directory for in-flight comic downloads |
 | `COMIC_LIBRARY_ROOT` | - | Where comic downloads are imported, if a volume has no folder recorded |
@@ -256,7 +249,6 @@ See [PLAN.md](./PLAN.md) for detailed implementation progress.
 - **Phase 2**: Library management, file scanner, book listing
 - **Phase 3**: Metadata fetching from Google Books and OpenLibrary
 - **Phase 4**: File organization, duplicate detection, series grouping
-- **Phase 5**: Komga integration
 
 ## License
 

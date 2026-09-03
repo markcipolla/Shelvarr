@@ -16,9 +16,6 @@ services:
       - PORT=3000
       - DATA_DIR=/app/data
       - LIBRARY_ROOT=/libraries
-      # Optional: Komga integration
-      # - KOMGA_URL=http://your-komga:25600
-      # - KOMGA_API_KEY=your-api-key
       # User accounts. On by default; the first visit runs a setup wizard.
       # Set the public URL so emailed sign-in links point somewhere reachable.
       # - SHELVARR_URL=http://shelvarr.local:3000

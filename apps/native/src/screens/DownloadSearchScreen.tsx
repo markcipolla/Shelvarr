@@ -22,7 +22,7 @@ import {
 } from '../services/api/downloads';
 import { updateWanted } from '../services/api/wanted';
 import { fetchLibraries } from '../services/api/libraries';
-import { Library } from '../types/komga';
+import { Library } from '../types/api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'DownloadSearch'>;
 

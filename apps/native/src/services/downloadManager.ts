@@ -1,4 +1,4 @@
-import { Book, DownloadedBook } from '../types/komga';
+import { Book, DownloadedBook } from '../types/api';
 import { getMediaFormat, getFileExtension, isComicFormat, getFormatFromName } from '../utils/fileTypes';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { getAuthHeaders } from '../stores/useAuthStore';
