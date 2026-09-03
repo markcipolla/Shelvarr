@@ -8,8 +8,8 @@ function formatSize(bytes: number): string {
 }
 
 /**
- * Bottom-anchored prompt offering the newest GitHub release. Renders nothing
- * unless there is something to act on, so it can sit permanently in the tree.
+ * Centred prompt offering the newest GitHub release. Renders nothing unless
+ * there is something to act on, so it can sit permanently in the tree.
  */
 export default function UpdateBanner() {
   const status = useUpdateStore((s) => s.status);
@@ -28,60 +28,69 @@ export default function UpdateBanner() {
   const failed = status === 'error';
 
   return (
-    <View style={styles.container} accessibilityRole="alert">
-      <Text style={styles.title}>
-        {failed ? 'Update failed' : `Version ${update.version} available`}
-      </Text>
-      <Text style={styles.body} numberOfLines={3}>
-        {failed
-          ? error || 'Something went wrong.'
-          : update.notes || `A newer build of Stackarr is ready to install${formatSize(update.apkSize)}.`}
-      </Text>
+    // A full-screen, touch-transparent layer purely to centre the card: the
+    // prompt still doesn't block the app behind it, same as when it sat at
+    // the bottom.
+    <View style={styles.overlay} pointerEvents="box-none">
+      <View style={styles.container} accessibilityRole="alert">
+        <Text style={styles.title}>
+          {failed ? 'Update failed' : `Version ${update.version} available`}
+        </Text>
+        <Text style={styles.body} numberOfLines={3}>
+          {failed
+            ? error || 'Something went wrong.'
+            : update.notes || `A newer build of Stackarr is ready to install${formatSize(update.apkSize)}.`}
+        </Text>
 
-      {downloading && (
-        <View style={styles.progressTrack}>
-          <View
-            testID="update-progress-fill"
-            style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]}
-          />
-        </View>
-      )}
+        {downloading && (
+          <View style={styles.progressTrack}>
+            <View
+              testID="update-progress-fill"
+              style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]}
+            />
+          </View>
+        )}
 
-      {installing ? (
-        <View style={styles.installingRow}>
-          <ActivityIndicator color="#8b5e3c" />
-          <Text style={styles.installingText}>Opening installer…</Text>
-        </View>
-      ) : (
-        <View style={styles.actions}>
-          <TouchableOpacity style={styles.secondaryButton} onPress={dismiss}>
-            <Text style={styles.secondaryText}>Later</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.primaryButton, downloading && styles.buttonDisabled]}
-            onPress={startUpdate}
-            disabled={downloading}
-          >
-            <Text style={styles.primaryText}>
-              {downloading
-                ? `Downloading ${Math.round(progress * 100)}%`
-                : failed
-                  ? 'Try again'
-                  : 'Update'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+        {installing ? (
+          <View style={styles.installingRow}>
+            <ActivityIndicator color="#8b5e3c" />
+            <Text style={styles.installingText}>Opening installer…</Text>
+          </View>
+        ) : (
+          <View style={styles.actions}>
+            <TouchableOpacity style={styles.secondaryButton} onPress={dismiss}>
+              <Text style={styles.secondaryText}>Later</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.primaryButton, downloading && styles.buttonDisabled]}
+              onPress={startUpdate}
+              disabled={downloading}
+            >
+              <Text style={styles.primaryText}>
+                {downloading
+                  ? `Downloading ${Math.round(progress * 100)}%`
+                  : failed
+                    ? 'Try again'
+                    : 'Update'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
   container: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 24,
+    width: '100%',
+    maxWidth: 420,
     backgroundColor: '#e8e4de',
     borderRadius: 12,
     borderWidth: 1,
