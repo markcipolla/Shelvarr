@@ -8,6 +8,7 @@ export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS comics (
   id INTEGER PRIMARY KEY,
   comicvine_id INTEGER,
+  slug TEXT,
   title TEXT NOT NULL,
   year INTEGER,
   publisher TEXT,

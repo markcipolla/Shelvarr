@@ -79,7 +79,7 @@ export function listAdoptionCandidates(): AdoptionCandidate[] {
 
     let blocker: string | null = null;
     if (!row.folder) {
-      blocker = 'Kapowarr has not reported a folder for this volume';
+      blocker = 'No folder was ever recorded for this volume — import it from Comics → Import instead';
     } else if (!localFolder || !existsSync(localFolder)) {
       blocker =
         `Folder not readable at ${localFolder}. ` +
@@ -87,7 +87,11 @@ export function listAdoptionCandidates(): AdoptionCandidate[] {
     } else if (!rootFolder) {
       blocker = `No configured root folder contains ${localFolder}`;
     } else if (row.issue_count === 0) {
-      blocker = 'No issues cached yet — open the volume once, or refresh from Kapowarr, first';
+      // Nothing fills a mirror's issue list any more, so this one can only be
+      // cleared by going through ComicVine.
+      blocker =
+        'No issues were ever cached for this volume. Import its folder from ' +
+        'Comics → Import, which matches it to ComicVine and takes it over.';
     }
 
     return {

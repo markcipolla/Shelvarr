@@ -56,7 +56,7 @@ export function AddComic({ rootFolders }: { rootFolders: RootFolder[] }) {
 
     const result = await addComicVolumeAction(comicvineId, rootFolderId);
     if (result.success && result.volumeId) {
-      router.push(`/comics/${result.volumeId}`);
+      router.push(`/comics/${result.slug ?? result.volumeId}`);
       return;
     }
     setAddError(result.error ?? 'Failed to add volume');
@@ -189,7 +189,7 @@ export function AddComic({ rootFolders }: { rootFolders: RootFolder[] }) {
             <div className="flex-shrink-0 self-center">
               {result.alreadyAdded !== null ? (
                 <Link
-                  href={`/comics/${result.alreadyAdded}`}
+                  href={`/comics/${result.alreadyAddedSlug ?? result.alreadyAdded}`}
                   className="px-3 py-1.5 text-sm rounded-lg border border-shelvarr-border text-shelvarr-text-muted hover:text-white hover:border-blue-500"
                 >
                   In library

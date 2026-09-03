@@ -113,7 +113,7 @@ export async function searchLocal(searchQuery: string, limit = 10): Promise<Loca
       title: volume.title,
       subtitle: subtitle || undefined,
       coverUrl: `/api/comics/${volume.id}/cover`,
-      href: `/comics/${volume.id}`,
+      href: `/comics/${volume.slug}`,
     });
   }
 

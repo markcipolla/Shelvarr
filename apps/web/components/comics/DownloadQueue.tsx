@@ -91,7 +91,7 @@ export function DownloadQueue({ data }: { data: DownloadQueueView }) {
                       {download.state}
                     </span>
                     <Link
-                      href={`/comics/${download.volumeId}`}
+                      href={`/comics/${download.volumeSlug}`}
                       className="text-white truncate hover:underline"
                     >
                       {download.volumeTitle ?? `Volume ${download.volumeId}`}
@@ -151,7 +151,7 @@ export function DownloadQueue({ data }: { data: DownloadQueueView }) {
                       {download.state}
                     </span>
                     <Link
-                      href={`/comics/${download.volumeId}`}
+                      href={`/comics/${download.volumeSlug}`}
                       className="text-white truncate hover:underline"
                     >
                       {download.volumeTitle ?? `Volume ${download.volumeId}`}

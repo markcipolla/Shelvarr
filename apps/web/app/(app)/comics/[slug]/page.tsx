@@ -1,38 +1,32 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
-import { getComic, getComicProgress } from '@/lib/actions/comics';
+import { notFound, redirect } from 'next/navigation';
+import { getComic, getComicProgress, resolveComicRef } from '@/lib/actions/comics';
 import { MarkIssueReadButton } from '@/components/comics/MarkIssueReadButton';
 import { VolumeActions } from '@/components/comics/VolumeActions';
 
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
-  params: Promise<{ id: string }>;
+  params: Promise<{ slug: string }>;
 }
 
 export default async function ComicDetailPage({ params }: PageProps) {
-  const { id } = await params;
-  const volumeId = parseInt(id, 10);
-  if (!Number.isFinite(volumeId)) notFound();
+  const { slug } = await params;
+  const ref = decodeURIComponent(slug);
 
+  const resolved = await resolveComicRef(ref);
+  if (!resolved) notFound();
+  // A bare id, or a stale slug: send the reader to the volume's real URL.
+  if (resolved.slug !== ref) redirect(`/comics/${resolved.slug}`);
+
+  const volumeId = resolved.id;
   const [result, progressRows] = await Promise.all([
     getComic(volumeId),
     getComicProgress(volumeId),
   ]);
   const progressByIssue = new Map(progressRows.map((p) => [p.issueId, p]));
 
-  if (!result.volume) {
-    return (
-      <div className="space-y-4">
-        <Link href="/comics" className="text-shelvarr-text-muted hover:text-white text-sm">
-          ← Back to Comics
-        </Link>
-        <div className="bg-red-600/20 text-red-400 border border-red-500/40 rounded-lg p-4">
-          Comic not found
-        </div>
-      </div>
-    );
-  }
+  if (!result.volume) notFound();
 
   const { volume, coverUrl } = result;
   const subtitle = [volume.publisher, volume.year].filter(Boolean).join(' · ');

@@ -12,6 +12,7 @@ let db: typeof import('../../lib/db/index.js');
 function makeVolume(overrides: Partial<ComicVolumeSummary> = {}): ComicVolumeSummary {
   return {
     id: 101,
+    slug: 'saga-2012',
     comicvine_id: 5001,
     title: 'Saga',
     year: 2012,
@@ -165,9 +166,18 @@ describe('Comics cache (@shelvarr/db)', () => {
   });
 
   describe('upsertComicDetail / getCachedComicDetail', () => {
-    it('returns null when no detail has ever been cached', () => {
+    it('returns the volume with no issues when only a summary was ever cached', () => {
+      // A volume mirrored as a summary and never opened still has to have a
+      // page behind it — the library list links to one.
       db.upsertComicVolume(makeVolume({ id: 101 }));
-      assert.strictEqual(db.getCachedComicDetail(101), null);
+      const detail = db.getCachedComicDetail(101);
+      assert.ok(detail);
+      assert.strictEqual(detail.title, 'Saga');
+      assert.deepStrictEqual(detail.issues, []);
+    });
+
+    it('returns null for a volume that does not exist', () => {
+      assert.strictEqual(db.getCachedComicDetail(404), null);
     });
 
     it('caches a full detail with issues and round-trips', () => {

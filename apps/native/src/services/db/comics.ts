@@ -15,6 +15,7 @@ import { getDatabase } from './database';
 interface ComicRow {
   id: number;
   comicvine_id: number | null;
+  slug: string | null;
   title: string;
   year: number | null;
   publisher: string | null;
@@ -68,6 +69,9 @@ function parseJson<T>(text: string | null, fallback: T): T {
 function rowToVolume(row: ComicRow): ComicVolumeSummary {
   return {
     id: row.id,
+    // Caches written before the server sent slugs have none; the id is what
+    // the web app falls back to as well.
+    slug: row.slug || String(row.id),
     comicvine_id: row.comicvine_id ?? 0,
     title: row.title,
     year: row.year,
@@ -169,13 +173,14 @@ export async function searchCachedComics(query: string): Promise<ComicVolumeSumm
 }
 
 const UPSERT_COMIC_LIST_SQL = `INSERT INTO comics (
-  id, comicvine_id, title, year, publisher, volume_number, description,
+  id, comicvine_id, slug, title, year, publisher, volume_number, description,
   monitored, monitor_new_issues, folder,
   issue_count, issue_count_monitored, issues_downloaded, issues_downloaded_monitored,
   total_size, updated_at, deleted_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, NULL)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, NULL)
 ON CONFLICT (id) DO UPDATE SET
   comicvine_id = excluded.comicvine_id,
+  slug = excluded.slug,
   title = excluded.title,
   year = excluded.year,
   publisher = excluded.publisher,
@@ -197,6 +202,7 @@ export async function upsertComicVolume(volume: ComicVolumeSummary): Promise<voi
   await db.runAsync(UPSERT_COMIC_LIST_SQL, [
     volume.id,
     volume.comicvine_id,
+    volume.slug,
     volume.title,
     volume.year,
     volume.publisher,
@@ -220,6 +226,7 @@ export async function upsertComicVolumes(volumes: ComicVolumeSummary[]): Promise
       await db.runAsync(UPSERT_COMIC_LIST_SQL, [
         v.id,
         v.comicvine_id,
+        v.slug,
         v.title,
         v.year,
         v.publisher,
@@ -239,14 +246,15 @@ export async function upsertComicVolumes(volumes: ComicVolumeSummary[]): Promise
 }
 
 const UPSERT_COMIC_DETAIL_SQL = `INSERT INTO comics (
-  id, comicvine_id, title, year, publisher, volume_number, description,
+  id, comicvine_id, slug, title, year, publisher, volume_number, description,
   monitored, monitor_new_issues, folder,
   issue_count, issue_count_monitored, issues_downloaded, issues_downloaded_monitored,
   total_size, special_version, special_version_locked, site_url, root_folder, volume_folder,
   general_files, updated_at, detail_cached_at, deleted_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL)
 ON CONFLICT (id) DO UPDATE SET
   comicvine_id = excluded.comicvine_id,
+  slug = excluded.slug,
   title = excluded.title,
   year = excluded.year,
   publisher = excluded.publisher,
@@ -293,6 +301,7 @@ export async function upsertComicDetail(detail: ComicVolumeDetail): Promise<void
     await db.runAsync(UPSERT_COMIC_DETAIL_SQL, [
       detail.id,
       detail.comicvine_id,
+      detail.slug,
       detail.title,
       detail.year,
       detail.publisher,

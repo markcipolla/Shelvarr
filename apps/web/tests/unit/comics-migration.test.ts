@@ -171,7 +171,7 @@ describe('Migrating a mirrored library', () => {
       db.upsertComicDetail(makeDetail(1, `${LEGACY_PREFIX}/No Issues`, 0));
 
       const [candidate] = adopt.listAdoptionCandidates();
-      assert.match(candidate!.blocker!, /No issues cached/);
+      assert.match(candidate!.blocker!, /No issues were ever cached/);
     });
 
     it('ignores volumes that are already managed', async () => {

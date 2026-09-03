@@ -9,6 +9,7 @@ jest.mock('../../src/services/api/comics', () => ({
 
 const makeVolume = (overrides: Partial<ComicVolumeSummary> = {}): ComicVolumeSummary => ({
   id: 42,
+  slug: 'the-volume-2020',
   comicvine_id: 1,
   title: 'The Volume',
   year: 2020,

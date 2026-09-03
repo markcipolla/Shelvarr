@@ -4,6 +4,9 @@ import {
   getInProgressComics as dbGetInProgressComics,
   getComicReadProgressForVolume as dbGetComicReadProgressForVolume,
   getCachedComicDetail,
+  getComicIdBySlug,
+  getComicSlug,
+  getComicSlugs,
   getManagedComicDetail,
   listComicVolumes,
   type InProgressComic,
@@ -58,6 +61,26 @@ export async function getComic(id: number): Promise<ComicDetailResult> {
   };
 }
 
+/**
+ * Turn a `/comics/<ref>` path segment into a volume.
+ *
+ * `ref` is normally a slug, but a bare id is accepted too: links saved before
+ * slugs existed, and the ones Shelvarr still builds by id right after adding a
+ * volume, both arrive that way. The caller compares the returned slug against
+ * what it was given to decide whether to redirect to the canonical URL.
+ */
+export async function resolveComicRef(
+  ref: string
+): Promise<{ id: number; slug: string } | null> {
+  const bySlug = getComicIdBySlug(ref);
+  if (bySlug !== null) return { id: bySlug, slug: ref };
+
+  if (!/^\d+$/.test(ref)) return null;
+  const id = parseInt(ref, 10);
+  const slug = getComicSlug(id);
+  return slug === null ? null : { id, slug };
+}
+
 // ---------------------------------------------------------------------------
 // Library management (volumes Shelvarr owns)
 // ---------------------------------------------------------------------------
@@ -73,6 +96,8 @@ export interface ComicVineSearchResultView {
   coverLink: string | null;
   siteUrl: string;
   alreadyAdded: number | null;
+  /** Slug of `alreadyAdded`, so the result can link straight at the volume. */
+  alreadyAddedSlug: string | null;
 }
 
 /** Search ComicVine for a volume to add to the library. */
@@ -89,6 +114,9 @@ export async function searchComicVineAction(query: string): Promise<{
 
   try {
     const results = await comicLibrary.searchComicVine(query);
+    const slugs = getComicSlugs(
+      results.map((result) => result.alreadyAdded).filter((id): id is number => id !== null)
+    );
     return {
       configured: true,
       results: results.map((result) => ({
@@ -102,6 +130,8 @@ export async function searchComicVineAction(query: string): Promise<{
         coverLink: result.coverLink,
         siteUrl: result.siteUrl,
         alreadyAdded: result.alreadyAdded,
+        alreadyAddedSlug:
+          result.alreadyAdded === null ? null : slugs.get(result.alreadyAdded) ?? null,
       })),
     };
   } catch (error) {
@@ -125,7 +155,7 @@ export async function getComicRootFoldersAction(): Promise<
 export async function addComicVolumeAction(
   comicvineId: number,
   rootFolderId?: number
-): Promise<{ success: boolean; volumeId?: number; error?: string }> {
+): Promise<{ success: boolean; volumeId?: number; slug?: string; error?: string }> {
   const { comicLibrary } = await import('@shelvarr/services');
   const { revalidatePath } = await import('next/cache');
 
@@ -140,7 +170,11 @@ export async function addComicVolumeAction(
   try {
     const result = await comicLibrary.addVolume({ comicvineId, rootFolderId: targetRoot });
     revalidatePath('/comics');
-    return { success: true, volumeId: result.volumeId };
+    return {
+      success: true,
+      volumeId: result.volumeId,
+      slug: getComicSlug(result.volumeId) ?? String(result.volumeId),
+    };
   } catch (error) {
     return {
       success: false,
@@ -173,7 +207,7 @@ export async function runComicVolumeJob(
   if (!type) return { success: false, error: `Unknown job: ${job}` };
 
   const task = queue.enqueueTask(type as never, { volumeId });
-  revalidatePath(`/comics/${volumeId}`);
+  revalidatePath(`/comics/${getComicSlug(volumeId) ?? volumeId}`);
   return { success: true, taskId: task.id };
 }
 
@@ -219,6 +253,7 @@ export interface DownloadQueueView {
   downloads: Array<{
     id: number;
     volumeId: number;
+    volumeSlug: string;
     volumeTitle: string | null;
     host: string;
     webTitle: string | null;
@@ -258,18 +293,18 @@ export async function getComicDownloadQueue(): Promise<DownloadQueueView> {
     query: dbQuery,
   } = await import('@/lib/db');
 
-  const titles = new Map(
-    dbQuery<{ id: number; title: string }>('SELECT id, title FROM comics').map((row) => [
-      row.id,
-      row.title,
-    ])
+  const volumes = new Map(
+    dbQuery<{ id: number; slug: string | null; title: string }>(
+      'SELECT id, slug, title FROM comics'
+    ).map((row) => [row.id, { slug: row.slug || String(row.id), title: row.title }])
   );
 
   return {
     downloads: getComicDownloads({ limit: 200 }).map((download) => ({
       id: download.id,
       volumeId: download.volumeId,
-      volumeTitle: titles.get(download.volumeId) ?? null,
+      volumeSlug: volumes.get(download.volumeId)?.slug ?? String(download.volumeId),
+      volumeTitle: volumes.get(download.volumeId)?.title ?? null,
       host: download.host,
       webTitle: download.webTitle,
       webSubTitle: download.webSubTitle,
@@ -292,7 +327,7 @@ export async function getComicDownloadQueue(): Promise<DownloadQueueView> {
       }>
     ).map((entry) => ({
       id: entry.id,
-      volumeTitle: entry.volume_id !== null ? titles.get(entry.volume_id) ?? null : null,
+      volumeTitle: entry.volume_id !== null ? volumes.get(entry.volume_id)?.title ?? null : null,
       fileTitle: entry.file_title,
       host: entry.host,
       success: entry.success === 1,
@@ -399,6 +434,14 @@ export interface ImportProposalView {
   fileCount: number;
   suggestedComicvineId: number | null;
   alreadyAdded: number | null;
+  /** Slug of `alreadyAdded`, so the review can link straight at the volume. */
+  alreadyAddedSlug?: string | null;
+  /**
+   * Whether `alreadyAdded` is a volume Shelvarr owns. False means it is a
+   * leftover mirror, which importing this folder would take over — so the
+   * review offers it rather than skipping it.
+   */
+  alreadyAddedManaged?: boolean;
   candidates: ImportCandidateView[];
 }
 
@@ -453,6 +496,16 @@ export async function getLatestLibraryImport(): Promise<LibraryImportRun | null>
     }
   }
 
+  // The proposals were serialised when the scan ran, before any of them had
+  // been adopted, so slugs and ownership are resolved now rather than read
+  // back out of a stale result blob.
+  const { isComicVolumeManaged } = await import('@/lib/db');
+  const slugs = getComicSlugs(
+    proposals
+      .map((proposal) => proposal.alreadyAdded)
+      .filter((id): id is number => id !== null)
+  );
+
   return {
     taskId: row.id,
     status: row.status,
@@ -460,7 +513,13 @@ export async function getLatestLibraryImport(): Promise<LibraryImportRun | null>
     progress: row.progress,
     total: row.total,
     error: row.error,
-    proposals,
+    proposals: proposals.map((proposal) => ({
+      ...proposal,
+      alreadyAddedSlug:
+        proposal.alreadyAdded === null ? null : slugs.get(proposal.alreadyAdded) ?? null,
+      alreadyAddedManaged:
+        proposal.alreadyAdded === null ? false : isComicVolumeManaged(proposal.alreadyAdded),
+    })),
   };
 }
 
