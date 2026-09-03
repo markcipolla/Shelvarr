@@ -1,6 +1,6 @@
 # Shelvarr - Implementation Plan
 
-A self-hosted *arr-style web application for book/comic metadata management and file organization, designed to work alongside Komga and Komf.
+A self-hosted *arr-style web application for book/comic metadata management and file organization.
 
 > **Note**: This PLAN.md must be kept up-to-date at each implementation stage. Mark tasks as complete `[x]` as they are finished.
 
@@ -39,7 +39,6 @@ shelvarr/
 │   │   └── index.ts             # API routes
 │   ├── services/                # (To be implemented)
 │   │   ├── metadata/
-│   │   ├── komga/
 │   │   ├── scanner/
 │   │   ├── organizer/
 │   │   ├── authors/
@@ -82,29 +81,23 @@ shelvarr/
 - **Duplicate detection**: Hash-based + metadata similarity
 - **Series detection**: Group books by detected series
 
-### 4. Komga Integration
-- Optional API connection (URL + credentials)
-- Trigger library scans after reorganization
-- Read existing library paths from Komga
-- Fallback to file-only mode if not configured
-
-### 5. Background Jobs
+### 4. Background Jobs
 - Library scanning (can be large)
 - Bulk metadata fetching
 - Bulk file reorganization
 - Job status tracking in UI
 
-### 6. Author Bibliography & Missing Books
+### 5. Author Bibliography & Missing Books
 - Fetch complete author bibliography from OpenLibrary/Google Books
 - Compare against owned books
 - Show "missing" books for each author
 - Track wanted books list
 
-### 7. Book Acquisition (Phase 8 - Post-MVP)
+### 6. Book Acquisition (Phase 8 - Post-MVP)
 - **Search sources**: Z-Library, Anna's Archive, Library Genesis
 - Search by title, author, ISBN
 - Download directly to appropriate library folder
-- Auto-trigger metadata fetch + Komga scan after download
+- Auto-trigger metadata fetch after download
 - **Note**: These are search aggregators; user responsibility for legal use
 
 ## Database Schema (SQLite)
@@ -115,7 +108,6 @@ CREATE TABLE libraries (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   path TEXT NOT NULL UNIQUE,
-  komga_library_id TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -242,7 +234,6 @@ GET        /api/tasks               - List background tasks
 GET        /api/tasks/:id           - Get task status
 
 GET/PUT    /api/settings            - App settings
-GET        /api/settings/komga/test - Test Komga connection
 
 GET        /api/authors             - List tracked authors
 POST       /api/authors             - Add author to track
@@ -269,7 +260,7 @@ DELETE     /api/downloads/:id       - Cancel/remove download
 8. **Search**: Search external sources (Z-Lib, Annas, Libgen)
 9. **Downloads**: Download queue status
 10. **Tasks**: Background job status
-11. **Settings**: Komga config, naming templates, download settings
+11. **Settings**: Naming templates, download settings
 
 ## Docker Compose
 
@@ -379,12 +370,9 @@ Each phase must include tests before marking complete:
 - [x] 4.5 Organization UI (preview, apply, duplicates, series)
 - [x] 4.6 **Tests**: Unit tests for renamer/duplicates/series, integration tests for organize APIs, E2E for organize workflow
 
-### Phase 5: Komga Integration ✅ COMPLETE
-- [x] 5.1 Komga API client
-- [x] 5.2 Komga library sync
-- [x] 5.3 Post-reorganization scan triggers
-- [x] 5.4 Settings UI for Komga config
-- [x] 5.5 **Tests**: Unit tests for Komga client (mocked), integration tests for Komga settings, E2E for Komga connection flow
+### Phase 5: Komga Integration — REMOVED
+Shelvarr serves its own library API to Stackarr, so the Komga client, settings
+and sync tasks were deleted rather than maintained.
 
 ### Phase 6: Background Jobs & Polish
 - [ ] 6.1 Background job queue implementation
@@ -575,4 +563,3 @@ After each phase, verify:
 8. **Organize**: Preview and apply file reorganization
 9. **Authors**: Track author, see missing books
 10. **Search**: Search and download a book
-11. **Komga**: (If configured) Verify scan trigger works

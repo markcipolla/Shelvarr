@@ -3,30 +3,22 @@
 import { useState } from 'react';
 import { MetadataSourcesTab } from './MetadataSourcesTab';
 import { DownloadSourcesTab } from './DownloadSourcesTab';
-import { KomgaTab } from './KomgaTab';
 import { AboutTab } from './AboutTab';
 import type { DownloadSourceConfig } from '@/lib/db';
 import type { SourceStatus as DownloadSourceStatus } from '@/lib/services/downloads';
 import type { MetadataSourceStatus } from '@/lib/actions/settings';
 
-interface KomgaSettings {
-  url: string | null;
-  hasApiKey: boolean;
-}
-
 interface SettingsTabsProps {
   sources: MetadataSourceStatus[];
-  komga: KomgaSettings;
   downloadConfigs?: DownloadSourceConfig[];
   downloadStatuses?: DownloadSourceStatus[];
   comicVineDateType?: string;
 }
 
-type TabId = 'sources' | 'downloads' | 'komga' | 'about';
+type TabId = 'sources' | 'downloads' | 'about';
 
 export function SettingsTabs({
   sources,
-  komga,
   downloadConfigs = [],
   downloadStatuses = [],
   comicVineDateType = 'cover_date',
@@ -36,7 +28,6 @@ export function SettingsTabs({
   const tabs: { id: TabId; label: string }[] = [
     { id: 'sources', label: 'Metadata Sources' },
     { id: 'downloads', label: 'Download Sources' },
-    { id: 'komga', label: 'Komga' },
     { id: 'about', label: 'About' },
   ];
 
@@ -65,7 +56,6 @@ export function SettingsTabs({
           <MetadataSourcesTab sources={sources} comicVineDateType={comicVineDateType} />
         )}
         {activeTab === 'downloads' && <DownloadSourcesTab configs={downloadConfigs} statuses={downloadStatuses} />}
-        {activeTab === 'komga' && <KomgaTab settings={komga} />}
         {activeTab === 'about' && <AboutTab />}
       </div>
     </div>

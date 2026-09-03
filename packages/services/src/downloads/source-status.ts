@@ -10,6 +10,8 @@ import {
   isStatusCacheStale,
 } from '@shelvarr/db';
 
+import { getServiceConfig } from '../config';
+
 export interface SourceStatus {
   name: string;
   displayName: string;
@@ -38,14 +40,44 @@ const MONITOR_ID_MAP: Record<number, { source: string; displayName: string; url:
   38: { source: 'motw', displayName: 'Memory of the World', url: 'https://library.memoryoftheworld.org' },
 };
 
+interface KnownSource {
+  displayName: string;
+  url: string;
+  /** Endpoint to probe in `checkSourceHealth`, when the landing page won't do. */
+  healthUrl?: string;
+  /** Some hosts don't answer HEAD; default is HEAD. */
+  healthMethod?: 'HEAD' | 'GET';
+}
+
 // Known sources for display (subset we care about)
-const KNOWN_SOURCES: Record<string, { displayName: string; url: string }> = {
+const KNOWN_SOURCES: Record<string, KnownSource> = {
   zlibrary: { displayName: 'Z-Library', url: 'https://z-library.sk' },
   annas: { displayName: "Anna's Archive", url: 'https://annas-archive.org' },
   annas_li: { displayName: "Anna's Archive .li", url: 'https://annas-archive.li' },
   libgen: { displayName: 'Library Genesis', url: 'https://libgen.vg' },
   libgen_vg: { displayName: 'Library Genesis', url: 'https://libgen.vg' },
+  getcomics: { displayName: 'GetComics', url: 'https://getcomics.org' },
 };
+
+/**
+ * Look up a source, with the GetComics URLs taken from config so a configured
+ * mirror is what gets linked and probed.
+ */
+function knownSource(source: string): KnownSource | undefined {
+  const info = KNOWN_SOURCES[source];
+  if (!info) return undefined;
+  if (source !== 'getcomics') return info;
+
+  const baseUrl = getServiceConfig().getcomics.baseUrl.replace(/\/$/, '');
+  return {
+    ...info,
+    url: baseUrl,
+    // GetComics is WordPress; the REST API answers reliably where the landing
+    // page sits behind caching and doesn't always accept HEAD.
+    healthUrl: `${baseUrl}/wp-json/wp/v2/posts?per_page=1&_fields=id`,
+    healthMethod: 'GET',
+  };
+}
 
 interface HeartbeatEntry {
   status: number; // 0 = down, 1 = up, 2 = degraded
@@ -72,7 +104,7 @@ export async function getSourceStatuses(forceRefresh = false): Promise<SourceSta
 
   // Map cached data to SourceStatus format
   const statuses: SourceStatus[] = cached.map((c) => {
-    const sourceInfo = KNOWN_SOURCES[c.source] || {
+    const sourceInfo = knownSource(c.source) || {
       displayName: c.source,
       url: '#',
     };
@@ -88,7 +120,8 @@ export async function getSourceStatuses(forceRefresh = false): Promise<SourceSta
   });
 
   // Add any known sources that aren't in cache
-  for (const [name, info] of Object.entries(KNOWN_SOURCES)) {
+  for (const name of Object.keys(KNOWN_SOURCES)) {
+    const info = knownSource(name)!;
     if (!statuses.find((s) => s.name === name)) {
       statuses.push({
         name,
@@ -204,7 +237,7 @@ export async function refreshSourceStatuses(): Promise<void> {
  * Direct health check for a source (bypasses open-slum.org)
  */
 export async function checkSourceHealth(source: string): Promise<SourceStatus> {
-  const sourceInfo = KNOWN_SOURCES[source];
+  const sourceInfo = knownSource(source);
   if (!sourceInfo) {
     return {
       name: source,
@@ -217,8 +250,8 @@ export async function checkSourceHealth(source: string): Promise<SourceStatus> {
 
   try {
     const start = Date.now();
-    const response = await fetch(sourceInfo.url, {
-      method: 'HEAD',
+    const response = await fetch(sourceInfo.healthUrl || sourceInfo.url, {
+      method: sourceInfo.healthMethod || 'HEAD',
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },

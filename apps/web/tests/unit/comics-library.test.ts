@@ -284,7 +284,6 @@ describe('Comic library', () => {
       dataDir: root,
       libraryRoot: root,
       dbPath: join(root, 'test.db'),
-      komga: { url: null, apiKey: null },
       comicMigration: { pathMap: null },
       getcomics: {
         baseUrl: 'https://getcomics.example',

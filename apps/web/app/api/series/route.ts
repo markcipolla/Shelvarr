@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
 import { query, queryOne } from '@/lib/db';
 import { validateApiAuth } from '@shelvarr/services';
-import { toKomgaSeries, toPagedResponse } from '@shelvarr/services/komga-response';
+import { toApiSeries, toPagedResponse } from '@shelvarr/services/api-response';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,5 +52,5 @@ export function GET(request: NextRequest) {
     [...params, size, offset]
   );
 
-  return NextResponse.json(toPagedResponse(rows.map(toKomgaSeries), page, size, totalElements));
+  return NextResponse.json(toPagedResponse(rows.map(toApiSeries), page, size, totalElements));
 }

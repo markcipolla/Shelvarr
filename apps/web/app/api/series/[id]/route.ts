@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import '@/lib/config';
 import { queryOne } from '@/lib/db';
 import { validateApiAuth } from '@shelvarr/services';
-import { toKomgaSeries } from '@shelvarr/services/komga-response';
+import { toApiSeries } from '@shelvarr/services/api-response';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,5 +38,5 @@ export async function GET(
     return NextResponse.json({ error: 'Series not found' }, { status: 404 });
   }
 
-  return NextResponse.json(toKomgaSeries(row));
+  return NextResponse.json(toApiSeries(row));
 }

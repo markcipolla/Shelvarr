@@ -24,9 +24,24 @@ mockCreate.mockReturnValue(mockAxiosInstance);
 
 import { useSettingsStore } from '../../../src/stores/useSettingsStore';
 import { useConnectivityStore } from '../../../src/stores/useConnectivityStore';
+import { useAuthStore } from '../../../src/stores/useAuthStore';
 import { getApiClient, resetApiClient } from '../../../src/services/api/client';
 
 const mockGetState = useSettingsStore.getState as jest.Mock;
+const initialAuthState = useAuthStore.getState();
+
+/** Stand-in for axios's header bag, which is a class with `set`, not a plain object. */
+function makeConfig() {
+  const values: Record<string, string> = {};
+  return {
+    headers: {
+      set: (name: string, value: string) => {
+        values[name] = value;
+      },
+      values,
+    },
+  } as any;
+}
 
 beforeEach(() => {
   mockInterceptorRequest.use.mockClear();
@@ -36,6 +51,7 @@ beforeEach(() => {
   mockGetState.mockReturnValue({ shelvarrUrl: '' });
   resetApiClient();
   useConnectivityStore.setState({ online: true });
+  useAuthStore.setState(initialAuthState);
 });
 
 describe('getApiClient', () => {
@@ -70,7 +86,7 @@ describe('getApiClient', () => {
 
     it('leaves baseURL unset when no shelvarrUrl is configured', () => {
       mockGetState.mockReturnValue({ shelvarrUrl: '' });
-      const config = { headers: {} } as any;
+      const config = makeConfig();
       const result = requestInterceptor(config);
       expect(result).toBe(config);
       expect(result.baseURL).toBeUndefined();
@@ -78,16 +94,33 @@ describe('getApiClient', () => {
 
     it('sets baseURL from settings store', () => {
       mockGetState.mockReturnValue({ shelvarrUrl: 'http://example.com' });
-      const config = { headers: {} } as any;
-      const result = requestInterceptor(config);
+      const result = requestInterceptor(makeConfig());
       expect(result.baseURL).toBe('http://example.com');
     });
 
-    it('does not set any auth headers', () => {
+    it('sends no Authorization header when signed out', () => {
       mockGetState.mockReturnValue({ shelvarrUrl: 'http://example.com' });
-      const config = { headers: {} } as any;
-      const result = requestInterceptor(config);
-      expect(result.headers).toEqual({});
+      const result = requestInterceptor(makeConfig());
+      expect(result.headers.values).toEqual({});
+    });
+
+    it('attaches the session token as a bearer header', () => {
+      mockGetState.mockReturnValue({ shelvarrUrl: 'http://example.com' });
+      useAuthStore.setState({ token: 'session-abc' });
+
+      const result = requestInterceptor(makeConfig());
+
+      expect(result.headers.values).toEqual({ Authorization: 'Bearer session-abc' });
+    });
+
+    it('reads the token per request, so signing in needs no client reset', () => {
+      mockGetState.mockReturnValue({ shelvarrUrl: 'http://example.com' });
+
+      expect(requestInterceptor(makeConfig()).headers.values).toEqual({});
+      useAuthStore.setState({ token: 'later-token' });
+      expect(requestInterceptor(makeConfig()).headers.values).toEqual({
+        Authorization: 'Bearer later-token',
+      });
     });
   });
 
@@ -118,6 +151,26 @@ describe('getApiClient', () => {
       const err: any = { response: { status: 500 } };
       await expect(onError(err)).rejects.toBe(err);
       expect(useConnectivityStore.getState().online).toBe(true);
+    });
+
+    it('signs out when the server rejects the token', async () => {
+      useAuthStore.setState({ state: 'signed-in', token: 'stale-token' });
+
+      const err: any = { response: { status: 401 } };
+      await expect(onError(err)).rejects.toBe(err);
+
+      expect(useAuthStore.getState().state).toBe('signed-out');
+      expect(useAuthStore.getState().token).toBeNull();
+    });
+
+    it('leaves a 403 alone — that is a permission problem, not a dead session', async () => {
+      useAuthStore.setState({ state: 'signed-in', token: 'good-token' });
+
+      const err: any = { response: { status: 403 } };
+      await expect(onError(err)).rejects.toBe(err);
+
+      expect(useAuthStore.getState().state).toBe('signed-in');
+      expect(useAuthStore.getState().token).toBe('good-token');
     });
   });
 });

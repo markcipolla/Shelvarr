@@ -1,6 +1,6 @@
 /**
  * Unit tests for GET /api/books/ondeck — locally in-progress books merged with
- * books the user marked "currently reading" on Hardcover, shaped as a Komga
+ * books the user marked "currently reading" on Hardcover, shaped as a
  * paged response.
  */
 
@@ -19,9 +19,9 @@ mock.module('@shelvarr/services', {
   },
 });
 
-mock.module('@shelvarr/services/komga-response', {
+mock.module('@shelvarr/services/api-response', {
   namedExports: {
-    toKomgaBook: (row: { id: number }) => ({ id: String(row.id) }),
+    toApiBook: (row: { id: number }) => ({ id: String(row.id) }),
     toPagedResponse: (content: unknown[], page: number, size: number, totalElements: number) => ({
       content,
       number: page,

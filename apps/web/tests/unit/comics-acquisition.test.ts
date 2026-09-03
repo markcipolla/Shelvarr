@@ -223,6 +223,46 @@ describe('Comic acquisition', () => {
     });
   });
 
+  describe('GetComics source toggle', () => {
+    let getcomics: typeof import('@shelvarr/services/comics/getcomics/index');
+
+    before(async () => {
+      getcomics = await import('@shelvarr/services/comics/getcomics/index');
+    });
+
+    beforeEach(() => {
+      db.getDb().exec('DELETE FROM download_source_config;');
+    });
+
+    it('is enabled when nothing has been configured', () => {
+      assert.strictEqual(getcomics.isGetComicsEnabled(), true);
+    });
+
+    it('follows the download source config', () => {
+      db.upsertDownloadSourceConfig('getcomics', false);
+      assert.strictEqual(getcomics.isGetComicsEnabled(), false);
+
+      db.upsertDownloadSourceConfig('getcomics', true);
+      assert.strictEqual(getcomics.isGetComicsEnabled(), true);
+    });
+
+    it('makes auto search a no-op while disabled', async () => {
+      db.upsertDownloadSourceConfig('getcomics', false);
+
+      // Returns before the volume is even loaded, so the missing volume 501
+      // would otherwise have thrown.
+      const result = await getcomics.autoSearchVolume(501);
+      assert.deepStrictEqual(result, { downloads: [], failed: [] });
+    });
+
+    it('refuses a manual search while disabled', async () => {
+      db.upsertDownloadSourceConfig('getcomics', false);
+
+      await assert.rejects(getcomics.searchVolume(501), /disabled/i);
+      await assert.rejects(getcomics.searchPosts('immortal hulk'), /disabled/i);
+    });
+  });
+
   describe('getComicVolumeForMatching', () => {
     it('shapes a volume and its issues for the matcher', () => {
       db.upsertComicDetail(
@@ -274,7 +314,6 @@ describe('Comic download import', () => {
       dataDir: root,
       libraryRoot: root,
       dbPath: join(root, 'db.sqlite'),
-      komga: { url: null, apiKey: null },
       comicMigration: { pathMap: null },
       getcomics: {
         baseUrl: 'https://getcomics.org',

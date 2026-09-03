@@ -85,8 +85,6 @@ export interface ReorgOptions {
   onProgress?: (current: number, total: number) => void;
   /** Abort signal — checked between books. */
   signal?: AbortSignal;
-  /** Enqueue a komga_sync task for each successfully moved book. */
-  enqueueKomgaSync?: (bookId: number, libraryPath: string) => void;
 }
 
 /**
@@ -347,7 +345,6 @@ function rowToBook(row: BookRow): Book {
     description: null,
     coverUrl: null,
     extension: null,
-    komgaBookId: null,
     metadataSource: null,
     metadataId: null,
     createdAt: '',
@@ -605,8 +602,6 @@ export async function applyReorganization(
         } catch {
           // ignore cleanup errors
         }
-
-        opts.enqueueKomgaSync?.(item.bookId, library.path);
       }
 
       result.moved++;

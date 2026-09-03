@@ -7,7 +7,7 @@
  * passed in rather than read from the store so these stay pure — screens hand
  * over the slice they already subscribe to.
  */
-import type { Book, DownloadedBook } from '../types/komga';
+import type { Book, DownloadedBook } from '../types/api';
 import type { ComicVolumeSummary } from '@shelvarr/types';
 import type { DownloadedComic } from '../stores/useComicDownloadStore';
 

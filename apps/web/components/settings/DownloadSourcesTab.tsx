@@ -19,19 +19,36 @@ interface DownloadSourcesTabProps {
   statuses: SourceStatus[];
 }
 
+type SourceCategory = 'ebook' | 'comic';
+
 interface SourceInfo {
   name: string;
   displayName: string;
   description: string;
+  category: SourceCategory;
   requiresAuth: boolean;
   authFields?: { name: string; type: string; label: string }[];
 }
+
+const CATEGORIES: { id: SourceCategory; label: string; description: string }[] = [
+  {
+    id: 'ebook',
+    label: 'Ebooks',
+    description: 'Sources searched when finding and downloading books',
+  },
+  {
+    id: 'comic',
+    label: 'Comics',
+    description: 'Sources searched when finding and downloading comic issues',
+  },
+];
 
 const SOURCES: SourceInfo[] = [
   {
     name: 'zlibrary',
     displayName: 'Z-Library',
     description: 'Largest free e-book library. Authentication required for downloads.',
+    category: 'ebook',
     requiresAuth: true,
     authFields: [
       { name: 'email', type: 'email', label: 'Email' },
@@ -42,12 +59,21 @@ const SOURCES: SourceInfo[] = [
     name: 'annas',
     displayName: "Anna's Archive",
     description: 'Search engine for shadow libraries. No authentication required.',
+    category: 'ebook',
     requiresAuth: false,
   },
   {
     name: 'libgen',
     displayName: 'Library Genesis',
     description: 'Free access to scientific articles and books. No authentication required.',
+    category: 'ebook',
+    requiresAuth: false,
+  },
+  {
+    name: 'getcomics',
+    displayName: 'GetComics',
+    description: 'Comic releases indexed by GetComics. No authentication required.',
+    category: 'comic',
     requiresAuth: false,
   },
 ];
@@ -72,7 +98,7 @@ export function DownloadSourcesTab({ configs, statuses }: DownloadSourcesTabProp
         <div>
           <h2 className="text-lg font-semibold text-white">Download Sources</h2>
           <p className="text-sm text-shelvarr-text-muted mt-1">
-            Configure sources for finding and downloading books
+            Configure sources for finding and downloading books and comics
           </p>
         </div>
         <button
@@ -84,16 +110,34 @@ export function DownloadSourcesTab({ configs, statuses }: DownloadSourcesTabProp
         </button>
       </div>
 
-      <div className="space-y-4">
-        {SOURCES.map((source) => (
-          <SourceCard
-            key={source.name}
-            source={source}
-            config={getConfig(source.name)}
-            status={getStatus(source.name)}
-          />
-        ))}
-      </div>
+      {CATEGORIES.map((category) => {
+        const sources = SOURCES.filter((source) => source.category === category.id);
+        if (sources.length === 0) return null;
+
+        return (
+          <section key={category.id} className="space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold text-white">
+                {category.label}
+              </h3>
+              <p className="text-sm text-shelvarr-text-muted mt-0.5">
+                {category.description}
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {sources.map((source) => (
+                <SourceCard
+                  key={source.name}
+                  source={source}
+                  config={getConfig(source.name)}
+                  status={getStatus(source.name)}
+                />
+              ))}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }

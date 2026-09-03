@@ -17,9 +17,18 @@ services:
       - PORT=3000
       - DATA_DIR=/app/data
       - LIBRARY_ROOT=/libraries
-      # Optional Komga integration:
-      # - KOMGA_URL=http://komga:25600
-      # - KOMGA_API_KEY=your-api-key
+      # User accounts. On by default; the first visit runs a setup wizard.
+      # Set the public URL so emailed sign-in links point somewhere reachable.
+      # - SHELVARR_URL=http://shelvarr.local:3000
+      # Set false to turn accounts off and leave the server open.
+      # - SHELVARR_AUTH_ENABLED=false
+      # - SHELVARR_ALLOW_SIGNUP=false
+      # Without SMTP, sign-in links are written to the container log instead.
+      # - SMTP_HOST=smtp.example.com
+      # - SMTP_PORT=587
+      # - SMTP_USER=shelvarr@example.com
+      # - SMTP_PASSWORD=your-password
+      # - SMTP_FROM=Shelvarr <shelvarr@example.com>
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
