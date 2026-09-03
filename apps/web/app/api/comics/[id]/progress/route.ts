@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
 import { getComicReadProgressForVolume } from '@/lib/db';
-import { validateApiAuth } from '@shelvarr/services';
+import { validateApiAuth, getReadingUserId } from '@shelvarr/services';
 
 export const dynamic = 'force-dynamic';
 
-// Per-issue read progress for every tracked issue of a volume.
+// The requester's own read progress for every tracked issue of a volume.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -20,5 +20,7 @@ export async function GET(
     return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
   }
 
-  return NextResponse.json({ progress: getComicReadProgressForVolume(volumeId) });
+  return NextResponse.json({
+    progress: getComicReadProgressForVolume(getReadingUserId(request.headers), volumeId),
+  });
 }

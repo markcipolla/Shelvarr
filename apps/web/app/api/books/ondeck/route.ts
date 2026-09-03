@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
 import { query, getReadProgress, getHardcoverReadingBooks } from '@/lib/db';
-import { validateApiAuth } from '@shelvarr/services';
+import { validateApiAuth, getReadingUserId } from '@shelvarr/services';
 import { toApiBook, toPagedResponse } from '@shelvarr/services/api-response';
 
 // Cap on how many books are gathered before in-memory pagination. These home
@@ -56,21 +56,24 @@ export function GET(request: NextRequest) {
   const size = parseInt(searchParams.get('size') || '20');
   const offset = page * size;
 
-  // Locally in-progress books (opened and partway through)...
+  const userId = getReadingUserId(request.headers);
+
+  // Books this person has opened and is partway through...
   const localRows = query<BookRow>(
     `SELECT b.* FROM books b
-     JOIN read_progress rp ON b.id = rp.book_id
+     JOIN read_progress rp ON b.id = rp.book_id AND rp.user_id = ?
      WHERE rp.completed = 0 AND rp.page > 0
      ORDER BY rp.updated_at DESC
      LIMIT ?`,
-    [MAX_ROWS]
+    [userId, MAX_ROWS]
   );
-  // ...plus books the user marked "currently reading" on Hardcover with no local
-  // progress yet. Local progress takes precedence when a book appears in both.
-  const hardcoverRows = getHardcoverReadingBooks<BookRow>(MAX_ROWS, 0);
+  // ...plus books marked "currently reading" on the server's Hardcover account
+  // that they have no local progress for. Local progress takes precedence when
+  // a book appears in both.
+  const hardcoverRows = getHardcoverReadingBooks<BookRow>(userId, MAX_ROWS, 0);
 
   const merged = dedupeById([...localRows, ...hardcoverRows]);
   const pageRows = merged.slice(offset, offset + size);
-  const content = pageRows.map(b => toApiBook(b, getReadProgress(b.id)));
+  const content = pageRows.map(b => toApiBook(b, userId, getReadProgress(userId, b.id)));
   return NextResponse.json(toPagedResponse(content, page, size, merged.length));
 }

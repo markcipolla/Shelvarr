@@ -1,7 +1,8 @@
 /**
  * Unit tests for GET /api/books/next-up — the next unread book in each series
- * the user is partway through, merged with books marked "want to read" on
- * Hardcover, shaped as a paged response.
+ * the caller is partway through, merged with books marked "want to read" on
+ * Hardcover, shaped as a paged response. Both halves are scoped to whoever is
+ * asking.
  */
 
 import { describe, it, beforeEach, afterEach, mock } from 'node:test';
@@ -9,13 +10,17 @@ import assert from 'node:assert';
 import { cleanup } from '@testing-library/react';
 
 let authResult = true;
+let readingUserId = 5;
 
-const getNextUpBooksMock = mock.fn<(size: number, offset: number) => unknown[]>(() => []);
-const getWantToReadBooksMock = mock.fn<(size: number, offset: number) => unknown[]>(() => []);
+const getNextUpBooksMock =
+  mock.fn<(userId: number, size: number, offset: number) => unknown[]>(() => []);
+const getWantToReadBooksMock =
+  mock.fn<(userId: number, size: number, offset: number) => unknown[]>(() => []);
 
 mock.module('@shelvarr/services', {
   namedExports: {
     validateApiAuth: () => authResult,
+    getReadingUserId: () => readingUserId,
   },
 });
 
@@ -35,8 +40,10 @@ mock.module('@/lib/config', { namedExports: {} });
 
 mock.module('@/lib/db', {
   namedExports: {
-    getNextUpBooks: (size: number, offset: number) => getNextUpBooksMock(size, offset),
-    getWantToReadBooks: (size: number, offset: number) => getWantToReadBooksMock(size, offset),
+    getNextUpBooks: (userId: number, size: number, offset: number) =>
+      getNextUpBooksMock(userId, size, offset),
+    getWantToReadBooks: (userId: number, size: number, offset: number) =>
+      getWantToReadBooksMock(userId, size, offset),
     getReadProgress: () => null,
   },
 });
@@ -54,6 +61,7 @@ describe('GET /api/books/next-up', () => {
     getWantToReadBooksMock.mock.resetCalls();
     getWantToReadBooksMock.mock.mockImplementation(() => []);
     authResult = true;
+    readingUserId = 5;
   });
   afterEach(cleanup);
 
@@ -80,6 +88,13 @@ describe('GET /api/books/next-up', () => {
     const body = await res.json();
     assert.deepEqual(body.content, [{ id: '7' }, { id: '9' }]);
     assert.equal(body.totalElements, 2);
+  });
+
+  it('asks for the calling reader\'s books, not everyone\'s', () => {
+    readingUserId = 42;
+    GET(req() as any);
+    assert.equal(getNextUpBooksMock.mock.calls[0]?.arguments[0], 42);
+    assert.equal(getWantToReadBooksMock.mock.calls[0]?.arguments[0], 42);
   });
 
   it('paginates the merged list with page and size', async () => {

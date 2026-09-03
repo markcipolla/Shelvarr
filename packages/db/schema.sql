@@ -149,20 +149,30 @@ CREATE TABLE IF NOT EXISTS source_status_cache (
 );
 
 -- Read progress (page-based, for the reader API)
+--
+-- user_id 0 is the shared shelf: it is what a server with accounts switched
+-- off writes to, and where requests authenticated with the legacy shared API
+-- key land, since that key carries access but no identity. A real account's
+-- id is never 0, so per-user rows can never collide with it.
 CREATE TABLE IF NOT EXISTS read_progress (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL DEFAULT 0,
   page INTEGER NOT NULL DEFAULT 0,
   completed INTEGER NOT NULL DEFAULT 0,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(book_id)
+  UNIQUE(book_id, user_id)
 );
 
 -- Cached Hardcover.app reading statuses, pulled from the user's account.
 -- Keyed by Hardcover book id (matches books.metadata_id when
 -- metadata_source = 'hardcover'). Status ids follow Hardcover's convention:
 -- 1 = want to read, 2 = currently reading, 3 = read, 5 = did not finish.
+--
+-- Deliberately not per-user: Hardcover is configured once for the whole
+-- server with a single token, so there is only ever one account's worth of
+-- statuses to cache. Everyone sees the same ones.
 CREATE TABLE IF NOT EXISTS hardcover_reading_status (
   hardcover_id TEXT PRIMARY KEY,
   status_id INTEGER NOT NULL,
@@ -170,14 +180,17 @@ CREATE TABLE IF NOT EXISTS hardcover_reading_status (
 );
 
 -- Comic read progress (comic issues; not in books table, so no FK)
+-- user_id follows the same convention as read_progress: 0 is the shared shelf.
 CREATE TABLE IF NOT EXISTS comic_read_progress (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  issue_id INTEGER NOT NULL UNIQUE,
+  issue_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL DEFAULT 0,
   page INTEGER NOT NULL DEFAULT 0,
   completed INTEGER NOT NULL DEFAULT 0,
   total INTEGER,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(issue_id, user_id)
 );
 
 -- Comics (volumes)
@@ -228,15 +241,18 @@ CREATE TABLE IF NOT EXISTS comic_issues (
 );
 
 -- EPUB progression tracking (CFI/position)
+-- Positions roam across a person's devices, not across people, so user_id
+-- sits alongside device_id in the key. 0 is the shared shelf.
 CREATE TABLE IF NOT EXISTS epub_progression (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL DEFAULT 0,
   device_id TEXT NOT NULL DEFAULT 'default',
   locator TEXT NOT NULL, -- JSON: EPUB CFI/position data
   progression REAL NOT NULL DEFAULT 0, -- 0-1 percentage
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(book_id, device_id)
+  UNIQUE(book_id, user_id, device_id)
 );
 
 -- Indexes for common queries

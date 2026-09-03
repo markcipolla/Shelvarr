@@ -6,6 +6,7 @@ import { ComicCard } from '@/components/comics/ComicGrid';
 import type { Book } from '@/types';
 import type { ComicVolumeSummary } from '@shelvarr/types';
 import type { InProgressComic } from '@/lib/db';
+import { getReadingUserId } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,10 +16,15 @@ const RECENT_BOOKS_LIMIT = 12;
 const RECENT_COMICS_LIMIT = 12;
 
 export default async function HomePage() {
+  // Everything progress-shaped on this page is one person's: with accounts on,
+  // two people see different Currently Reading and Next Up rows. Without them,
+  // this is the shared shelf and the page looks exactly as it always did.
+  const userId = await getReadingUserId();
+
   const [currentlyReading, nextUp, recentBooks, comicsResult, inProgressComics] = await Promise.all([
-    getCurrentlyReadingBooks(CURRENTLY_READING_LIMIT),
-    getWantToReadBooks(NEXT_UP_LIMIT),
-    getRecentBooks(RECENT_BOOKS_LIMIT),
+    getCurrentlyReadingBooks(userId, CURRENTLY_READING_LIMIT),
+    getWantToReadBooks(userId, NEXT_UP_LIMIT),
+    getRecentBooks(userId, RECENT_BOOKS_LIMIT),
     getRecentComics(RECENT_COMICS_LIMIT),
     getInProgressComics(CURRENTLY_READING_LIMIT),
   ]);

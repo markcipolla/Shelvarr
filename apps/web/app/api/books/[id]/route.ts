@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import '@/lib/config';
 import { queryOne, getReadProgress } from '@/lib/db';
-import { validateApiAuth } from '@shelvarr/services';
+import { validateApiAuth, getReadingUserId } from '@shelvarr/services';
 import { toApiBook } from '@shelvarr/services/api-response';
 
 export const dynamic = 'force-dynamic';
@@ -44,5 +44,6 @@ export async function GET(
     return NextResponse.json({ error: 'Book not found' }, { status: 404 });
   }
 
-  return NextResponse.json(toApiBook(row, getReadProgress(row.id)));
+  const userId = getReadingUserId(request.headers);
+  return NextResponse.json(toApiBook(row, userId, getReadProgress(userId, row.id)));
 }

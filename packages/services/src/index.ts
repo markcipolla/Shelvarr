@@ -44,6 +44,9 @@ export {
 } from './auth/index';
 export type { RequestAuth, HeaderReader } from './auth/request';
 
+// Whose read progress a request is looking at
+export { getReadingUserId, SHARED_USER_ID } from './reading-user';
+
 // Utils
 export * as authors from './utils/authors';
 export * as logger from './utils/logger';

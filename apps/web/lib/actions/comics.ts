@@ -10,6 +10,7 @@ import {
   type ComicIssueProgress,
 } from '@/lib/db';
 import type { ComicVolumeSummary, ComicVolumeDetail } from '@shelvarr/types';
+import { getReadingUserId } from '@/lib/auth';
 
 export interface ComicsListResult {
   volumes: Array<ComicVolumeSummary & { managed?: boolean }>;
@@ -34,15 +35,16 @@ export async function getRecentComics(limit: number): Promise<ComicsListResult> 
 }
 
 /**
- * Volumes the user is partway through reading, most recent first.
+ * Volumes the signed-in person is partway through reading, most recent first.
+ * On a server without accounts this is the shared shelf, as before.
  */
 export async function getInProgressComics(limit: number): Promise<InProgressComic[]> {
-  return dbGetInProgressComics(limit);
+  return dbGetInProgressComics(await getReadingUserId(), limit);
 }
 
-/** Per-issue read progress for a volume, keyed by issue id. */
+/** The signed-in person's per-issue read progress for a volume. */
 export async function getComicProgress(volumeId: number): Promise<ComicIssueProgress[]> {
-  return dbGetComicReadProgressForVolume(volumeId);
+  return dbGetComicReadProgressForVolume(await getReadingUserId(), volumeId);
 }
 
 export async function getComic(id: number): Promise<ComicDetailResult> {

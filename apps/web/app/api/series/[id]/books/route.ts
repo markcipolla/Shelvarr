@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import '@/lib/config';
 import { query, getReadProgress } from '@/lib/db';
-import { validateApiAuth } from '@shelvarr/services';
+import { validateApiAuth, getReadingUserId } from '@shelvarr/services';
 import { toApiBook } from '@shelvarr/services/api-response';
 
 export const dynamic = 'force-dynamic';
@@ -46,5 +46,6 @@ export async function GET(
     [id]
   );
 
-  return NextResponse.json(books.map(b => toApiBook(b, getReadProgress(b.id))));
+  const userId = getReadingUserId(request.headers);
+  return NextResponse.json(books.map(b => toApiBook(b, userId, getReadProgress(userId, b.id))));
 }

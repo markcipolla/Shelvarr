@@ -1,7 +1,10 @@
 /**
  * Unit tests for comic read-progress queries in @shelvarr/db:
- * getInProgressComics (dedup-by-volume, most-recent-first) and
- * getComicReadProgressForVolume (per-issue progress).
+ * getInProgressComics (dedup-by-volume, most-recent-first),
+ * getNextUpComics and getComicReadProgressForVolume (per-issue progress).
+ *
+ * All three are per-reader: on a server with accounts, one person finishing an
+ * issue must not move anybody else's rows.
  */
 
 import { describe, it, before, after, beforeEach } from 'node:test';
@@ -53,9 +56,15 @@ function makeDetail(id: number, issues: ComicIssueSummary[]): ComicVolumeDetail 
   };
 }
 
+// A signed-in reader. Everything below is their shelf unless stated.
+const READER = 7;
+const OTHER_READER = 8;
+
 /** Force a deterministic updated_at so ordering assertions are stable. */
-function setProgressTime(issueId: number, iso: string) {
-  db.getDb().prepare('UPDATE comic_read_progress SET updated_at = ? WHERE issue_id = ?').run(iso, issueId);
+function setProgressTime(issueId: number, iso: string, userId = READER) {
+  db.getDb()
+    .prepare('UPDATE comic_read_progress SET updated_at = ? WHERE issue_id = ? AND user_id = ?')
+    .run(iso, issueId, userId);
 }
 
 describe('Comic progress queries (@shelvarr/db)', () => {
@@ -86,7 +95,7 @@ describe('Comic progress queries (@shelvarr/db)', () => {
   describe('getComicReadProgressForVolume', () => {
     it('returns empty array when nothing is tracked', () => {
       db.upsertComicDetail(makeDetail(101, [makeIssue({ id: 1, volume_id: 101 })]));
-      assert.deepStrictEqual(db.getComicReadProgressForVolume(101), []);
+      assert.deepStrictEqual(db.getComicReadProgressForVolume(READER, 101), []);
     });
 
     it('returns per-issue progress with completed as a boolean', () => {
@@ -94,10 +103,10 @@ describe('Comic progress queries (@shelvarr/db)', () => {
         makeIssue({ id: 1, volume_id: 101 }),
         makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
       ]));
-      db.upsertComicReadProgress(1, 5, false, 20);
-      db.upsertComicReadProgress(2, 20, true, 20);
+      db.upsertComicReadProgress(READER, 1, 5, false, 20);
+      db.upsertComicReadProgress(READER, 2, 20, true, 20);
 
-      const rows = db.getComicReadProgressForVolume(101);
+      const rows = db.getComicReadProgressForVolume(READER, 101);
       const byId = new Map(rows.map((r) => [r.issueId, r]));
       assert.strictEqual(rows.length, 2);
       assert.strictEqual(byId.get(1)?.completed, false);
@@ -106,13 +115,21 @@ describe('Comic progress queries (@shelvarr/db)', () => {
       assert.strictEqual(byId.get(2)?.completed, true);
     });
 
+    it('does not leak progress from another reader', () => {
+      db.upsertComicDetail(makeDetail(101, [makeIssue({ id: 1, volume_id: 101 })]));
+      db.upsertComicReadProgress(OTHER_READER, 1, 9, false, 20);
+
+      assert.deepStrictEqual(db.getComicReadProgressForVolume(READER, 101), []);
+      assert.strictEqual(db.getComicReadProgressForVolume(OTHER_READER, 101).length, 1);
+    });
+
     it('does not leak progress from other volumes', () => {
       db.upsertComicDetail(makeDetail(101, [makeIssue({ id: 1, volume_id: 101 })]));
       db.upsertComicDetail(makeDetail(202, [makeIssue({ id: 2, volume_id: 202 })]));
-      db.upsertComicReadProgress(1, 3, false, 10);
-      db.upsertComicReadProgress(2, 4, false, 10);
+      db.upsertComicReadProgress(READER, 1, 3, false, 10);
+      db.upsertComicReadProgress(READER, 2, 4, false, 10);
 
-      const rows = db.getComicReadProgressForVolume(101);
+      const rows = db.getComicReadProgressForVolume(READER, 101);
       assert.strictEqual(rows.length, 1);
       assert.strictEqual(rows[0].issueId, 1);
     });
@@ -121,7 +138,7 @@ describe('Comic progress queries (@shelvarr/db)', () => {
   describe('getInProgressComics', () => {
     it('returns empty when nothing is in progress', () => {
       db.upsertComicDetail(makeDetail(101, [makeIssue({ id: 1, volume_id: 101 })]));
-      assert.deepStrictEqual(db.getInProgressComics(10), []);
+      assert.deepStrictEqual(db.getInProgressComics(READER, 10), []);
     });
 
     it('excludes completed issues and issues at page 0', () => {
@@ -129,18 +146,18 @@ describe('Comic progress queries (@shelvarr/db)', () => {
         makeIssue({ id: 1, volume_id: 101 }),
         makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
       ]));
-      db.upsertComicReadProgress(1, 20, true, 20); // completed -> excluded
-      db.upsertComicReadProgress(2, 0, false, 20); // page 0 -> excluded
-      assert.deepStrictEqual(db.getInProgressComics(10), []);
+      db.upsertComicReadProgress(READER, 1, 20, true, 20); // completed -> excluded
+      db.upsertComicReadProgress(READER, 2, 0, false, 20); // page 0 -> excluded
+      assert.deepStrictEqual(db.getInProgressComics(READER, 10), []);
     });
 
     it('surfaces an in-progress volume with resume info', () => {
       db.upsertComicDetail(makeDetail(101, [
         makeIssue({ id: 1, volume_id: 101, issue_number: '3', calculated_issue_number: 3 }),
       ]));
-      db.upsertComicReadProgress(1, 7, false, 22);
+      db.upsertComicReadProgress(READER, 1, 7, false, 22);
 
-      const result = db.getInProgressComics(10);
+      const result = db.getInProgressComics(READER, 10);
       assert.strictEqual(result.length, 1);
       assert.strictEqual(result[0].volume.id, 101);
       assert.strictEqual(result[0].issueId, 1);
@@ -154,12 +171,12 @@ describe('Comic progress queries (@shelvarr/db)', () => {
         makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
         makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
       ]));
-      db.upsertComicReadProgress(1, 3, false, 20);
-      db.upsertComicReadProgress(2, 8, false, 20);
+      db.upsertComicReadProgress(READER, 1, 3, false, 20);
+      db.upsertComicReadProgress(READER, 2, 8, false, 20);
       setProgressTime(1, '2024-01-01 10:00:00');
       setProgressTime(2, '2024-01-02 10:00:00'); // more recent
 
-      const result = db.getInProgressComics(10);
+      const result = db.getInProgressComics(READER, 10);
       assert.strictEqual(result.length, 1);
       assert.strictEqual(result[0].volume.id, 101);
       assert.strictEqual(result[0].issueId, 2, 'should carry the most recently read issue');
@@ -169,25 +186,33 @@ describe('Comic progress queries (@shelvarr/db)', () => {
       db.upsertComicDetail(makeDetail(101, [makeIssue({ id: 1, volume_id: 101 })]));
       db.upsertComicDetail(makeDetail(202, [makeIssue({ id: 2, volume_id: 202 })]));
       db.upsertComicDetail(makeDetail(303, [makeIssue({ id: 3, volume_id: 303 })]));
-      db.upsertComicReadProgress(1, 2, false, 20);
-      db.upsertComicReadProgress(2, 2, false, 20);
-      db.upsertComicReadProgress(3, 2, false, 20);
+      db.upsertComicReadProgress(READER, 1, 2, false, 20);
+      db.upsertComicReadProgress(READER, 2, 2, false, 20);
+      db.upsertComicReadProgress(READER, 3, 2, false, 20);
       setProgressTime(1, '2024-01-01 10:00:00');
       setProgressTime(2, '2024-01-03 10:00:00');
       setProgressTime(3, '2024-01-02 10:00:00');
 
-      const ordered = db.getInProgressComics(10).map((c) => c.volume.id);
+      const ordered = db.getInProgressComics(READER, 10).map((c) => c.volume.id);
       assert.deepStrictEqual(ordered, [202, 303, 101]);
 
-      const limited = db.getInProgressComics(2).map((c) => c.volume.id);
+      const limited = db.getInProgressComics(READER, 2).map((c) => c.volume.id);
       assert.deepStrictEqual(limited, [202, 303]);
     });
 
     it('excludes soft-deleted volumes', () => {
       db.upsertComicDetail(makeDetail(101, [makeIssue({ id: 1, volume_id: 101 })]));
-      db.upsertComicReadProgress(1, 5, false, 20);
+      db.upsertComicReadProgress(READER, 1, 5, false, 20);
       db.softDeleteComic(101);
-      assert.deepStrictEqual(db.getInProgressComics(10), []);
+      assert.deepStrictEqual(db.getInProgressComics(READER, 10), []);
+    });
+
+    it("does not surface another reader's volume", () => {
+      db.upsertComicDetail(makeDetail(101, [makeIssue({ id: 1, volume_id: 101 })]));
+      db.upsertComicReadProgress(OTHER_READER, 1, 5, false, 20);
+
+      assert.deepStrictEqual(db.getInProgressComics(READER, 10), []);
+      assert.strictEqual(db.getInProgressComics(OTHER_READER, 10).length, 1);
     });
   });
 
@@ -197,8 +222,8 @@ describe('Comic progress queries (@shelvarr/db)', () => {
         makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
         makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
       ]));
-      db.upsertComicReadProgress(1, 5, false, 20); // in progress, not finished
-      assert.deepStrictEqual(db.getNextUpComics(10), []);
+      db.upsertComicReadProgress(READER, 1, 5, false, 20); // in progress, not finished
+      assert.deepStrictEqual(db.getNextUpComics(READER, 10), []);
     });
 
     it('surfaces the next downloaded unread issue after a finished one', () => {
@@ -206,9 +231,9 @@ describe('Comic progress queries (@shelvarr/db)', () => {
         makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
         makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
       ]));
-      db.upsertComicReadProgress(1, 20, true, 20); // finished #1
+      db.upsertComicReadProgress(READER, 1, 20, true, 20); // finished #1
 
-      const result = db.getNextUpComics(10);
+      const result = db.getNextUpComics(READER, 10);
       assert.strictEqual(result.length, 1);
       assert.strictEqual(result[0].volume.id, 101);
       assert.strictEqual(result[0].issueId, 2, 'points at the next issue');
@@ -221,10 +246,10 @@ describe('Comic progress queries (@shelvarr/db)', () => {
         makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
         makeIssue({ id: 3, volume_id: 101, issue_number: '3', calculated_issue_number: 3 }),
       ]));
-      db.upsertComicReadProgress(1, 20, true, 20);
-      db.upsertComicReadProgress(2, 20, true, 20); // #1 and #2 finished
+      db.upsertComicReadProgress(READER, 1, 20, true, 20);
+      db.upsertComicReadProgress(READER, 2, 20, true, 20); // #1 and #2 finished
 
-      const result = db.getNextUpComics(10);
+      const result = db.getNextUpComics(READER, 10);
       assert.strictEqual(result.length, 1);
       assert.strictEqual(result[0].issueId, 3);
     });
@@ -234,9 +259,9 @@ describe('Comic progress queries (@shelvarr/db)', () => {
         makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
         makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
       ]));
-      db.upsertComicReadProgress(1, 20, true, 20); // finished #1
-      db.upsertComicReadProgress(2, 4, false, 20); // mid-read #2
-      assert.deepStrictEqual(db.getNextUpComics(10), []);
+      db.upsertComicReadProgress(READER, 1, 20, true, 20); // finished #1
+      db.upsertComicReadProgress(READER, 2, 4, false, 20); // mid-read #2
+      assert.deepStrictEqual(db.getNextUpComics(READER, 10), []);
     });
 
     it('surfaces the next issue even when it is not downloaded', () => {
@@ -244,9 +269,9 @@ describe('Comic progress queries (@shelvarr/db)', () => {
         makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
         makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2, files: [] }),
       ]));
-      db.upsertComicReadProgress(1, 20, true, 20);
+      db.upsertComicReadProgress(READER, 1, 20, true, 20);
 
-      const result = db.getNextUpComics(10);
+      const result = db.getNextUpComics(READER, 10);
       assert.strictEqual(result.length, 1);
       assert.strictEqual(result[0].issueId, 2);
     });
@@ -255,8 +280,8 @@ describe('Comic progress queries (@shelvarr/db)', () => {
       db.upsertComicDetail(makeDetail(101, [
         makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
       ]));
-      db.upsertComicReadProgress(1, 20, true, 20);
-      assert.deepStrictEqual(db.getNextUpComics(10), []);
+      db.upsertComicReadProgress(READER, 1, 20, true, 20);
+      assert.deepStrictEqual(db.getNextUpComics(READER, 10), []);
     });
 
     it('orders by most-recently-finished and respects the limit', () => {
@@ -268,15 +293,15 @@ describe('Comic progress queries (@shelvarr/db)', () => {
         makeIssue({ id: 2, volume_id: 202, issue_number: '1', calculated_issue_number: 1 }),
         makeIssue({ id: 22, volume_id: 202, issue_number: '2', calculated_issue_number: 2 }),
       ]));
-      db.upsertComicReadProgress(1, 20, true, 20);
-      db.upsertComicReadProgress(2, 20, true, 20);
+      db.upsertComicReadProgress(READER, 1, 20, true, 20);
+      db.upsertComicReadProgress(READER, 2, 20, true, 20);
       setProgressTime(1, '2024-01-01 10:00:00');
       setProgressTime(2, '2024-01-05 10:00:00'); // 202 finished more recently
 
-      const ordered = db.getNextUpComics(10).map((c) => c.volume.id);
+      const ordered = db.getNextUpComics(READER, 10).map((c) => c.volume.id);
       assert.deepStrictEqual(ordered, [202, 101]);
 
-      const limited = db.getNextUpComics(1).map((c) => c.volume.id);
+      const limited = db.getNextUpComics(READER, 1).map((c) => c.volume.id);
       assert.deepStrictEqual(limited, [202]);
     });
 
@@ -285,9 +310,34 @@ describe('Comic progress queries (@shelvarr/db)', () => {
         makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
         makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
       ]));
-      db.upsertComicReadProgress(1, 20, true, 20);
+      db.upsertComicReadProgress(READER, 1, 20, true, 20);
       db.softDeleteComic(101);
-      assert.deepStrictEqual(db.getNextUpComics(10), []);
+      assert.deepStrictEqual(db.getNextUpComics(READER, 10), []);
+    });
+
+    it('points each reader at their own next issue', () => {
+      db.upsertComicDetail(makeDetail(101, [
+        makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
+        makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
+        makeIssue({ id: 3, volume_id: 101, issue_number: '3', calculated_issue_number: 3 }),
+      ]));
+      db.upsertComicReadProgress(READER, 1, 20, true, 20); // READER finished #1
+      db.upsertComicReadProgress(OTHER_READER, 1, 20, true, 20);
+      db.upsertComicReadProgress(OTHER_READER, 2, 20, true, 20); // they finished #2 too
+
+      assert.strictEqual(db.getNextUpComics(READER, 10)[0]?.issueId, 2);
+      assert.strictEqual(db.getNextUpComics(OTHER_READER, 10)[0]?.issueId, 3);
+    });
+
+    it("is not blocked by another reader's issue in progress", () => {
+      db.upsertComicDetail(makeDetail(101, [
+        makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
+        makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
+      ]));
+      db.upsertComicReadProgress(READER, 1, 20, true, 20);
+      db.upsertComicReadProgress(OTHER_READER, 2, 4, false, 20); // mid-read, but not ours
+
+      assert.strictEqual(db.getNextUpComics(READER, 10)[0]?.issueId, 2);
     });
   });
 });

@@ -1,6 +1,6 @@
 /**
- * Unit tests for GET /api/books/ondeck — locally in-progress books merged with
- * books the user marked "currently reading" on Hardcover, shaped as a
+ * Unit tests for GET /api/books/ondeck — the caller's own in-progress books
+ * merged with books marked "currently reading" on Hardcover, shaped as a
  * paged response.
  */
 
@@ -9,13 +9,16 @@ import assert from 'node:assert';
 import { cleanup } from '@testing-library/react';
 
 let authResult = true;
+let readingUserId = 5;
 
-const queryMock = mock.fn<() => unknown[]>(() => []);
-const getHardcoverReadingBooksMock = mock.fn<(size: number, offset: number) => unknown[]>(() => []);
+const queryMock = mock.fn<(sql: string, params: unknown[]) => unknown[]>(() => []);
+const getHardcoverReadingBooksMock =
+  mock.fn<(userId: number, size: number, offset: number) => unknown[]>(() => []);
 
 mock.module('@shelvarr/services', {
   namedExports: {
     validateApiAuth: () => authResult,
+    getReadingUserId: () => readingUserId,
   },
 });
 
@@ -35,10 +38,10 @@ mock.module('@/lib/config', { namedExports: {} });
 
 mock.module('@/lib/db', {
   namedExports: {
-    query: () => queryMock(),
+    query: (sql: string, params: unknown[]) => queryMock(sql, params),
     getReadProgress: () => null,
-    getHardcoverReadingBooks: (size: number, offset: number) =>
-      getHardcoverReadingBooksMock(size, offset),
+    getHardcoverReadingBooks: (userId: number, size: number, offset: number) =>
+      getHardcoverReadingBooksMock(userId, size, offset),
   },
 });
 
@@ -55,6 +58,7 @@ describe('GET /api/books/ondeck', () => {
     getHardcoverReadingBooksMock.mock.resetCalls();
     getHardcoverReadingBooksMock.mock.mockImplementation(() => []);
     authResult = true;
+    readingUserId = 5;
   });
   afterEach(cleanup);
 
@@ -81,6 +85,16 @@ describe('GET /api/books/ondeck', () => {
     const body = await res.json();
     assert.deepEqual(body.content, [{ id: '1' }, { id: '3' }]);
     assert.equal(body.totalElements, 2);
+  });
+
+  it("looks up only the calling reader's progress", () => {
+    readingUserId = 42;
+    GET(req() as any);
+    // The local half filters read_progress by user, the Hardcover half by the
+    // progress it excludes — both need to know who is asking.
+    assert.match(queryMock.mock.calls[0]?.arguments[0] ?? '', /rp\.user_id = \?/);
+    assert.equal((queryMock.mock.calls[0]?.arguments[1] as unknown[])?.[0], 42);
+    assert.equal(getHardcoverReadingBooksMock.mock.calls[0]?.arguments[0], 42);
   });
 
   it('paginates the merged list with page and size', async () => {

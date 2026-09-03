@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
 import { query, queryOne, getReadProgress } from '@/lib/db';
-import { validateApiAuth } from '@shelvarr/services';
+import { validateApiAuth, getReadingUserId } from '@shelvarr/services';
 import { toApiBook, toPagedResponse } from '@shelvarr/services/api-response';
 
 export const dynamic = 'force-dynamic';
@@ -79,6 +79,7 @@ export function GET(request: NextRequest) {
     [...params, size, offset]
   );
 
-  const content = rows.map(b => toApiBook(b, getReadProgress(b.id)));
+  const userId = getReadingUserId(request.headers);
+  const content = rows.map(b => toApiBook(b, userId, getReadProgress(userId, b.id)));
   return NextResponse.json(toPagedResponse(content, page, size, totalElements));
 }

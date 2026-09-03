@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
 import { getNextUpComics } from '@/lib/db';
-import { validateApiAuth } from '@shelvarr/services';
+import { validateApiAuth, getReadingUserId } from '@shelvarr/services';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,5 +16,7 @@ export async function GET(request: NextRequest) {
   const parsed = limitParam ? parseInt(limitParam, 10) : DEFAULT_LIMIT;
   const limit = Number.isFinite(parsed) ? parsed : DEFAULT_LIMIT;
 
-  return NextResponse.json({ comics: getNextUpComics(limit) });
+  return NextResponse.json({
+    comics: getNextUpComics(getReadingUserId(request.headers), limit),
+  });
 }

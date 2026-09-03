@@ -8,13 +8,16 @@ import assert from 'node:assert';
 import { cleanup } from '@testing-library/react';
 
 let authResult = true;
+let readingUserId = 5;
 
-const getComicReadProgressMock = mock.fn<(issueId: number) => object | null>(() => null);
-const upsertComicReadProgressMock = mock.fn<(issueId: number, page: number, completed: boolean, total?: number | null) => void>(() => {});
+const getComicReadProgressMock =
+  mock.fn<(userId: number, issueId: number) => object | null>(() => null);
+const upsertComicReadProgressMock = mock.fn<(userId: number, issueId: number, page: number, completed: boolean, total?: number | null) => void>(() => {});
 
 mock.module('@shelvarr/services', {
   namedExports: {
     validateApiAuth: () => authResult,
+    getReadingUserId: () => readingUserId,
     openComicArchive: async () => ({ contentType: 'application/x-cbz', body: Buffer.from(''), filename: 'test.cbz' }),
   },
 });
@@ -25,7 +28,7 @@ mock.module('@/lib/config', {
 
 mock.module('@/lib/db', {
   namedExports: {
-    getComicReadProgress: (id: number) => getComicReadProgressMock(id),
+    getComicReadProgress: (userId: number, id: number) => getComicReadProgressMock(userId, id),
     upsertComicReadProgress: (...args: Parameters<typeof upsertComicReadProgressMock>) => upsertComicReadProgressMock(...args),
   },
 });
@@ -46,6 +49,7 @@ describe('GET /api/comics/issues/[id]/progress', () => {
   beforeEach(() => {
     getComicReadProgressMock.mock.resetCalls();
     authResult = true;
+    readingUserId = 5;
   });
   afterEach(cleanup);
 
@@ -76,6 +80,12 @@ describe('GET /api/comics/issues/[id]/progress', () => {
     const res = await GET(makeRequest('GET') as any, { params: Promise.resolve({ id: 'notanumber' }) });
     assert.equal(res.status, 400);
   });
+
+  it("reads the calling reader's progress, not everyone's", async () => {
+    readingUserId = 42;
+    await GET(makeRequest('GET') as any, { params });
+    assert.equal(getComicReadProgressMock.mock.calls[0].arguments[0], 42);
+  });
 });
 
 describe('PATCH /api/comics/issues/[id]/progress', () => {
@@ -83,6 +93,7 @@ describe('PATCH /api/comics/issues/[id]/progress', () => {
     upsertComicReadProgressMock.mock.resetCalls();
     getComicReadProgressMock.mock.resetCalls();
     authResult = true;
+    readingUserId = 5;
   });
   afterEach(cleanup);
 
@@ -100,7 +111,9 @@ describe('PATCH /api/comics/issues/[id]/progress', () => {
     assert.equal(res.status, 200);
 
     assert.equal(upsertComicReadProgressMock.mock.calls.length, 1);
-    const [issueId, page, completed, total] = upsertComicReadProgressMock.mock.calls[0].arguments;
+    const [userId, issueId, page, completed, total] =
+      upsertComicReadProgressMock.mock.calls[0].arguments;
+    assert.equal(userId, 5);
     assert.equal(issueId, 1);
     assert.equal(page, 3);
     assert.equal(completed, false);
@@ -114,7 +127,16 @@ describe('PATCH /api/comics/issues/[id]/progress', () => {
     getComicReadProgressMock.mock.mockImplementation(() => ({ id: 1, issue_id: 1, page: 5, completed: 0, total: 24 }));
     await PATCH(makeRequest('PATCH', { page: 5, completed: false, total: 24 }) as any, { params });
 
-    const [, , , total] = upsertComicReadProgressMock.mock.calls[0].arguments;
+    const [, , , , total] = upsertComicReadProgressMock.mock.calls[0].arguments;
     assert.equal(total, 24);
+  });
+
+  it("writes to the calling reader's shelf", async () => {
+    readingUserId = 42;
+    getComicReadProgressMock.mock.mockImplementation(() => null);
+    await PATCH(makeRequest('PATCH', { page: 3, completed: false }) as any, { params });
+
+    assert.equal(upsertComicReadProgressMock.mock.calls[0].arguments[0], 42);
+    assert.equal(getComicReadProgressMock.mock.calls[0].arguments[0], 42);
   });
 });

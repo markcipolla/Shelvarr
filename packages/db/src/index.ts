@@ -283,6 +283,102 @@ function runMigrations(database: Database.Database): void {
     console.log('Running migration: backfilling comics_fts');
     database.exec("INSERT INTO comics_fts(comics_fts) VALUES('rebuild')");
   }
+
+  migrateProgressToPerUser(database);
+}
+
+/**
+ * Give the three read-progress tables a user_id, so a server with accounts
+ * keeps one shelf per person.
+ *
+ * Each table gains `user_id INTEGER NOT NULL DEFAULT 0` and a uniqueness key
+ * that includes it. Everything already recorded predates accounts, so it is
+ * adopted into user 0 — the shared shelf a server without accounts reads and
+ * writes — which leaves a single-user install behaving exactly as before.
+ *
+ * These have to be full table rebuilds: the old uniqueness keys
+ * (`UNIQUE(book_id)`, `issue_id ... UNIQUE`, `UNIQUE(book_id, device_id)`)
+ * are backed by SQLite's automatic indexes, which cannot be dropped, and
+ * would otherwise keep two people from each having their own row for the
+ * same book.
+ */
+function migrateProgressToPerUser(database: Database.Database): void {
+  const hasUserId = (table: string): boolean =>
+    (database.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>)
+      .some((col) => col.name === 'user_id');
+
+  if (!hasUserId('read_progress')) {
+    console.log('Running migration: making read_progress per-user');
+    database.exec(`
+      CREATE TABLE read_progress_migrated (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL DEFAULT 0,
+        page INTEGER NOT NULL DEFAULT 0,
+        completed INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(book_id, user_id)
+      );
+      INSERT INTO read_progress_migrated (id, book_id, user_id, page, completed, created_at, updated_at)
+        SELECT id, book_id, 0, page, completed, created_at, updated_at FROM read_progress;
+      DROP TABLE read_progress;
+      ALTER TABLE read_progress_migrated RENAME TO read_progress;
+    `);
+  }
+
+  if (!hasUserId('comic_read_progress')) {
+    console.log('Running migration: making comic_read_progress per-user');
+    database.exec(`
+      CREATE TABLE comic_read_progress_migrated (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        issue_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL DEFAULT 0,
+        page INTEGER NOT NULL DEFAULT 0,
+        completed INTEGER NOT NULL DEFAULT 0,
+        total INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(issue_id, user_id)
+      );
+      INSERT INTO comic_read_progress_migrated (id, issue_id, user_id, page, completed, total, created_at, updated_at)
+        SELECT id, issue_id, 0, page, completed, total, created_at, updated_at FROM comic_read_progress;
+      DROP TABLE comic_read_progress;
+      ALTER TABLE comic_read_progress_migrated RENAME TO comic_read_progress;
+    `);
+  }
+
+  if (!hasUserId('epub_progression')) {
+    console.log('Running migration: making epub_progression per-user');
+    database.exec(`
+      CREATE TABLE epub_progression_migrated (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL DEFAULT 0,
+        device_id TEXT NOT NULL DEFAULT 'default',
+        locator TEXT NOT NULL,
+        progression REAL NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(book_id, user_id, device_id)
+      );
+      INSERT INTO epub_progression_migrated (id, book_id, user_id, device_id, locator, progression, created_at, updated_at)
+        SELECT id, book_id, 0, device_id, locator, progression, created_at, updated_at FROM epub_progression;
+      DROP TABLE epub_progression;
+      ALTER TABLE epub_progression_migrated RENAME TO epub_progression;
+    `);
+  }
+
+  // Created here rather than in schema.sql: on an existing database the schema
+  // is applied before this migration, when the column does not yet exist.
+  database.exec(`
+    CREATE INDEX IF NOT EXISTS idx_read_progress_book ON read_progress(book_id);
+    CREATE INDEX IF NOT EXISTS idx_read_progress_user ON read_progress(user_id);
+    CREATE INDEX IF NOT EXISTS idx_comic_read_progress_issue ON comic_read_progress(issue_id);
+    CREATE INDEX IF NOT EXISTS idx_comic_read_progress_user ON comic_read_progress(user_id);
+    CREATE INDEX IF NOT EXISTS idx_epub_progression_book ON epub_progression(book_id);
+    CREATE INDEX IF NOT EXISTS idx_epub_progression_user ON epub_progression(user_id);
+  `);
 }
 
 /**
@@ -580,31 +676,102 @@ export function isStatusCacheStale(maxAgeMinutes: number = 5): boolean {
 
 // ============ Read Progress Functions ============
 
+/**
+ * The shelf read progress belongs to when there is nobody to attribute it to:
+ * a server running with accounts switched off, or a request carrying the
+ * legacy shared API key, which grants access but names no one.
+ *
+ * Real account ids come from an AUTOINCREMENT column and so start at 1, which
+ * keeps this out of their way.
+ */
+export const SHARED_USER_ID = 0;
+
+/** Coerce anything a caller might have to a usable progress owner. */
+export function progressUserId(userId: number | null | undefined): number {
+  return Number.isInteger(userId) && (userId as number) > 0 ? (userId as number) : SHARED_USER_ID;
+}
+
 export interface ReadProgressRow {
   id: number;
   book_id: number;
+  user_id: number;
   page: number;
   completed: number;
   created_at: string;
   updated_at: string;
 }
 
-export function getReadProgress(bookId: number): ReadProgressRow | null {
-  return queryOne<ReadProgressRow>('SELECT * FROM read_progress WHERE book_id = ?', [bookId]);
-}
-
-export function upsertReadProgress(bookId: number, page: number, completed: boolean): void {
-  execute(
-    `INSERT INTO read_progress (book_id, page, completed, updated_at)
-     VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-     ON CONFLICT (book_id) DO UPDATE SET page = ?, completed = ?, updated_at = CURRENT_TIMESTAMP`,
-    [bookId, page, completed ? 1 : 0, page, completed ? 1 : 0]
+export function getReadProgress(userId: number, bookId: number): ReadProgressRow | null {
+  return queryOne<ReadProgressRow>(
+    'SELECT * FROM read_progress WHERE book_id = ? AND user_id = ?',
+    [bookId, progressUserId(userId)]
   );
 }
 
-export function deleteReadProgress(bookId: number): boolean {
-  const result = execute('DELETE FROM read_progress WHERE book_id = ?', [bookId]);
+export function upsertReadProgress(
+  userId: number,
+  bookId: number,
+  page: number,
+  completed: boolean
+): void {
+  execute(
+    `INSERT INTO read_progress (book_id, user_id, page, completed, updated_at)
+     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT (book_id, user_id) DO UPDATE SET page = ?, completed = ?, updated_at = CURRENT_TIMESTAMP`,
+    [bookId, progressUserId(userId), page, completed ? 1 : 0, page, completed ? 1 : 0]
+  );
+}
+
+export function deleteReadProgress(userId: number, bookId: number): boolean {
+  const result = execute('DELETE FROM read_progress WHERE book_id = ? AND user_id = ?', [
+    bookId,
+    progressUserId(userId),
+  ]);
   return result.rowCount > 0;
+}
+
+/**
+ * Hand every shared-shelf row to a real account.
+ *
+ * Called once, when the first admin is created: a server that has been
+ * running without accounts has a shelf full of progress under
+ * {@link SHARED_USER_ID}, and the person setting up accounts is the one who
+ * put it there. Without this, switching accounts on would look like losing
+ * every book you were partway through.
+ *
+ * Rows the account already owns win, so this can never clobber real progress
+ * and is safe to call more than once. Returns how many rows moved.
+ */
+export function adoptSharedReadProgress(userId: number): number {
+  const owner = progressUserId(userId);
+  if (owner === SHARED_USER_ID) return 0;
+
+  const database = getDb();
+  let moved = 0;
+  const txn = database.transaction(() => {
+    const tables: Array<[string, string]> = [
+      ['read_progress', 'book_id'],
+      ['comic_read_progress', 'issue_id'],
+      ['epub_progression', 'book_id'],
+    ];
+    for (const [table, key] of tables) {
+      const extra = table === 'epub_progression' ? ' AND mine.device_id = shared.device_id' : '';
+      const result = database
+        .prepare(
+          `UPDATE ${table} AS shared
+              SET user_id = ?
+            WHERE shared.user_id = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM ${table} AS mine
+                 WHERE mine.user_id = ? AND mine.${key} = shared.${key}${extra}
+              )`
+        )
+        .run(owner, SHARED_USER_ID, owner);
+      moved += result.changes;
+    }
+  });
+  txn();
+  return moved;
 }
 
 // ============ Hardcover Reading Status (cached from the user's account) ============
@@ -657,30 +824,38 @@ export function replaceHardcoverStatuses(entries: HardcoverStatusEntry[]): numbe
   return valid.length;
 }
 
-// Shared join/filter: hardcover-tracked books at a given status that the user
-// hasn't already started or finished reading locally.
+// Shared join/filter: hardcover-tracked books at a given status that this
+// person hasn't already started or finished reading locally. The Hardcover
+// side is server-wide (one configured account), but the local progress that
+// filters it is per-user, so the same status list narrows differently for
+// each person. Parameters: status id, then user id.
 const HARDCOVER_STATUS_FROM = `
   FROM books b
   JOIN hardcover_reading_status hs
     ON hs.hardcover_id = b.metadata_id AND b.metadata_source = 'hardcover'
-  LEFT JOIN read_progress rp ON rp.book_id = b.id
+  LEFT JOIN read_progress rp ON rp.book_id = b.id AND rp.user_id = ?
  WHERE hs.status_id = ?
    AND (rp.completed IS NULL OR rp.completed = 0)
    AND (rp.page IS NULL OR rp.page = 0)`;
 
-function getBooksByHardcoverStatus<T>(statusId: number, limit: number, offset: number): T[] {
+function getBooksByHardcoverStatus<T>(
+  userId: number,
+  statusId: number,
+  limit: number,
+  offset: number
+): T[] {
   return query<T>(
     `SELECT b.* ${HARDCOVER_STATUS_FROM}
       ORDER BY hs.synced_at DESC, b.title COLLATE NOCASE
       LIMIT ? OFFSET ?`,
-    [statusId, Math.max(1, limit), Math.max(0, offset)]
+    [progressUserId(userId), statusId, Math.max(1, limit), Math.max(0, offset)]
   );
 }
 
-function countBooksByHardcoverStatus(statusId: number): number {
+function countBooksByHardcoverStatus(userId: number, statusId: number): number {
   const row = queryOne<{ count: number }>(
     `SELECT COUNT(*) AS count ${HARDCOVER_STATUS_FROM}`,
-    [statusId]
+    [progressUserId(userId), statusId]
   );
   return row?.count ?? 0;
 }
@@ -694,30 +869,36 @@ export function getHardcoverStatusId(hardcoverId: string): number | null {
   return row?.status_id ?? null;
 }
 
-/** Books the user marked "want to read" on Hardcover and hasn't started locally. */
-export function getWantToReadBooks<T = Record<string, unknown>>(limit: number, offset: number): T[] {
-  return getBooksByHardcoverStatus<T>(1, limit, offset);
-}
-
-export function countWantToReadBooks(): number {
-  return countBooksByHardcoverStatus(1);
-}
-
-/** Books the user marked "currently reading" on Hardcover with no local progress yet. */
-export function getHardcoverReadingBooks<T = Record<string, unknown>>(
+/** Books marked "want to read" on Hardcover that this person hasn't started. */
+export function getWantToReadBooks<T = Record<string, unknown>>(
+  userId: number,
   limit: number,
   offset: number
 ): T[] {
-  return getBooksByHardcoverStatus<T>(2, limit, offset);
+  return getBooksByHardcoverStatus<T>(userId, 1, limit, offset);
 }
 
-export function countHardcoverReadingBooks(): number {
-  return countBooksByHardcoverStatus(2);
+export function countWantToReadBooks(userId: number): number {
+  return countBooksByHardcoverStatus(userId, 1);
+}
+
+/** Books marked "currently reading" on Hardcover with no local progress for this person. */
+export function getHardcoverReadingBooks<T = Record<string, unknown>>(
+  userId: number,
+  limit: number,
+  offset: number
+): T[] {
+  return getBooksByHardcoverStatus<T>(userId, 2, limit, offset);
+}
+
+export function countHardcoverReadingBooks(userId: number): number {
+  return countBooksByHardcoverStatus(userId, 2);
 }
 
 export interface EpubProgressionRow {
   id: number;
   book_id: number;
+  user_id: number;
   device_id: string;
   locator: string;
   progression: number;
@@ -725,25 +906,39 @@ export interface EpubProgressionRow {
   updated_at: string;
 }
 
-export function getEpubProgression(bookId: number, deviceId: string = 'default'): EpubProgressionRow | null {
-  return queryOne<EpubProgressionRow>('SELECT * FROM epub_progression WHERE book_id = ? AND device_id = ?', [bookId, deviceId]);
-}
-
-// Latest progression across all devices — used when resuming on a device that
-// hasn't recorded its own progress yet, so reading position roams cross-device.
-export function getLatestEpubProgression(bookId: number): EpubProgressionRow | null {
+export function getEpubProgression(
+  userId: number,
+  bookId: number,
+  deviceId: string = 'default'
+): EpubProgressionRow | null {
   return queryOne<EpubProgressionRow>(
-    'SELECT * FROM epub_progression WHERE book_id = ? ORDER BY updated_at DESC LIMIT 1',
-    [bookId]
+    'SELECT * FROM epub_progression WHERE book_id = ? AND user_id = ? AND device_id = ?',
+    [bookId, progressUserId(userId), deviceId]
   );
 }
 
-export function upsertEpubProgression(bookId: number, deviceId: string, locator: string, progression: number): void {
+// Latest progression across this person's devices — used when resuming on a
+// device that hasn't recorded its own progress yet, so a reading position
+// roams between someone's devices without roaming between people.
+export function getLatestEpubProgression(userId: number, bookId: number): EpubProgressionRow | null {
+  return queryOne<EpubProgressionRow>(
+    'SELECT * FROM epub_progression WHERE book_id = ? AND user_id = ? ORDER BY updated_at DESC LIMIT 1',
+    [bookId, progressUserId(userId)]
+  );
+}
+
+export function upsertEpubProgression(
+  userId: number,
+  bookId: number,
+  deviceId: string,
+  locator: string,
+  progression: number
+): void {
   execute(
-    `INSERT INTO epub_progression (book_id, device_id, locator, progression, updated_at)
-     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-     ON CONFLICT (book_id, device_id) DO UPDATE SET locator = ?, progression = ?, updated_at = CURRENT_TIMESTAMP`,
-    [bookId, deviceId, locator, progression, locator, progression]
+    `INSERT INTO epub_progression (book_id, user_id, device_id, locator, progression, updated_at)
+     VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT (book_id, user_id, device_id) DO UPDATE SET locator = ?, progression = ?, updated_at = CURRENT_TIMESTAMP`,
+    [bookId, progressUserId(userId), deviceId, locator, progression, locator, progression]
   );
 }
 
@@ -752,6 +947,7 @@ export function upsertEpubProgression(bookId: number, deviceId: string, locator:
 export interface ComicReadProgressRow {
   id: number;
   issue_id: number;
+  user_id: number;
   page: number;
   completed: number;
   total: number | null;
@@ -759,21 +955,42 @@ export interface ComicReadProgressRow {
   updated_at: string;
 }
 
-export function getComicReadProgress(issueId: number): ComicReadProgressRow | null {
-  return queryOne<ComicReadProgressRow>('SELECT * FROM comic_read_progress WHERE issue_id = ?', [issueId]);
-}
-
-export function upsertComicReadProgress(issueId: number, page: number, completed: boolean, total?: number | null): void {
-  execute(
-    `INSERT INTO comic_read_progress (issue_id, page, completed, total, updated_at)
-     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-     ON CONFLICT (issue_id) DO UPDATE SET page = ?, completed = ?, total = COALESCE(?, total), updated_at = CURRENT_TIMESTAMP`,
-    [issueId, page, completed ? 1 : 0, total ?? null, page, completed ? 1 : 0, total ?? null]
+export function getComicReadProgress(userId: number, issueId: number): ComicReadProgressRow | null {
+  return queryOne<ComicReadProgressRow>(
+    'SELECT * FROM comic_read_progress WHERE issue_id = ? AND user_id = ?',
+    [issueId, progressUserId(userId)]
   );
 }
 
-export function deleteComicReadProgress(issueId: number): boolean {
-  const result = execute('DELETE FROM comic_read_progress WHERE issue_id = ?', [issueId]);
+export function upsertComicReadProgress(
+  userId: number,
+  issueId: number,
+  page: number,
+  completed: boolean,
+  total?: number | null
+): void {
+  execute(
+    `INSERT INTO comic_read_progress (issue_id, user_id, page, completed, total, updated_at)
+     VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT (issue_id, user_id) DO UPDATE SET page = ?, completed = ?, total = COALESCE(?, total), updated_at = CURRENT_TIMESTAMP`,
+    [
+      issueId,
+      progressUserId(userId),
+      page,
+      completed ? 1 : 0,
+      total ?? null,
+      page,
+      completed ? 1 : 0,
+      total ?? null,
+    ]
+  );
+}
+
+export function deleteComicReadProgress(userId: number, issueId: number): boolean {
+  const result = execute('DELETE FROM comic_read_progress WHERE issue_id = ? AND user_id = ?', [
+    issueId,
+    progressUserId(userId),
+  ]);
   return result.rowCount > 0;
 }
 
@@ -785,8 +1002,11 @@ export interface ComicIssueProgress {
   updatedAt: string;
 }
 
-/** Read progress for every tracked issue of a volume, keyed by issue id. */
-export function getComicReadProgressForVolume(volumeId: number): ComicIssueProgress[] {
+/** One person's read progress for every tracked issue of a volume. */
+export function getComicReadProgressForVolume(
+  userId: number,
+  volumeId: number
+): ComicIssueProgress[] {
   const rows = query<{
     issue_id: number;
     page: number;
@@ -797,8 +1017,8 @@ export function getComicReadProgressForVolume(volumeId: number): ComicIssueProgr
     `SELECT crp.issue_id, crp.page, crp.completed, crp.total, crp.updated_at
        FROM comic_read_progress crp
        JOIN comic_issues ci ON ci.id = crp.issue_id
-      WHERE ci.volume_id = ?`,
-    [volumeId]
+      WHERE ci.volume_id = ? AND crp.user_id = ?`,
+    [volumeId, progressUserId(userId)]
   );
   return rows.map((r) => ({
     issueId: r.issue_id,
@@ -819,12 +1039,13 @@ export interface InProgressComic {
 }
 
 /**
- * Volumes with at least one partially-read (not completed) issue, most
- * recently read first. One entry per volume, carrying the volume's most
+ * Volumes with at least one issue this person has partially read (not
+ * completed), most recently read first. One entry per volume, carrying the volume's most
  * recently touched in-progress issue so the reader can resume it.
  */
-export function getInProgressComics(limit: number): InProgressComic[] {
+export function getInProgressComics(userId: number, limit: number): InProgressComic[] {
   const capped = Math.max(1, Math.min(100, limit));
+  const owner = progressUserId(userId);
   const rows = query<
     ComicRow & {
       crp_issue_id: number;
@@ -843,17 +1064,18 @@ export function getInProgressComics(limit: number): InProgressComic[] {
        FROM comic_read_progress crp
        JOIN comic_issues ci ON ci.id = crp.issue_id AND ci.deleted_at IS NULL
        JOIN comics c ON c.id = ci.volume_id AND c.deleted_at IS NULL
-      WHERE crp.completed = 0 AND crp.page > 0
+      WHERE crp.user_id = ? AND crp.completed = 0 AND crp.page > 0
         AND crp.updated_at = (
           SELECT MAX(crp2.updated_at)
             FROM comic_read_progress crp2
             JOIN comic_issues ci2 ON ci2.id = crp2.issue_id AND ci2.deleted_at IS NULL
-           WHERE ci2.volume_id = c.id AND crp2.completed = 0 AND crp2.page > 0
+           WHERE ci2.volume_id = c.id AND crp2.user_id = crp.user_id
+             AND crp2.completed = 0 AND crp2.page > 0
         )
       GROUP BY c.id
       ORDER BY crp.updated_at DESC
       LIMIT ?`,
-    [capped]
+    [owner, capped]
   );
   return rows.map((r) => ({
     volume: rowToVolume(r),
@@ -875,14 +1097,15 @@ export interface NextUpComic {
 }
 
 /**
- * Volumes where the user has finished at least one issue and a later, unread
+ * Volumes where this person has finished at least one issue and a later, unread
  * *next* issue (by issue number) exists — whether or not it is downloaded yet,
  * so the reader can jump in and grab it. Excludes volumes with an issue
  * currently in progress — those live in {@link getInProgressComics}.
  * One entry per volume, most-recently-finished first.
  */
-export function getNextUpComics(limit: number): NextUpComic[] {
+export function getNextUpComics(userId: number, limit: number): NextUpComic[] {
   const capped = Math.max(1, Math.min(100, limit));
+  const owner = progressUserId(userId);
   const rows = query<
     ComicRow & {
       nu_issue_id: number;
@@ -902,10 +1125,10 @@ export function getNextUpComics(limit: number): NextUpComic[] {
                 MAX(crp2.updated_at) AS last_done_at
            FROM comic_read_progress crp2
            JOIN comic_issues ci2 ON ci2.id = crp2.issue_id AND ci2.deleted_at IS NULL
-          WHERE crp2.completed = 1
+          WHERE crp2.user_id = ? AND crp2.completed = 1
           GROUP BY ci2.volume_id
        ) done ON done.volume_id = ci.volume_id
-       LEFT JOIN comic_read_progress crp ON crp.issue_id = ci.id
+       LEFT JOIN comic_read_progress crp ON crp.issue_id = ci.id AND crp.user_id = ?
       WHERE ci.deleted_at IS NULL
         AND ci.calculated_issue_number > done.max_done
         AND (crp.completed IS NULL OR crp.completed = 0)
@@ -913,12 +1136,12 @@ export function getNextUpComics(limit: number): NextUpComic[] {
           SELECT ci3.volume_id
             FROM comic_read_progress crp3
             JOIN comic_issues ci3 ON ci3.id = crp3.issue_id AND ci3.deleted_at IS NULL
-           WHERE crp3.completed = 0 AND crp3.page > 0
+           WHERE crp3.user_id = ? AND crp3.completed = 0 AND crp3.page > 0
         )
         AND ci.calculated_issue_number = (
           SELECT MIN(ci4.calculated_issue_number)
             FROM comic_issues ci4
-            LEFT JOIN comic_read_progress crp4 ON crp4.issue_id = ci4.id
+            LEFT JOIN comic_read_progress crp4 ON crp4.issue_id = ci4.id AND crp4.user_id = ?
            WHERE ci4.volume_id = ci.volume_id
              AND ci4.deleted_at IS NULL
              AND ci4.calculated_issue_number > done.max_done
@@ -927,7 +1150,7 @@ export function getNextUpComics(limit: number): NextUpComic[] {
       GROUP BY c.id
       ORDER BY done.last_done_at DESC
       LIMIT ?`,
-    [capped]
+    [owner, owner, owner, owner, capped]
   );
   return rows.map((r) => ({
     volume: rowToVolume(r),
@@ -938,13 +1161,19 @@ export function getNextUpComics(limit: number): NextUpComic[] {
 }
 
 /**
- * Books that are the next unread entry in a series the user is partway through:
+ * Books that are the next unread entry in a series this person is partway
+ * through, judged only against their own progress:
  * at least one book in the series is finished, no book in the series is
  * currently in progress, and a later-numbered unread book exists. Returns the
  * raw book rows (one per series, most-recently-finished first) for the caller
  * to map into API shapes; use {@link countNextUpBooks} for the total.
  */
-export function getNextUpBooks<T = Record<string, unknown>>(limit: number, offset: number): T[] {
+export function getNextUpBooks<T = Record<string, unknown>>(
+  userId: number,
+  limit: number,
+  offset: number
+): T[] {
+  const owner = progressUserId(userId);
   return query<T>(
     `SELECT b.*
        FROM books b
@@ -953,23 +1182,23 @@ export function getNextUpBooks<T = Record<string, unknown>>(limit: number, offse
                 MAX(b2.series_number) AS max_done,
                 MAX(rp2.updated_at) AS last_done_at
            FROM books b2
-           JOIN read_progress rp2 ON rp2.book_id = b2.id
+           JOIN read_progress rp2 ON rp2.book_id = b2.id AND rp2.user_id = ?
           WHERE rp2.completed = 1 AND b2.series_name IS NOT NULL AND b2.series_number IS NOT NULL
           GROUP BY b2.series_name
        ) done ON done.series_name = b.series_name
-       LEFT JOIN read_progress rp ON rp.book_id = b.id
+       LEFT JOIN read_progress rp ON rp.book_id = b.id AND rp.user_id = ?
       WHERE b.series_number > done.max_done
         AND (rp.completed IS NULL OR rp.completed = 0)
         AND b.series_name NOT IN (
           SELECT b3.series_name
             FROM books b3
-            JOIN read_progress rp3 ON rp3.book_id = b3.id
+            JOIN read_progress rp3 ON rp3.book_id = b3.id AND rp3.user_id = ?
            WHERE rp3.completed = 0 AND rp3.page > 0 AND b3.series_name IS NOT NULL
         )
         AND b.series_number = (
           SELECT MIN(b4.series_number)
             FROM books b4
-            LEFT JOIN read_progress rp4 ON rp4.book_id = b4.id
+            LEFT JOIN read_progress rp4 ON rp4.book_id = b4.id AND rp4.user_id = ?
            WHERE b4.series_name = b.series_name
              AND b4.series_number > done.max_done
              AND (rp4.completed IS NULL OR rp4.completed = 0)
@@ -977,12 +1206,13 @@ export function getNextUpBooks<T = Record<string, unknown>>(limit: number, offse
       GROUP BY b.series_name
       ORDER BY done.last_done_at DESC
       LIMIT ? OFFSET ?`,
-    [Math.max(1, limit), Math.max(0, offset)]
+    [owner, owner, owner, owner, Math.max(1, limit), Math.max(0, offset)]
   );
 }
 
 /** Total number of series with a "next up" book (see {@link getNextUpBooks}). */
-export function countNextUpBooks(): number {
+export function countNextUpBooks(userId: number): number {
+  const owner = progressUserId(userId);
   const row = queryOne<{ count: number }>(
     `SELECT COUNT(*) AS count FROM (
        SELECT b.series_name
@@ -990,21 +1220,22 @@ export function countNextUpBooks(): number {
          JOIN (
            SELECT b2.series_name AS series_name, MAX(b2.series_number) AS max_done
              FROM books b2
-             JOIN read_progress rp2 ON rp2.book_id = b2.id
+             JOIN read_progress rp2 ON rp2.book_id = b2.id AND rp2.user_id = ?
             WHERE rp2.completed = 1 AND b2.series_name IS NOT NULL AND b2.series_number IS NOT NULL
             GROUP BY b2.series_name
          ) done ON done.series_name = b.series_name
-         LEFT JOIN read_progress rp ON rp.book_id = b.id
+         LEFT JOIN read_progress rp ON rp.book_id = b.id AND rp.user_id = ?
         WHERE b.series_number > done.max_done
           AND (rp.completed IS NULL OR rp.completed = 0)
           AND b.series_name NOT IN (
             SELECT b3.series_name
               FROM books b3
-              JOIN read_progress rp3 ON rp3.book_id = b3.id
+              JOIN read_progress rp3 ON rp3.book_id = b3.id AND rp3.user_id = ?
              WHERE rp3.completed = 0 AND rp3.page > 0 AND b3.series_name IS NOT NULL
           )
         GROUP BY b.series_name
-     )`
+     )`,
+    [owner, owner, owner]
   );
   return row?.count ?? 0;
 }
@@ -2834,8 +3065,23 @@ export function updateUser(
   return execute(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, params).rowCount > 0;
 }
 
+/**
+ * Delete an account, along with the reading it did.
+ *
+ * Progress tables carry a plain user_id rather than a foreign key — id 0 is
+ * the shared shelf and has no row in users — so the cascade has to be spelled
+ * out here. The shared shelf is never touched.
+ */
 export function deleteUser(id: number): boolean {
-  return execute('DELETE FROM users WHERE id = ?', [id]).rowCount > 0;
+  if (!Number.isInteger(id) || id <= SHARED_USER_ID) return false;
+  const database = getDb();
+  const txn = database.transaction(() => {
+    for (const table of ['read_progress', 'comic_read_progress', 'epub_progression']) {
+      database.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(id);
+    }
+    return database.prepare('DELETE FROM users WHERE id = ?').run(id).changes > 0;
+  });
+  return txn();
 }
 
 export function countAdmins(): number {

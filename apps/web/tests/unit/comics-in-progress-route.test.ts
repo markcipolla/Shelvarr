@@ -10,14 +10,17 @@ import assert from 'node:assert';
 import { cleanup } from '@testing-library/react';
 
 let authResult = true;
+let readingUserId = 5;
 
-const getInProgressComicsMock = mock.fn<(limit: number) => unknown[]>(() => []);
-const getNextUpComicsMock = mock.fn<(limit: number) => unknown[]>(() => []);
-const getComicReadProgressForVolumeMock = mock.fn<(volumeId: number) => unknown[]>(() => []);
+const getInProgressComicsMock = mock.fn<(userId: number, limit: number) => unknown[]>(() => []);
+const getNextUpComicsMock = mock.fn<(userId: number, limit: number) => unknown[]>(() => []);
+const getComicReadProgressForVolumeMock =
+  mock.fn<(userId: number, volumeId: number) => unknown[]>(() => []);
 
 mock.module('@shelvarr/services', {
   namedExports: {
     validateApiAuth: () => authResult,
+    getReadingUserId: () => readingUserId,
   },
 });
 
@@ -27,9 +30,11 @@ mock.module('@/lib/config', {
 
 mock.module('@/lib/db', {
   namedExports: {
-    getInProgressComics: (limit: number) => getInProgressComicsMock(limit),
-    getNextUpComics: (limit: number) => getNextUpComicsMock(limit),
-    getComicReadProgressForVolume: (volumeId: number) => getComicReadProgressForVolumeMock(volumeId),
+    getInProgressComics: (userId: number, limit: number) =>
+      getInProgressComicsMock(userId, limit),
+    getNextUpComics: (userId: number, limit: number) => getNextUpComicsMock(userId, limit),
+    getComicReadProgressForVolume: (userId: number, volumeId: number) =>
+      getComicReadProgressForVolumeMock(userId, volumeId),
   },
 });
 
@@ -42,6 +47,7 @@ describe('GET /api/comics/in-progress', () => {
     getInProgressComicsMock.mock.resetCalls();
     getInProgressComicsMock.mock.mockImplementation(() => []);
     authResult = true;
+    readingUserId = 5;
   });
   afterEach(cleanup);
 
@@ -66,17 +72,23 @@ describe('GET /api/comics/in-progress', () => {
 
   it('defaults the limit when none is supplied', async () => {
     await inProgress.GET(req() as any);
-    assert.equal(getInProgressComicsMock.mock.calls[0].arguments[0], 20);
+    assert.equal(getInProgressComicsMock.mock.calls[0].arguments[1], 20);
   });
 
   it('honors the limit query param', async () => {
     await inProgress.GET(req('http://localhost/api/comics/in-progress?limit=5') as any);
-    assert.equal(getInProgressComicsMock.mock.calls[0].arguments[0], 5);
+    assert.equal(getInProgressComicsMock.mock.calls[0].arguments[1], 5);
   });
 
   it('falls back to default for a non-numeric limit', async () => {
     await inProgress.GET(req('http://localhost/api/comics/in-progress?limit=abc') as any);
-    assert.equal(getInProgressComicsMock.mock.calls[0].arguments[0], 20);
+    assert.equal(getInProgressComicsMock.mock.calls[0].arguments[1], 20);
+  });
+
+  it("asks for the calling reader's volumes", async () => {
+    readingUserId = 42;
+    await inProgress.GET(req() as any);
+    assert.equal(getInProgressComicsMock.mock.calls[0].arguments[0], 42);
   });
 });
 
@@ -85,6 +97,7 @@ describe('GET /api/comics/next-up', () => {
     getNextUpComicsMock.mock.resetCalls();
     getNextUpComicsMock.mock.mockImplementation(() => []);
     authResult = true;
+    readingUserId = 5;
   });
   afterEach(cleanup);
 
@@ -109,12 +122,18 @@ describe('GET /api/comics/next-up', () => {
 
   it('defaults the limit when none is supplied', async () => {
     await nextUp.GET(req() as any);
-    assert.equal(getNextUpComicsMock.mock.calls[0].arguments[0], 20);
+    assert.equal(getNextUpComicsMock.mock.calls[0].arguments[1], 20);
   });
 
   it('honors the limit query param', async () => {
     await nextUp.GET(req('http://localhost/api/comics/next-up?limit=5') as any);
-    assert.equal(getNextUpComicsMock.mock.calls[0].arguments[0], 5);
+    assert.equal(getNextUpComicsMock.mock.calls[0].arguments[1], 5);
+  });
+
+  it("asks for the calling reader's volumes", async () => {
+    readingUserId = 42;
+    await nextUp.GET(req() as any);
+    assert.equal(getNextUpComicsMock.mock.calls[0].arguments[0], 42);
   });
 });
 
@@ -123,6 +142,7 @@ describe('GET /api/comics/[id]/progress', () => {
     getComicReadProgressForVolumeMock.mock.resetCalls();
     getComicReadProgressForVolumeMock.mock.mockImplementation(() => []);
     authResult = true;
+    readingUserId = 5;
   });
   afterEach(cleanup);
 
@@ -148,6 +168,13 @@ describe('GET /api/comics/[id]/progress', () => {
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.deepEqual(body, { progress });
-    assert.equal(getComicReadProgressForVolumeMock.mock.calls[0].arguments[0], 101);
+    assert.equal(getComicReadProgressForVolumeMock.mock.calls[0].arguments[0], 5);
+    assert.equal(getComicReadProgressForVolumeMock.mock.calls[0].arguments[1], 101);
+  });
+
+  it("returns only the calling reader's progress", async () => {
+    readingUserId = 42;
+    await volumeProgress.GET(req() as any, { params: Promise.resolve({ id: '101' }) });
+    assert.equal(getComicReadProgressForVolumeMock.mock.calls[0].arguments[0], 42);
   });
 });
