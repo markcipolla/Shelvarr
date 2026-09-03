@@ -8,6 +8,7 @@ import { useAuthHeaders } from '../../src/hooks/useAuthHeaders';
 import { useDownloadStore } from '../../src/stores/useDownloadStore';
 import { prepareBookForReading } from '../../src/services/downloadManager';
 import { getMediaFormat, getFormatFromName } from '../../src/utils/fileTypes';
+import { updateReadingStatus } from '../../src/services/api/shelvarr';
 
 jest.mock('../../src/services/api/client', () => ({
   getApiClient: jest.fn(),
@@ -19,6 +20,7 @@ jest.mock('../../src/hooks/useAuthHeaders');
 jest.mock('../../src/stores/useDownloadStore');
 jest.mock('../../src/services/downloadManager');
 jest.mock('../../src/utils/fileTypes');
+jest.mock('../../src/services/api/shelvarr');
 
 const mockFetchBook = fetchBook as jest.Mock;
 const mockFetchSeries = fetchSeries as jest.Mock;
@@ -29,6 +31,7 @@ const mockDeleteProgress = deleteReadProgress as jest.Mock;
 const mockUpdateProgress = updateReadProgress as jest.Mock;
 const mockGetMediaFormat = getMediaFormat as jest.Mock;
 const mockGetFormatFromName = getFormatFromName as jest.Mock;
+const mockUpdateReadingStatus = updateReadingStatus as jest.Mock;
 
 // The Hardcover status section adds a button also labelled "Read", so a plain
 // getByText('Read') is ambiguous. The primary read/continue button is rendered
@@ -433,5 +436,42 @@ describe('BookDetailScreen', () => {
     await waitFor(() => {
       expect(screen.getByText('Downloading... 50%')).toBeTruthy();
     });
+  });
+
+  it('highlights the Hardcover status the book is marked with', async () => {
+    mockFetchBook.mockResolvedValue(makeBook({ hardcoverStatus: 'read' }));
+    mockFetchSeries.mockResolvedValue(makeSeries());
+
+    const { getByText } = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => expect(getByText('\u2713 Read')).toBeTruthy());
+    // Only the matching status is highlighted.
+    expect(getByText('Reading')).toBeTruthy();
+    expect(getByText('Want to Read')).toBeTruthy();
+    expect(getByText('Did Not Finish')).toBeTruthy();
+  });
+
+  it('leaves every Hardcover status unhighlighted when the book has none', async () => {
+    mockFetchBook.mockResolvedValue(makeBook());
+    mockFetchSeries.mockResolvedValue(makeSeries());
+
+    const { getAllByText, queryByText } = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => expect(getAllByText('Read').length).toBe(2));
+    expect(queryByText('\u2713 Read')).toBeNull();
+  });
+
+  it('highlights the new status after setting it on Hardcover', async () => {
+    mockFetchBook.mockResolvedValue(makeBook());
+    mockFetchSeries.mockResolvedValue(makeSeries());
+    mockUpdateReadingStatus.mockResolvedValue(undefined);
+
+    const { getAllByText, getByText } = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => expect(getAllByText('Read').length).toBe(2));
+    fireEvent.press(getAllByText('Read')[1]);
+
+    await waitFor(() => expect(getByText('\u2713 Read')).toBeTruthy());
+    expect(mockUpdateReadingStatus).toHaveBeenCalledWith('b1', 'read');
   });
 });
