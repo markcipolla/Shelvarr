@@ -505,27 +505,24 @@ export function execute(
 }
 
 /**
- * Execute an INSERT and return the inserted row
+ * Execute an INSERT and return the row it wrote.
+ *
+ * Statements carrying a RETURNING clause are run as readers so SQLite itself
+ * hands back the affected row. That matters for upserts: when an
+ * `ON CONFLICT DO UPDATE` takes the update branch, `last_insert_rowid()` is
+ * left pointing at whatever was inserted last — often a row in an entirely
+ * different table — so deriving the id from it either finds nothing or, worse,
+ * silently returns somebody else's row.
  */
 export function insertReturning<T = Record<string, unknown>>(
   sql: string,
   params: unknown[] = []
 ): T | null {
-  if (sql.toLowerCase().includes('returning')) {
-    const match = sql.match(/insert\s+into\s+(\w+)/i);
-    const tableName = match?.[1];
+  const stmt = getDb().prepare(sql);
+  if (stmt.reader) return (stmt.get(...params) as T | undefined) ?? null;
 
-    const sqlWithoutReturning = sql.replace(/\s+returning\s+.*/i, '');
-    const result = execute(sqlWithoutReturning, params);
-
-    if (tableName && result.lastInsertRowid) {
-      return queryOne<T>(`SELECT * FROM ${tableName} WHERE id = ?`, [result.lastInsertRowid]);
-    }
-    return null;
-  }
-
-  const result = execute(sql, params);
-  return { id: result.lastInsertRowid } as T;
+  const result = stmt.run(...params);
+  return { id: Number(result.lastInsertRowid) } as T;
 }
 
 /**
