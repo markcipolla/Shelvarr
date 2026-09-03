@@ -10,6 +10,9 @@ export default async function SettingsLayout({ children }: { children: React.Rea
   // With auth switched off there is no user and nothing to manage, so the
   // Users tab is hidden the same way it is from a non-admin.
   const showUsers = auth.isAuthEnabled() && user?.role === 'admin';
+  // Unlike Users, Advanced still has something to offer a server running
+  // without accounts, so it is hidden only from a signed-in non-admin.
+  const showAdvanced = !auth.isAuthEnabled() || user?.role === 'admin';
 
   const tabs: SettingsNavTab[] = [
     { href: '/settings/metadata', label: 'Metadata Sources' },
@@ -17,6 +20,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
     { href: '/settings/organize', label: 'Books' },
     { href: '/settings/comics', label: 'Comics' },
     ...(showUsers ? [{ href: '/settings/users', label: 'Users' }] : []),
+    ...(showAdvanced ? [{ href: '/settings/advanced', label: 'Advanced' }] : []),
     { href: '/settings/about', label: 'About' },
   ];
 

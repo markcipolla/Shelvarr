@@ -13,7 +13,9 @@ data/
 .env.*.local
 
 # Logs
-logs/
+# Anchored: an unanchored `logs/` also swallows source directories named
+# `logs`, such as the /api/admin/logs route.
+/logs/
 *.log
 npm-debug.log*
 

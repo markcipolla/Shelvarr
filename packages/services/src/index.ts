@@ -32,6 +32,9 @@ export * as apiResponse from './api-response';
 // API auth
 export { validateApiAuth } from './api-auth';
 
+// Admin diagnostics: logs, status, and the MCP server in front of them
+export * as admin from './admin/index';
+
 // User accounts and passwordless authentication
 export * as auth from './auth/index';
 export {

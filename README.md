@@ -95,6 +95,8 @@ npm run test:e2e
 | `SCHEDULER_ENABLED` | true | Set `false` to stop Shelvarr running recurring jobs in-process |
 | `COMICVINE_API_KEY` | - | ComicVine key; normally set in Settings → Metadata Sources instead |
 | `COMIC_PATH_MAP` | - | `from:to` prefix remap for a library's recorded paths, used while migrating |
+| `LOG_LEVEL` | info | Lowest level written to the log, and so to the buffer the diagnostics API reads |
+| `LOG_BUFFER_SIZE` | 2000 | Recent log lines held in memory for the diagnostics API |
 
 #### Accounts and email
 
@@ -240,6 +242,39 @@ confirm the matches on `/comics/import`.
 
 Shelvarr no longer talks to Kapowarr at all, so once everything is migrated you
 can stop and remove its container.
+
+## Diagnostics API and MCP
+
+**Settings → Advanced** has a checkbox that opens a read-only window onto the
+running server: its logs, its status, and what its background jobs are doing.
+It is off until you tick it, because logs contain file paths, search terms and
+email addresses. Nothing it exposes can change your library.
+
+Ticking the box mints an access token. Point Claude Code at the MCP endpoint
+with it:
+
+```bash
+claude mcp add --transport http shelvarr http://localhost:3000/api/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+That gives an assistant five tools: `get_status`, `search_logs`, `list_tasks`,
+`get_task` and `list_comic_downloads`. The same data is available as plain
+JSON for anything that would rather not speak MCP:
+
+```bash
+curl -H "Authorization: Bearer <token>" http://localhost:3000/api/admin/status
+curl -H "Authorization: Bearer <token>" "http://localhost:3000/api/admin/logs?level=warn&limit=50"
+curl -H "Authorization: Bearer <token>" "http://localhost:3000/api/admin/tasks?status=failed"
+```
+
+A signed-in admin's session works in place of the token, so the Advanced tab
+can show a log tail without holding one. The shared `api_key` does not — this
+is a narrower door than the rest of the API, and it takes its own key.
+
+Logs live in a ring buffer in the server process, so a restart empties them and
+only the last `LOG_BUFFER_SIZE` lines are kept. Set `LOG_LEVEL=debug` for more
+detail.
 
 ## Android app
 
