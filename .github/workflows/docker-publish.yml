@@ -45,15 +45,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Always the commit, never the tag: v* tags belong to the native app's
+      # release train, so "v1.2.0" would name a version the web app isn't on.
       - name: Resolve build version
         id: build_version
         run: |
           sha="${{ github.event.workflow_run.head_sha || github.sha }}"
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            echo "value=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=${sha:0:7}" >> "$GITHUB_OUTPUT"
-          fi
+          echo "value=${sha:0:7}" >> "$GITHUB_OUTPUT"
 
       - name: Extract metadata (tags, labels)
         id: meta

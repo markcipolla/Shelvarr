@@ -1,6 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { readFileSync } from 'node:fs';
 import { APP_VERSION, APP_NAME, APP_DESCRIPTION, BUILD_VERSION, FRAMEWORK, REPOSITORY_URL } from '../../lib/constants.js';
+
+const rootPackage = JSON.parse(
+  readFileSync(new URL('../../../../package.json', import.meta.url), 'utf8')
+) as { version: string };
 
 describe('Application Constants', () => {
   describe('APP_VERSION', () => {
@@ -15,6 +20,12 @@ describe('Application Constants', () => {
     it('should match semantic versioning pattern', () => {
       const semverPattern = /^\d+\.\d+\.\d+$/;
       assert.ok(semverPattern.test(APP_VERSION), `Version ${APP_VERSION} should match semver pattern`);
+    });
+
+    // The About screen and the sidebar both show this, so it has to be the
+    // version the repo actually ships. Bump both or neither.
+    it('should match the version in the root package.json', () => {
+      assert.strictEqual(APP_VERSION, rootPackage.version);
     });
   });
 

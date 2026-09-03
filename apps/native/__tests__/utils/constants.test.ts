@@ -7,6 +7,7 @@ import {
   PAGE_SIZE,
 } from '../../src/utils/constants';
 import appJson from '../../app.json';
+import packageJson from '../../package.json';
 
 describe('constants', () => {
   it('exports DOWNLOADS_DIR', () => {
@@ -32,6 +33,10 @@ describe('constants', () => {
 
     it('matches the version in app.json', () => {
       expect(APP_VERSION).toBe(appJson.expo.version);
+    });
+
+    it('matches the version in package.json', () => {
+      expect(APP_VERSION).toBe(packageJson.version);
     });
 
     it('matches semantic versioning pattern', () => {
