@@ -135,7 +135,7 @@ CREATE TABLE IF NOT EXISTS wanted_books (
 -- Download source configuration
 CREATE TABLE IF NOT EXISTS download_source_config (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  source TEXT NOT NULL UNIQUE, -- zlibrary, annas, libgen
+  source TEXT NOT NULL UNIQUE, -- ebooks: zlibrary, annas, libgen; comics: getcomics
   enabled INTEGER DEFAULT 1,
   credentials TEXT, -- JSON: {email, password} for zlibrary
   last_checked TEXT

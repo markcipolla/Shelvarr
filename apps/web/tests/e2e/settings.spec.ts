@@ -96,3 +96,32 @@ test.describe('Settings - Metadata Sources', () => {
     }
   });
 });
+
+test.describe('Settings - Download Sources', () => {
+  test('should group sources into ebook and comic sections', async ({ page }) => {
+    await page.goto('/settings/downloads');
+
+    await expect(page.getByRole('heading', { name: 'Ebooks', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Comics', exact: true })).toBeVisible();
+  });
+
+  test('should list GetComics under the comics group', async ({ page }) => {
+    await page.goto('/settings/downloads');
+
+    const comics = page
+      .locator('section')
+      .filter({ has: page.getByRole('heading', { name: 'Comics', exact: true }) });
+    await expect(comics.getByRole('heading', { name: 'GetComics', exact: true })).toBeVisible();
+  });
+
+  test('should list the ebook sources under the ebooks group', async ({ page }) => {
+    await page.goto('/settings/downloads');
+
+    const ebooks = page
+      .locator('section')
+      .filter({ has: page.getByRole('heading', { name: 'Ebooks', exact: true }) });
+    await expect(ebooks.getByRole('heading', { name: 'Z-Library', exact: true })).toBeVisible();
+    await expect(ebooks.getByRole('heading', { name: "Anna's Archive", exact: true })).toBeVisible();
+    await expect(ebooks.getByRole('heading', { name: 'Library Genesis', exact: true })).toBeVisible();
+  });
+});
