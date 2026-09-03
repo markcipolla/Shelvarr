@@ -47,7 +47,7 @@ describe('WantedSearchScreen', () => {
   it('shows "no server configured" when shelvarrUrl is empty', () => {
     mockUseSettingsStore.mockImplementation((selector: any) => selector({ shelvarrUrl: '' }));
     const { getByText } = render(<WantedSearchScreen navigation={navigation} route={route} />);
-    expect(getByText(/No Shelvarr server configured/)).toBeTruthy();
+    expect(getByText('No server yet')).toBeTruthy();
   });
 
   it('shows the empty prompt before any search', () => {

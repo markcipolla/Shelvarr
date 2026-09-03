@@ -4,7 +4,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import * as Font from 'expo-font';
 import RootNavigator from './src/navigation/RootNavigator';
-import LoginScreen from './src/screens/LoginScreen';
+import OnboardingScreen from './src/screens/OnboardingScreen';
 import { useAuthStore } from './src/stores/useAuthStore';
 import { useSettingsStore } from './src/stores/useSettingsStore';
 import { useDownloadStore } from './src/stores/useDownloadStore';
@@ -17,6 +17,8 @@ import UpdateBanner from './src/components/UpdateBanner';
 export default function App() {
   const [fontsReady, setFontsReady] = useState(false);
   const authState = useAuthStore((s) => s.state);
+  const settingsLoaded = useSettingsStore((s) => s.loaded);
+  const onboardingComplete = useSettingsStore((s) => s.onboardingComplete);
 
   useEffect(() => {
     // Settings first: the auth check needs the server URL to know where to ask.
@@ -42,7 +44,7 @@ export default function App() {
       .catch(() => setFontsReady(true)); // continue without custom fonts
   }, []);
 
-  if (!fontsReady || authState === 'unknown') {
+  if (!fontsReady || !settingsLoaded || authState === 'unknown') {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f1eb' }}>
         <ActivityIndicator size="large" color="#8b5e3c" />
@@ -71,10 +73,13 @@ export default function App() {
       }}
     >
       <StatusBar style="dark" />
-      {authState === 'signed-out' ? <LoginScreen /> : <RootNavigator />}
-      {/* Outside the sign-in gate on purpose: an old build is exactly what
-          gets refused by a server that now wants a login, so the update
-          prompt has to be reachable from the sign-in screen too. */}
+      {/* Setup is the only thing that replaces the app wholesale. Being
+          signed out doesn't: a downloaded library stays readable, and each
+          tab says so and offers a way back in. */}
+      {onboardingComplete ? <RootNavigator /> : <OnboardingScreen />}
+      {/* Outside the navigator on purpose: an old build is exactly what gets
+          refused by a server that now wants a login, so the update prompt has
+          to be reachable from setup too. */}
       <UpdateBanner />
     </NavigationContainer>
   );

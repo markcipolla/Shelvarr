@@ -12,19 +12,20 @@ import {
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import { useSettingsStore } from '../stores/useSettingsStore';
 import {
   searchHardcover,
   addToWanted,
   HardcoverSearchResult,
 } from '../services/api/wanted';
+import { useConnectionStatus } from '../hooks/useConnectionStatus';
+import ConnectionNotice from '../components/ConnectionNotice';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WantedSearch'>;
 
 type AddState = 'idle' | 'adding' | 'added';
 
 export default function WantedSearchScreen(_props: Props) {
-  const shelvarrUrl = useSettingsStore((s) => s.shelvarrUrl);
+  const connection = useConnectionStatus();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<HardcoverSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -97,14 +98,8 @@ export default function WantedSearchScreen(_props: Props) {
     }
   }, []);
 
-  if (!shelvarrUrl) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.message}>
-          No Shelvarr server configured.{'\n'}Tap the gear icon to set your Shelvarr URL.
-        </Text>
-      </View>
-    );
+  if (connection !== 'ready') {
+    return <ConnectionNotice status={connection} />;
   }
 
   const renderItem = ({ item }: { item: HardcoverSearchResult }) => {

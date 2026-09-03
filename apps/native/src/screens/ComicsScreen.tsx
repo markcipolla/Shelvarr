@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import { useSettingsStore } from '../stores/useSettingsStore';
 import { fetchComics, ComicVolumeSummary } from '../services/api/comics';
 import { getCachedComics, searchCachedComics } from '../services/db/comics';
 import { useComicDownloadStore } from '../stores/useComicDownloadStore';
@@ -21,6 +20,10 @@ import {
 import ComicCard from '../components/ComicCard';
 import ComicGridSkeleton from '../components/ComicGridSkeleton';
 import { useColumns } from '../hooks/useColumns';
+import { useConnectionStatus } from '../hooks/useConnectionStatus';
+import ConnectionNotice from '../components/ConnectionNotice';
+import EmptyState from '../components/EmptyState';
+import OfflineBanner from '../components/OfflineBanner';
 import { padDataForGrid, isPlaceholder } from '../utils/gridHelpers';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Comics'>;
@@ -38,13 +41,16 @@ function comicDownloads() {
 }
 
 export default function ComicsScreen({ navigation }: Props) {
-  const shelvarrUrl = useSettingsStore((s) => s.shelvarrUrl);
+  const connection = useConnectionStatus();
   const [volumes, setVolumes] = useState<ComicVolumeSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [searching, setSearching] = useState(false);
+  // The server couldn't be reached, so what's on screen came from the cache
+  // and whatever has been downloaded.
+  const [offline, setOffline] = useState(false);
   const columns = useColumns();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Whether the last render had a query, so clearing the box can be told
@@ -52,7 +58,7 @@ export default function ComicsScreen({ navigation }: Props) {
   const wasSearchingRef = useRef(false);
 
   const loadData = useCallback(async () => {
-    if (!shelvarrUrl) {
+    if (connection !== 'ready') {
       setLoading(false);
       setRefreshing(false);
       return;
@@ -75,6 +81,7 @@ export default function ComicsScreen({ navigation }: Props) {
       // A cached response means the server was unreachable; make sure issues
       // downloaded to this device are listed even if the cache lacks them.
       setVolumes(res.cached ? withDownloadedComicVolumes(res.volumes, comicDownloads()) : res.volumes);
+      setOffline(Boolean(res.cached));
       setError(res.error || null);
     } catch (err) {
       console.error('Failed to load comics:', err);
@@ -82,6 +89,7 @@ export default function ComicsScreen({ navigation }: Props) {
       const downloaded = listDownloadedComicVolumes(comicDownloads());
       if (downloaded.length > 0) {
         setVolumes(downloaded);
+        setOffline(true);
         setError(null);
       } else {
         setError(err instanceof Error ? err.message : 'Failed to load comics');
@@ -90,7 +98,7 @@ export default function ComicsScreen({ navigation }: Props) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [shelvarrUrl]);
+  }, [connection]);
 
   /**
    * Search the library.
@@ -104,11 +112,13 @@ export default function ComicsScreen({ navigation }: Props) {
       setVolumes(res.cached
         ? withDownloadedComicVolumes(res.volumes, comicDownloads(), query)
         : res.volumes);
+      setOffline(Boolean(res.cached));
       setError(res.error || null);
     } catch {
       try {
         const cached = await searchCachedComics(query);
         setVolumes(withDownloadedComicVolumes(cached, comicDownloads(), query));
+        setOffline(true);
         setError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Search failed');
@@ -155,14 +165,8 @@ export default function ComicsScreen({ navigation }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, runSearch]);
 
-  if (!shelvarrUrl) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.message}>
-          No Shelvarr server configured.{'\n'}Tap the gear icon to set your Shelvarr URL.
-        </Text>
-      </View>
-    );
+  if (connection !== 'ready') {
+    return <ConnectionNotice status={connection} />;
   }
 
   const searchInput = (
@@ -200,15 +204,18 @@ export default function ComicsScreen({ navigation }: Props) {
       <View style={styles.searchWrap}>{searchInput}</View>
 
       {error ? (
-        <View style={styles.center}>
-          <Text style={styles.errorText}>{error}</Text>
-        </View>
+        <EmptyState
+          icon="💥"
+          title="Couldn't load your comics"
+          body={error}
+          actions={[{ label: 'Try again', onPress: () => void loadData(), primary: true }]}
+        />
       ) : searching ? (
         <ActivityIndicator size="small" color="#8b5e3c" style={styles.inlineSpinner} />
       ) : volumes.length === 0 ? (
         <View style={styles.center}>
           <Text style={styles.message}>
-            {isSearching ? `No comics match “${search.trim()}”.` : 'No comics found.'}
+            {isSearching ? `No comics match “${search.trim()}”.` : 'No comics here yet.'}
           </Text>
         </View>
       ) : (
@@ -236,7 +243,9 @@ export default function ComicsScreen({ navigation }: Props) {
           contentContainerStyle={styles.list}
           columnWrapperStyle={colWrapper}
           ListHeaderComponent={
-            refreshing && !isSearching ? (
+            offline ? (
+              <OfflineBanner />
+            ) : refreshing && !isSearching ? (
               <ActivityIndicator size="small" color="#8b5e3c" style={styles.inlineSpinner} />
             ) : null
           }
@@ -272,12 +281,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 24,
     lineHeight: 26,
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#a33',
-    textAlign: 'center',
-    lineHeight: 22,
   },
   list: { padding: 12 },
   row: { gap: 12 },

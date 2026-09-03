@@ -9,19 +9,21 @@ import {
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import { useSettingsStore } from '../stores/useSettingsStore';
 import { useDownloadStore } from '../stores/useDownloadStore';
 import { fetchBooks } from '../services/api/books';
 import { listDownloadedBooks } from '../services/offlineLibrary';
 import { Book } from '../types/api';
 import BookCard from '../components/BookCard';
 import { useColumns } from '../hooks/useColumns';
+import { useConnectionStatus } from '../hooks/useConnectionStatus';
+import ConnectionNotice from '../components/ConnectionNotice';
+import OfflineBanner from '../components/OfflineBanner';
 import { padDataForGrid, isPlaceholder } from '../utils/gridHelpers';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Books'>;
 
 export default function BooksScreen({ navigation }: Props) {
-  const shelvarrUrl = useSettingsStore((s) => s.shelvarrUrl);
+  const connection = useConnectionStatus();
   const downloads = useDownloadStore((s) => s.downloads);
   const downloadedBooks = useMemo(() => listDownloadedBooks(downloads), [downloads]);
   const [books, setBooks] = useState<Book[]>([]);
@@ -34,7 +36,7 @@ export default function BooksScreen({ navigation }: Props) {
   const columns = useColumns();
 
   const loadPage = useCallback(async (pageNum: number) => {
-    if (!shelvarrUrl) {
+    if (connection !== 'ready') {
       setLoading(false);
       setRefreshing(false);
       return;
@@ -57,7 +59,7 @@ export default function BooksScreen({ navigation }: Props) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [shelvarrUrl]);
+  }, [connection]);
 
   useFocusEffect(
     useCallback(() => {
@@ -72,14 +74,8 @@ export default function BooksScreen({ navigation }: Props) {
     loadPage(page + 1);
   };
 
-  if (!shelvarrUrl) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.message}>
-          No Shelvarr server configured.{'\n'}Tap the gear icon to set your Shelvarr URL.
-        </Text>
-      </View>
-    );
+  if (connection !== 'ready') {
+    return <ConnectionNotice status={connection} />;
   }
 
   const data = offline ? downloadedBooks : books;
@@ -93,13 +89,12 @@ export default function BooksScreen({ navigation }: Props) {
   }
 
   if (!refreshing && data.length === 0) {
+    if (offline) {
+      return <ConnectionNotice status="offline" onRetry={() => loadPage(0)} />;
+    }
     return (
       <View style={styles.center}>
-        <Text style={styles.message}>
-          {offline
-            ? 'Offline, and no books are downloaded to this device.'
-            : 'No books found.'}
-        </Text>
+        <Text style={styles.message}>No books here yet.</Text>
       </View>
     );
   }
@@ -131,9 +126,7 @@ export default function BooksScreen({ navigation }: Props) {
       onEndReachedThreshold={0.5}
       ListHeaderComponent={
         offline ? (
-          <Text style={styles.offlineNotice}>
-            Offline — showing books downloaded to this device.
-          </Text>
+          <OfflineBanner />
         ) : refreshing ? (
           <ActivityIndicator size="small" color="#8b5e3c" style={styles.inlineSpinner} />
         ) : null
@@ -160,10 +153,4 @@ const styles = StyleSheet.create({
   list: { padding: 12 },
   row: { gap: 12 },
   inlineSpinner: { marginVertical: 8 },
-  offlineNotice: {
-    fontSize: 14,
-    color: '#8b5e3c',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
 });

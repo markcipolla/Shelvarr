@@ -8,15 +8,17 @@ import { useUpdateStore } from '../src/stores/useUpdateStore';
 import { retryOfflineQueue } from '../src/services/progressSync';
 import * as Font from 'expo-font';
 
-// Prefixed with `mock` so jest's hoisting of the factory below allows the
-// reference; the tests reassign it to drive which screen App renders.
+// Prefixed with `mock` so jest's hoisting of the factories below allows the
+// reference; the tests reassign these to drive which screen App renders.
 let mockAuthState = 'disabled';
+let mockSettings = { loaded: true, onboardingComplete: true };
 const mockLoadAuth = jest.fn();
 
 jest.mock('../src/stores/useSettingsStore', () => ({
-  useSettingsStore: {
-    getState: jest.fn().mockReturnValue({ loadSettings: jest.fn().mockResolvedValue(undefined) }),
-  },
+  useSettingsStore: Object.assign(
+    (selector: (state: Record<string, unknown>) => unknown) => selector(mockSettings),
+    { getState: jest.fn() }
+  ),
 }));
 jest.mock('../src/stores/useAuthStore', () => ({
   useAuthStore: Object.assign(
@@ -54,10 +56,10 @@ jest.mock('../src/navigation/RootNavigator', () => {
     return <Text>RootNavigator</Text>;
   };
 });
-jest.mock('../src/screens/LoginScreen', () => {
+jest.mock('../src/screens/OnboardingScreen', () => {
   const { Text } = require('react-native');
-  return function MockLoginScreen() {
-    return <Text>LoginScreen</Text>;
+  return function MockOnboardingScreen() {
+    return <Text>OnboardingScreen</Text>;
   };
 });
 
@@ -65,6 +67,7 @@ describe('App', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockAuthState = 'disabled';
+    mockSettings = { loaded: true, onboardingComplete: true };
     (useSettingsStore.getState as jest.Mock).mockReturnValue({
       loadSettings: jest.fn().mockResolvedValue(undefined),
     });
@@ -144,16 +147,40 @@ describe('App', () => {
       expect(mockLoadAuth).toHaveBeenCalled();
     });
     expect(queryByText('RootNavigator')).toBeNull();
-    expect(queryByText('LoginScreen')).toBeNull();
+    expect(queryByText('OnboardingScreen')).toBeNull();
   });
 
-  it('shows the sign-in screen when signed out', async () => {
+  it('waits for stored settings before choosing a screen', async () => {
+    // Onboarding defaults to unfinished, so rendering before the stored flag
+    // has been read would flash setup at someone who finished it long ago.
+    mockSettings = { loaded: false, onboardingComplete: false };
+
+    const { queryByText } = render(<App />);
+
+    await waitFor(() => {
+      expect(mockLoadAuth).toHaveBeenCalled();
+    });
+    expect(queryByText('RootNavigator')).toBeNull();
+    expect(queryByText('OnboardingScreen')).toBeNull();
+  });
+
+  it('runs setup on a fresh install', async () => {
+    mockSettings = { loaded: true, onboardingComplete: false };
+
+    const { getByText } = render(<App />);
+
+    await waitFor(() => {
+      expect(getByText('OnboardingScreen')).toBeTruthy();
+    });
+  });
+
+  it('keeps the library reachable when signed out, for what is downloaded', async () => {
     mockAuthState = 'signed-out';
 
     const { getByText } = render(<App />);
 
     await waitFor(() => {
-      expect(getByText('LoginScreen')).toBeTruthy();
+      expect(getByText('RootNavigator')).toBeTruthy();
     });
   });
 
@@ -167,16 +194,16 @@ describe('App', () => {
     });
   });
 
-  it('offers the update prompt even when signed out', async () => {
+  it('offers the update prompt even during setup', async () => {
     // An old build is exactly what a server that now wants a login will
-    // refuse, so the way to update has to be reachable from the sign-in
-    // screen rather than sitting behind it.
-    mockAuthState = 'signed-out';
+    // refuse, so the way to update has to be reachable from setup rather
+    // than sitting behind it.
+    mockSettings = { loaded: true, onboardingComplete: false };
 
     const { getByText } = render(<App />);
 
     await waitFor(() => {
-      expect(getByText('LoginScreen')).toBeTruthy();
+      expect(getByText('OnboardingScreen')).toBeTruthy();
     });
     expect(getByText('UpdateBanner')).toBeTruthy();
   });

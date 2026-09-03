@@ -1,4 +1,5 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
+import type { AuthMode } from '../components/SignInPanel';
 
 export type MainTabParamList = {
   Home: undefined;
@@ -44,6 +45,8 @@ export type RootStackParamList = {
     issueId?: number;
   };
   Settings: undefined;
+  /** `mode` only picks the opening wording; both send the same magic link. */
+  Login: { mode?: AuthMode } | undefined;
 };
 
 // React Navigation types its global param list through a namespace, so this

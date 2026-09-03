@@ -52,6 +52,10 @@ jest.mock('../../src/screens/SettingsScreen', () => {
   const { Text } = require('react-native');
   return function MockSettingsScreen() { return <Text>SettingsScreen</Text>; };
 });
+jest.mock('../../src/screens/LoginScreen', () => {
+  const { Text } = require('react-native');
+  return function MockLoginScreen() { return <Text>LoginScreen</Text>; };
+});
 
 import RootNavigator from '../../src/navigation/RootNavigator';
 
@@ -70,5 +74,12 @@ describe('RootNavigator', () => {
     expect(getByTestId('screen-PdfReader')).toBeTruthy();
     expect(getByTestId('screen-ComicReader')).toBeTruthy();
     expect(getByTestId('screen-Settings')).toBeTruthy();
+  });
+
+  it('keeps signing in reachable from inside the app', () => {
+    // Being signed out no longer replaces the app, so the way back in has to
+    // be a screen the tabs can push.
+    const { getByTestId } = render(<RootNavigator />);
+    expect(getByTestId('screen-Login')).toBeTruthy();
   });
 });

@@ -14,13 +14,15 @@ import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useNavigation, CompositeNavigationProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MainTabParamList, RootStackParamList } from '../navigation/types';
-import { useSettingsStore } from '../stores/useSettingsStore';
 import {
   getWantedBooks,
   removeFromWanted,
   WantedBook,
   WantedStatus,
 } from '../services/api/wanted';
+import { useConnectionStatus } from '../hooks/useConnectionStatus';
+import ConnectionNotice from '../components/ConnectionNotice';
+import EmptyState from '../components/EmptyState';
 
 type Props = BottomTabScreenProps<MainTabParamList, 'Wanted'>;
 
@@ -45,7 +47,7 @@ const STATUS_COLORS: Record<WantedStatus, { bg: string; text: string }> = {
 
 export default function WantedListScreen(_props: Props) {
   const navigation = useNavigation<WantedNav>();
-  const shelvarrUrl = useSettingsStore((s) => s.shelvarrUrl);
+  const connection = useConnectionStatus();
   const [books, setBooks] = useState<WantedBook[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -75,7 +77,7 @@ export default function WantedListScreen(_props: Props) {
   }, [navigation]);
 
   const load = useCallback(async () => {
-    if (!shelvarrUrl) {
+    if (connection !== 'ready') {
       setLoading(false);
       return;
     }
@@ -88,7 +90,7 @@ export default function WantedListScreen(_props: Props) {
     }
     setLoading(false);
     setRefreshing(false);
-  }, [shelvarrUrl]);
+  }, [connection]);
 
   useFocusEffect(
     useCallback(() => {
@@ -132,14 +134,8 @@ export default function WantedListScreen(_props: Props) {
     [navigation]
   );
 
-  if (!shelvarrUrl) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.message}>
-          No Shelvarr server configured.{'\n'}Tap the gear icon to set your Shelvarr URL.
-        </Text>
-      </View>
-    );
+  if (connection !== 'ready') {
+    return <ConnectionNotice status={connection} />;
   }
 
   if (loading) {
@@ -201,25 +197,25 @@ export default function WantedListScreen(_props: Props) {
   return (
     <View style={styles.container}>
       {error && books.length === 0 ? (
-        <View style={styles.center}>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={load} activeOpacity={0.7}>
-            <Text style={styles.buttonText}>Retry</Text>
-          </TouchableOpacity>
-        </View>
+        <EmptyState
+          icon="✨"
+          title="Couldn't load your wanted list"
+          body={error}
+          actions={[{ label: 'Try again', onPress: load, primary: true }]}
+        />
       ) : books.length === 0 ? (
-        <View style={styles.center}>
-          <Text style={styles.message}>
-            Your wanted list is empty.{'\n'}Tap ＋ above to search for books to add.
-          </Text>
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => navigation.navigate('WantedSearch')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.buttonText}>＋ Add Books</Text>
-          </TouchableOpacity>
-        </View>
+        <EmptyState
+          icon="✨"
+          title="Nothing wanted yet"
+          body="Add the books you're after and Shelvarr will keep an eye out for them."
+          actions={[
+            {
+              label: 'Add books',
+              onPress: () => navigation.navigate('WantedSearch'),
+              primary: true,
+            },
+          ]}
+        />
       ) : (
         <FlatList
           data={books}
@@ -244,8 +240,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  message: { fontSize: 16, color: '#666', textAlign: 'center', lineHeight: 24 },
-  errorText: { fontSize: 16, color: '#a33', textAlign: 'center', lineHeight: 22 },
   headerButtons: { flexDirection: 'row' },
   headerButton: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
   headerButtonText: { color: '#8b5e3c', fontSize: 30, fontWeight: '600', marginTop: -2 },
@@ -292,18 +286,4 @@ const styles = StyleSheet.create({
   buttonText: { color: '#fff', fontSize: 13, fontWeight: '600' },
   removeButton: { marginLeft: 8, paddingHorizontal: 10, paddingVertical: 8 },
   removeButtonText: { color: '#a33', fontSize: 13, fontWeight: '600' },
-  retryButton: {
-    backgroundColor: '#8b5e3c',
-    borderRadius: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    marginTop: 16,
-  },
-  addButton: {
-    backgroundColor: '#8b5e3c',
-    borderRadius: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    marginTop: 16,
-  },
 });

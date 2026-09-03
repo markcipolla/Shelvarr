@@ -14,6 +14,7 @@ import ComicReaderScreen from '../screens/ComicReaderScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import WantedSearchScreen from '../screens/WantedSearchScreen';
 import DownloadSearchScreen from '../screens/DownloadSearchScreen';
+import LoginScreen from '../screens/LoginScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -80,6 +81,11 @@ export default function RootNavigator() {
         name="Settings"
         component={SettingsScreen}
         options={{ title: 'Settings' }}
+      />
+      <Stack.Screen
+        name="Login"
+        component={LoginScreen}
+        options={{ title: 'Log in' }}
       />
     </Stack.Navigator>
   );

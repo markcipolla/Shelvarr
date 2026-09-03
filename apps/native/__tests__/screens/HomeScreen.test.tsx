@@ -164,7 +164,7 @@ describe('HomeScreen', () => {
       selector({ shelvarrUrl: '' })
     );
     const { getByText } = render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
-    expect(getByText(/No server configured/)).toBeTruthy();
+    expect(getByText('No server yet')).toBeTruthy();
   });
 
   it('shows loading indicator initially', () => {
@@ -194,7 +194,7 @@ describe('HomeScreen', () => {
     const { getByText } = render(<HomeScreen navigation={mockNavigation} route={mockRoute} />);
 
     await waitFor(() => {
-      expect(getByText('No books yet')).toBeTruthy();
+      expect(getByText('Nothing on your shelves yet')).toBeTruthy();
     });
   });
 
