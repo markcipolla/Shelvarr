@@ -6,25 +6,23 @@ import { DownloadSourcesTab } from './DownloadSourcesTab';
 import { AboutTab } from './AboutTab';
 import type { DownloadSourceConfig } from '@/lib/db';
 import type { SourceStatus as DownloadSourceStatus } from '@/lib/services/downloads';
-
-interface SourceStatus {
-  name: 'hardcover';
-  displayName: string;
-  enabled: boolean;
-  configured: boolean;
-  requiresApiKey: boolean;
-  apiKeyUrl?: string;
-}
+import type { MetadataSourceStatus } from '@/lib/actions/settings';
 
 interface SettingsTabsProps {
-  sources: SourceStatus[];
+  sources: MetadataSourceStatus[];
   downloadConfigs?: DownloadSourceConfig[];
   downloadStatuses?: DownloadSourceStatus[];
+  comicVineDateType?: string;
 }
 
 type TabId = 'sources' | 'downloads' | 'about';
 
-export function SettingsTabs({ sources, downloadConfigs = [], downloadStatuses = [] }: SettingsTabsProps) {
+export function SettingsTabs({
+  sources,
+  downloadConfigs = [],
+  downloadStatuses = [],
+  comicVineDateType = 'cover_date',
+}: SettingsTabsProps) {
   const [activeTab, setActiveTab] = useState<TabId>('sources');
 
   const tabs: { id: TabId; label: string }[] = [
@@ -54,7 +52,9 @@ export function SettingsTabs({ sources, downloadConfigs = [], downloadStatuses =
       </div>
 
       <div className="py-6">
-        {activeTab === 'sources' && <MetadataSourcesTab sources={sources} />}
+        {activeTab === 'sources' && (
+          <MetadataSourcesTab sources={sources} comicVineDateType={comicVineDateType} />
+        )}
         {activeTab === 'downloads' && <DownloadSourcesTab configs={downloadConfigs} statuses={downloadStatuses} />}
         {activeTab === 'about' && <AboutTab />}
       </div>

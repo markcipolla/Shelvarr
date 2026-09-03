@@ -33,7 +33,7 @@ test.describe('Settings Page', () => {
   test('should show API key status', async ({ page }) => {
     // Should show either "API key configured" or "API key required"
     await expect(
-      page.getByText(/API key configured|API key required/i)
+      page.getByTestId('source-hardcover').getByText(/API key configured|API key required/i)
     ).toBeVisible();
   });
 
@@ -62,18 +62,44 @@ test.describe('Settings - Metadata Sources', () => {
   test('should allow configuring Hardcover API key', async ({ page }) => {
     await page.goto('/settings/metadata');
 
+    const hardcover = page.getByTestId('source-hardcover');
+
     // Click "Add API Key" or "Update API Key" button
-    const apiKeyButton = page.getByRole('button', { name: /API Key/i });
+    const apiKeyButton = hardcover.getByRole('button', { name: /API Key/i });
     if (await apiKeyButton.isVisible()) {
       await apiKeyButton.click();
 
       // Now the input and Save button should be visible
-      const apiKeyInput = page.locator('input[type="password"]');
-      await expect(apiKeyInput).toBeVisible();
+      await expect(hardcover.locator('input[type="password"]')).toBeVisible();
 
       // Save button appears after clicking API Key button
-      await expect(page.getByRole('button', { name: /Save/i })).toBeVisible();
+      await expect(hardcover.getByRole('button', { name: /Save/i })).toBeVisible();
     }
+  });
+
+  test('should show ComicVine as a metadata source', async ({ page }) => {
+    await page.goto('/settings/metadata');
+
+    const comicvine = page.getByTestId('source-comicvine');
+    await expect(comicvine.getByText('ComicVine')).toBeVisible();
+    await expect(comicvine.getByRole('button', { name: /API Key/i })).toBeVisible();
+    await expect(comicvine.getByRole('button', { name: /Test connection/i })).toBeVisible();
+  });
+
+  test('should configure the ComicVine issue date on the metadata tab', async ({ page }) => {
+    await page.goto('/settings/metadata');
+
+    const dateType = page.getByTestId('source-comicvine').getByLabel(/Issue release date/i);
+    await expect(dateType).toBeVisible();
+    await expect(dateType).toHaveValue(/cover_date|store_date/);
+  });
+
+  test('should not configure ComicVine on the comics tab', async ({ page }) => {
+    await page.goto('/settings/comics');
+
+    // The key moved to Metadata Sources; the comics tab only links across.
+    await expect(page.locator('input[type="password"]')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: /Metadata Sources/i }).last()).toBeVisible();
   });
 });
 
