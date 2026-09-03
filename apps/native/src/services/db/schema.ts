@@ -62,7 +62,6 @@ CREATE TABLE IF NOT EXISTS books (
   publish_date TEXT,
   description TEXT,
   cover_url TEXT,
-  komga_book_id TEXT,
   metadata_source TEXT,
   metadata_id TEXT,
   cached_at TEXT DEFAULT CURRENT_TIMESTAMP,

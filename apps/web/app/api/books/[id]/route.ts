@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import '@/lib/config';
 import { queryOne, getReadProgress } from '@/lib/db';
 import { validateApiAuth } from '@shelvarr/services';
-import { toKomgaBook } from '@shelvarr/services/komga-response';
+import { toApiBook } from '@shelvarr/services/api-response';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,5 +44,5 @@ export async function GET(
     return NextResponse.json({ error: 'Book not found' }, { status: 404 });
   }
 
-  return NextResponse.json(toKomgaBook(row, getReadProgress(row.id)));
+  return NextResponse.json(toApiBook(row, getReadProgress(row.id)));
 }

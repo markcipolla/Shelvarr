@@ -13,7 +13,7 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 import { useDownloadStore } from '../stores/useDownloadStore';
 import { fetchBooks } from '../services/api/books';
 import { listDownloadedBooks } from '../services/offlineLibrary';
-import { Book } from '../types/komga';
+import { Book } from '../types/api';
 import BookCard from '../components/BookCard';
 import { useColumns } from '../hooks/useColumns';
 import { padDataForGrid, isPlaceholder } from '../utils/gridHelpers';

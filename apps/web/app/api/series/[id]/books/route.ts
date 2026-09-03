@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import '@/lib/config';
 import { query, getReadProgress } from '@/lib/db';
 import { validateApiAuth } from '@shelvarr/services';
-import { toKomgaBook } from '@shelvarr/services/komga-response';
+import { toApiBook } from '@shelvarr/services/api-response';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,5 +46,5 @@ export async function GET(
     [id]
   );
 
-  return NextResponse.json(books.map(b => toKomgaBook(b, getReadProgress(b.id))));
+  return NextResponse.json(books.map(b => toApiBook(b, getReadProgress(b.id))));
 }

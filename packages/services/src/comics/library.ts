@@ -50,7 +50,7 @@ const log = createLogger('comics-library');
  * Build a ComicVine client from the stored API key.
  *
  * The key lives in the settings table rather than the environment, because
- * it's entered through the UI like the Komga and Kapowarr keys.
+ * it's entered through the UI rather than being a deployment concern.
  */
 export async function getComicVine(signal?: AbortSignal): Promise<ComicVine> {
   const apiKey =

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, FlatList, TextInput, StyleSheet, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import { Series } from '../types/komga';
+import { Series } from '../types/api';
 import { fetchSeriesForLibrary } from '../services/api/series';
 import SeriesCard from '../components/SeriesCard';
 import { useColumns } from '../hooks/useColumns';

@@ -13,6 +13,7 @@ import {
   type ScheduleView,
 } from '@/lib/actions/settings';
 import { RecurringJobs } from '@/components/settings/RecurringJobs';
+import { FolderPicker } from '@/components/ui/FolderPicker';
 
 interface RootFolder {
   id: number;
@@ -243,13 +244,12 @@ export function ComicsTab({
           </ul>
         )}
 
-        <form onSubmit={handleAddFolder} className="flex gap-2">
-          <input
-            type="text"
+        <form onSubmit={handleAddFolder} className="flex items-start gap-2">
+          <FolderPicker
             value={newFolder}
-            onChange={(event) => setNewFolder(event.target.value)}
+            onChange={setNewFolder}
             placeholder="/libraries/comics"
-            className={inputClass}
+            inputClassName={inputClass}
           />
           <button
             type="submit"
@@ -331,13 +331,12 @@ export function ComicsTab({
           renamed; you confirm the matches afterwards.
         </p>
 
-        <form onSubmit={handleImport} className="flex gap-2">
-          <input
-            type="text"
+        <form onSubmit={handleImport} className="flex items-start gap-2">
+          <FolderPicker
             value={importPath}
-            onChange={(event) => setImportPath(event.target.value)}
+            onChange={setImportPath}
             placeholder="/libraries/comics"
-            className={inputClass}
+            inputClassName={inputClass}
           />
           <button
             type="submit"

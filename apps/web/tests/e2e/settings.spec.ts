@@ -17,7 +17,6 @@ test.describe('Settings Page', () => {
     // Check for settings tabs as links (not buttons)
     await expect(page.getByRole('link', { name: /Metadata Sources/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /Download Sources/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Komga/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /About/i })).toBeVisible();
   });
 
@@ -36,25 +35,6 @@ test.describe('Settings Page', () => {
     await expect(
       page.getByText(/API key configured|API key required/i)
     ).toBeVisible();
-  });
-
-  test('should navigate to Komga section', async ({ page }) => {
-    // Click Komga tab link
-    await page.getByRole('link', { name: /Komga/i }).click();
-
-    // Should navigate to /settings/komga
-    await expect(page).toHaveURL(/\/settings\/komga/);
-
-    // Look for Komga URL input label specifically
-    await expect(page.getByText('Komga URL')).toBeVisible();
-  });
-
-  test('should have Test Connection button for Komga', async ({ page }) => {
-    // Navigate to Komga section
-    await page.goto('/settings/komga');
-
-    const testButton = page.getByRole('button', { name: /Test Connection/i });
-    await expect(testButton).toBeVisible();
   });
 
   test('should navigate to Download Sources section', async ({ page }) => {
@@ -94,5 +74,34 @@ test.describe('Settings - Metadata Sources', () => {
       // Save button appears after clicking API Key button
       await expect(page.getByRole('button', { name: /Save/i })).toBeVisible();
     }
+  });
+});
+
+test.describe('Settings - Download Sources', () => {
+  test('should group sources into ebook and comic sections', async ({ page }) => {
+    await page.goto('/settings/downloads');
+
+    await expect(page.getByRole('heading', { name: 'Ebooks', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Comics', exact: true })).toBeVisible();
+  });
+
+  test('should list GetComics under the comics group', async ({ page }) => {
+    await page.goto('/settings/downloads');
+
+    const comics = page
+      .locator('section')
+      .filter({ has: page.getByRole('heading', { name: 'Comics', exact: true }) });
+    await expect(comics.getByRole('heading', { name: 'GetComics', exact: true })).toBeVisible();
+  });
+
+  test('should list the ebook sources under the ebooks group', async ({ page }) => {
+    await page.goto('/settings/downloads');
+
+    const ebooks = page
+      .locator('section')
+      .filter({ has: page.getByRole('heading', { name: 'Ebooks', exact: true }) });
+    await expect(ebooks.getByRole('heading', { name: 'Z-Library', exact: true })).toBeVisible();
+    await expect(ebooks.getByRole('heading', { name: "Anna's Archive", exact: true })).toBeVisible();
+    await expect(ebooks.getByRole('heading', { name: 'Library Genesis', exact: true })).toBeVisible();
   });
 });

@@ -84,7 +84,6 @@ function buildConfig(): AppConfig {
     dataDir,
     libraryRoot: process.env['LIBRARY_ROOT'] || '/libraries',
     dbPath: process.env['DB_PATH'] || join(dataDir, 'shelvarr.db'),
-    komga: { url: null, apiKey: null },
     comicMigration: {
       pathMap: process.env['COMIC_PATH_MAP'] || process.env['KAPOWARR_PATH_MAP'] || null,
     },

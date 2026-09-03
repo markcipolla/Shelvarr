@@ -15,6 +15,7 @@ import {
   comicBlocklistContains,
   getComicVolumeForMatching,
   isComicDownloadActive,
+  isSourceEnabled,
 } from '@shelvarr/db';
 import type {
   ComicDownload,
@@ -55,6 +56,20 @@ export * from './normalise';
 function searchOptions(signal?: AbortSignal): GetComicsOptions {
   const { getcomics } = getServiceConfig();
   return { baseUrl: getcomics.baseUrl, ...(signal ? { signal } : {}) };
+}
+
+/**
+ * GetComics is a download source like the ebook ones, so it honours the same
+ * on/off switch in Settings -> Download sources. Absent config means enabled.
+ */
+export function isGetComicsEnabled(): boolean {
+  return isSourceEnabled('getcomics');
+}
+
+function assertGetComicsEnabled(): void {
+  if (!isGetComicsEnabled()) {
+    throw new Error('GetComics is disabled in Settings \u2192 Download sources');
+  }
 }
 
 function hostPreference(): DownloadHost[] {
@@ -116,6 +131,8 @@ export async function searchVolume(
   volumeId: number,
   options: SearchVolumeOptions = {}
 ): Promise<SearchVolumeResult> {
+  assertGetComicsEnabled();
+
   const loaded = loadVolume(volumeId);
   if (!loaded) throw new Error(`Comic volume ${volumeId} not found`);
 
@@ -344,6 +361,13 @@ export async function autoSearchVolume(
   volumeId: number,
   options: AutoSearchVolumeOptions = {}
 ): Promise<AutoSearchVolumeResult> {
+  // Scheduled sweeps call this too, so a disabled source is a no-op rather
+  // than a failure that would keep retrying.
+  if (!isGetComicsEnabled()) {
+    log.info('Skipping auto search, GetComics is disabled', { volumeId });
+    return { downloads: [], failed: [] };
+  }
+
   const loaded = loadVolume(volumeId);
   if (!loaded) throw new Error(`Comic volume ${volumeId} not found`);
 
@@ -416,5 +440,7 @@ export async function searchPosts(
   query: string,
   signal?: AbortSignal
 ): Promise<GetComicsPost[]> {
+  assertGetComicsEnabled();
+
   return fetchPosts(query, searchOptions(signal));
 }

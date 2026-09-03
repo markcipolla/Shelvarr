@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ViewStyle } from 'react-nativ
 import { Image } from 'expo-image';
 import type { ComicVolumeSummary } from '@shelvarr/types';
 import { getVolumeCoverUrl } from '../services/api/comics';
+import { useAuthHeaders } from '../hooks/useAuthHeaders';
 
 const COVER_ASPECT_RATIO = 140 / 200;
 
@@ -18,6 +19,10 @@ interface Props {
 }
 
 export default function ComicCard({ volume, onPress, fill, placeholder, progressLabel, onRemove }: Props) {
+  // Covers are served by the same protected API as everything else, so the
+  // image loader needs the session token too.
+  const headers = useAuthHeaders();
+
   if (placeholder) {
     return <View style={{ flex: 1, marginBottom: 12 }} />;
   }
@@ -34,7 +39,7 @@ export default function ComicCard({ volume, onPress, fill, placeholder, progress
     <TouchableOpacity style={containerStyle} onPress={onPress} activeOpacity={0.7}>
       <View style={fill ? styles.coverWrapper : undefined}>
         <Image
-          source={{ uri: getVolumeCoverUrl(volume.id) }}
+          source={{ uri: getVolumeCoverUrl(volume.id), headers }}
           style={fill ? styles.coverFill : styles.cover}
           contentFit="cover"
           transition={200}

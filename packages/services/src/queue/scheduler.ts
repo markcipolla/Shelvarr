@@ -17,8 +17,11 @@ const log = createLogger('scheduler');
 
 const HOUR = 3600;
 
-/** Which settings tab a job belongs to. */
-export type ScheduleCategory = 'books' | 'comics';
+/**
+ * Which settings tab a job belongs to. `system` jobs keep the library running
+ * rather than managing content, so no tab lists them.
+ */
+export type ScheduleCategory = 'books' | 'comics' | 'system';
 
 export interface ScheduleDefinition {
   name: string;
@@ -94,6 +97,14 @@ export const DEFAULT_SCHEDULES: ScheduleDefinition[] = [
     category: 'comics',
     payload: { limit: 100 },
     enabledByDefault: false,
+  },
+  {
+    name: 'auth_prune',
+    taskType: 'auth_prune',
+    intervalSeconds: 24 * HOUR,
+    description: 'Remove expired sessions and sign-in links',
+    category: 'system',
+    enabledByDefault: true,
   },
 ];
 

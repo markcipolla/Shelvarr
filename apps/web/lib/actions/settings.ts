@@ -80,52 +80,6 @@ export async function syncHardcoverStatus(): Promise<{
   return result;
 }
 
-// Komga settings
-export async function getKomgaSettings() {
-  return {
-    url: await getSetting<string>('komga_url', null),
-    hasApiKey: !!(await getSetting<string>('komga_api_key', null)),
-  };
-}
-
-export async function setKomgaSettings(url: string, apiKey?: string) {
-  setSetting('komga_url', url);
-  if (apiKey) {
-    setSetting('komga_api_key', apiKey);
-  }
-
-  revalidatePath('/settings');
-  return { success: true };
-}
-
-export async function testKomgaConnection() {
-  const url = await getSetting<string>('komga_url', null);
-  const apiKey = await getSetting<string>('komga_api_key', null);
-
-  if (!url || !apiKey) {
-    return { success: false, error: 'Komga settings incomplete' };
-  }
-
-  try {
-    const response = await fetch(`${url}/api/v1/libraries`, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-    });
-
-    if (response.ok) {
-      return { success: true };
-    } else {
-      return { success: false, error: `HTTP ${response.status}` };
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Connection failed',
-    };
-  }
-}
-
 // Audiletome settings (audiobook generation)
 export async function getAudiletomeSettings() {
   return {
@@ -316,7 +270,7 @@ export async function startComicLibraryImport(path: string) {
 // Recurring jobs
 // ---------------------------------------------------------------------------
 
-export type ScheduleCategory = 'books' | 'comics';
+export type ScheduleCategory = 'books' | 'comics' | 'system';
 
 /** Both settings tabs list recurring jobs, so both go stale together. */
 function revalidateScheduleTabs() {

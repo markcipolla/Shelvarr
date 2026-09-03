@@ -1,5 +1,5 @@
 import { useDownloadStore } from '../../src/stores/useDownloadStore';
-import { DownloadedBook } from '../../src/types/komga';
+import { DownloadedBook } from '../../src/types/api';
 
 const initialState = useDownloadStore.getState();
 

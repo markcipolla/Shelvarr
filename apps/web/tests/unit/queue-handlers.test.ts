@@ -160,7 +160,7 @@ if (canRunTests) {
       it('should handle rate limit errors and queue for retry', async () => {
         let attemptCount = 0;
 
-        registerTaskHandler('komga_sync', async () => {
+        registerTaskHandler('author_sync', async () => {
           attemptCount++;
           if (attemptCount === 1) {
             throw new Error('API error: 429 Too Many Requests');
@@ -168,7 +168,7 @@ if (canRunTests) {
           return { success: true, attempt: attemptCount };
         });
 
-        const task = createTask('komga_sync');
+        const task = createTask('author_sync');
         await runTask(task.id);
 
         const updated = getTask(task.id);
@@ -811,105 +811,6 @@ if (canRunTests) {
       });
     });
 
-    describe('komgaSyncHandler integration', () => {
-      it('should handle missing configuration', async () => {
-        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
-        registerAllHandlers();
-
-        execute('INSERT INTO tasks (id, type, status, progress) VALUES (?, ?, ?, ?)',
-          [995, 'komga_sync', 'pending', 0]);
-
-        await runTask(995);
-
-        const updated = getTask(995);
-        assert.ok(updated);
-        assert.strictEqual(updated.status, 'failed');
-      });
-
-      it('should skip when Komga not configured', async () => {
-        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
-        registerAllHandlers();
-
-        const task = createTask('komga_sync', { bookId: 1 });
-        await runTask(task.id);
-
-        const updated = getTask(task.id);
-        assert.ok(updated);
-        assert.strictEqual(updated.status, 'completed');
-        const data = updated.data as { status: string };
-        assert.strictEqual(data.status, 'skipped');
-      });
-
-      it('should handle non-existent book', async () => {
-        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
-        registerAllHandlers();
-
-        const task = createTask('komga_sync', { bookId: 99999 });
-        await runTask(task.id);
-
-        const updated = getTask(task.id);
-        assert.ok(updated);
-        // Komga is not configured in tests, so handler returns 'skipped' before checking book
-        assert.strictEqual(updated.status, 'completed');
-        const data = updated.data as { status: string };
-        assert.strictEqual(data.status, 'skipped');
-      });
-
-      it('should skip book without file path', async () => {
-        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
-        registerAllHandlers();
-
-        execute(
-          'INSERT INTO books (id, library_id, file_path, title, extension, file_size) VALUES (?, ?, ?, ?, ?, ?)',
-          [1, 1, '', 'Test Book', 'epub', 0]
-        );
-
-        const task = createTask('komga_sync', { bookId: 1 });
-        await runTask(task.id);
-
-        const updated = getTask(task.id);
-        assert.ok(updated);
-        assert.strictEqual(updated.status, 'completed');
-        const data = updated.data as { status: string };
-        assert.strictEqual(data.status, 'skipped');
-      });
-
-      it('should parse authors from JSON format', async () => {
-        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
-        registerAllHandlers();
-
-        execute(
-          'INSERT INTO books (id, library_id, file_path, title, authors, extension, file_size) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [1, 1, '/path/to/book.epub', 'Test Book', '["Author One", "Author Two"]', 'epub', 100]
-        );
-
-        const task = createTask('komga_sync', { bookId: 1 });
-        await runTask(task.id);
-
-        // Should complete without errors (Komga client will return skipped since not configured)
-        const updated = getTask(task.id);
-        assert.ok(updated);
-        assert.strictEqual(updated.status, 'completed');
-      });
-
-      it('should handle authors in non-JSON format', async () => {
-        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
-        registerAllHandlers();
-
-        execute(
-          'INSERT INTO books (id, library_id, file_path, title, authors, extension, file_size) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [2, 1, '/path/to/book2.epub', 'Test Book 2', 'Plain Author', 'epub', 100]
-        );
-
-        const task = createTask('komga_sync', { bookId: 2 });
-        await runTask(task.id);
-
-        const updated = getTask(task.id);
-        assert.ok(updated);
-        assert.strictEqual(updated.status, 'completed');
-      });
-    });
-
     describe('authorSyncHandler', () => {
       it('should return placeholder message', async () => {
         const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
@@ -941,7 +842,6 @@ if (canRunTests) {
           'organize',
           'download',
           'author_sync',
-          'komga_sync',
         ];
 
         for (const handlerType of handlers) {
