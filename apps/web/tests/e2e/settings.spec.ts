@@ -130,4 +130,18 @@ test.describe('Settings - Download Sources', () => {
     await expect(ebooks.getByRole('heading', { name: "Anna's Archive", exact: true })).toBeVisible();
     await expect(ebooks.getByRole('heading', { name: 'Library Genesis', exact: true })).toBeVisible();
   });
+
+  // Rendering this page probes every source, which tests/mocks/e2e-server.mjs
+  // answers. Asserting on the result keeps that wiring honest: a probe nothing
+  // answers reads as "Offline", so if the mocks stop matching this fails
+  // rather than the suite quietly going out to the real services. Library
+  // Genesis is the interesting one — it has no domain of its own and takes the
+  // best status among its mirrors.
+  test('should show the status each source reported', async ({ page }) => {
+    await page.goto('/settings/downloads');
+
+    for (const source of ['annas', 'zlibrary', 'libgen', 'getcomics']) {
+      await expect(page.getByTestId(`source-${source}`)).toContainText('Online');
+    }
+  });
 });

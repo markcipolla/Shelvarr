@@ -280,11 +280,25 @@ if (canRunTests) {
           []
         ).lastInsertRowid as number;
 
-        const { applyMetadata } = await import('../../lib/actions/books.js');
-        const result = await applyMetadata(bookId, 'hardcover', 'non_existent_id');
+        // Hardcover answering with an empty list is what "not found" looks
+        // like on the wire. This used to go out to the real API and pass off
+        // whatever came back, which made the test both slow and dependent on
+        // a service being up.
+        const originalFetch = global.fetch;
+        global.fetch = async () =>
+          new Response(JSON.stringify({ data: { books: [] } }), {
+            headers: { 'content-type': 'application/json' },
+          });
 
-        assert.ok(!result.success);
-        assert.strictEqual(result.error, 'Metadata not found');
+        try {
+          const { applyMetadata } = await import('../../lib/actions/books.js');
+          const result = await applyMetadata(bookId, 'hardcover', 'non_existent_id');
+
+          assert.ok(!result.success);
+          assert.strictEqual(result.error, 'Metadata not found');
+        } finally {
+          global.fetch = originalFetch;
+        }
       });
     });
   });

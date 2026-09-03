@@ -1,6 +1,9 @@
 /**
  * MSW Request Handlers
- * Mock handlers for external API calls during testing
+ *
+ * Mock responses for the external APIs this app talks to. Plain JavaScript
+ * rather than TypeScript because the e2e suite loads this into the `next dev`
+ * server through NODE_OPTIONS, where there is no tsx loader to lean on.
  */
 
 import { http, HttpResponse } from 'msw';
@@ -8,12 +11,12 @@ import { http, HttpResponse } from 'msw';
 // Hardcover GraphQL API handlers
 export const hardcoverHandlers = [
   http.post('https://api.hardcover.app/v1/graphql', async ({ request }) => {
-    const body = await request.json() as { query?: string; variables?: Record<string, unknown> };
+    const body = await request.json();
     const query = body?.query || '';
 
     // Search books query
     if (query.includes('search_books') || query.includes('searchBooks')) {
-      const searchTerm = (body?.variables as { query?: string })?.query || '';
+      const searchTerm = body?.variables?.query || '';
 
       if (searchTerm === 'nonexistent_book_xyz') {
         return HttpResponse.json({
@@ -217,6 +220,10 @@ export const downloadSourceHandlers = [
     'https://libgen.bz',
     'https://libgen.gl',
   ].map((url) => http.head(url, () => new HttpResponse(null, { status: 200 }))),
+
+  // GetComics is probed through its WordPress REST API rather than the landing
+  // page, which sits behind caching and does not reliably answer HEAD.
+  http.get('https://getcomics.org/wp-json/wp/v2/posts', () => HttpResponse.json([{ id: 1 }])),
 ];
 
 // Combine all handlers

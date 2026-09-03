@@ -208,7 +208,10 @@ function SourceCard({
   };
 
   return (
-    <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg overflow-hidden">
+    <div
+      data-testid={`source-${source.name}`}
+      className="bg-shelvarr-surface border border-shelvarr-border rounded-lg overflow-hidden"
+    >
       <div className="p-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button
