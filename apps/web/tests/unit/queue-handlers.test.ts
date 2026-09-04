@@ -261,12 +261,12 @@ if (canRunTests) {
         );
       });
 
-      it('should throw error for non-failed/cancelled task', () => {
+      it('should throw error for a pending task that has never run', () => {
         const task = createTask('scan');
 
         assert.throws(
           () => retryTask(task.id),
-          /is not failed or cancelled/
+          /cannot be retried \(status: pending\)/
         );
       });
 
