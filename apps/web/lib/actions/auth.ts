@@ -290,6 +290,120 @@ export async function setSelfSignup(allowed: boolean): Promise<ActionResult> {
   };
 }
 
+/**
+ * Gate for the server-wide access settings below.
+ *
+ * Deliberately not `requireAdminUser`, which refuses outright when
+ * authentication is off. That policy would make turning accounts back *on*
+ * impossible from the only screen that offers to — the setting would be a
+ * one-way door out of authentication. With accounts off there is no user to
+ * check against, and running that way is already a declaration that the
+ * network is trusted, which is the same reasoning the Advanced tab's gate
+ * uses.
+ */
+async function requireAdminOrOpenServer(): Promise<void> {
+  if (!auth.isAuthEnabled()) return;
+  const user = await getCurrentUser();
+  if (!user || user.role !== 'admin') {
+    throw new Error('Only an admin can do that');
+  }
+}
+
+/** Mail settings as the form may see them — never the saved password. */
+export interface EmailSettingsView {
+  host: string | null;
+  port: number;
+  secure: boolean;
+  user: string | null;
+  from: string;
+  /**
+   * Whether a password is saved, instead of the password. The form needs to
+   * show *that* one exists so it can offer to replace it, and sending the
+   * value to the browser to render would be handing it out for no reason.
+   */
+  passwordSet: boolean;
+}
+
+export interface AccessSettings {
+  authEnabled: boolean;
+  email: EmailSettingsView;
+}
+
+function viewOf(config: ReturnType<typeof auth.getEmailConfig>): EmailSettingsView {
+  return {
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    user: config.user,
+    from: config.from,
+    passwordSet: config.password !== null,
+  };
+}
+
+export async function getAccessSettings(): Promise<AccessSettings> {
+  await requireAdminOrOpenServer();
+  return { authEnabled: auth.isAuthEnabled(), email: viewOf(auth.getEmailConfig()) };
+}
+
+/**
+ * Turn accounts on or off for the whole server.
+ *
+ * Switching off leaves it open to anyone who can reach it, so the message says
+ * so plainly rather than reporting a bland success.
+ */
+export async function setAuthEnabledAction(enabled: boolean): Promise<ActionResult> {
+  try {
+    await requireAdminOrOpenServer();
+  } catch (error) {
+    return { ok: false, message: describe(error) };
+  }
+
+  auth.setAuthEnabled(enabled);
+  // 'layout' rather than the page: the sidebar and the account menu both
+  // change shape when accounts come and go.
+  revalidatePath('/', 'layout');
+
+  return {
+    ok: true,
+    message: enabled
+      ? 'Accounts are on. Anyone without a session will be asked to sign in.'
+      : 'Accounts are off. Anyone who can reach this server now has full access.',
+  };
+}
+
+export interface EmailSettingsForm {
+  host: string | null;
+  port: number | null;
+  secure: boolean | null;
+  user: string | null;
+  /** Omitted when the admin did not retype it; null or empty clears it. */
+  password?: string | null;
+  from: string | null;
+}
+
+export async function saveEmailSettings(input: EmailSettingsForm): Promise<ActionResult> {
+  try {
+    await requireAdminOrOpenServer();
+  } catch (error) {
+    return { ok: false, message: describe(error) };
+  }
+
+  try {
+    auth.setEmailSettings(input);
+  } catch (error) {
+    return { ok: false, message: describe(error) };
+  }
+
+  revalidatePath('/settings/users');
+
+  return {
+    ok: true,
+    message: auth.isEmailConfigured()
+      ? 'Mail settings saved. Use "Send a test" to check them.'
+      : 'Mail settings cleared. Sign-in codes will be written to the server log instead.',
+  };
+}
+
 export async function testEmailSettings(): Promise<ActionResult> {
   try {
     await requireAdminUser();

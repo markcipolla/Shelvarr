@@ -129,12 +129,12 @@ npm run test:e2e
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SHELVARR_AUTH_ENABLED` | true | Set `false` to turn user accounts off entirely and leave the server open |
+| `SHELVARR_AUTH_ENABLED` | true | Starting value for accounts; the toggle in **Settings → Users** wins once an admin has set it. `false` leaves the server open |
 | `SHELVARR_ALLOW_SIGNUP` | false | Starting value for self-signup; the toggle in **Settings → Users** wins once an admin has set it |
 | `SHELVARR_LOGIN_CODE_TTL` | 600 | Seconds an emailed sign-in code stays valid |
 | `SHELVARR_SESSION_TTL` | 2592000 | Seconds a browser session lasts (30 days) |
 | `SHELVARR_NATIVE_SESSION_TTL` | 31536000 | Seconds a Stackarr session lasts (1 year) |
-| `SMTP_HOST` | - | Mail server for sign-in codes. Without it, codes are written to the server log instead |
+| `SMTP_HOST` | - | Mail server for sign-in codes. Without it, codes are written to the server log instead. **Settings → Users** wins once an admin saves mail settings there — as it does for every `SMTP_*` below |
 | `SMTP_PORT` | 587 | Mail server port |
 | `SMTP_SECURE` | port is 465 | Implicit TLS. Leave unset unless your server disagrees with the default |
 | `SMTP_USER` | - | Username, if the mail server needs one |
@@ -148,7 +148,8 @@ on first start after upgrading** until an admin account is created — open the
 app and the first-run wizard will take you through it.
 
 If you would rather not have accounts at all — a trusted home network, or a
-reverse proxy that already authenticates — set `SHELVARR_AUTH_ENABLED=false`
+reverse proxy that already authenticates — set `SHELVARR_AUTH_ENABLED=false`,
+or untick "Require an account to use this server" in **Settings → Users**
 and everything is open again, exactly as it was before.
 
 **No passwords.** Signing in means entering your email and typing back the
@@ -165,7 +166,8 @@ them from **Settings → Users**, which creates the account and emails a code.
 Turn on *Let anyone sign themselves up* there if you would rather any address
 could create its own account.
 
-**Without email.** Sign-in codes can only be delivered if `SMTP_HOST` is set.
+**Without email.** Sign-in codes can only be delivered once a mail server is
+configured, either through `SMTP_HOST` or in **Settings → Users**.
 Until it is, Shelvarr writes each code to the server log and shows invite codes
 in **Settings → Users**, so a mail-less install is still usable — just manual.
 Pass the code on, and the recipient enters it under *I already have a code* on

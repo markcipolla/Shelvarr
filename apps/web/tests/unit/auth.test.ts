@@ -22,6 +22,10 @@ const AUTH_ENV_KEYS = [
   'SHELVARR_LOGIN_CODE_TTL',
   'SHELVARR_SESSION_TTL',
   'SMTP_HOST',
+  'SMTP_PORT',
+  'SMTP_SECURE',
+  'SMTP_USER',
+  'SMTP_PASSWORD',
   'SMTP_FROM',
 ] as const;
 
@@ -93,6 +97,116 @@ describe('Authentication', () => {
       process.env['SHELVARR_ALLOW_SIGNUP'] = 'true';
       auth.setSignupAllowed(false);
       assert.strictEqual(auth.isSignupAllowed(), false);
+    });
+
+    it('lets a stored decision override the environment for accounts too', () => {
+      process.env['SHELVARR_AUTH_ENABLED'] = 'false';
+      auth.setAuthEnabled(true);
+      assert.strictEqual(auth.isAuthEnabled(), true);
+
+      process.env['SHELVARR_AUTH_ENABLED'] = 'true';
+      auth.setAuthEnabled(false);
+      assert.strictEqual(auth.isAuthEnabled(), false);
+    });
+  });
+
+  describe('mail configuration', () => {
+    it('falls back to the environment when nothing is stored', () => {
+      process.env['SMTP_HOST'] = 'mail.example.com';
+      process.env['SMTP_PORT'] = '2525';
+      const config = auth.getEmailConfig();
+      assert.strictEqual(config.host, 'mail.example.com');
+      assert.strictEqual(config.port, 2525);
+    });
+
+    it('prefers a stored answer over the environment', () => {
+      process.env['SMTP_HOST'] = 'from-env.example.com';
+      auth.setEmailSettings({
+        host: 'stored.example.com',
+        port: 587,
+        secure: false,
+        user: 'someone',
+        password: 'hunter2',
+        from: 'Shelvarr <s@example.com>',
+      });
+
+      const config = auth.getEmailConfig();
+      assert.strictEqual(config.host, 'stored.example.com');
+      assert.strictEqual(config.user, 'someone');
+      assert.strictEqual(config.password, 'hunter2');
+      assert.strictEqual(auth.isEmailConfigured(), true);
+    });
+
+    it('treats an emptied field as "stop overriding", not as an empty value', () => {
+      process.env['SMTP_HOST'] = 'from-env.example.com';
+      auth.setEmailSettings({
+        host: 'stored.example.com',
+        port: null,
+        secure: null,
+        user: null,
+        from: null,
+      });
+      assert.strictEqual(auth.getEmailConfig().host, 'stored.example.com');
+
+      auth.setEmailSettings({ host: '', port: null, secure: null, user: null, from: null });
+      assert.strictEqual(
+        auth.getEmailConfig().host,
+        'from-env.example.com',
+        'clearing the stored host should fall back to the environment'
+      );
+    });
+
+    it('leaves the saved password alone when the form does not send one', () => {
+      auth.setEmailSettings({
+        host: 'mail.example.com',
+        port: 587,
+        secure: false,
+        user: 'someone',
+        password: 'hunter2',
+        from: null,
+      });
+
+      // What the settings form sends after editing only the host: it is never
+      // given the real password, so it cannot send it back.
+      auth.setEmailSettings({
+        host: 'other.example.com',
+        port: 587,
+        secure: false,
+        user: 'someone',
+        from: null,
+      });
+
+      const config = auth.getEmailConfig();
+      assert.strictEqual(config.host, 'other.example.com');
+      assert.strictEqual(config.password, 'hunter2', 'password should have survived the save');
+    });
+
+    it('clears the password when one is explicitly sent as empty', () => {
+      auth.setEmailSettings({
+        host: 'mail.example.com',
+        port: 587,
+        secure: false,
+        user: 'someone',
+        password: 'hunter2',
+        from: null,
+      });
+      auth.setEmailSettings({
+        host: 'mail.example.com',
+        port: 587,
+        secure: false,
+        user: 'someone',
+        password: '',
+        from: null,
+      });
+      assert.strictEqual(auth.getEmailConfig().password, null);
+    });
+
+    it('defaults implicit TLS from the port, and lets a stored answer win', () => {
+      process.env['SMTP_PORT'] = '465';
+      assert.strictEqual(auth.getEmailConfig().secure, true);
+
+      auth.setEmailSettings({ host: null, port: 465, secure: false, user: null, from: null });
+      assert.strictEqual(auth.getEmailConfig().secure, false);
     });
   });
 

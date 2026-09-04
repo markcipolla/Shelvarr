@@ -90,9 +90,9 @@ export function UsersTab({
       {!emailConfigured && (
         <div className="text-sm text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 space-y-1">
           <p>
-            No mail server is configured, so sign-in codes cannot be delivered. Set{' '}
-            <code className="px-1 rounded bg-black/30">SMTP_HOST</code> and friends, or pass codes
-            to people yourself — they are shown here and written to the server log.
+            No mail server is configured, so sign-in codes cannot be delivered. Fill in{' '}
+            <span className="text-white">Outgoing mail</span> below, or pass codes to people
+            yourself — they are shown here and written to the server log.
           </p>
           <button
             type="button"
