@@ -41,11 +41,12 @@ export async function addToWanted(data: {
   description?: string;
   priority?: number;
   notes?: string;
-}): Promise<{ success: boolean; id?: number; error?: string }> {
+}): Promise<{ success: boolean; id?: number; error?: string; alreadyWanted?: boolean }> {
   try {
-    // Check if already wanted
+    // Check if already wanted. Flagged separately so callers can show the book
+    // as wanted rather than reporting a failure the user can do nothing about.
     if (isBookWantedInDb(data.hardcoverId, data.isbn, data.title)) {
-      return { success: false, error: 'Book is already on wanted list' };
+      return { success: false, alreadyWanted: true, error: 'Book is already on wanted list' };
     }
 
     const book = addWantedBookToDb({

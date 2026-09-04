@@ -17,6 +17,7 @@ interface CombinedSeriesBook {
   coverUrl?: string;
   publishDate?: string;
   description?: string;
+  isWanted: boolean;
 }
 import { addToWanted } from '@/lib/actions/wanted';
 
@@ -27,12 +28,16 @@ interface SeriesBookCardProps {
 export function SeriesBookCard({ book }: SeriesBookCardProps) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
-  const [added, setAdded] = useState(false);
+  // Seeded from the server so a book that is already wanted keeps saying so
+  // across reloads instead of offering a button that can only fail.
+  const [added, setAdded] = useState(book.isWanted);
+  const [error, setError] = useState<string | null>(null);
 
   const handleAddToWanted = async () => {
     if (!book.hardcoverId) return;
 
     setAdding(true);
+    setError(null);
     try {
       const result = await addToWanted({
         hardcoverId: book.hardcoverId,
@@ -41,12 +46,17 @@ export function SeriesBookCard({ book }: SeriesBookCardProps) {
         coverUrl: book.coverUrl,
       });
 
-      if (result.success) {
+      // Already on the list counts as done - the user asked for it to be
+      // wanted, and it is.
+      if (result.success || result.alreadyWanted) {
         setAdded(true);
         router.refresh();
+      } else {
+        setError(result.error || 'Failed to add book');
       }
-    } catch (error) {
-      console.error('Failed to add to wanted:', error);
+    } catch (err) {
+      console.error('Failed to add to wanted:', err);
+      setError('Failed to add book');
     }
     setAdding(false);
   };
@@ -125,7 +135,7 @@ export function SeriesBookCard({ book }: SeriesBookCardProps) {
           Missing
         </div>
         {/* Want button overlay */}
-        <div className="absolute inset-0 flex items-center justify-center p-4">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4">
           {book.hardcoverId && !added && (
             <button
               onClick={handleAddToWanted}
@@ -134,6 +144,11 @@ export function SeriesBookCard({ book }: SeriesBookCardProps) {
             >
               {adding ? 'Adding...' : '+ Want'}
             </button>
+          )}
+          {error && (
+            <p role="alert" className="text-center text-xs text-red-400 bg-black/70 rounded px-2 py-1">
+              {error}
+            </p>
           )}
           {added && (
             <Link

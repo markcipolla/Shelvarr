@@ -195,6 +195,7 @@ if (canRunTests) {
         });
 
         assert.strictEqual(result.success, false);
+        assert.strictEqual(result.alreadyWanted, true);
         assert.ok(result.error?.includes('already'));
       });
     });
