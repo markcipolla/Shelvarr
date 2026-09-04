@@ -15,6 +15,7 @@ import type { ComicVolumeDetail, ComicIssueSummary } from '@shelvarr/types';
 
 let db: typeof import('../../lib/db/index.js');
 let queue: typeof import('@shelvarr/services/queue/index');
+let sweep: typeof import('@shelvarr/services/comics/scratch');
 let dataDir: string;
 let libraryDir: string;
 let scratchDir: string;
@@ -149,6 +150,7 @@ describe('Comic download retries', () => {
     });
 
     queue = await import('@shelvarr/services/queue/index');
+    sweep = await import('@shelvarr/services/comics/scratch');
   });
 
   after(() => {
@@ -164,6 +166,9 @@ describe('Comic download retries', () => {
     );
     for (const entry of readdirSync(libraryDir)) {
       rmSync(join(libraryDir, entry), { force: true });
+    }
+    for (const entry of readdirSync(scratchDir)) {
+      rmSync(join(scratchDir, entry), { force: true });
     }
     db.upsertComicDetail(makeVolume());
   });
@@ -444,6 +449,78 @@ describe('Comic download retries', () => {
     assert.strictEqual(after.progress, 0);
     assert.strictEqual(after.error, null);
   });
+  describe('scratch sweep', () => {
+    /** Put a download in the queue and a scratch file on disk for it. */
+    function scratchFor(state: 'queued' | 'failed' | 'cancelled' | 'completed'): {
+      id: number;
+      path: string;
+    } {
+      const download = db.addComicDownload({
+        volumeId: 501,
+        host: 'getcomics',
+        downloadLink: `${LINK_A}/${state}`,
+      });
+      if (state !== 'queued') db.setComicDownloadState(download.id, state);
+
+      const path = join(scratchDir, `${download.id}-Immortal Hulk 001.cbz`);
+      writeFileSync(path, 'partial-bytes');
+      return { id: download.id, path };
+    }
+
+    /** Pretend a download's terminal state happened `hours` ago. */
+    function backdate(id: number, hours: number): void {
+      db.getDb()
+        .prepare(
+          `UPDATE comic_downloads SET completed_at = datetime('now', ?) WHERE id = ?`
+        )
+        .run(`-${hours} hours`, id);
+    }
+
+    it('leaves a live download alone', () => {
+      const queued = scratchFor('queued');
+      const result = sweep.sweepComicScratch();
+
+      assert.ok(existsSync(queued.path));
+      assert.deepStrictEqual(result.removed, []);
+    });
+
+    it('clears up after a cancelled download and a deleted one', () => {
+      const cancelled = scratchFor('cancelled');
+      const deleted = scratchFor('completed');
+      db.deleteComicDownload(deleted.id);
+
+      const result = sweep.sweepComicScratch();
+
+      assert.ok(!existsSync(cancelled.path));
+      assert.ok(!existsSync(deleted.path));
+      assert.strictEqual(result.removed.length, 2);
+      assert.strictEqual(result.bytes, 'partial-bytes'.length * 2);
+    });
+
+    it('keeps a fresh failure so a retry resumes rather than refetching', () => {
+      const failed = scratchFor('failed');
+      sweep.sweepComicScratch();
+      assert.ok(existsSync(failed.path), 'a retry within the grace window reuses the bytes');
+    });
+
+    it('gives up on a failure nobody retried', () => {
+      const failed = scratchFor('failed');
+      backdate(failed.id, sweep.DEFAULT_KEEP_FAILED_HOURS + 1);
+
+      sweep.sweepComicScratch();
+      assert.ok(!existsSync(failed.path));
+    });
+
+    it('never touches a file that is not named for a download', () => {
+      const stranger = join(scratchDir, 'notes.txt');
+      writeFileSync(stranger, 'not ours');
+
+      const result = sweep.sweepComicScratch();
+
+      assert.ok(existsSync(stranger));
+      assert.deepStrictEqual(result.removed, []);
+    });
+  });
 });
 
 describe('Comic download persistence', () => {
@@ -508,4 +585,5 @@ describe('Comic download persistence', () => {
     assert.deepStrictEqual(switched.alternateLinks, []);
     assert.strictEqual(switched.progress, 0, 'a different link is a different file');
   });
+
 });

@@ -43,8 +43,11 @@ FROM node:24-alpine AS web
 
 WORKDIR /app
 
-RUN addgroup -g 1001 -S shelvarr && \
-    adduser -S shelvarr -u 1001 -G shelvarr
+# `shadow` provides usermod/groupmod and `su-exec` drops privileges — both are
+# what the entrypoint needs to honour PUID/PGID.
+RUN apk add --no-cache shadow su-exec && \
+    addgroup -g 1001 shelvarr && \
+    adduser -D -u 1001 -G shelvarr shelvarr
 
 ENV NODE_ENV=production
 ENV PORT=3000
@@ -60,10 +63,15 @@ COPY --from=web-builder /app/apps/web/.next/static ./apps/web/.next/static
 # Copy database schema (needed for DB init)
 COPY --from=web-builder /app/packages/db/schema.sql ./packages/db/schema.sql
 
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
 RUN mkdir -p /app/data && chown -R shelvarr:shelvarr /app
 
-USER shelvarr
-
+# Stays root so the entrypoint can move `shelvarr` onto PUID/PGID; it drops to
+# that user before exec'ing the server. Set `user:` in compose to skip all of
+# it and run as a fixed uid instead.
 EXPOSE 3000
 
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["node", "apps/web/server.js"]

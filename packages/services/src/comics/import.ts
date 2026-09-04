@@ -6,8 +6,8 @@
  * conversion, which Shelvarr's reader does on the fly instead.
  */
 
-import { existsSync, renameSync, statSync } from 'fs';
-import { copyFile, mkdir, unlink } from 'fs/promises';
+import { constants, existsSync, renameSync, statSync } from 'fs';
+import { access, copyFile, mkdir, unlink } from 'fs/promises';
 import { extname, join } from 'path';
 
 import type { ComicDownload } from '@shelvarr/types';
@@ -34,24 +34,72 @@ export interface ImportTarget {
  * folder is a Kapowarr-side path and needs the usual remap. Falls back to
  * building a folder from the naming template under the configured library root.
  */
+export function resolveImportDirectory(
+  volume: NamingVolume & { folder: string | null }
+): string {
+  const { getcomics } = getServiceConfig();
+
+  if (volume.folder) return remapComicPath(volume.folder);
+  if (getcomics.libraryRoot) {
+    return join(getcomics.libraryRoot, generateVolumeFolderName(volume));
+  }
+  throw new Error(
+    'No destination for the download: the volume has no folder and COMIC_LIBRARY_ROOT is unset'
+  );
+}
+
 export function resolveImportTarget(
   volume: NamingVolume & { folder: string | null },
   filename: string
 ): ImportTarget {
-  const { getcomics } = getServiceConfig();
+  const directory = resolveImportDirectory(volume);
+  return { directory, path: join(directory, filename) };
+}
 
-  let directory: string;
-  if (volume.folder) {
-    directory = remapComicPath(volume.folder);
-  } else if (getcomics.libraryRoot) {
-    directory = join(getcomics.libraryRoot, generateVolumeFolderName(volume));
-  } else {
-    throw new Error(
-      'No destination for the download: the volume has no folder and COMIC_LIBRARY_ROOT is unset'
-    );
+/**
+ * Rewrite a permissions failure into something a user can act on.
+ *
+ * The bare `EACCES: permission denied, copyfile ...` that Node throws says
+ * nothing about *who* was denied, and the answer is nearly always that the
+ * library bind mount belongs to a different uid than the one the container
+ * runs as. Name both, and the fix.
+ */
+function describeWriteFailure(directory: string, error: unknown): Error {
+  const code = (error as NodeJS.ErrnoException).code;
+  if (code !== 'EACCES' && code !== 'EPERM' && code !== 'EROFS') {
+    return error instanceof Error ? error : new Error(String(error));
   }
 
-  return { directory, path: join(directory, filename) };
+  const uid = process.getuid?.();
+  const gid = process.getgid?.();
+  const who = uid === undefined ? 'this process' : `uid ${uid}:${gid}`;
+  const remedy =
+    code === 'EROFS'
+      ? 'the mount is read-only — mount it `:rw`'
+      : `grant ${who} write access to that folder, or set PUID/PGID to the ` +
+        'user that owns your library';
+
+  return new Error(`Cannot write to ${directory} as ${who}: ${remedy}.`);
+}
+
+/**
+ * Check the library folder can be written to, creating it if need be.
+ *
+ * Called before a download starts as well as during the import: without the
+ * up-front check a wrongly-owned bind mount downloads the whole file and only
+ * then fails on the move into place.
+ */
+export async function ensureImportable(
+  volume: NamingVolume & { folder: string | null }
+): Promise<string> {
+  const directory = resolveImportDirectory(volume);
+  try {
+    await mkdir(directory, { recursive: true });
+    await access(directory, constants.W_OK | constants.X_OK);
+  } catch (error) {
+    throw describeWriteFailure(directory, error);
+  }
+  return directory;
 }
 
 /**
@@ -112,11 +160,13 @@ export async function importComicDownload(
     ? `${download.filenameBody}${extension}`
     : sourcePath.split(/[\\/]/).pop()!;
 
-  const target = resolveImportTarget(volume, filename);
-  await mkdir(target.directory, { recursive: true });
-
-  const destination = uniquePath(target.path);
-  await moveFile(sourcePath, destination);
+  const directory = await ensureImportable(volume);
+  const destination = uniquePath(join(directory, filename));
+  try {
+    await moveFile(sourcePath, destination);
+  } catch (error) {
+    throw describeWriteFailure(directory, error);
+  }
 
   const bytes = statSync(destination).size;
   log.info('Imported download', { destination, bytes });

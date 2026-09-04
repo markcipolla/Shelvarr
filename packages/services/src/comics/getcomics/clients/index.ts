@@ -10,6 +10,8 @@
 import type { DownloadHost } from '@shelvarr/types';
 import {
   LinkBrokenError,
+  describeDownload,
+  probeDownload,
   resolveDirectDownload,
   type ResolvedDownload,
 } from './direct';
@@ -17,6 +19,8 @@ import {
 export {
   LinkBrokenError,
   DownloadLimitReachedError,
+  describeDownload,
+  probeDownload,
   resolveDirectDownload,
   downloadToFile,
   filenameFromDisposition,
@@ -26,48 +30,44 @@ export {
   type DownloadToFileOptions,
 } from './direct';
 
-const USER_AGENT =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
 const PIXELDRAIN_FILE = /pixeldrain\.com\/u\/([A-Za-z0-9]+)/;
 const PIXELDRAIN_LIST = /pixeldrain\.com\/l\/([A-Za-z0-9]+)/;
 
+/** A folder of files: picking one automatically would be a guess. */
+const FOLDER_UNSUPPORTED = 'Pixeldrain folder links are not supported';
+
+/** Pixeldrain's share pages are a web app; the file lives behind the API. */
+const apiUrl = (id: string) => `https://pixeldrain.com/api/file/${id}?download`;
+
 /**
- * Pixeldrain's share pages are a web app; the file itself lives behind the
- * public API. Follow the GetComics redirect to find the share id, then rewrite
- * it to the API URL.
+ * Resolve a link the article labelled as Pixeldrain.
+ *
+ * The label is not a promise. GetComics puts its own `/dls/` URL behind most
+ * buttons, and where that redirect ends is only knowable by following it: some
+ * land on a Pixeldrain share page, which has to be rewritten to the API URL
+ * before it will yield bytes, and some are GetComics serving the file itself.
+ * Both are downloads, so the probe decides rather than the button text — a
+ * mislabelled button used to be discarded and blocklisted with "Not a
+ * Pixeldrain link", losing a link that worked.
  */
 export async function resolvePixeldrain(
   link: string,
   signal?: AbortSignal
 ): Promise<ResolvedDownload> {
-  let finalUrl = link;
+  const known = PIXELDRAIN_FILE.exec(link);
+  if (known?.[1]) return resolveDirectDownload(apiUrl(known[1]), signal);
+  if (PIXELDRAIN_LIST.test(link)) throw new LinkBrokenError(link, FOLDER_UNSUPPORTED);
 
-  if (!PIXELDRAIN_FILE.test(link) && !PIXELDRAIN_LIST.test(link)) {
-    const response = await fetch(link, {
-      headers: { 'User-Agent': USER_AGENT },
-      redirect: 'follow',
-      ...(signal ? { signal } : {}),
-    });
-    await response.arrayBuffer().catch(() => undefined);
-    finalUrl = response.url || link;
-  }
+  const probe = await probeDownload(link, signal);
+  const finalUrl = probe.url || link;
 
   const file = PIXELDRAIN_FILE.exec(finalUrl);
-  if (file?.[1]) {
-    return resolveDirectDownload(
-      `https://pixeldrain.com/api/file/${file[1]}?download`,
-      signal
-    );
-  }
+  if (file?.[1]) return resolveDirectDownload(apiUrl(file[1]), signal);
+  if (PIXELDRAIN_LIST.test(finalUrl)) throw new LinkBrokenError(link, FOLDER_UNSUPPORTED);
 
-  // A list is a folder of files; picking one automatically would be a guess,
-  // so treat it as unusable and let the next link in the group be tried.
-  if (PIXELDRAIN_LIST.test(finalUrl)) {
-    throw new LinkBrokenError(link, 'Pixeldrain folder links are not supported');
-  }
-
-  throw new LinkBrokenError(link, `Not a Pixeldrain link: ${finalUrl}`);
+  // Somewhere other than Pixeldrain. Take it if it is a file; `describeDownload`
+  // raises the usual "resolves to a web page" if it is a landing page.
+  return describeDownload(link, probe);
 }
 
 /** Hosts `resolveDownload` can handle. */

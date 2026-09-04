@@ -79,13 +79,16 @@ export function filenameFromUrl(url: string): string {
 }
 
 /**
- * Probe a URL with a one-byte range request: cheap, and it tells us the total
- * size, the suggested filename, and whether resume will work.
+ * Ask a URL for its first byte: cheap, and the response says where the link
+ * really lands, how big the file is, and whether resume will work.
+ *
+ * Kept separate from `describeDownload` so a caller that only wants the final
+ * URL — the Pixeldrain resolver, following GetComics' redirect to a share
+ * page — can read it without the page being rejected as HTML first.
+ *
+ * @throws LinkBrokenError when the host is unreachable or refuses the request.
  */
-export async function resolveDirectDownload(
-  link: string,
-  signal?: AbortSignal
-): Promise<ResolvedDownload> {
+export async function probeDownload(link: string, signal?: AbortSignal): Promise<Response> {
   const timeout = AbortSignal.timeout(PROBE_TIMEOUT_MS);
   const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
 
@@ -107,6 +110,15 @@ export async function resolveDirectDownload(
   if (response.status === 429) throw new DownloadLimitReachedError(new URL(link).hostname);
   if (!response.ok) throw new LinkBrokenError(link, `Server returned ${response.status}`);
 
+  return response;
+}
+
+/**
+ * Read a probe response as a streamable download.
+ *
+ * @throws LinkBrokenError when what came back is a web page rather than a file.
+ */
+export function describeDownload(link: string, response: Response): ResolvedDownload {
   const contentType = response.headers.get('content-type');
   if (contentType?.startsWith('text/html')) {
     // A landing page, not a file — the link needs an interaction we don't do.
@@ -133,6 +145,14 @@ export async function resolveDirectDownload(
       response.status === 206 || response.headers.get('accept-ranges') === 'bytes',
     contentType,
   };
+}
+
+/** Probe a link and read the result as a download, in one step. */
+export async function resolveDirectDownload(
+  link: string,
+  signal?: AbortSignal
+): Promise<ResolvedDownload> {
+  return describeDownload(link, await probeDownload(link, signal));
 }
 
 export interface DownloadToFileOptions {

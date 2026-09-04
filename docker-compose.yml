@@ -16,6 +16,12 @@ services:
       # - /path/to/comics:/libraries/comics:rw
     environment:
       - NODE_ENV=production
+      # Run as the user that owns your library folders, so imported comics can
+      # actually be written. `id -u` / `id -g` on the host tells you these.
+      - PUID=${PUID:-1001}
+      - PGID=${PGID:-1001}
+      # Permissions new files are created with. 002 shares them with the group.
+      - UMASK=${UMASK:-022}
       - PORT=3000
       - DATA_DIR=/app/data
       - LIBRARY_ROOT=/libraries

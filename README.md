@@ -30,6 +30,10 @@ services:
       # Mount your book libraries:
       - /path/to/ebooks:/libraries/ebooks:rw
       - /path/to/comics:/libraries/comics:rw
+    environment:
+      # The user that owns your library folders — run `id -u` and `id -g`.
+      - PUID=1000
+      - PGID=1000
     restart: unless-stopped
 
 volumes:
@@ -43,6 +47,29 @@ docker-compose up -d
 ```
 
 Open http://localhost:3000
+
+### File ownership
+
+Shelvarr writes into your library when it imports a comic, so the container has
+to run as a user that is allowed to. Set `PUID`/`PGID` to the owner of your
+library folders — `id -u` and `id -g` on the host — and the container adjusts
+itself to match on startup. Get it wrong and imports fail with:
+
+```
+Cannot write to /libraries/comics/Some Series as uid 1001:1001: grant
+uid 1001:1001 write access to that folder, or set PUID/PGID to the user
+that owns your library.
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PUID` | 1001 | Uid the server runs as |
+| `PGID` | 1001 | Gid the server runs as |
+| `UMASK` | 022 | Permissions imported files are created with; `002` shares them with the group |
+
+Setting `user:` in your compose file works too, and takes precedence — but then
+nothing adjusts `/app/data` for you, so it has to be writable by that uid
+already.
 
 ### Docker (Build from Source)
 
@@ -202,6 +229,12 @@ live downloads leave a heartbeat, and a sweep under **Settings → Comics**
 (every 15 minutes, on by default) requeues any that have gone quiet for half an
 hour. Claiming is atomic, so it is safe with several server processes against
 one database.
+
+A download that fetched its bytes but could not file them away — a library
+folder it has no permission to write to, most often — keeps them, so pressing
+**Retry** after fixing the cause resumes instead of pulling the issue again.
+The same sweep clears `GETCOMICS_DOWNLOAD_DIR` of anything nothing can use any
+more: cancelled downloads, and failures nobody retried within two days.
 
 **Keeping it tidy.** Per volume: refresh metadata from ComicVine, rescan files,
 and preview-then-apply a rename to the naming template. Library-wide:

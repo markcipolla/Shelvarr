@@ -27,7 +27,8 @@ import {
 import type { ComicDownloadLink } from '@shelvarr/types';
 import * as getcomics from '../comics/getcomics/index';
 import * as comicLibrary from '../comics/library';
-import { importComicDownload } from '../comics/import';
+import { ensureImportable, importComicDownload } from '../comics/import';
+import { sweepComicScratch } from '../comics/scratch';
 import { scanVolumeFiles } from '../comics/scan';
 import { applyVolumeRename } from '../comics/rename';
 import { findImportGroups, proposeLibraryImport } from '../comics/import-library';
@@ -1032,6 +1033,24 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
     return result;
   };
 
+  const namingVolume = {
+    title: loaded.volume.title,
+    year: loaded.volume.year,
+    volumeNumber: loaded.volume.volumeNumber,
+    specialVersion: loaded.volume.specialVersion,
+    publisher: volumeRow?.publisher ?? null,
+    folder: volumeRow?.folder ?? null,
+  };
+
+  // Check the library folder is writable before spending bandwidth on a file
+  // we would only fail to file away. A wrongly-owned bind mount is the usual
+  // culprit, and it fails every download identically.
+  try {
+    await ensureImportable(namingVolume);
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : String(error));
+  }
+
   const attempt = startComicDownloadAttempt(download.id);
 
   let candidate: ComicDownloadLink = { host: download.host, link: download.downloadLink };
@@ -1044,6 +1063,7 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
     } catch (error) {
       if (cancelled()) {
         setComicDownloadState(download.id, 'cancelled');
+        clearScratch();
         throw error;
       }
 
@@ -1092,14 +1112,7 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
   try {
     setComicDownloadState(download.id, 'importing');
 
-    const imported = await importComicDownload(download, fetched.path, {
-      title: loaded.volume.title,
-      year: loaded.volume.year,
-      volumeNumber: loaded.volume.volumeNumber,
-      specialVersion: loaded.volume.specialVersion,
-      publisher: volumeRow?.publisher ?? null,
-      folder: volumeRow?.folder ?? null,
-    });
+    const imported = await importComicDownload(download, fetched.path, namingVolume);
 
     setComicDownloadState(download.id, 'completed', { filePath: imported.path });
     addComicDownloadHistory({
@@ -1124,10 +1137,13 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
   } catch (error) {
     if (cancelled()) {
       setComicDownloadState(download.id, 'cancelled');
+      clearScratch();
       throw error;
     }
     // The bytes are on disk; only the move into the library went wrong, so
-    // another link would not help.
+    // another link would not help. They are left there on purpose: a retry
+    // resumes from them instead of fetching the issue again, and the scratch
+    // sweep clears them if the retry never comes.
     return fail(error instanceof Error ? error.message : String(error));
   }
 };
@@ -1229,12 +1245,16 @@ const comicUpdateAllHandler: TaskHandler = async (taskId, onProgress, signal) =>
  * Every live download stamps a heartbeat as it goes, so this sweep can tell
  * the orphans from the busy. Claiming is done in the same statement that finds
  * them, so several server processes can run this tick without doubling up.
+ *
+ * Doubles as the housekeeping tick: scratch files no download can still use
+ * are deleted here, which is the only thing that ever removes them.
  */
 const comicResumeHandler: TaskHandler = async (taskId, onProgress) => {
-  const data = comicTaskData<{ staleMinutes?: number; limit?: number }>(
-    taskId,
-    'comic resume configuration'
-  );
+  const data = comicTaskData<{
+    staleMinutes?: number;
+    limit?: number;
+    keepFailedHours?: number;
+  }>(taskId, 'comic resume configuration');
 
   const stalled = claimStalledComicDownloads(data.staleMinutes ?? 30, data.limit ?? 25);
   onProgress(0, stalled.length);
@@ -1250,7 +1270,27 @@ const comicResumeHandler: TaskHandler = async (taskId, onProgress) => {
     console.warn(`[comic-resume] restarted ${resumed.length} interrupted download(s)`);
   }
 
-  return { resumed: resumed.length, downloadIds: resumed };
+  // After requeueing, so a download just put back to `queued` keeps its bytes.
+  // Housekeeping must not fail the tick that resumed real work, so an
+  // unreadable scratch directory is reported rather than thrown.
+  let swept = { removed: [] as string[], bytes: 0 };
+  let sweepError: string | null = null;
+  try {
+    swept = sweepComicScratch(
+      data.keepFailedHours === undefined ? {} : { keepFailedHours: data.keepFailedHours }
+    );
+  } catch (error) {
+    sweepError = error instanceof Error ? error.message : String(error);
+    console.warn(`[comic-resume] could not sweep the scratch directory: ${sweepError}`);
+  }
+
+  return {
+    resumed: resumed.length,
+    downloadIds: resumed,
+    scratchRemoved: swept.removed.length,
+    scratchBytesFreed: swept.bytes,
+    ...(sweepError ? { sweepError } : {}),
+  };
 };
 
 /**
