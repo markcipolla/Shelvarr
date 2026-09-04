@@ -55,10 +55,19 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: { cookies: [], origins: [] } },
     },
     {
-      name: 'chromium',
+      // Compiles the routes the specs use, signed in, before they start. See
+      // tests/e2e/warm.setup.ts.
+      name: 'warmup',
+      testMatch: /warm\.setup\.ts/,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState },
-      testIgnore: /auth\.setup\.ts/,
+    },
+    {
+      name: 'chromium',
+      // 'warmup' pulls 'setup' in behind it, so the wizard still runs first.
+      dependencies: ['warmup'],
+      use: { ...devices['Desktop Chrome'], storageState },
+      testIgnore: /\.setup\.ts/,
     },
   ],
   webServer: {
