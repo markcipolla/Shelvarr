@@ -21,7 +21,7 @@ const config: AppConfig = {
 
   // Only used while adopting a library organised by something else.
   comicMigration: {
-    pathMap: process.env['COMIC_PATH_MAP'] || process.env['KAPOWARR_PATH_MAP'] || null,
+    pathMap: process.env['COMIC_PATH_MAP'] || null,
   },
 
   // GetComics sourcing for comics

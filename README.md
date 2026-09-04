@@ -266,7 +266,6 @@ refresh afterwards.
 
 If a volume's folder can't be found, set `COMIC_PATH_MAP` to map the recorded
 path prefix onto the one this process sees, e.g. `/comics-1:/libraries/comics`.
-(`KAPOWARR_PATH_MAP` still works as the old name.)
 
 For a folder tree Shelvarr has *never* seen, use **Settings → Comics → Import
 an existing library** instead. That scans the tree and guesses the ComicVine
