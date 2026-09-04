@@ -13,6 +13,7 @@ import { extname, join } from 'path';
 import type { ComicDownload } from '@shelvarr/types';
 
 import { getServiceConfig } from '../config';
+import { describeWriteFailure } from '../utils/fs-errors';
 import { createLogger } from '../utils/logger';
 import { remapComicPath } from './archive';
 import { generateVolumeFolderName, type NamingVolume } from './naming';
@@ -54,32 +55,6 @@ export function resolveImportTarget(
 ): ImportTarget {
   const directory = resolveImportDirectory(volume);
   return { directory, path: join(directory, filename) };
-}
-
-/**
- * Rewrite a permissions failure into something a user can act on.
- *
- * The bare `EACCES: permission denied, copyfile ...` that Node throws says
- * nothing about *who* was denied, and the answer is nearly always that the
- * library bind mount belongs to a different uid than the one the container
- * runs as. Name both, and the fix.
- */
-function describeWriteFailure(directory: string, error: unknown): Error {
-  const code = (error as NodeJS.ErrnoException).code;
-  if (code !== 'EACCES' && code !== 'EPERM' && code !== 'EROFS') {
-    return error instanceof Error ? error : new Error(String(error));
-  }
-
-  const uid = process.getuid?.();
-  const gid = process.getgid?.();
-  const who = uid === undefined ? 'this process' : `uid ${uid}:${gid}`;
-  const remedy =
-    code === 'EROFS'
-      ? 'the mount is read-only — mount it `:rw`'
-      : `grant ${who} write access to that folder, or set PUID/PGID to the ` +
-        'user that owns your library';
-
-  return new Error(`Cannot write to ${directory} as ${who}: ${remedy}.`);
 }
 
 /**
