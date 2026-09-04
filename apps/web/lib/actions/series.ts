@@ -1,6 +1,6 @@
 'use server';
 
-import { query } from '@/lib/db';
+import { query, isBookWanted } from '@/lib/db';
 import type { Book } from '@/types';
 import * as hardcover from '@/lib/services/metadata/hardcover';
 
@@ -230,6 +230,9 @@ export interface CombinedSeriesBook {
   coverUrl?: string;
   publishDate?: string;
   description?: string;
+  // Already on the wanted list. Without this the Want button resets to its
+  // unpressed state on every load and silently does nothing when pressed again.
+  isWanted: boolean;
 }
 
 export interface CombinedSeriesInfo {
@@ -292,6 +295,9 @@ export async function getCompleteSeriesInfo(seriesName: string): Promise<Combine
         coverUrl: localBook?.coverUrl || hcBook.coverUrl,
         publishDate: hcBook.publishDate,
         description: hcBook.description,
+        // Matched the same way addToWanted checks for duplicates, so the
+        // button's state agrees with what pressing it would do.
+        isWanted: !localBook && isBookWanted(hcBook.id, undefined, hcBook.title),
       };
     });
 
@@ -349,6 +355,7 @@ export async function getCompleteSeriesInfo(seriesName: string): Promise<Combine
       coverUrl: book.coverUrl || undefined,
       publishDate: book.publishDate || undefined,
       description: book.description || undefined,
+      isWanted: false,
     })),
     authors,
   };
