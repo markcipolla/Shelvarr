@@ -5,7 +5,7 @@
 
 import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import type { ComicVolumeDetail, ComicIssueSummary } from '@shelvarr/types';
 
@@ -428,5 +428,54 @@ describe('Comic download import', () => {
     } finally {
       await configure(join(root, 'library'));
     }
+  });
+
+  describe('when the library folder cannot be written to', () => {
+    // Root ignores the mode bits, so there is no way to stage the failure.
+    const asRoot = process.getuid?.() === 0;
+
+    /** A folder we are allowed to look inside but not add to. */
+    function readOnlyFolder(name: string): string {
+      const folder = join(root, name);
+      mkdirSync(folder, { recursive: true });
+      chmodSync(folder, 0o500);
+      return folder;
+    }
+
+    it('says who was denied and how to fix it, before anything is downloaded', async (t) => {
+      if (asRoot) return t.skip('running as root; mode bits are not enforced');
+      const folder = readOnlyFolder('locked-preflight');
+      try {
+        await assert.rejects(
+          () => importer.ensureImportable({ ...volume, folder }),
+          (error: Error) => {
+            assert.match(error.message, /Cannot write to .*locked-preflight/);
+            assert.match(error.message, /PUID\/PGID/);
+            return true;
+          }
+        );
+      } finally {
+        chmodSync(folder, 0o700);
+      }
+    });
+
+    it('leaves the downloaded file alone rather than losing it', async (t) => {
+      if (asRoot) return t.skip('running as root; mode bits are not enforced');
+      const folder = readOnlyFolder('locked-import');
+      const source = scratchFile('raw-download-locked.cbz');
+      try {
+        await assert.rejects(
+          () =>
+            importer.importComicDownload({ filenameBody: 'Locked' }, source, {
+              ...volume,
+              folder,
+            }),
+          /Cannot write to/
+        );
+        assert.ok(existsSync(source), 'the scratch file should survive a failed import');
+      } finally {
+        chmodSync(folder, 0o700);
+      }
+    });
   });
 });

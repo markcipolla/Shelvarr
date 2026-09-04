@@ -82,7 +82,7 @@ export const DEFAULT_SCHEDULES: ScheduleDefinition[] = [
     name: 'comic_resume',
     taskType: 'comic_resume',
     intervalSeconds: 15 * 60,
-    description: 'Pick up comic downloads interrupted by a restart',
+    description: 'Resume interrupted comic downloads and tidy the scratch directory',
     category: 'comics',
     // Longer than the longest rate-limit backoff, so a download waiting out a
     // host is not taken from the process already retrying it.

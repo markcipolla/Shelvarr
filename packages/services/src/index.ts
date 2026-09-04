@@ -12,7 +12,8 @@ export * as comicScan from './comics/scan';
 export * as comicRename from './comics/rename';
 export * as comicLibraryImport from './comics/import-library';
 export * as comicAdopt from './comics/adopt';
-export { importComicDownload, resolveImportTarget } from './comics/import';
+export { ensureImportable, importComicDownload, resolveImportTarget } from './comics/import';
+export { sweepComicScratch, DEFAULT_KEEP_FAILED_HOURS } from './comics/scratch';
 
 // Services
 export * as scanner from './scanner/index';
