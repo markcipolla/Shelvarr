@@ -24,6 +24,7 @@ export function BookActions({ book }: BookActionsProps) {
   const [loading, setLoading] = useState(false);
   const [showMetadataSearch, setShowMetadataSearch] = useState(false);
   const [showReader, setShowReader] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const hasMatch = !!book.metadataSource;
   const hasHardcover = book.metadataSource === 'hardcover';
@@ -74,19 +75,18 @@ export function BookActions({ book }: BookActionsProps) {
     }
   };
 
-  const handleDelete = async () => {
-    if (!confirm('Delete this book from the database? The file will not be deleted.')) {
-      return;
-    }
-
+  const handleDelete = async (deleteFiles: boolean) => {
     setLoading(true);
-    const result = await deleteBook(book.id);
+    const result = await deleteBook(book.id, deleteFiles);
     setLoading(false);
 
     if (result.error) {
       toast.error(result.error);
+      setConfirmingDelete(false);
     } else {
-      toast.success('Book deleted');
+      toast.success(
+        deleteFiles && result.deletedFile ? 'Book and its file deleted' : 'Book deleted'
+      );
       router.push('/books');
     }
   };
@@ -159,13 +159,40 @@ export function BookActions({ book }: BookActionsProps) {
           </div>
         )}
 
-        <button
-          onClick={handleDelete}
-          disabled={loading}
-          className="w-full bg-shelvarr-surface hover:bg-red-900/20 text-red-400 border border-shelvarr-border px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
-        >
-          {loading ? 'Deleting...' : 'Delete from Database'}
-        </button>
+        {confirmingDelete ? (
+          <div className="bg-shelvarr-surface border border-red-500/40 rounded-lg p-4 space-y-3">
+            <p className="text-sm text-shelvarr-text">Delete this book?</p>
+            <button
+              onClick={() => handleDelete(false)}
+              disabled={loading}
+              className="w-full bg-shelvarr-surface hover:bg-shelvarr-border border border-shelvarr-border text-shelvarr-text px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
+            >
+              Delete, keep the file
+            </button>
+            <button
+              onClick={() => handleDelete(true)}
+              disabled={loading}
+              className="w-full bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
+            >
+              Delete and remove the file
+            </button>
+            <button
+              onClick={() => setConfirmingDelete(false)}
+              disabled={loading}
+              className="w-full bg-shelvarr-surface hover:bg-shelvarr-border border border-shelvarr-border text-shelvarr-text px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirmingDelete(true)}
+            disabled={loading}
+            className="w-full bg-shelvarr-surface hover:bg-red-900/20 text-red-400 border border-shelvarr-border px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
+          >
+            {loading ? 'Deleting...' : 'Delete'}
+          </button>
+        )}
       </div>
 
       {showMetadataSearch && (

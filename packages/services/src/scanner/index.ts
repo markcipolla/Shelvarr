@@ -1,11 +1,14 @@
-import { readdirSync, statSync } from 'fs';
-import { join, extname, basename } from 'path';
+import { existsSync, readdirSync, rmdirSync, statSync, unlinkSync } from 'fs';
+import { join, extname, basename, dirname, resolve, sep } from 'path';
 import { createHash } from 'crypto';
 import { readFileSync } from 'fs';
 import { query, queryOne, execute, hardcoverStatusLabel, progressUserId } from '@shelvarr/db';
 import { getLibraryById } from '../library';
 import { getServiceConfig } from '../config';
+import { createLogger } from '../utils/logger';
 import type { Book } from '@shelvarr/types';
+
+const log = createLogger('scanner');
 
 interface BookRow {
   id: number;
@@ -523,18 +526,129 @@ export async function updateBook(
   }
 }
 
-export async function deleteBook(id: number): Promise<{ success: boolean; error?: string }> {
+export interface DeleteBookOptions {
+  /** Also remove the book's file from disk. Off by default. */
+  deleteFiles?: boolean;
+}
+
+export interface DeleteBookResult {
+  success: boolean;
+  error?: string;
+  /** True when the file was actually removed from disk. */
+  deletedFile?: boolean;
+}
+
+/**
+ * Remove a book from the database, optionally taking its file with it.
+ *
+ * The file is only deleted when it lives inside its library — a path that has
+ * wandered outside is a sign of a stale or hand-edited row, and deleting it
+ * would reach into someone else's files.
+ */
+export async function deleteBook(
+  id: number,
+  options: DeleteBookOptions = {}
+): Promise<DeleteBookResult> {
   const existing = await getBookById(id);
   if (!existing) {
     return { success: false, error: 'Book not found' };
   }
 
+  let deletedFile = false;
+  if (options.deleteFiles) {
+    const removal = await deleteBookFile(existing);
+    if (!removal.success) {
+      return { success: false, error: removal.error };
+    }
+    deletedFile = removal.deleted;
+  }
+
   try {
     await execute('DELETE FROM books WHERE id = ?', [id]);
-    return { success: true };
+    return { success: true, deletedFile };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return { success: false, error: message };
+  }
+}
+
+/** Sidecar files a Calibre-style export leaves next to the book itself. */
+const SIDECAR_PATTERNS = ['.opf', 'cover.jpg', 'cover.png', 'metadata.opf'];
+
+/**
+ * Delete a book's file, its metadata sidecars, and any directories the
+ * removal leaves empty (stopping at the library root).
+ */
+async function deleteBookFile(
+  book: Book
+): Promise<{ success: boolean; deleted: boolean; error?: string }> {
+  const library = await getLibraryById(book.libraryId);
+  if (!library) {
+    return { success: false, deleted: false, error: 'Library not found' };
+  }
+
+  const libraryRoot = resolve(library.path);
+  const filePath = resolve(book.filePath);
+  if (!filePath.startsWith(libraryRoot + sep)) {
+    return {
+      success: false,
+      deleted: false,
+      error: `Refusing to delete ${book.filePath} — it is outside the library`,
+    };
+  }
+
+  let deleted = false;
+  try {
+    if (existsSync(filePath)) {
+      unlinkSync(filePath);
+      deleted = true;
+      log.info('Deleted book file', { bookId: book.id, filePath });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return { success: false, deleted: false, error: `Failed to delete file: ${message}` };
+  }
+
+  // Best effort from here: the book's row should still go even if the tidy-up
+  // of its leftovers fails. The sidecars only get swept when nothing else in
+  // the directory is a book — in a flat library they belong to a sibling.
+  try {
+    const bookDir = dirname(filePath);
+    if (bookDir !== libraryRoot && existsSync(bookDir)) {
+      const remaining = readdirSync(bookDir);
+      const extensions = getServiceConfig().supportedExtensions;
+      const holdsAnotherBook = remaining.some(file =>
+        extensions.some(ext => file.toLowerCase().endsWith(ext))
+      );
+
+      if (!holdsAnotherBook) {
+        for (const file of remaining) {
+          const lower = file.toLowerCase();
+          if (SIDECAR_PATTERNS.some(p => lower.endsWith(p) || lower === p)) {
+            try {
+              unlinkSync(join(bookDir, file));
+            } catch {
+              // ignore individual cleanup errors
+            }
+          }
+        }
+        removeEmptyDirs(bookDir, libraryRoot);
+      }
+    }
+  } catch {
+    // ignore cleanup errors
+  }
+
+  return { success: true, deleted };
+}
+
+/** Walk up from `dir` removing empty directories, never past `stopAt`. */
+function removeEmptyDirs(dir: string, stopAt: string): void {
+  let current = dir;
+  while (current !== stopAt && current.startsWith(stopAt + sep)) {
+    if (!existsSync(current) || readdirSync(current).length > 0) return;
+    rmdirSync(current);
+    current = dirname(current);
   }
 }
 
