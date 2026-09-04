@@ -55,8 +55,9 @@ export async function updateBook(id: number, data: {
   return result;
 }
 
-export async function deleteBook(id: number) {
-  const result = await deleteBookFromDb(id);
+/** Remove a book from the library, optionally deleting its file too. */
+export async function deleteBook(id: number, deleteFiles = false) {
+  const result = await deleteBookFromDb(id, { deleteFiles });
   if (result.success) {
     revalidatePath('/books');
   }

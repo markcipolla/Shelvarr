@@ -25,6 +25,32 @@ let configMock: {
   supportedExtensions: string[];
 };
 
+/**
+ * Put a single book on disk inside a fresh library and scan it in, so the
+ * delete tests have a real file to point at.
+ */
+async function seedBookForDelete(
+  fs: typeof fsTypes,
+  name: string,
+  subdir?: string
+): Promise<{ bookId: number; filePath: string; libPath: string }> {
+  const libPath = testDataDir + '/test-library-delete-' + name;
+  fs.rmSync(libPath, { recursive: true, force: true });
+  const bookDir = subdir ? libPath + '/' + subdir : libPath;
+  fs.mkdirSync(bookDir, { recursive: true });
+  fs.writeFileSync(bookDir + '/test.epub', 'content');
+
+  const libResult = await library.createLibrary({ name: 'Delete ' + name, path: libPath });
+  assert.ok(libResult.success);
+  assert.ok(libResult.library);
+
+  await scanner.scanLibrary(libResult.library.id);
+  const books = await scanner.getBooks({ libraryId: libResult.library.id });
+  assert.strictEqual(books.books.length, 1);
+
+  return { bookId: books.books[0].id, filePath: books.books[0].filePath, libPath };
+}
+
 describe('Scanner Service', () => {
   before(async () => {
     // Set up test environment
@@ -808,6 +834,90 @@ describe('Scanner Service', () => {
 
       assert.strictEqual(result.success, false);
       assert.strictEqual(result.error, 'Book not found');
+    });
+
+    it('should leave the file on disk by default', async () => {
+      const fs = await import('fs');
+      const { bookId, filePath } = await seedBookForDelete(fs, 'keep');
+
+      const result = await scanner.deleteBook(bookId);
+
+      assert.ok(result.success);
+      assert.strictEqual(result.deletedFile, false);
+      assert.ok(fs.existsSync(filePath));
+    });
+
+    it('should delete the file when asked to', async () => {
+      const fs = await import('fs');
+      const { bookId, filePath } = await seedBookForDelete(fs, 'with-file');
+
+      const result = await scanner.deleteBook(bookId, { deleteFiles: true });
+
+      assert.ok(result.success);
+      assert.strictEqual(result.deletedFile, true);
+      assert.strictEqual(fs.existsSync(filePath), false);
+      assert.strictEqual(await scanner.getBookById(bookId), null);
+    });
+
+    it('should remove metadata sidecars and the directories left empty', async () => {
+      const fs = await import('fs');
+      const { bookId, filePath, libPath } = await seedBookForDelete(fs, 'sidecars', 'Author/Title');
+      const bookDir = filePath.slice(0, filePath.lastIndexOf('/'));
+      fs.writeFileSync(bookDir + '/cover.jpg', 'jpeg');
+      fs.writeFileSync(bookDir + '/metadata.opf', '<opf/>');
+
+      const result = await scanner.deleteBook(bookId, { deleteFiles: true });
+
+      assert.ok(result.success);
+      assert.strictEqual(fs.existsSync(bookDir), false);
+      // The empty author directory goes too, but the library root stays.
+      assert.strictEqual(fs.existsSync(libPath + '/Author'), false);
+      assert.ok(fs.existsSync(libPath));
+    });
+
+    it('should leave a sibling book\'s sidecars alone', async () => {
+      const fs = await import('fs');
+      const { bookId, filePath, libPath } = await seedBookForDelete(fs, 'siblings', 'Shelf');
+      const bookDir = filePath.slice(0, filePath.lastIndexOf('/'));
+      fs.writeFileSync(bookDir + '/cover.jpg', 'jpeg');
+      fs.writeFileSync(bookDir + '/other.epub', 'content');
+
+      const result = await scanner.deleteBook(bookId, { deleteFiles: true });
+
+      assert.ok(result.success);
+      assert.strictEqual(fs.existsSync(filePath), false);
+      assert.ok(fs.existsSync(bookDir + '/cover.jpg'));
+      assert.ok(fs.existsSync(bookDir + '/other.epub'));
+      assert.ok(fs.existsSync(libPath));
+    });
+
+    it('should refuse to delete a file outside its library', async () => {
+      const fs = await import('fs');
+      const { bookId } = await seedBookForDelete(fs, 'escape');
+
+      const strayPath = testDataDir + '/stray.epub';
+      fs.writeFileSync(strayPath, 'content');
+      db.getDb().prepare('UPDATE books SET file_path = ? WHERE id = ?').run(strayPath, bookId);
+
+      const result = await scanner.deleteBook(bookId, { deleteFiles: true });
+
+      assert.strictEqual(result.success, false);
+      assert.match(result.error!, /outside the library/);
+      // Neither the file nor the row is touched.
+      assert.ok(fs.existsSync(strayPath));
+      assert.ok(await scanner.getBookById(bookId));
+    });
+
+    it('should still delete the row when the file is already gone', async () => {
+      const fs = await import('fs');
+      const { bookId, filePath } = await seedBookForDelete(fs, 'missing');
+      fs.rmSync(filePath);
+
+      const result = await scanner.deleteBook(bookId, { deleteFiles: true });
+
+      assert.ok(result.success);
+      assert.strictEqual(result.deletedFile, false);
+      assert.strictEqual(await scanner.getBookById(bookId), null);
     });
   });
 
