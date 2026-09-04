@@ -71,7 +71,6 @@ Environment:
   DATA_DIR / DB_PATH      Where Shelvarr's database lives.
   COMIC_PATH_MAP          "from:to" prefix remap, when the library's recorded
                           paths differ from where this process sees them.
-                          KAPOWARR_PATH_MAP is accepted as the old name.
 `.trim();
 
 /** Build the app config the services layer expects, from the environment. */
@@ -85,7 +84,7 @@ function buildConfig(): AppConfig {
     libraryRoot: process.env['LIBRARY_ROOT'] || '/libraries',
     dbPath: process.env['DB_PATH'] || join(dataDir, 'shelvarr.db'),
     comicMigration: {
-      pathMap: process.env['COMIC_PATH_MAP'] || process.env['KAPOWARR_PATH_MAP'] || null,
+      pathMap: process.env['COMIC_PATH_MAP'] || null,
     },
     getcomics: {
       baseUrl: process.env['GETCOMICS_URL'] || 'https://getcomics.org',
