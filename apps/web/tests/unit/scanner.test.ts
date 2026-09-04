@@ -908,6 +908,28 @@ describe('Scanner Service', () => {
       assert.ok(await scanner.getBookById(bookId));
     });
 
+    it('should explain a permission failure and keep the row', async () => {
+      const fs = await import('fs');
+      // root ignores the mode bits, so there is nothing to deny.
+      if (process.getuid?.() === 0) return;
+
+      const { bookId, filePath } = await seedBookForDelete(fs, 'denied', 'Locked');
+      const bookDir = filePath.slice(0, filePath.lastIndexOf('/'));
+      fs.chmodSync(bookDir, 0o500);
+
+      try {
+        const result = await scanner.deleteBook(bookId, { deleteFiles: true });
+
+        assert.strictEqual(result.success, false);
+        assert.match(result.error!, /Failed to delete test\.epub/);
+        assert.match(result.error!, /PUID\/PGID/);
+        assert.ok(fs.existsSync(filePath));
+        assert.ok(await scanner.getBookById(bookId));
+      } finally {
+        fs.chmodSync(bookDir, 0o755);
+      }
+    });
+
     it('should still delete the row when the file is already gone', async () => {
       const fs = await import('fs');
       const { bookId, filePath } = await seedBookForDelete(fs, 'missing');

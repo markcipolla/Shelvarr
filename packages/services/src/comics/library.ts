@@ -39,6 +39,7 @@ import type {
 } from '@shelvarr/types';
 
 import { getServiceConfig } from '../config';
+import { describeWriteFailure } from '../utils/fs-errors';
 import { createLogger } from '../utils/logger';
 import { ComicVine, InvalidComicVineApiKeyError } from './comicvine/index';
 import { generateVolumeFolderName } from './naming';
@@ -312,7 +313,11 @@ export async function deleteVolume(
 
   if (options.deleteFiles && volume.folder && existsSync(volume.folder)) {
     log.info('Deleting volume folder', { volumeId, folder: volume.folder });
-    await rm(volume.folder, { recursive: true, force: true });
+    try {
+      await rm(volume.folder, { recursive: true, force: true });
+    } catch (error) {
+      throw describeWriteFailure(volume.folder, error, 'delete');
+    }
   }
 
   execute(

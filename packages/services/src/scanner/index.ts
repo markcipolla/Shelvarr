@@ -5,6 +5,7 @@ import { readFileSync } from 'fs';
 import { query, queryOne, execute, hardcoverStatusLabel, progressUserId } from '@shelvarr/db';
 import { getLibraryById } from '../library';
 import { getServiceConfig } from '../config';
+import { describeWriteFailure } from '../utils/fs-errors';
 import { createLogger } from '../utils/logger';
 import type { Book } from '@shelvarr/types';
 
@@ -605,8 +606,14 @@ async function deleteBookFile(
       log.info('Deleted book file', { bookId: book.id, filePath });
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return { success: false, deleted: false, error: `Failed to delete file: ${message}` };
+    // A wrongly-owned bind mount is the usual cause, and unlink answers to the
+    // containing directory's permissions rather than the file's own.
+    const failure = describeWriteFailure(dirname(filePath), error, 'delete from');
+    return {
+      success: false,
+      deleted: false,
+      error: `Failed to delete ${basename(filePath)}: ${failure.message}`,
+    };
   }
 
   // Best effort from here: the book's row should still go even if the tidy-up
