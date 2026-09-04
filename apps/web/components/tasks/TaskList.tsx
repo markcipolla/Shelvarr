@@ -4,9 +4,23 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Task } from '@/lib/services/queue';
 import { cancelTask, retryTask } from '@/lib/actions/tasks';
+import { useToast } from '@/components/ui/Toast';
 
 interface TaskListProps {
   tasks: Task[];
+}
+
+/**
+ * Mirrors `isRetriable` in the queue service. Importing that would pull the
+ * database driver into the client bundle, so the rule is restated here.
+ *
+ * A pending task with an error has already run and been deferred by the
+ * rate-limit retry queue — that queue is in memory, so a restart strands the
+ * task and the button is the only way to start it again.
+ */
+function canRetry(task: Task): boolean {
+  if (task.status === 'failed' || task.status === 'cancelled') return true;
+  return task.status === 'pending' && !!task.error;
 }
 
 export function TaskList({ tasks }: TaskListProps) {
@@ -21,30 +35,9 @@ export function TaskList({ tasks }: TaskListProps) {
 
 function TaskRow({ task }: { task: Task }) {
   const router = useRouter();
+  const toast = useToast();
   const [cancelling, setCancelling] = useState(false);
   const [retrying, setRetrying] = useState(false);
-
-  const handleCancel = async () => {
-    setCancelling(true);
-    await cancelTask(task.id);
-    router.refresh();
-    setCancelling(false);
-  };
-
-  const handleRetry = async () => {
-    setRetrying(true);
-    await retryTask(task.id);
-    router.refresh();
-    setRetrying(false);
-  };
-
-  const statusColor = {
-    pending: 'bg-yellow-600/20 text-yellow-400',
-    running: 'bg-blue-600/20 text-blue-400',
-    completed: 'bg-green-600/20 text-green-400',
-    failed: 'bg-red-600/20 text-red-400',
-    cancelled: 'bg-gray-600/20 text-gray-400',
-  }[task.status];
 
   const typeLabel = {
     scan: 'Library Scan',
@@ -67,6 +60,37 @@ function TaskRow({ task }: { task: Task }) {
     comic_adopt: 'Comic Library Migration',
     auth_prune: 'Session Cleanup',
   }[task.type] || task.type;
+
+  // A deferred task is restarted in place rather than duplicated, so it keeps
+  // its own row; say "now" to make clear the button jumps the queue.
+  const retryLabel = task.status === 'pending' ? 'Retry now' : 'Retry';
+
+  const handleCancel = async () => {
+    setCancelling(true);
+    await cancelTask(task.id);
+    router.refresh();
+    setCancelling(false);
+  };
+
+  const handleRetry = async () => {
+    setRetrying(true);
+    const result = await retryTask(task.id);
+    if (result.success) {
+      toast.success(`${typeLabel} requeued`);
+    } else {
+      toast.error(result.error ?? 'Failed to retry task');
+    }
+    router.refresh();
+    setRetrying(false);
+  };
+
+  const statusColor = {
+    pending: 'bg-yellow-600/20 text-yellow-400',
+    running: 'bg-blue-600/20 text-blue-400',
+    completed: 'bg-green-600/20 text-green-400',
+    failed: 'bg-red-600/20 text-red-400',
+    cancelled: 'bg-gray-600/20 text-gray-400',
+  }[task.status];
 
   const taskData = task.data || {};
   const organizeResult =
@@ -125,13 +149,13 @@ function TaskRow({ task }: { task: Task }) {
           </button>
         )}
 
-        {(task.status === 'failed' || task.status === 'cancelled') && (
+        {canRetry(task) && (
           <button
             onClick={handleRetry}
             disabled={retrying}
             className="text-blue-400 hover:text-blue-300 text-sm transition-colors disabled:opacity-50"
           >
-            {retrying ? 'Retrying...' : 'Retry'}
+            {retrying ? 'Retrying...' : retryLabel}
           </button>
         )}
 

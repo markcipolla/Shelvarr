@@ -29,7 +29,18 @@ if (canRunTests) {
     createTask,
     runTask,
     getTask,
+    retryTask,
+    isRetriable,
   } = await import('../../lib/services/queue/index.js');
+
+  /** Poll until `check` passes, so tests don't guess at a fixed delay. */
+  async function waitFor(check: () => boolean, timeoutMs = 2000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (!check()) {
+      if (Date.now() > deadline) throw new Error('Timed out waiting for condition');
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+  }
 
   describe('Queue Service - Retry Queue Processing', () => {
     beforeEach(() => {
@@ -278,6 +289,79 @@ if (canRunTests) {
         const updated3 = getTask(task3.id);
         assert.ok(updated3);
         assert.ok(updated3.error?.includes('queued for retry'));
+      });
+    });
+
+    describe('manual retry of a deferred task', () => {
+      it('re-runs a rate-limited pending task in place', async () => {
+        let attempts = 0;
+
+        registerTaskHandler('comic_download', async () => {
+          attempts++;
+          if (attempts === 1) {
+            throw new Error('429 Too Many Requests');
+          }
+          return { success: true, attempts };
+        });
+
+        const task = createTask('comic_download', { issueId: 7 });
+        await runTask(task.id);
+
+        const deferred = getTask(task.id);
+        assert.ok(deferred);
+        assert.strictEqual(deferred.status, 'pending');
+        assert.ok(deferred.error?.includes('queued for retry'));
+        assert.strictEqual(isRetriable(deferred), true);
+
+        const retried = retryTask(task.id);
+        assert.ok(retried);
+        assert.strictEqual(
+          retried.id,
+          task.id,
+          'a deferred task is re-run in place, not duplicated'
+        );
+
+        await waitFor(() => getTask(task.id)?.status === 'completed');
+
+        const done = getTask(task.id);
+        assert.strictEqual(done?.error, null, 'the rate-limit note is cleared');
+        assert.strictEqual(attempts, 2);
+      });
+
+      it('refuses to retry a pending task that has never run', () => {
+        const task = createTask('comic_refresh');
+
+        assert.strictEqual(isRetriable(task), false);
+        assert.throws(
+          () => retryTask(task.id),
+          /cannot be retried \(status: pending\)/
+        );
+      });
+
+      it('ignores a second start while the task is already running', async () => {
+        let started = 0;
+        let release: (() => void) | undefined;
+        const blocked = new Promise<void>(resolve => {
+          release = resolve;
+        });
+
+        registerTaskHandler('comic_scan', async () => {
+          started++;
+          await blocked;
+          return { success: true };
+        });
+
+        const task = createTask('comic_scan');
+        const first = runTask(task.id);
+        await waitFor(() => started === 1);
+
+        await runTask(task.id);
+        assert.strictEqual(started, 1, 'the duplicate start is ignored');
+
+        release?.();
+        await first;
+
+        assert.strictEqual(getTask(task.id)?.status, 'completed');
       });
     });
 

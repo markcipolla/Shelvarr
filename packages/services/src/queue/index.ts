@@ -164,6 +164,19 @@ async function processRetryQueue(): Promise<void> {
   retryProcessorRunning = false;
 }
 
+/**
+ * Forget a task's place in the retry queue.
+ *
+ * Used when something else takes the task over — a cancellation, or the user
+ * asking for it to run now — so the processor doesn't come back to it later.
+ */
+function dropFromRetryQueue(taskId: number): void {
+  const index = retryQueue.findIndex(entry => entry.taskId === taskId);
+  if (index !== -1) {
+    retryQueue.splice(index, 1);
+  }
+}
+
 function scheduleRetry(taskId: number, delayMs: number = RETRY_DELAY_MS): void {
   const existing = retryQueue.find(entry => entry.taskId === taskId);
   if (existing) {
@@ -357,6 +370,8 @@ export function cancelTask(id: number): boolean {
     runningTasks.delete(id);
   }
 
+  dropFromRetryQueue(id);
+
   execute(
     "UPDATE tasks SET status = 'cancelled', completed_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('pending', 'running')",
     [id]
@@ -386,6 +401,14 @@ export async function runTask(taskId: number): Promise<void> {
     throw new Error(`Task ${taskId} not found`);
   }
 
+  // A task can be started from more than one place at once — the retry
+  // processor and a person pressing "Retry now", say. Starting it twice would
+  // run the handler twice, which for a download means fetching the file twice.
+  if (runningTasks.has(taskId)) {
+    log.info('Task already running, ignoring duplicate start', { taskId });
+    return;
+  }
+
   // Register the abort controller before anything is awaited. Handler loading
   // is asynchronous, and a cancel that arrives during it would otherwise find
   // nothing to cancel and be silently ignored.
@@ -394,7 +417,14 @@ export async function runTask(taskId: number): Promise<void> {
     cancel: () => abortController.abort(),
   });
 
-  await ensureHandlersRegistered();
+  try {
+    await ensureHandlersRegistered();
+  } catch (err) {
+    // Leaving the task registered as running would make it permanently
+    // unstartable, since a start is now refused while one is in flight.
+    runningTasks.delete(taskId);
+    throw err;
+  }
 
   const handler = taskHandlers.get(task.type);
   if (!handler) {
@@ -423,6 +453,7 @@ export async function runTask(taskId: number): Promise<void> {
         "UPDATE tasks SET status = 'cancelled', completed_at = CURRENT_TIMESTAMP WHERE id = ?",
         [taskId]
       );
+      runningTasks.delete(taskId);
     } else {
       const message = error instanceof Error ? error.message : 'Unknown error';
       const retryAfterMs = rateLimitDelay(error, message);
@@ -464,7 +495,30 @@ export function enqueueTask(type: TaskType, initialData?: Record<string, unknown
 }
 
 /**
- * Retry a failed task - creates a new task with the same type and data
+ * Whether a task can be started again by hand.
+ *
+ * Failed and cancelled tasks obviously can. So can a pending task that
+ * carries an error: it has already run once and been put back to pending by
+ * the rate-limit retry queue. That queue lives in memory, so a restart loses
+ * it and leaves the task pending forever with nothing due to pick it up —
+ * being able to kick it off again is the only way out.
+ *
+ * A pending task with no error has never run: it is either about to, or is
+ * sitting in the retry queue's initial state, and starting it by hand would
+ * only race whatever is already going to start it.
+ */
+export function isRetriable(task: Task): boolean {
+  if (task.status === 'failed' || task.status === 'cancelled') return true;
+  return task.status === 'pending' && task.error !== null;
+}
+
+/**
+ * Run a task again.
+ *
+ * A failed or cancelled task is re-run as a fresh task, leaving the original
+ * as a record of what happened. A pending task is still the one the user is
+ * waiting on, so it is re-run where it stands — duplicating it would leave
+ * two of the same download in the queue.
  */
 export function retryTask(taskId: number): Task | null {
   const originalTask = getTask(taskId);
@@ -472,8 +526,20 @@ export function retryTask(taskId: number): Task | null {
     throw new Error(`Task ${taskId} not found`);
   }
 
-  if (originalTask.status !== 'failed' && originalTask.status !== 'cancelled') {
-    throw new Error(`Task ${taskId} is not failed or cancelled (status: ${originalTask.status})`);
+  if (!isRetriable(originalTask)) {
+    throw new Error(`Task ${taskId} cannot be retried (status: ${originalTask.status})`);
+  }
+
+  if (originalTask.status === 'pending') {
+    // Take it off the retry queue first so the processor doesn't also run it.
+    dropFromRetryQueue(taskId);
+    execute('UPDATE tasks SET error = NULL WHERE id = ?', [taskId]);
+
+    runTask(taskId).catch(err => {
+      log.error('Manual retry failed', { taskId, error: err });
+    });
+
+    return getTask(taskId);
   }
 
   // Get the original task data
