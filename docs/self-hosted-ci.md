@@ -70,35 +70,68 @@ reach. No custom labels are needed.
 
 ### Putting runners in it
 
-A runner belongs to exactly one group, so moving one into `public-ci` takes it
-*out* of `Default` and the private repos lose it from their pool. With ten in
-the fleet, moving one or two is cheap.
+Do **not** move `dokploy-runner-*` machines into `public-ci`. Every one of them
+mounts `/var/run/docker.sock` (`HomeServer/github_runner.yml`), which is root on
+the media-server host, and the mount cannot simply be dropped — `getmestre`,
+`household.email`, `audiletome` and `niles` all start sibling containers or run
+`docker build` through it. A socket-mounted runner is not safe to expose to a
+public repository under any group configuration.
+
+`public-ci` is served by a separate stack instead,
+`HomeServer/github_runner_ci.yml`:
+
+- no Docker socket
+- `EPHEMERAL: "true"` — one job per registration, then a clean re-register
+- `RUN_AS_ROOT: "false"` and `no-new-privileges`
+- its own bridge network; not attached to `dokploy-network`
+- no shared tool-cache volume, so nothing a job writes reaches the next one
+- `CI_RUNNER_PAT`, separate from `GITHUB_PAT` and scoped to self-hosted runner
+  management only
 
 ```sh
+# List runner IDs.
 gh api orgs/markcipolla/actions/runners --jq '.runners[] | "\(.id)\t\(.name)"'
 
-# Move a runner in (repeat per runner ID).
+# A runner belongs to exactly one group. 1 = Default, 3 = public-ci.
 gh api --method PUT orgs/markcipolla/actions/runner-groups/3/runners/<RUNNER_ID>
-
-# Put one back.
 gh api --method PUT orgs/markcipolla/actions/runner-groups/1/runners/<RUNNER_ID>
 
-# Confirm.
+# Confirm; expect only ci-runner-* in public-ci.
 gh api orgs/markcipolla/actions/runner-groups/3/runners --jq '.runners[].name'
 ```
 
-### Harden the runners in that group
+### Fork pull request approval
 
-Commit `efa3ab0` moved CI off self-hosted partly because the runner ran jobs as
-root with the Docker socket mounted, on the same network as the media server.
-Confirm that is not true of whatever lands in `public-ci`, and prefer:
+Set org-wide, so it covers every repository including ones added later:
 
-- `--ephemeral` registration, so a runner takes one job and is then destroyed.
-- No Docker socket mount.
-- A network segment with no route to the media server or to cloud metadata.
+```console
+$ gh api orgs/markcipolla/actions/permissions/fork-pr-contributor-approval
+{"approval_policy":"all_external_contributors"}
+```
 
-The trigger split means fork code should never run here — these are defence in
-depth for the case where that assumption is wrong.
+The default, `first_time_contributors`, stops asking once someone has one merged
+contribution. Private repos are separately covered — `fork-pr-workflows-private-repos`
+has `run_workflows_from_fork_pull_requests: false`.
+
+This is a backstop, not the boundary. The trigger split is what keeps fork code
+off the runners; approval only matters if that assumption is ever broken.
+
+### Residual gaps
+
+Known and accepted, in rough order of how much they would matter:
+
+- `CI_RUNNER_PAT` sits in the container environment and a job can read it. Worst
+  case is registering or removing org runners. A GitHub App minting short-lived
+  registration tokens would close this.
+- `EPHEMERAL` resets the registration, not the container. Docker restarts the
+  same container, so its writable layer survives between jobs. True one-job
+  containers need something outside Compose (ARC, or a systemd unit running
+  `docker run --rm`).
+- A separate Docker network isolates these runners from `dokploy-network`, but
+  not from the host LAN — the media server is still routable via the gateway.
+  Closing that needs host firewall rules, not Compose.
+- Nothing in `ci-self-hosted.yml` currently needs Docker. If that changes, it has
+  nowhere to run on this stack by design; use `ubuntu-latest` for that job.
 
 ## What is still on GitHub-hosted, and why
 
