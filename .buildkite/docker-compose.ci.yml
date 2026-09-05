@@ -1,0 +1,31 @@
+# The service the docker-compose plugin runs each step in.
+#
+# Paths here resolve relative to this file's directory, so `..` is the repo
+# root — that is what `context` and the checkout mount below are reaching for.
+
+services:
+  ci:
+    build:
+      context: ..
+      dockerfile: .buildkite/Dockerfile.ci
+    working_dir: /workdir
+    environment:
+      # corepack writes its shims and its cache under $HOME, and the container
+      # runs as the agent's uid, which has no home directory in this image.
+      # /tmp is world-writable, so it works whoever we turn out to be. The cost
+      # is corepack re-preparing pnpm each step, which is seconds against a
+      # warm pnpm store.
+      HOME: /tmp
+    volumes:
+      - "..:/workdir"
+      # Host paths, not named volumes. The plugin gives each build its own
+      # Compose project, and a named volume belongs to one — sharing it across
+      # builds works but warns on every job that it "was created for project
+      # <other>", which is noise that looks like a fault. A bind mount has no
+      # project to belong to, Docker creates the directory on first use, and it
+      # persists on the agent for every build after.
+      #
+      # Both are safe for concurrent use: the pnpm store is content-addressed,
+      # and Playwright locks around its downloads.
+      - "/var/cache/shelvarr-ci/pnpm-store:/cache/pnpm-store"
+      - "/var/cache/shelvarr-ci/ms-playwright:/cache/ms-playwright"

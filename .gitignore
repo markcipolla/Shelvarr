@@ -33,8 +33,11 @@ Thumbs.db
 test-results/
 playwright-report/
 coverage/
-# Throwaway database the E2E run creates its first admin account in
+# Throwaway database the E2E run creates its first admin account in. The
+# suffixed variants are what a sharded or hand-run second suite uses, named
+# after the port it picked — see apps/web/playwright.config.js.
 apps/web/tests/.e2e-data/
+apps/web/tests/.e2e-data-*/
 
 # Temp files
 *.tmp

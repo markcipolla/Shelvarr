@@ -1,0 +1,42 @@
+# The container every pipeline step runs in.
+#
+# Agents provide only Buildkite and Docker; everything this repo needs lives
+# here. That is the point — the same generic agents can run the Ruby, Python
+# and Go repos, each bringing its own image, instead of one fleet per project.
+#
+# Built by .buildkite/docker-compose.ci.yml through the docker-compose plugin,
+# so it is rebuilt only when this file or the lockfile changes and comes from
+# the agent's layer cache otherwise.
+
+FROM node:24-bookworm
+
+# Headless Chromium's shared libraries, for the E2E step. Asking Playwright is
+# authoritative and tracks its own requirements; a hand-picked apt list goes
+# stale silently, and Debian's package names are not Ubuntu's.
+#
+# Track the version the lockfile *resolves*, not the range in
+# apps/web/package.json — those disagree (^1.49.1 → 1.59.1):
+#
+#     grep -A2 "'@playwright/test'" pnpm-lock.yaml
+#
+# .buildkite/steps/e2e.sh downloads the browser at the repo's pinned version
+# while the libraries it links against come from here, so a mismatch means a
+# browser that dies on startup with nothing useful in the log.
+ARG PLAYWRIGHT_VERSION=1.59.1
+RUN npx --yes "playwright@${PLAYWRIGHT_VERSION}" install-deps chromium && \
+    rm -rf /var/lib/apt/lists/* /root/.npm
+
+# The caches that make a warm build fast. The compose file bind-mounts host
+# directories over both, so what matters here is only that the mount points
+# exist and that the env vars point at them.
+#
+# World-writable because the plugin runs the container as the agent's uid via
+# propagate-uid-gid, which is not a user this image knows about. Note this
+# only covers the mount points: a bind mount takes its permissions from the
+# host directory, which Docker creates as root. That is fine while the agent
+# runs as root, and would need the host directory pre-created otherwise.
+ENV npm_config_store_dir=/cache/pnpm-store \
+    PLAYWRIGHT_BROWSERS_PATH=/cache/ms-playwright
+RUN mkdir -p /cache/pnpm-store /cache/ms-playwright && chmod -R 777 /cache
+
+WORKDIR /workdir

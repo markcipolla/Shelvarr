@@ -1,16 +1,16 @@
 name: Build and Publish Docker Images
 
 on:
-  # Follows the self-hosted suite, not the pull-request one: CI now only runs
-  # on pull requests, so a push to master produces no "CI" run to key off.
-  # "CI (self-hosted)" is what runs on push, and it is fork-unreachable, so a
-  # pull request cannot make it succeed and trigger a publish.
-  workflow_run:
-    workflows: ["CI (self-hosted)"]
-    branches: [main, master]
-    types:
-      - completed
+  # Publishes straight off a push to the default branch. This used to chain off
+  # a successful "CI (self-hosted)" run, but CI now lives in Buildkite (see
+  # docs/buildkite-ci.md) and there is no longer a workflow_run to key off.
+  #
+  # That loses the "only publish what passed" guarantee, which the branch
+  # ruleset already provides more directly: nothing reaches master without a
+  # green required check on the pull request. A push to master has passed CI by
+  # the time this runs.
   push:
+    branches: [main, master]
     tags:
       - 'v*'
   workflow_dispatch:
@@ -22,10 +22,6 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    if: >
-      github.event_name == 'push' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     permissions:
       contents: read
       packages: write
@@ -34,7 +30,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -54,7 +50,7 @@ jobs:
       - name: Resolve build version
         id: build_version
         run: |
-          sha="${{ github.event.workflow_run.head_sha || github.sha }}"
+          sha="${{ github.sha }}"
           echo "value=${sha:0:7}" >> "$GITHUB_OUTPUT"
 
       - name: Extract metadata (tags, labels)

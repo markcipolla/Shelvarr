@@ -1,0 +1,130 @@
+# Shelvarr CI on Buildkite.
+#
+# Every step runs inside the container defined by .buildkite/Dockerfile.ci, via
+# the docker-compose plugin. That is deliberate: the agents stay generic —
+# Buildkite and Docker, nothing else — so one fleet serves this repo and the
+# Ruby, Python, Go and Rust ones alongside it, each bringing its own image.
+# The alternative, baking Node into the agents, needs a fleet per language.
+#
+# Fork safety is a pipeline setting rather than something this file can
+# express: Buildkite reads pipeline.yml from the branch being built, so a fork
+# would control it. "Build pull requests from third-party forked repositories"
+# must stay off. See docs/buildkite-ci.md.
+#
+# Nothing here is sharded. Both candidates were measured and neither paid: the
+# web unit suite is bounded by a single 22s file, and the E2E suite now runs in
+# ~12s including its own build. Every step is simply its own job, so they all
+# start at once and the build is as long as its slowest. The numbers are in
+# docs/buildkite-ci.md.
+
+env:
+  # What .buildkite/lib/common.sh hands to `corepack prepare`. Keep it in step
+  # with the root package.json "packageManager" field.
+  PNPM_VERSION: "9.15.0"
+
+agents:
+  # `default-queue` is what Buildkite's "Default cluster" actually names its
+  # queue — not `default`, which is the easy assumption and produces jobs that
+  # wait forever against a queue that does not exist. The Queue line on a job's
+  # Timeline tab is the source of truth.
+  queue: "${SHELVARR_QUEUE:-default-queue}"
+
+# Anchored so every step gets the same container without repeating it, and so
+# there is one place to bump the plugin.
+x-ci: &ci
+  - docker-compose#v5.14.0:
+      run: ci
+      config: .buildkite/docker-compose.ci.yml
+      # Run as the agent's uid rather than root, so the files a build leaves in
+      # the checkout — node_modules, .next, Playwright reports — belong to the
+      # agent and its next `git clean` can remove them. Without this the second
+      # build on an agent fails on root-owned leftovers.
+      propagate-uid-gid: true
+
+steps:
+  - group: ":mag: Static analysis"
+    key: static
+    steps:
+      - label: ":eslint: lint (web)"
+        plugins: *ci
+        command: .buildkite/steps/run.sh pnpm --filter @shelvarr/web lint
+
+      - label: ":typescript: typecheck (web)"
+        plugins: *ci
+        command: .buildkite/steps/run.sh pnpm --filter @shelvarr/web typecheck
+
+      - label: ":typescript: typecheck (packages)"
+        # The three workspace packages plus scripts/. Each is a bare
+        # `tsc --noEmit` and none of them touches the web app.
+        plugins: *ci
+        command: .buildkite/steps/run.sh pnpm --filter '!@shelvarr/web' --filter '!@shelvarr/native' -r typecheck
+
+      # Split rather than chained, so a lint failure and a type error are
+      # both visible from one build instead of the first hiding the second.
+      - label: ":react: lint (native)"
+        plugins: *ci
+        command: .buildkite/steps/run.sh pnpm --filter @shelvarr/native lint
+
+      - label: ":react: typecheck (native)"
+        plugins: *ci
+        command: .buildkite/steps/run.sh pnpm --filter @shelvarr/native typecheck
+
+  - group: ":test_tube: Tests"
+    key: tests
+    steps:
+      - label: ":nodejs: unit (web)"
+        # One job on purpose. Sharding this was measured and did not pay: the
+        # whole suite runs in ~63s, and the largest of three shards still took
+        # ~60s. node:test already spreads files across cores, and what is left
+        # is one 22s file (hardcover-status.test.ts) that no amount of sharding
+        # can split.
+        #
+        # No HARDCOVER_API_TOKEN here, unlike the GitHub workflow this replaced.
+        # apps/web/.env.test already carries the same dummy value and
+        # tests/setup-env.ts loads it without overriding a real one. It also
+        # cannot go here: the name matches Buildkite's secret-redaction pattern,
+        # and the agent refuses to upload a pipeline that carries one.
+        plugins: *ci
+        command: .buildkite/steps/run.sh pnpm --filter @shelvarr/web test
+
+      - label: ":jest: unit (native)"
+        # Jest forks its own workers and the whole suite is seconds, so there is
+        # nothing here worth splitting across agents.
+        plugins: *ci
+        command: .buildkite/steps/run.sh pnpm --filter @shelvarr/native test
+
+  - label: ":playwright: e2e"
+    key: e2e
+    # One job, not three. This step was sharded when the suite ran against
+    # `next dev` and took ~54s, most of it compiling routes. It now builds once
+    # and serves the result, which took it to ~12s including the build (#121,
+    # docs/e2e-performance.md) — and at that size sharding is worse than
+    # useless: each shard is an independent run, so three of them would each pay
+    # ~6s of build and first-run wizard to execute ~2s of tests.
+    #
+    # Deliberately no `retry: automatic` either. Playwright already retries a
+    # failing test twice under CI, so a step-level retry could only re-run
+    # failures it has already decided are real.
+    plugins: *ci
+    command: ./.buildkite/steps/e2e.sh
+    # Uploaded by the agent from the checkout after the container exits, rather
+    # than by `buildkite-agent artifact upload` inside it — the binary is not in
+    # the container, and the checkout is bind-mounted, so everything written
+    # there is already on the host.
+    artifact_paths:
+      - "apps/web/playwright-report/**/*"
+      - "apps/web/test-results/**/*"
+
+  - label: ":nextjs: production build"
+    key: build
+    # `next build` bundles the whole app and catches what only shows up in a
+    # production build — a server component importing something client-only, a
+    # route that will not statically analyse. The E2E suite runs `next dev`, so
+    # nothing else here covers it.
+    #
+    # There is deliberately no Docker step to go with it. docker-publish.yml
+    # already builds the image on master with a warm layer cache, and repeating
+    # that here would be an uncached from-scratch install-and-build for the
+    # same signal.
+    plugins: *ci
+    command: .buildkite/steps/run.sh pnpm --filter @shelvarr/web build

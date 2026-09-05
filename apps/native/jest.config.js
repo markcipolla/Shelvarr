@@ -4,6 +4,13 @@ module.exports = {
     'node_modules/(?!(.pnpm/[^/]+/node_modules/)?((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@sentry/react-native|native-base|react-native-svg|base-64|@openspacelabs/.*|react-native-render-html|react-native-pdf|jszip))',
   ],
   setupFiles: ['./jest.setup.ts'],
+  // Jest's default is 5s per test, which is fine on a developer machine — the
+  // whole suite runs in about 8s there — and not fine on a CI agent, where the
+  // same suite takes 44s and BookDetailScreen's "renders book details after
+  // load" tips over the limit. The web suite already runs with a 120s timeout
+  // for the same reason. A generous timeout costs nothing on a passing test;
+  // it only delays a failure that was going to fail anyway.
+  testTimeout: 30000,
   moduleNameMapper: {
     'react-native/Libraries/Animated/NativeAnimatedHelper': '<rootDir>/__mocks__/NativeAnimatedHelper.ts',
     '^expo-image$': '<rootDir>/__mocks__/expo-image.tsx',
