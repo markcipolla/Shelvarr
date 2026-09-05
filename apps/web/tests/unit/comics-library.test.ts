@@ -284,7 +284,7 @@ describe('Comic library', () => {
       dataDir: root,
       libraryRoot: root,
       dbPath: join(root, 'test.db'),
-      comicMigration: { pathMap: null },
+      comicPaths: { pathMap: null },
       getcomics: {
         baseUrl: 'https://getcomics.example',
         downloadDir: join(root, 'downloads'),

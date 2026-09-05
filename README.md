@@ -121,7 +121,7 @@ npm run test:e2e
 | `GETCOMICS_RENAME` | true | Rename imported files to the naming template; set `false` to keep original names |
 | `SCHEDULER_ENABLED` | true | Set `false` to stop Shelvarr running recurring jobs in-process |
 | `COMICVINE_API_KEY` | - | ComicVine key; normally set in Settings → Metadata Sources instead |
-| `COMIC_PATH_MAP` | - | `from:to` prefix remap for a library's recorded paths, used while migrating |
+| `COMIC_PATH_MAP` | - | `from:to` prefix remap, when a library's recorded paths differ from where this process sees them |
 | `LOG_LEVEL` | info | Lowest level written to the log, and so to the buffer the diagnostics API reads |
 | `LOG_BUFFER_SIZE` | 2000 | Recent log lines held in memory for the diagnostics API |
 
@@ -245,35 +245,16 @@ refresh runs by default. The GetComics sweep — search for every missing issue
 and download what it finds — is there too but starts switched off, since it
 downloads things unprompted.
 
-### Migrating from Kapowarr
+### Adopting an existing library
 
-If Shelvarr has been mirroring a Kapowarr library, add a root folder under
-**Settings → Comics**, then press **Migrate mirrored volumes** there. Anything
-that can't be migrated is listed with the reason.
+For a folder tree Shelvarr has never seen, use **Settings → Comics → Import an
+existing library**. That scans the tree and guesses the ComicVine match for each
+folder — one search per folder, so it is slower — and you confirm the matches on
+`/comics/import`.
 
-The same thing headlessly:
-
-```bash
-pnpm comics:migrate --root /libraries/comics   # dry run: shows what would happen
-pnpm comics:migrate --root /libraries/comics --apply
-```
-
-Either way this adopts the mirrored volumes directly. Shelvarr already has each one's
-ComicVine id and full issue list cached, so it needs no ComicVine calls and
-works with Kapowarr already switched off. Files are never moved — each volume
-keeps the folder it is in. Add `--refresh` to queue a ComicVine metadata
-refresh afterwards.
-
-If a volume's folder can't be found, set `COMIC_PATH_MAP` to map the recorded
-path prefix onto the one this process sees, e.g. `/comics-1:/libraries/comics`.
-
-For a folder tree Shelvarr has *never* seen, use **Settings → Comics → Import
-an existing library** instead. That scans the tree and guesses the ComicVine
-match for each folder — one search per folder, so it is slower — and you
-confirm the matches on `/comics/import`.
-
-Shelvarr no longer talks to Kapowarr at all, so once everything is migrated you
-can stop and remove its container.
+If a volume's folder can't be found afterwards, set `COMIC_PATH_MAP` to map the
+recorded path prefix onto the one this process sees, e.g.
+`/comics-1:/libraries/comics`.
 
 ## Diagnostics API and MCP
 

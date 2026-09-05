@@ -28,16 +28,16 @@ Specifically, the following are ports or close adaptations of Kapowarr v1.3.1
 | `comics/import-library.ts` | `backend/features/library_import.py` |
 | `comics/naming.ts` | `backend/implementations/naming.py` and the naming defaults in `backend/internals/settings.py` |
 | `comics/import.ts` | `backend/features/post_processing.py` (move/rename on completion) |
-| `comics/adopt.ts` | No direct upstream equivalent — Kapowarr has nothing to migrate *from* |
 | `queue/scheduler.ts` | `backend/features/tasks.py` (`task_intervals`, `handle_intervals`) |
 
 Everything else in Shelvarr is original work, but because the project ships as a
 single combined program the GPL applies to the whole of it.
 
-Shelvarr no longer integrates with Kapowarr in any way — it manages comics
-itself end to end. The attribution above stands regardless: the code listed is
-still derived from Kapowarr's, and the GPL obligation does not lapse when the
-integration does.
+Shelvarr no longer integrates with Kapowarr in any way, and no longer carries a
+path for migrating off it — it manages comics itself end to end. The attribution
+above stands regardless: the code listed is still derived from Kapowarr's, and
+the GPL obligation does not lapse when the integration does, nor when the last
+mention of the name is removed from the user interface.
 
 Kapowarr's copyright notice is retained in [LICENSE](./LICENSE)'s accompanying
 terms; the original project remains available at

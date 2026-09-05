@@ -17,8 +17,7 @@
     "typecheck": "pnpm -r typecheck",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up",
-    "docker:down": "docker compose down",
-    "comics:migrate": "tsx scripts/migrate-comics.ts"
+    "docker:down": "docker compose down"
   },
   "keywords": [
     "books",

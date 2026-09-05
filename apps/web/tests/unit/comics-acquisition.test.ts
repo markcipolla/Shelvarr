@@ -314,7 +314,7 @@ describe('Comic download import', () => {
       dataDir: root,
       libraryRoot: root,
       dbPath: join(root, 'db.sqlite'),
-      comicMigration: { pathMap: null },
+      comicPaths: { pathMap: null },
       getcomics: {
         baseUrl: 'https://getcomics.org',
         downloadDir: join(root, 'downloads'),

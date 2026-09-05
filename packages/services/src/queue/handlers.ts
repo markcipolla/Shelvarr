@@ -32,7 +32,6 @@ import { sweepComicScratch } from '../comics/scratch';
 import { scanVolumeFiles } from '../comics/scan';
 import { applyVolumeRename } from '../comics/rename';
 import { findImportGroups, proposeLibraryImport } from '../comics/import-library';
-import { adoptAllVolumes, adoptVolume, listAdoptionCandidates } from '../comics/adopt';
 import { getServiceConfig } from '../config';
 import * as metadataService from '../metadata';
 import { downloadFile as downloadFromLibgen } from '../downloads/libgen';
@@ -1374,55 +1373,6 @@ const comicLibraryImportHandler: TaskHandler = async (taskId, onProgress, signal
   };
 };
 
-/**
- * Take over volumes mirrored from a previous manager.
- *
- * Adoption reads only data Shelvarr already holds, so it needs no network —
- * but a large library still means one folder scan per volume, which is why it
- * runs here rather than inline in a request.
- */
-const comicAdoptHandler: TaskHandler = async (taskId, onProgress, signal) => {
-  const data = comicTaskData<{ volumeIds?: number[] }>(taskId, 'adoption configuration');
-
-  // Either a specific selection, or everything that is ready.
-  if (data.volumeIds && data.volumeIds.length > 0) {
-    const adopted: string[] = [];
-    const skipped: Array<{ volumeId: number; reason: string }> = [];
-
-    onProgress(0, data.volumeIds.length);
-    for (const [index, volumeId] of data.volumeIds.entries()) {
-      if (signal.aborted) break;
-      try {
-        adopted.push((await adoptVolume(volumeId)).title);
-      } catch (error) {
-        skipped.push({
-          volumeId,
-          reason: error instanceof Error ? error.message : String(error),
-        });
-      }
-      onProgress(index + 1, data.volumeIds.length);
-    }
-
-    return { adopted: adopted.length, titles: adopted, skipped };
-  }
-
-  const total = listAdoptionCandidates().length;
-  onProgress(0, total);
-
-  const result = await adoptAllVolumes({
-    signal,
-    onProgress: (done) => onProgress(done, total),
-  });
-
-  return {
-    adopted: result.adopted.length,
-    skipped: result.skipped,
-    unmatchedFiles: result.adopted
-      .filter((entry) => entry.unmatchedFiles > 0)
-      .map((entry) => ({ title: entry.title, count: entry.unmatchedFiles })),
-  };
-};
-
 /** Housekeeping for expired sessions and unused sign-in codes. */
 const authPruneHandler: TaskHandler = async (_taskId, onProgress) => {
   const removed = pruneExpired();
@@ -1454,7 +1404,7 @@ export function registerAllHandlers(): void {
   registerTaskHandler('comic_search', comicSearchHandler);
   registerTaskHandler('comic_download', comicDownloadHandler);
 
-  // Comic library: ComicVine metadata, disk scanning, renaming, adoption.
+  // Comic library: ComicVine metadata, disk scanning, renaming.
   registerTaskHandler('comic_refresh', comicRefreshHandler);
   registerTaskHandler('comic_scan', comicScanHandler);
   registerTaskHandler('comic_rename', comicRenameHandler);
@@ -1462,7 +1412,6 @@ export function registerAllHandlers(): void {
   registerTaskHandler('comic_search_all', comicSearchAllHandler);
   registerTaskHandler('comic_resume', comicResumeHandler);
   registerTaskHandler('comic_library_import', comicLibraryImportHandler);
-  registerTaskHandler('comic_adopt', comicAdoptHandler);
 
   registerTaskHandler('author_sync', async (_taskId, onProgress) => {
     onProgress(1, 1);

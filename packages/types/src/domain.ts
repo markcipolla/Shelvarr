@@ -137,15 +137,14 @@ export interface HealthResponse {
 
 // Config types
 /**
- * Settings that only matter while migrating a library Shelvarr did not
- * organise itself.
+ * Settings for reading a library Shelvarr did not organise itself.
  */
-export interface ComicMigrationConfig {
+export interface ComicPathConfig {
   /**
    * `"from:to"` prefix remap for paths recorded by whatever managed the
-   * library before. Kapowarr, for instance, reports its own container paths;
-   * this maps them onto the ones Shelvarr can see. Unused once volumes are
-   * managed, because their folders are then Shelvarr's own.
+   * library before, mapping them onto the ones this process can see. Needed
+   * when the recorded paths are another tool's container paths. Unused once
+   * volumes are managed, because their folders are then Shelvarr's own.
    */
   pathMap: string | null;
 }
@@ -170,7 +169,7 @@ export interface AppConfig {
   dataDir: string;
   libraryRoot: string;
   dbPath: string;
-  comicMigration: ComicMigrationConfig;
+  comicPaths: ComicPathConfig;
   getcomics: GetComicsConfig;
   supportedExtensions: string[];
   rateLimits: {

@@ -22,7 +22,7 @@ export interface ComicArchiveResult {
  * paths and need no remapping.
  */
 export function remapComicPath(filepath: string): string {
-  const pathMap = getServiceConfig().comicMigration.pathMap;
+  const pathMap = getServiceConfig().comicPaths.pathMap;
   if (!pathMap) return filepath;
   const sep = pathMap.indexOf(':');
   if (sep < 0) return filepath;
