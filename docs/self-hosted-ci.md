@@ -70,12 +70,11 @@ reach. No custom labels are needed.
 
 ### Putting runners in it
 
-Nothing that currently serves `Default` can serve `public-ci`. Since HomeServer
-PR #40 that pool is three warm `dokploy-runner-*` containers plus burst capacity
-from `github_runner_autoscaler.yml`, which starts one ephemeral runner per
-queued `workflow_job` webhook. Both mount `/var/run/docker.sock` — the autoscaler
-binds it into every runner it starts — and that mount is root on the media-server
-host. It cannot simply be dropped either: `getmestre`, `household.email`,
+Nothing that serves `Default` can serve `public-ci`. That pool is three warm
+`dokploy-runner-*` containers plus burst capacity from the autoscaler, which
+starts one ephemeral runner per queued `workflow_job` webhook. Both mount
+`/var/run/docker.sock` — the autoscaler binds it into every runner it starts —
+and that mount is root on the media-server host. It cannot simply be dropped either: `getmestre`, `household.email`,
 `audiletome` and `niles` all start sibling containers or run `docker build`
 through it. A socket-mounted runner is not safe to expose to a public repository
 under any group configuration.
@@ -83,8 +82,9 @@ under any group configuration.
 The autoscaler would not cover Shelvarr in any case: it sets no `RUNNER_GROUP`,
 so the runners it starts register into `Default`, which refuses public repos.
 
-`public-ci` is served by a separate stack instead,
-`HomeServer/github_runner_ci.yml`:
+`public-ci` is served by the `ci-runner-*` services in
+`HomeServer/github_runner.yml`, built from a separate YAML anchor to the private
+runners in the same file so the socket bind cannot be inherited by one:
 
 - no Docker socket
 - `EPHEMERAL: "true"` — one job per registration, then a clean re-register
@@ -139,9 +139,9 @@ Known and accepted, in rough order of how much they would matter:
 - Nothing in `ci-self-hosted.yml` currently needs Docker. If that changes, it has
   nowhere to run on this stack by design; use `ubuntu-latest` for that job.
 - These two runners are always on, which is the standing cost HomeServer PR #40
-  set out to remove. Folding them into `github_runner_autoscaler.yml` — start
-  public-repo jobs with `RUNNER_GROUP=public-ci` and no socket bind, keyed off
-  the webhook's `repository.private` — would delete this stack entirely.
+  set out to remove. Teaching the autoscaler to key off the webhook's
+  `repository.private` — public jobs get `RUNNER_GROUP=public-ci` and no socket
+  bind — would delete them and give public repos burst capacity too.
 
 ## What is still on GitHub-hosted, and why
 
