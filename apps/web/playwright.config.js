@@ -4,6 +4,25 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 /**
+ * Which server the suite drives.
+ *
+ * `dev` is `next dev`, which compiles each route the first time it is asked
+ * for. `start` serves a production build, where there is no per-route compile
+ * at all — which is what lets the worker count below go above one, and what
+ * takes the suite from 65s to 12s. See docs/e2e-performance.md.
+ */
+const serverMode = process.env.E2E_SERVER === 'dev' ? 'dev' : 'start';
+
+/**
+ * The port the server under test listens on.
+ *
+ * Fixed rather than chosen here: this file is evaluated again in every worker
+ * process and they all have to agree on the answer.
+ */
+const port = Number(process.env.E2E_PORT || 3000);
+const baseURL = `http://localhost:${port}`;
+
+/**
  * A throwaway data directory, emptied at the start of every run.
  *
  * Shelvarr now requires an account, and the first-run wizard is the only way
@@ -11,12 +30,16 @@ import { pathToFileURL } from 'node:url';
  * makes that path deterministic — otherwise a second run on a developer's
  * machine would find the wizard already completed and have no way in.
  *
- * The path is fixed rather than random because Playwright evaluates this file
- * again in every worker process, and they all need to agree on it. Only the
+ * The path is derived rather than random for the same reason as the port, and
+ * carries the port so two suites in one checkout get a database each. Only the
  * main process clears it: workers have TEST_WORKER_INDEX set, and by the time
  * they load this file the server is already running against that database.
  */
-const dataDir = join(import.meta.dirname, 'tests', '.e2e-data');
+const dataDir = join(
+  import.meta.dirname,
+  'tests',
+  port === 3000 ? '.e2e-data' : `.e2e-data-${port}`
+);
 
 if (process.env.TEST_WORKER_INDEX === undefined) {
   rmSync(dataDir, { recursive: true, force: true });
@@ -31,20 +54,24 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  // These drive `next dev`, which compiles routes on demand and serves them
-  // from one process. Playwright's default of half the CPUs overloads it: the
-  // slowest first hit on a page outlasts an assertion, or a click lands before
-  // React has hydrated. Two keeps it honest without giving up all the speed.
-  workers: process.env.CI ? 1 : 2,
+  // A single worker is a `next dev` constraint, not a property of the tests:
+  // one process compiling routes on demand cannot serve several cold first hits
+  // without one of them outlasting an assertion. A production build has no
+  // compile step, so the only ceiling is CPU — and measured, the curve flattens
+  // at four (10s / 7s / 6s / 6s for 1 / 2 / 4 / 8 workers).
+  workers:
+    Number(process.env.E2E_WORKERS) || (serverMode === 'dev' ? (process.env.CI ? 1 : 2) : 4),
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
-  // These run against `next dev`, which compiles each route the first time it
-  // is asked for. With several workers warming different routes at once the
-  // default 5s is not enough for the first hit on a page.
+  // Sized for `next dev`'s cold-compile stalls, which `start` mode does not
+  // have. Left generous on purpose: CI agents are slower than the machine these
+  // were measured on, an over-long timeout only costs anything on a failure,
+  // and tightening it on laptop numbers is how a suite gets flaky on hardware
+  // nobody measured.
   expect: { timeout: 15_000 },
   projects: [
     {
@@ -54,25 +81,34 @@ export default defineConfig({
       testMatch: /auth\.setup\.ts/,
       use: { ...devices['Desktop Chrome'], storageState: { cookies: [], origins: [] } },
     },
-    {
-      // Compiles the routes the specs use, signed in, before they start. See
-      // tests/e2e/warm.setup.ts.
-      name: 'warmup',
-      testMatch: /warm\.setup\.ts/,
-      dependencies: ['setup'],
-      use: { ...devices['Desktop Chrome'], storageState },
-    },
+    // Warming only exists to pay `next dev`'s per-route compile cost up front,
+    // where it can be spent once instead of stalling whichever spec happens to
+    // hit a route first. A production build has nothing to compile, so in
+    // `start` mode this project is not just unnecessary — it is 11 navigations
+    // of pure overhead per shard.
+    ...(serverMode === 'dev'
+      ? [
+          {
+            name: 'warmup',
+            testMatch: /warm\.setup\.ts/,
+            dependencies: ['setup'],
+            use: { ...devices['Desktop Chrome'], storageState },
+          },
+        ]
+      : []),
     {
       name: 'chromium',
-      // 'warmup' pulls 'setup' in behind it, so the wizard still runs first.
-      dependencies: ['warmup'],
+      // In dev, 'warmup' pulls 'setup' in behind it; in start mode we depend on
+      // 'setup' directly. Either way the wizard runs first.
+      dependencies: [serverMode === 'dev' ? 'warmup' : 'setup'],
       use: { ...devices['Desktop Chrome'], storageState },
       testIgnore: /\.setup\.ts/,
     },
   ],
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000/api/health',
+    command:
+      serverMode === 'dev' ? `npm run dev -- --port ${port}` : `npm run start -- --port ${port}`,
+    url: `${baseURL}/api/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
     env: {
