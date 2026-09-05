@@ -88,11 +88,35 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm --filter @shelvarr/web build
+      # Keyed on the exact Playwright version, because a browser build is only
+      # valid for the version that pinned it. An exact-match key with no
+      # `restore-keys` is the point: a stale browser is worse than a download.
+      - name: Resolve Playwright version
+        id: playwright
+        run: |
+          set -euo pipefail
+          # `pnpm exec` can prepend warnings, so pick the version line rather
+          # than trusting that the output is one line long. A multi-line value
+          # would corrupt $GITHUB_OUTPUT.
+          version=$(pnpm --filter @shelvarr/web exec playwright --version \
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
       - name: Install Playwright browser
+        # A no-op for the browser itself on a cache hit; `--with-deps` still
+        # runs apt, which is not cacheable and has to happen either way.
         run: npx playwright install --with-deps chromium
 
+      # `test:e2e` is `next build && playwright test`. There is deliberately no
+      # separate build step: a second `next build` here is a full rebuild, not
+      # an incremental one, so having both cost ~17s to produce output the test
+      # command threw away.
       - name: Run E2E tests
         run: pnpm --filter @shelvarr/web test:e2e
