@@ -70,12 +70,18 @@ reach. No custom labels are needed.
 
 ### Putting runners in it
 
-Do **not** move `dokploy-runner-*` machines into `public-ci`. Every one of them
-mounts `/var/run/docker.sock` (`HomeServer/github_runner.yml`), which is root on
-the media-server host, and the mount cannot simply be dropped — `getmestre`,
-`household.email`, `audiletome` and `niles` all start sibling containers or run
-`docker build` through it. A socket-mounted runner is not safe to expose to a
-public repository under any group configuration.
+Nothing that currently serves `Default` can serve `public-ci`. Since HomeServer
+PR #40 that pool is three warm `dokploy-runner-*` containers plus burst capacity
+from `github_runner_autoscaler.yml`, which starts one ephemeral runner per
+queued `workflow_job` webhook. Both mount `/var/run/docker.sock` — the autoscaler
+binds it into every runner it starts — and that mount is root on the media-server
+host. It cannot simply be dropped either: `getmestre`, `household.email`,
+`audiletome` and `niles` all start sibling containers or run `docker build`
+through it. A socket-mounted runner is not safe to expose to a public repository
+under any group configuration.
+
+The autoscaler would not cover Shelvarr in any case: it sets no `RUNNER_GROUP`,
+so the runners it starts register into `Default`, which refuses public repos.
 
 `public-ci` is served by a separate stack instead,
 `HomeServer/github_runner_ci.yml`:
@@ -132,6 +138,10 @@ Known and accepted, in rough order of how much they would matter:
   Closing that needs host firewall rules, not Compose.
 - Nothing in `ci-self-hosted.yml` currently needs Docker. If that changes, it has
   nowhere to run on this stack by design; use `ubuntu-latest` for that job.
+- These two runners are always on, which is the standing cost HomeServer PR #40
+  set out to remove. Folding them into `github_runner_autoscaler.yml` — start
+  public-repo jobs with `RUNNER_GROUP=public-ci` and no socket bind, keyed off
+  the webhook's `repository.private` — would delete this stack entirely.
 
 ## What is still on GitHub-hosted, and why
 
