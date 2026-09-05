@@ -1,6 +1,10 @@
 /**
  * Compile every route the specs touch, while nothing else is running.
  *
+ * Only runs in `E2E_SERVER=dev`. A production build has nothing to compile, so
+ * the default `start` mode leaves this project out entirely — see
+ * docs/e2e-performance.md.
+ *
  * These tests drive `next dev`, which builds a route the first time it is
  * asked for. Left to the specs, workers race to warm different routes at once
  * and the slowest first hit can outlast an assertion timeout —

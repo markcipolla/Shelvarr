@@ -15,7 +15,8 @@
     "test:components": "node --import tsx --import ./tests/setup-env.ts --import ./tests/no-network.mjs --experimental-test-module-mocks --test tests/unit/components/*.test.tsx",
     "test:integration": "node --import tsx --import ./tests/setup-env.ts --import ./tests/no-network.mjs --test tests/integration/*.test.ts",
     "test:all": "node --import tsx --import ./tests/setup-env.ts --import ./tests/no-network.mjs --experimental-test-module-mocks --test tests/unit/*.test.ts tests/unit/**/*.test.tsx tests/integration/*.test.ts",
-    "test:e2e": "playwright test",
+    "test:e2e": "next build && playwright test",
+    "test:e2e:dev": "E2E_SERVER=dev playwright test",
     "test:coverage": "c8 node --import tsx --import ./tests/setup-env.ts --import ./tests/no-network.mjs --experimental-test-module-mocks --test tests/unit/*.test.ts tests/unit/**/*.test.tsx",
     "test:coverage:all": "c8 node --import tsx --import ./tests/setup-env.ts --import ./tests/no-network.mjs --experimental-test-module-mocks --test tests/unit/*.test.ts tests/unit/**/*.test.tsx tests/integration/*.test.ts",
     "test:coverage:report": "c8 report --reporter=html --reporter=text"
