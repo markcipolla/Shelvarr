@@ -20,8 +20,8 @@ const config: AppConfig = {
   dbPath: process.env['DB_PATH'] || '',
 
   // Only used while adopting a library organised by something else.
-  comicMigration: {
-    pathMap: process.env['COMIC_PATH_MAP'] || process.env['KAPOWARR_PATH_MAP'] || null,
+  comicPaths: {
+    pathMap: process.env['COMIC_PATH_MAP'] || null,
   },
 
   // GetComics sourcing for comics

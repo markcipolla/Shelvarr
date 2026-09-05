@@ -5,9 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   addComicRootFolderAction,
   removeComicRootFolderAction,
-  startComicAdoption,
   startComicLibraryImport,
-  type AdoptionCandidateView,
   type ScheduleView,
 } from '@/lib/actions/settings';
 import { RecurringJobs } from '@/components/settings/RecurringJobs';
@@ -31,20 +29,11 @@ const inputClass =
 export function ComicsTab({
   settings,
   schedules,
-  adoptionCandidates,
 }: {
   settings: ComicsSettings;
   schedules: ScheduleView[];
-  adoptionCandidates: AdoptionCandidateView[];
 }) {
   const router = useRouter();
-  const [migrating, setMigrating] = useState(false);
-  const [migrateMessage, setMigrateMessage] = useState<string | null>(null);
-  const [showBlocked, setShowBlocked] = useState(false);
-
-  const readyToMigrate = adoptionCandidates.filter((candidate) => !candidate.blocker);
-  const blockedFromMigrating = adoptionCandidates.filter((candidate) => candidate.blocker);
-
   const [newFolder, setNewFolder] = useState('');
   const [folderError, setFolderError] = useState<string | null>(null);
   const [busyFolder, setBusyFolder] = useState(false);
@@ -72,21 +61,6 @@ export function ComicsTab({
     if (!result.success) setFolderError(result.error ?? 'Failed to remove root folder');
     router.refresh();
     setBusyFolder(false);
-  };
-
-  const handleMigrate = async () => {
-    setMigrating(true);
-    setMigrateMessage(null);
-
-    const result = await startComicAdoption();
-    setMigrateMessage(
-      result.success
-        ? `Migrating ${result.count} volume${result.count === 1 ? '' : 's'} — follow task ${result.taskId} on the Tasks page.`
-        : result.error
-    );
-
-    router.refresh();
-    setMigrating(false);
   };
 
   const handleImport = async (event: React.FormEvent) => {
@@ -167,67 +141,13 @@ export function ComicsTab({
         blurb="Background jobs Shelvarr runs on a timer. The search sweep downloads things, so it starts switched off."
       />
 
-      {/* Migrate a mirrored library ---------------------------------------- */}
-      {adoptionCandidates.length > 0 && (
-        <section>
-          <h2 className="text-lg font-semibold text-white mb-1">Migrate mirrored volumes</h2>
-          <p className="text-shelvarr-text-muted mb-4 text-sm">
-            {adoptionCandidates.length} volume{adoptionCandidates.length === 1 ? '' : 's'}{' '}
-            {adoptionCandidates.length === 1 ? 'is' : 'are'} still mirrored from a previous
-            manager. Shelvarr already has their metadata and issue lists, so taking them over
-            needs no ComicVine calls and never moves a file.
-          </p>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={handleMigrate}
-              disabled={migrating || readyToMigrate.length === 0}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium"
-            >
-              {migrating
-                ? 'Migrating…'
-                : `Migrate ${readyToMigrate.length} volume${readyToMigrate.length === 1 ? '' : 's'}`}
-            </button>
-
-            {blockedFromMigrating.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setShowBlocked((current) => !current)}
-                className="text-sm text-yellow-400 hover:text-yellow-300"
-              >
-                {showBlocked ? 'Hide' : 'Show'} {blockedFromMigrating.length} blocked
-              </button>
-            )}
-          </div>
-
-          {migrateMessage && (
-            <p className="mt-3 text-sm text-shelvarr-text-muted">{migrateMessage}</p>
-          )}
-
-          {showBlocked && (
-            <ul className="mt-3 space-y-2">
-              {blockedFromMigrating.map((candidate) => (
-                <li
-                  key={candidate.volumeId}
-                  className="bg-shelvarr-surface border border-shelvarr-border rounded-lg px-3 py-2"
-                >
-                  <p className="text-white text-sm">{candidate.title}</p>
-                  <p className="text-xs text-yellow-400 mt-0.5">{candidate.blocker}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
       {/* Library import --------------------------------------------------- */}
       <section>
         <h2 className="text-lg font-semibold text-white mb-1">Import an existing library</h2>
         <p className="text-shelvarr-text-muted mb-4 text-sm">
-          Point this at a folder tree you already have — including one Kapowarr was managing — and
-          Shelvarr will work out which ComicVine volume each folder is. Nothing is moved or
-          renamed; you confirm the matches afterwards.
+          Point this at a folder tree you already have, whatever organised it, and Shelvarr will
+          work out which ComicVine volume each folder is. Nothing is moved or renamed; you
+          confirm the matches afterwards.
         </p>
 
         <form onSubmit={handleImport} className="flex items-start gap-2">

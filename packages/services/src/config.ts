@@ -26,11 +26,8 @@ export function getServiceConfig(): AppConfig {
       port: parseInt(process.env['PORT'] || '3000', 10),
       supportedExtensions: ['.epub', '.pdf', '.cbz', '.cbr', '.mobi', '.azw3'],
       hardcoverToken: process.env['HARDCOVER_API_TOKEN'] || null,
-      comicMigration: {
-        // KAPOWARR_PATH_MAP is the old name, kept so existing deployments
-        // keep working through the migration.
-        pathMap:
-          process.env['COMIC_PATH_MAP'] || process.env['KAPOWARR_PATH_MAP'] || null,
+      comicPaths: {
+        pathMap: process.env['COMIC_PATH_MAP'] || null,
       },
       getcomics: {
         baseUrl: process.env['GETCOMICS_URL'] || 'https://getcomics.org',
