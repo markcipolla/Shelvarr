@@ -37,7 +37,10 @@ export interface AuthenticatedSession {
  * web and native clients can pick the right screen before signing in.
  */
 export interface AuthStatus {
-  /** False when SHELVARR_AUTH_ENABLED=false — every request is let through. */
+  /**
+   * False when accounts are switched off — every request is let through.
+   * Set by SHELVARR_AUTH_ENABLED, or by an admin in Settings → Users.
+   */
   enabled: boolean;
   /** True until the first admin account exists. */
   setupRequired: boolean;
@@ -47,7 +50,12 @@ export interface AuthStatus {
   emailConfigured: boolean;
 }
 
-/** Outgoing mail settings, read from the environment. */
+/**
+ * Outgoing mail settings.
+ *
+ * Read from the SMTP_* environment variables, with an admin's saved answer in
+ * Settings → Users taking precedence once there is one.
+ */
 export interface EmailConfig {
   host: string | null;
   port: number;
@@ -57,7 +65,12 @@ export interface EmailConfig {
   from: string;
 }
 
-/** Auth settings, read from the environment. */
+/**
+ * Auth settings.
+ *
+ * Read from the environment, except `enabled`, which an admin can also change
+ * from Settings → Users; the stored answer wins once set.
+ */
 export interface AuthConfig {
   enabled: boolean;
   /** Default for the self-signup toggle; the stored setting wins once set. */
