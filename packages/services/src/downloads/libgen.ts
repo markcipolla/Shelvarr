@@ -6,6 +6,7 @@
  */
 
 import { getSourceStatusCache } from '@shelvarr/db';
+import { pace } from '../utils/pacing';
 
 export interface LibGenResult {
   id: string;
@@ -254,7 +255,7 @@ async function fetchWithRetry(url: string, init: RequestInit, attempts = 2): Pro
     }
 
     if (attempt < attempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      await pace(1000 * attempt);
     }
   }
 

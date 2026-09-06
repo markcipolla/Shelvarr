@@ -20,6 +20,7 @@ import type {
 import { createLogger } from '../../utils/logger';
 import { extractIssueNumber, extractVolumeNumber } from '../getcomics/parse';
 import { forceRange, normaliseString, normaliseYear } from '../getcomics/normalise';
+import { pace } from '../../utils/pacing';
 
 const log = createLogger('comicvine');
 
@@ -184,7 +185,7 @@ export class ComicVine {
   private async brake(): Promise<void> {
     const wait = this.nextRequestAt - Date.now();
     this.nextRequestAt = Math.max(Date.now(), this.nextRequestAt) + BRAKE_TIME_MS;
-    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    if (wait > 0) await pace(wait);
   }
 
   private async call<T>(

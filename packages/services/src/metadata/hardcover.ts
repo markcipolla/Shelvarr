@@ -7,6 +7,7 @@
 
 import { getServiceConfig } from '../config';
 import { getSetting, replaceHardcoverStatuses } from '@shelvarr/db';
+import { pace } from '../utils/pacing';
 
 const API_BASE = 'https://api.hardcover.app/v1/graphql';
 
@@ -69,7 +70,7 @@ async function graphqlFetch<T>(query: string, variables: Record<string, unknown>
   const now = Date.now();
   const interval = getMinInterval();
   if (now - lastRequestTime < interval) {
-    await new Promise(resolve => setTimeout(resolve, interval - (now - lastRequestTime)));
+    await pace(interval - (now - lastRequestTime));
   }
   lastRequestTime = Date.now();
 
