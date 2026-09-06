@@ -54,4 +54,5 @@ export { getReadingUserId, SHARED_USER_ID } from './reading-user';
 export * as authors from './utils/authors';
 export * as logger from './utils/logger';
 export * as sanitize from './utils/sanitize';
+export { pace } from './utils/pacing';
 export * from './constants';

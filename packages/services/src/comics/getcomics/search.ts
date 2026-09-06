@@ -24,6 +24,7 @@ import {
   type VolumeMatchData,
 } from './match';
 import { sortSearchResults } from './rank';
+import { pace } from '../../utils/pacing';
 
 const DEFAULT_BASE_URL = 'https://getcomics.org';
 const USER_AGENT =
@@ -75,7 +76,7 @@ async function fetchWithRetry(url: string, signal?: AbortSignal): Promise<Respon
     }
 
     if (round < TOTAL_RETRIES) {
-      await new Promise((resolve) => setTimeout(resolve, BACKOFF_BASE_MS * 2 ** (round - 1)));
+      await pace(BACKOFF_BASE_MS * 2 ** (round - 1));
     }
   }
 
