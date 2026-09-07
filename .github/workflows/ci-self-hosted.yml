@@ -100,18 +100,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm --filter @shelvarr/web build
-
       - name: Free up disk space
         run: |
           echo "Disk usage before cleanup:"
           df -h || true
           # A self-hosted runner can be tight on disk, so reclaim what we can
           # before pulling the browser and its libraries.
-          # The E2E tests run `next dev` (see playwright.config webServer), so the
-          # production build output created above is dead weight here.
-          rm -rf apps/web/.next || true
           # Clear apt caches/indexes. Containerised runners tend to run as
           # root with no `sudo` installed; VM-based ones need it.
           SUDO=""
@@ -178,5 +172,9 @@ jobs:
         # which is why the cleanup step above does not delete it.
         run: npx playwright install chromium
 
+      # `test:e2e` is `next build && playwright test`, so it produces its own
+      # build. This job used to run `next build` up front and then delete
+      # `.next` in the cleanup step above, on the since-retired assumption that
+      # the suite drives `next dev` and had no use for it.
       - name: Run E2E tests
         run: pnpm --filter @shelvarr/web test:e2e

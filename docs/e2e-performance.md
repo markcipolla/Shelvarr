@@ -49,18 +49,57 @@ headroom on an agent with fewer cores than this machine.
 `E2E_WORKERS` overrides it. Since the curve is flat from 4 up, a smaller agent
 can drop to 2 for about a second.
 
+## Where the CI job's time goes
+
+The numbers above are the suite. The `e2e` job around it is mostly not the
+suite. Measured on a GitHub-hosted `ubuntu-latest` agent:
+
+| Step | Before | After |
+| --- | --- | --- |
+| checkout, Node, pnpm | 3s | 3s |
+| `pnpm install --frozen-lockfile` | 15s | 15s |
+| `next build` (separate step) | 17s | — |
+| `playwright install --with-deps chromium` | 20s | ~14s |
+| `pnpm test:e2e` (build 16s + server 2s + **specs 16s**) | 33s | 33s |
+| **Total** | **92s** | **~65s** |
+
+Two things came out of that.
+
+**The build ran twice.** The job had a `Build` step and then ran `test:e2e`,
+which is `next build && playwright test`. Turbopack's second build was a full
+rebuild, not an incremental one — same 8s compile — so the first one produced
+17 seconds of output that nothing read. The separate step is gone; the job runs
+`test:e2e`, which is also what you run locally.
+
+The self-hosted job had the same duplication with a twist: it built, then
+deleted `.next` in its disk-cleanup step because the suite "runs `next dev`",
+then rebuilt inside `test:e2e`. That comment predated this document.
+
+**The browser download is cached.** `~/.cache/ms-playwright`, keyed on the exact
+Playwright version with no `restore-keys`, because a browser build is only valid
+for the version that pinned it and a stale one is worse than a re-download. The
+apt half of `--with-deps` (~12s) is not cacheable and still runs.
+
 ## Why this suite should not be sharded
 
-At 12 seconds including the build, splitting across agents is worse than
-useless. Each shard is a complete independent run — its own build, its own
-server, its own first-run wizard — so three shards would each pay roughly six
-seconds of build and setup to run two seconds of tests, and the build would
-happen three times instead of once.
+Because sharding is a way to spend fixed cost to buy variable cost, and this job
+has almost no variable cost left. Sixteen seconds of specs sit under ~50 seconds
+of install, browser and build that every shard pays in full and independently —
+its own checkout, its own `pnpm install`, its own browser, its own build, its own
+server, its own first-run wizard. Two shards would take the job from ~65s to
+~57s while using twice the agent minutes; three would make it slower than one.
 
 Sharding made sense when the fixed cost was ~20s of warm-up against ~35s of
-specs. Removing the fixed cost removed the reason to shard. If the suite grows
+specs. Removing the fixed cost removed the reason to shard. If the specs grow
 back to minutes, revisit — the machinery is a `--shard` flag away — but measure
-first.
+first, and shard the specs, not the setup.
+
+For the same reason, the within-run worker count is already at its ceiling:
+`ubuntu-latest` has 4 vCPUs and the default is 4 workers.
+
+And note the `e2e` job is not what a pull request waits on. `test` (the unit
+suite) takes ~100s, so it is the long pole; e2e work below ~100s buys agent
+minutes, not wall time.
 
 ## Running it
 
