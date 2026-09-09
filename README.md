@@ -34,6 +34,7 @@ services:
       # The user that owns your library folders — run `id -u` and `id -g`.
       - PUID=1000
       - PGID=1000
+      - TZ=Australia/Melbourne
     restart: unless-stopped
 
 volumes:
@@ -66,6 +67,16 @@ that owns your library.
 | `PUID` | 1001 | Uid the server runs as |
 | `PGID` | 1001 | Gid the server runs as |
 | `UMASK` | 022 | Permissions imported files are created with; `002` shares them with the group |
+
+### Timezone
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TZ` | UTC | IANA zone name, e.g. `Australia/Melbourne` |
+
+Dates the server renders — "last synced", "added" and the like — follow `TZ`.
+Stored timestamps and the server log stay UTC, so changing this re-reads your
+existing library rather than rewriting it.
 
 Setting `user:` in your compose file works too, and takes precedence — but then
 nothing adjusts `/app/data` for you, so it has to be writable by that uid
