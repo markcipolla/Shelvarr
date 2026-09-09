@@ -44,13 +44,16 @@ FROM node:24-alpine AS web
 WORKDIR /app
 
 # `shadow` provides usermod/groupmod and `su-exec` drops privileges — both are
-# what the entrypoint needs to honour PUID/PGID.
-RUN apk add --no-cache shadow su-exec && \
+# what the entrypoint needs to honour PUID/PGID. `tzdata` ships the zone files
+# TZ names resolve against; without it every TZ silently reads back as UTC.
+RUN apk add --no-cache shadow su-exec tzdata && \
     addgroup -g 1001 shelvarr && \
     adduser -D -u 1001 -G shelvarr shelvarr
 
 ENV NODE_ENV=production
 ENV PORT=3000
+# Overridden by TZ from the host's compose file.
+ENV TZ=UTC
 ENV HOSTNAME="0.0.0.0"
 ENV DATA_DIR=/app/data
 ENV LIBRARY_ROOT=/libraries

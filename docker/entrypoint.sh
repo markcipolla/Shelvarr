@@ -27,7 +27,7 @@ if [ "$(id -u shelvarr)" != "$PUID" ]; then
   usermod -o -u "$PUID" -g "$PGID" shelvarr
 fi
 
-echo "[shelvarr] running as ${PUID}:${PGID} (umask ${UMASK:-022})"
+echo "[shelvarr] running as ${PUID}:${PGID} (umask ${UMASK:-022}, TZ ${TZ:-UTC})"
 
 # The data volume was created under the build-time uid, or by Docker as root,
 # and `.next` holds the render cache the server writes to. The library mounts

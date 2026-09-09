@@ -22,6 +22,8 @@ services:
       - PGID=${PGID:-1001}
       # Permissions new files are created with. 002 shares them with the group.
       - UMASK=${UMASK:-022}
+      # Dates the server renders. An IANA name, e.g. Australia/Melbourne.
+      - TZ=${TZ:-UTC}
       - PORT=3000
       - DATA_DIR=/app/data
       - LIBRARY_ROOT=/libraries
