@@ -8,7 +8,7 @@
 
 import { constants, existsSync, renameSync, statSync } from 'fs';
 import { access, copyFile, mkdir, unlink } from 'fs/promises';
-import { extname, join } from 'path';
+import { dirname, extname, join } from 'path';
 
 import type { ComicDownload } from '@shelvarr/types';
 
@@ -58,6 +58,23 @@ export function resolveImportTarget(
 }
 
 /**
+ * Walk up from `directory` to the first path that exists.
+ *
+ * `mkdir -p` fails on the shallowest folder it could not create, so the
+ * permissions that actually blocked it belong to that folder's parent — the
+ * deepest ancestor already on disk.
+ */
+function nearestExistingAncestor(directory: string): string {
+  let candidate = directory;
+  while (!existsSync(candidate)) {
+    const parent = dirname(candidate);
+    if (parent === candidate) break;
+    candidate = parent;
+  }
+  return candidate;
+}
+
+/**
  * Check the library folder can be written to, creating it if need be.
  *
  * Called before a download starts as well as during the import: without the
@@ -68,12 +85,22 @@ export async function ensureImportable(
   volume: NamingVolume & { folder: string | null }
 ): Promise<string> {
   const directory = resolveImportDirectory(volume);
+
   try {
     await mkdir(directory, { recursive: true });
+  } catch (error) {
+    // A new volume's folder does not exist yet, so it is the library root that
+    // denied us. Naming the folder we failed to create would send someone off
+    // to `chown` a path that isn't there.
+    throw describeWriteFailure(nearestExistingAncestor(directory), error, 'create a folder in');
+  }
+
+  try {
     await access(directory, constants.W_OK | constants.X_OK);
   } catch (error) {
     throw describeWriteFailure(directory, error);
   }
+
   return directory;
 }
 

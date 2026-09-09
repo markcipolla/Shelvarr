@@ -459,6 +459,29 @@ describe('Comic download import', () => {
       }
     });
 
+    it('names the folder that exists when the volume folder is the one we cannot create', async (t) => {
+      if (asRoot) return t.skip('running as root; mode bits are not enforced');
+      const libraryRoot = readOnlyFolder('locked-root');
+      await configure(libraryRoot);
+      try {
+        await assert.rejects(
+          () => importer.ensureImportable({ ...volume, folder: null }),
+          (error: Error) => {
+            assert.match(
+              error.message,
+              /Cannot create a folder in .*locked-root(?::|\s)/,
+              'expected the error to name the library root, not the folder that does not exist yet'
+            );
+            assert.match(error.message, /PUID\/PGID/);
+            return true;
+          }
+        );
+      } finally {
+        chmodSync(libraryRoot, 0o700);
+        await configure(join(root, 'library'));
+      }
+    });
+
     it('leaves the downloaded file alone rather than losing it', async (t) => {
       if (asRoot) return t.skip('running as root; mode bits are not enforced');
       const folder = readOnlyFolder('locked-import');
