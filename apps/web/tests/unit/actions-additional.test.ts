@@ -739,6 +739,42 @@ if (canRunTests) {
       });
     });
 
+    describe('refreshUnmatchedMetadata', () => {
+      it('should return error for non-existent library', async () => {
+        const { refreshUnmatchedMetadata } = await import('../../lib/actions/libraries.js');
+        const result = await refreshUnmatchedMetadata(999999);
+
+        assert.strictEqual(result.error, 'Library not found');
+      });
+
+      it('should queue an unmatched-only metadata task for one library', async () => {
+        execute(`INSERT INTO libraries (id, name, path) VALUES (1, 'Test Library', ?)`, [libraryPath]);
+
+        const { refreshUnmatchedMetadata } = await import('../../lib/actions/libraries.js');
+        const result = await refreshUnmatchedMetadata(1);
+
+        assert.ok(result.success);
+
+        const task = queryOne<{ type: string; result: string }>('SELECT type, result FROM tasks WHERE id = ?', [result.taskId]);
+        assert.strictEqual(task?.type, 'metadata');
+        const data = JSON.parse(task!.result);
+        assert.strictEqual(data.libraryId, 1);
+        assert.strictEqual(data.unmatchedOnly, true);
+      });
+
+      it('should cover every library when none is given', async () => {
+        const { refreshUnmatchedMetadata } = await import('../../lib/actions/libraries.js');
+        const result = await refreshUnmatchedMetadata();
+
+        assert.ok(result.success);
+
+        const task = queryOne<{ result: string }>('SELECT result FROM tasks WHERE id = ?', [result.taskId]);
+        const data = JSON.parse(task!.result);
+        assert.strictEqual(data.libraryId, undefined);
+        assert.strictEqual(data.unmatchedOnly, true);
+      });
+    });
+
     describe('organizeLibrary', () => {
       it('should return error for non-existent library', async () => {
         const { organizeLibrary } = await import('../../lib/actions/libraries.js');

@@ -3,6 +3,7 @@ import { getLibraries } from '@/lib/actions/libraries';
 import { BookGrid } from '@/components/books/BookGrid';
 import { BooksFilter } from '@/components/books/BooksFilter';
 import { Pagination } from '@/components/books/Pagination';
+import { RefreshUnmatchedButton } from '@/components/books/RefreshUnmatchedButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,9 +35,12 @@ export default async function UnmatchedPage({ searchParams }: PageProps) {
             Books without metadata from Hardcover
           </p>
         </div>
-        <span className="text-shelvarr-text-muted">
-          {booksResult.total} unmatched
-        </span>
+        <div className="flex items-center gap-4">
+          <span className="text-shelvarr-text-muted">
+            {booksResult.total} unmatched
+          </span>
+          {booksResult.total > 0 && <RefreshUnmatchedButton libraryId={libraryId} />}
+        </div>
       </div>
 
       <BooksFilter

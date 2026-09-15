@@ -119,6 +119,22 @@ export async function fetchLibraryMetadata(id: number, unmatchedOnly = true) {
   return { success: true, taskId: task.id };
 }
 
+/**
+ * Look up metadata again for books that still have none — in one library, or
+ * across all of them when no library is given.
+ */
+export async function refreshUnmatchedMetadata(libraryId?: number) {
+  if (libraryId !== undefined && !(await getLibraryById(libraryId))) {
+    return { error: 'Library not found' };
+  }
+
+  const task = enqueueTask('metadata', { libraryId, unmatchedOnly: true });
+
+  revalidatePath('/unmatched');
+  revalidatePath('/tasks');
+  return { success: true, taskId: task.id };
+}
+
 export async function organizeLibrary(id: number) {
   const library = await getLibraryById(id);
   if (!library) {
