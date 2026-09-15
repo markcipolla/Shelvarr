@@ -285,13 +285,14 @@ describe('BookDetailScreen', () => {
 
     await waitFor(() => {
       expect(mockUpdateProgress).toHaveBeenCalledWith('b1', 50, true);
-      // After completion the button disappears and progress reflects completed.
+      // After completion the button flips to Mark as Incomplete.
       expect(queryByText('Mark as Completed')).toBeNull();
+      expect(getByText('Mark as Incomplete')).toBeTruthy();
       expect(getByText('Progress: Completed')).toBeTruthy();
     });
   });
 
-  it('hides Mark as Completed when already completed', async () => {
+  it('shows Mark as Incomplete instead of Mark as Completed when already completed', async () => {
     const book = makeBook({
       readProgress: { page: 100, completed: true, readDate: '', created: '', lastModified: '' },
     });
@@ -304,6 +305,48 @@ describe('BookDetailScreen', () => {
 
     await waitFor(() => expect(queryByText('Mark as Unread')).toBeTruthy());
     expect(queryByText('Mark as Completed')).toBeNull();
+    expect(queryByText('Mark as Incomplete')).toBeTruthy();
+  });
+
+  it('marks a completed book as incomplete, keeping its page', async () => {
+    const book = makeBook({
+      readProgress: { page: 80, completed: true, readDate: '', created: '', lastModified: '' },
+    });
+    mockFetchBook.mockResolvedValue(book);
+    mockFetchSeries.mockResolvedValue(makeSeries());
+    mockUpdateProgress.mockResolvedValue(undefined);
+
+    const { getByText, queryByText } = render(
+      <BookDetailScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    await waitFor(() => expect(getByText('Mark as Incomplete')).toBeTruthy());
+    fireEvent.press(getByText('Mark as Incomplete'));
+
+    await waitFor(() => {
+      expect(mockUpdateProgress).toHaveBeenCalledWith('b1', 80, false);
+      expect(queryByText('Mark as Incomplete')).toBeNull();
+      expect(getByText('Mark as Completed')).toBeTruthy();
+      expect(getByText('Progress: Page 80')).toBeTruthy();
+    });
+  });
+
+  it('handles mark as incomplete error', async () => {
+    const book = makeBook({
+      readProgress: { page: 80, completed: true, readDate: '', created: '', lastModified: '' },
+    });
+    mockFetchBook.mockResolvedValue(book);
+    mockFetchSeries.mockResolvedValue(makeSeries());
+    mockUpdateProgress.mockRejectedValue(new Error('fail'));
+
+    const { getByText } = render(<BookDetailScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => expect(getByText('Mark as Incomplete')).toBeTruthy());
+    fireEvent.press(getByText('Mark as Incomplete'));
+
+    await waitFor(() => {
+      expect(Alert.alert).toHaveBeenCalledWith('Error', 'Failed to mark as incomplete');
+    });
   });
 
   it('handles mark as completed error', async () => {

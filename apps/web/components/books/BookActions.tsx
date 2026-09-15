@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 
 interface BookActionsProps {
   book: Book;
+  readProgress?: { page: number; completed: boolean } | null;
 }
 
 function getFilenameFromPath(filePath: string): string {
@@ -18,10 +19,11 @@ function getFilenameFromPath(filePath: string): string {
   return filename.replace(/\.[^.]+$/, '');
 }
 
-export function BookActions({ book }: BookActionsProps) {
+export function BookActions({ book, readProgress = null }: BookActionsProps) {
   const router = useRouter();
   const toast = useToast();
   const [loading, setLoading] = useState(false);
+  const [completed, setCompleted] = useState(!!readProgress?.completed);
   const [showMetadataSearch, setShowMetadataSearch] = useState(false);
   const [showReader, setShowReader] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -53,19 +55,23 @@ export function BookActions({ book }: BookActionsProps) {
     }
   };
 
-  const handleMarkCompleted = async () => {
+  // Sends the saved page along either way, so toggling completion doesn't lose
+  // the reader's place in the book.
+  const handleSetCompleted = async (nextCompleted: boolean) => {
+    const label = nextCompleted ? 'completed' : 'incomplete';
     setLoading(true);
     try {
       const res = await fetch(`/api/books/${book.id}/read-progress`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ completed: true }),
+        body: JSON.stringify({ page: readProgress?.page ?? 0, completed: nextCompleted }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        toast.error(data?.error || 'Failed to mark as completed');
+        toast.error(data?.error || `Failed to mark as ${label}`);
       } else {
-        toast.success('Marked as completed');
+        setCompleted(nextCompleted);
+        toast.success(`Marked as ${label}`);
         router.refresh();
       }
     } catch {
@@ -114,11 +120,11 @@ export function BookActions({ book }: BookActionsProps) {
         </button>
 
         <button
-          onClick={handleMarkCompleted}
+          onClick={() => handleSetCompleted(!completed)}
           disabled={loading}
           className="w-full bg-shelvarr-surface hover:bg-shelvarr-border border border-shelvarr-border text-shelvarr-text px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
         >
-          Mark as completed
+          {completed ? 'Mark as incomplete' : 'Mark as completed'}
         </button>
 
         {hasHardcover && (

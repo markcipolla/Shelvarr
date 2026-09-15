@@ -160,6 +160,17 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
     }
   };
 
+  const handleMarkIncomplete = async () => {
+    /* istanbul ignore next -- button only shown when progress is completed */
+    if (!issueProgress) return;
+    try {
+      await updateComicProgress(issueId, issueProgress.page, false, issueProgress.total);
+      setIssueProgress({ ...issueProgress, completed: false });
+    } catch (err) {
+      Alert.alert('Error', describeComicReadError(err));
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -270,7 +281,15 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
               )}
             </TouchableOpacity>
           ) : null}
-          {!issueProgress?.completed && (
+          {issueProgress?.completed ? (
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={handleMarkIncomplete}
+              accessibilityLabel="Mark comic issue as incomplete"
+            >
+              <Text style={styles.secondaryButtonText}>Mark as Incomplete</Text>
+            </TouchableOpacity>
+          ) : (
             <TouchableOpacity
               style={styles.secondaryButton}
               onPress={handleMarkCompleted}

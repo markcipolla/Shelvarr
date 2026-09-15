@@ -10,6 +10,8 @@ import {
 import * as metadataService from '@/lib/services/metadata';
 import { getOrCreateAuthor, fetchAuthorMetadata, getAuthorByName } from '@/lib/actions/authors';
 import { enqueueTask } from '@/lib/services/queue';
+import { getReadProgress } from '@/lib/db';
+import { getReadingUserId } from '@/lib/auth';
 
 export interface GetBooksParams {
   page?: number;
@@ -33,6 +35,14 @@ export async function getBooks(params: GetBooksParams = {}) {
 
 export async function getBook(id: number) {
   return getBookById(id);
+}
+
+/** The signed-in person's read progress for a book, or null if they have none. */
+export async function getBookReadProgress(
+  id: number
+): Promise<{ page: number; completed: boolean } | null> {
+  const row = getReadProgress(await getReadingUserId(), id);
+  return row ? { page: row.page, completed: !!row.completed } : null;
 }
 
 export async function updateBook(id: number, data: {

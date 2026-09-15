@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { getBook } from '@/lib/actions/books';
+import { getBook, getBookReadProgress } from '@/lib/actions/books';
 import { getLibraryById } from '@/lib/services/library';
 import { getAuthorByName } from '@/lib/actions/authors';
 import { BookDetails } from '@/components/books/BookDetails';
@@ -29,6 +29,7 @@ export default async function BookDetailPage({ params }: PageProps) {
   }
 
   const library = book.libraryId ? await getLibraryById(book.libraryId) : null;
+  const readProgress = await getBookReadProgress(bookId);
 
   // Fetch author IDs for linking
   const authorNames = parseAuthors(book.authors);
@@ -67,7 +68,7 @@ export default async function BookDetailPage({ params }: PageProps) {
             </div>
           </div>
 
-          <BookActions book={book} />
+          <BookActions book={book} readProgress={readProgress} />
         </div>
 
         <BookDetails book={book} library={library} authorsWithIds={authorsWithIds} />
