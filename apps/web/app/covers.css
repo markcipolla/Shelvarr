@@ -6,7 +6,7 @@
  * (codepen.io/HighFlyer910/pen/LaXrgV). Hover also brings up a sheen and a
  * blurred copy of the cover glowing underneath, after yancy's "Books Hover
  * Animation" (codepen.io/yancy/pen/jpWPGx). Comics are the same idea without
- * the spine: a thin floppy whose cover lifts off its pages, as in yancy's pen.
+ * the spine: a thin floppy, picked up face-on so its pages fan out beneath it.
  *
  * Everything is sized in container units, so the same rules draw a grid
  * thumbnail and the detail page's cover.
@@ -60,9 +60,48 @@
   box-shadow: 2.5cqw 2.5cqw 2cqw rgba(0, 0, 0, 0.45), 0 0 0 var(--bc-pages);
 }
 
+/*
+ * A comic stays face-on: it has no spine to turn to, and turning it skewed the
+ * cover and everything printed on it. It lifts from its middle instead, and
+ * its pages cast the shadow.
+ */
 .book-cover--comic .book-cover__body {
-  transform-origin: left center;
-  box-shadow: 0.5cqw 1.5cqw 1.5cqw rgba(0, 0, 0, 0.45), 0 0 0 var(--bc-pages);
+  transform-origin: center;
+  transform-style: flat;
+  background: none;
+  box-shadow: none;
+}
+
+/*
+ * The comic's pages: four sheets under the cover, each standing a little
+ * further out at the fore-edge than the one above it (a saddle-stitched
+ * comic's creep), with a hairline between each. They show as a sliver at
+ * rest and fan out as the comic lifts. The last two shadows are the stack's
+ * own, on the table.
+ */
+.book-cover__pages {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--bc-radius);
+  background: var(--bc-pages);
+  box-shadow:
+    0.25cqw 0.08cqw 0 #f7f3ea,
+    0.4cqw 0.13cqw 0 #b9ae97,
+    0.6cqw 0.2cqw 0 #f0eadd,
+    0.75cqw 0.25cqw 0 #b3a790,
+    0.95cqw 0.32cqw 0 #e8e1d1,
+    1.1cqw 0.37cqw 0 #aa9e86,
+    1.3cqw 0.44cqw 0 #dfd7c4,
+    1.45cqw 0.49cqw 0 #9f937c,
+    0.6cqw 1.2cqw 1.6cqw rgba(0, 0, 0, 0.45),
+    0 2.5cqw 5cqw -1cqw rgba(0, 0, 0, 0.3);
+  transition: box-shadow 0.5s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+/* The cover's faint shadow on the sheets beneath it. */
+.book-cover--comic .book-cover__front {
+  box-shadow: 0.25cqw 0.15cqw 0.5cqw rgba(0, 0, 0, 0.3);
+  transition: box-shadow 0.5s ease;
 }
 
 .book-cover__front {
@@ -99,9 +138,15 @@
     linear-gradient(90deg, rgba(0, 0, 0, 0.3), transparent 7%);
 }
 
-/* A comic has no boards, just the fold at its staples. */
+/* A comic has no boards, just the fold at its staples, and a crease catching the light past it. */
 .book-cover--comic .book-cover__shine {
-  background: linear-gradient(90deg, rgba(0, 0, 0, 0.22), transparent 2.5%);
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.3),
+    rgba(0, 0, 0, 0.12) 1.4%,
+    rgba(255, 255, 255, 0.16) 1.9%,
+    transparent 3.4%
+  );
 }
 
 .book-cover__shine::after {
@@ -111,6 +156,20 @@
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 60%);
   opacity: 0;
   transition: opacity 0.5s ease;
+}
+
+/*
+ * A comic's gloss: a band of light that sweeps across the cover as it lifts,
+ * the top catching the light, and the fore-edge shading a little as the paper
+ * bows. The band slips back out of sight only once the gloss has faded.
+ */
+.book-cover--comic .book-cover__shine::after {
+  background:
+    linear-gradient(110deg, transparent 38%, rgba(255, 255, 255, 0.3) 47%, rgba(255, 255, 255, 0.08) 53%, transparent 62%)
+      100% 0 / 300% 100% no-repeat,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(90deg, rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, 0.14));
+  transition: opacity 0.5s ease, background-position 0s 0.5s;
 }
 
 .book-cover__spine {
@@ -276,11 +335,42 @@
     box-shadow: 4cqw 4cqw 7cqw rgba(0, 0, 0, 0.45), 0 0 0 var(--bc-pages);
   }
 
+  /* Picked up: raised a little, a degree off square, never turned. */
   .book-cover--comic:hover .book-cover__body,
   .book-cover-trigger:hover .book-cover--comic .book-cover__body,
   .book-cover-trigger:focus-visible .book-cover--comic .book-cover__body {
-    transform: perspective(var(--bc-perspective)) translateY(-2%) rotateY(-24deg) rotateZ(-2deg) scale(1.02);
-    box-shadow: 0.5cqw 1.5cqw 1cqw rgba(0, 0, 0, 0.5), 6cqw 2.5cqw 0 var(--bc-pages);
+    transform: perspective(var(--bc-perspective)) translateY(-1.6cqw) rotateY(0deg) rotateZ(-1deg) scale(1.015);
+    box-shadow: none;
+  }
+
+  .book-cover--comic:hover .book-cover__front,
+  .book-cover-trigger:hover .book-cover--comic .book-cover__front,
+  .book-cover-trigger:focus-visible .book-cover--comic .book-cover__front {
+    box-shadow: 0.4cqw 0.3cqw 0.9cqw rgba(0, 0, 0, 0.35);
+  }
+
+  /* The sheets fan out at the fore-edge and foot; the shadow spreads and softens. */
+  .book-cover--comic:hover .book-cover__pages,
+  .book-cover-trigger:hover .book-cover--comic .book-cover__pages,
+  .book-cover-trigger:focus-visible .book-cover--comic .book-cover__pages {
+    box-shadow:
+      0.6cqw 0.4cqw 0 #f7f3ea,
+      0.85cqw 0.55cqw 0 #b9ae97,
+      1.35cqw 0.9cqw 0 #f0eadd,
+      1.6cqw 1.05cqw 0 #b3a790,
+      2.1cqw 1.4cqw 0 #e8e1d1,
+      2.35cqw 1.55cqw 0 #aa9e86,
+      2.85cqw 1.9cqw 0 #dfd7c4,
+      3.1cqw 2.05cqw 0 #9f937c,
+      1.2cqw 3.5cqw 3.5cqw rgba(0, 0, 0, 0.35),
+      1.5cqw 9cqw 13cqw -1cqw rgba(0, 0, 0, 0.55);
+  }
+
+  .book-cover--comic:hover .book-cover__shine::after,
+  .book-cover-trigger:hover .book-cover--comic .book-cover__shine::after,
+  .book-cover-trigger:focus-visible .book-cover--comic .book-cover__shine::after {
+    background-position: 0 0, 0 0, 0 0;
+    transition: opacity 0.3s ease, background-position 1.1s cubic-bezier(0.3, 0.6, 0.3, 1);
   }
 
   .book-cover:hover .book-cover__glow,
