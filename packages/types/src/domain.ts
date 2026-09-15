@@ -155,27 +155,24 @@ export interface GetComicsConfig {
   baseUrl: string;
   /** Scratch directory for in-flight downloads. */
   downloadDir: string;
-  /** Root of the comic library; downloads are imported into it. */
-  libraryRoot: string | null;
   /** Order to try download hosts in. */
   hostPreference: string[];
   /** Rename imported files to the configured naming template. */
   renameDownloadedFiles: boolean;
 }
 
+/**
+ * What the server reads from its environment. API keys are not here: they are
+ * entered in Settings and live in the settings table.
+ */
 export interface AppConfig {
-  env: string;
-  port: number;
   dataDir: string;
+  /** Where the folder browser starts; book libraries are added in Settings. */
   libraryRoot: string;
   dbPath: string;
   comicPaths: ComicPathConfig;
   getcomics: GetComicsConfig;
   supportedExtensions: string[];
-  rateLimits: {
-    hardcover: number;
-  };
-  hardcoverToken: string | null;
 }
 
 // The comic wire format.
@@ -241,15 +238,6 @@ export interface ComicIssueSummary {
   description: string;
   monitored: boolean;
   files: ComicFileRef[];
-}
-
-// Settings stored in database
-export interface Settings {
-  [key: string]: unknown;
-  _config?: {
-    libraryRoot: string;
-    supportedExtensions: string[];
-  };
 }
 
 // File organization types

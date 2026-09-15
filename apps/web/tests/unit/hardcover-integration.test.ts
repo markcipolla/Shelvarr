@@ -4,6 +4,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
+import { setHardcoverKey } from '../hardcover-key';
 
 let originalFetch: typeof global.fetch;
 
@@ -14,13 +15,11 @@ describe('Hardcover Service Integration', { timeout: 30_000 }, () => {
 
   afterEach(() => {
     global.fetch = originalFetch;
-    delete process.env.HARDCOVER_TOKEN;
-    delete process.env.HARDCOVER_API_TOKEN;
   });
 
   describe('getApiToken with Bearer prefix', () => {
-    it('should strip Bearer prefix from environment token', async () => {
-      process.env.HARDCOVER_API_TOKEN = 'Bearer test-token-12345';
+    it('should strip a Bearer prefix pasted in with the stored key', async () => {
+      await setHardcoverKey('Bearer test-token-12345');
       const { isConfigured, searchBooks } = await import('../../lib/services/metadata/hardcover.js');
 
       // Verify it's configured
@@ -40,26 +39,14 @@ describe('Hardcover Service Integration', { timeout: 30_000 }, () => {
       };
 
       await searchBooks('test', 1);
-      // Should send "Bearer test-token-12345" (re-added by graphqlFetch)
-      assert.ok(sentToken.includes('test-token-12345'));
-
-      delete process.env.HARDCOVER_API_TOKEN;
+      // One "Bearer", re-added by graphqlFetch, not two
+      assert.strictEqual(sentToken, 'Bearer test-token-12345');
     });
   });
 
   describe('graphqlFetch without token', () => {
     it('should return null and log error when no token configured', async () => {
-      delete process.env.HARDCOVER_TOKEN;
-      delete process.env.HARDCOVER_API_TOKEN;
-
-      // The service config caches the token the first time it is read, and the
-      // test above has already put one there. Clearing the environment on its
-      // own leaves that copy in place, so the request went out to the real
-      // Hardcover API and this passed on the 401 rather than on the missing
-      // token it means to be checking.
-      const { initServiceConfig, getServiceConfig } = await import('@shelvarr/services');
-      const config = getServiceConfig();
-      initServiceConfig({ ...config, hardcoverToken: null });
+      await setHardcoverKey(null);
 
       let requested = false;
       global.fetch = async () => {
@@ -67,21 +54,17 @@ describe('Hardcover Service Integration', { timeout: 30_000 }, () => {
         return new Response('{}', { headers: { 'content-type': 'application/json' } });
       };
 
-      try {
-        const { getBookById } = await import('../../lib/services/metadata/hardcover.js');
+      const { getBookById } = await import('../../lib/services/metadata/hardcover.js');
 
-        const result = await getBookById('123');
-        assert.strictEqual(result, null);
-        assert.strictEqual(requested, false, 'should not call the API without a token');
-      } finally {
-        initServiceConfig(config);
-      }
+      const result = await getBookById('123');
+      assert.strictEqual(result, null);
+      assert.strictEqual(requested, false, 'should not call the API without a token');
     });
   });
 
   describe('getBookById', () => {
-    beforeEach(() => {
-      process.env.HARDCOVER_API_TOKEN = 'test-api-key';
+    beforeEach(async () => {
+      await setHardcoverKey('test-api-key');
     });
 
     it('should return null when API returns errors', async () => {
@@ -148,8 +131,8 @@ describe('Hardcover Service Integration', { timeout: 30_000 }, () => {
   });
 
   describe('searchBooks edge cases', () => {
-    beforeEach(() => {
-      process.env.HARDCOVER_API_TOKEN = 'test-api-key';
+    beforeEach(async () => {
+      await setHardcoverKey('test-api-key');
     });
 
     it('should handle results wrapper in object', async () => {

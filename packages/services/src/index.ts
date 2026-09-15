@@ -1,5 +1,5 @@
 // Config initialization
-export { initServiceConfig, getServiceConfig } from './config';
+export { initServiceConfig, getServiceConfig, loadConfigFromEnv } from './config';
 
 // Comics
 export { openComicArchive, remapComicPath } from './comics/archive';

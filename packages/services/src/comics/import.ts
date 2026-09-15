@@ -8,11 +8,11 @@
 
 import { constants, existsSync, renameSync, statSync } from 'fs';
 import { access, copyFile, mkdir, unlink } from 'fs/promises';
-import { dirname, extname, join } from 'path';
+import { dirname, extname, join, parse, sep } from 'path';
 
+import { getComicRootFolder, getComicRootFolders } from '@shelvarr/db';
 import type { ComicDownload } from '@shelvarr/types';
 
-import { getServiceConfig } from '../config';
 import { describeWriteFailure } from '../utils/fs-errors';
 import { createLogger } from '../utils/logger';
 import { remapComicPath } from './archive';
@@ -27,32 +27,34 @@ export interface ImportTarget {
   path: string;
 }
 
+export type ImportVolume = NamingVolume & {
+  folder: string | null;
+  rootFolderId?: number | null;
+};
+
 /**
  * Work out where a download belongs.
  *
  * Prefers the volume's existing folder, so files land next to the rest of the
- * series — including while Kapowarr still owns the library, where the recorded
- * folder is a Kapowarr-side path and needs the usual remap. Falls back to
- * building a folder from the naming template under the configured library root.
+ * series; a path recorded under another mount goes through COMIC_PATH_MAP.
+ * Failing that, builds a folder from the naming template inside the volume's
+ * root folder, or the first one set up in Settings → Comics.
  */
-export function resolveImportDirectory(
-  volume: NamingVolume & { folder: string | null }
-): string {
-  const { getcomics } = getServiceConfig();
-
+export function resolveImportDirectory(volume: ImportVolume): string {
   if (volume.folder) return remapComicPath(volume.folder);
-  if (getcomics.libraryRoot) {
-    return join(getcomics.libraryRoot, generateVolumeFolderName(volume));
-  }
+
+  const rootFolder =
+    (volume.rootFolderId != null ? getComicRootFolder(volume.rootFolderId) : null) ??
+    getComicRootFolders()[0];
+  if (rootFolder) return join(rootFolder.path, generateVolumeFolderName(volume));
+
   throw new Error(
-    'No destination for the download: the volume has no folder and COMIC_LIBRARY_ROOT is unset'
+    'No destination for the download: the volume has no folder and no comic root ' +
+      'folder is set up — add one in Settings → Comics'
   );
 }
 
-export function resolveImportTarget(
-  volume: NamingVolume & { folder: string | null },
-  filename: string
-): ImportTarget {
+export function resolveImportTarget(volume: ImportVolume, filename: string): ImportTarget {
   const directory = resolveImportDirectory(volume);
   return { directory, path: join(directory, filename) };
 }
@@ -74,6 +76,16 @@ function nearestExistingAncestor(directory: string): string {
   return candidate;
 }
 
+function missingMount(directory: string): Error {
+  const { root } = parse(directory);
+  const topLevel = root + directory.slice(root.length).split(sep)[0];
+  return new Error(
+    `Cannot file into ${directory}: ${topLevel} does not exist here. Mount the comic ` +
+      'library at that path, or, if the path was recorded under a different mount, set ' +
+      'COMIC_PATH_MAP to translate it.'
+  );
+}
+
 /**
  * Check the library folder can be written to, creating it if need be.
  *
@@ -81,18 +93,20 @@ function nearestExistingAncestor(directory: string): string {
  * up-front check a wrongly-owned bind mount downloads the whole file and only
  * then fails on the move into place.
  */
-export async function ensureImportable(
-  volume: NamingVolume & { folder: string | null }
-): Promise<string> {
+export async function ensureImportable(volume: ImportVolume): Promise<string> {
   const directory = resolveImportDirectory(volume);
 
   try {
     await mkdir(directory, { recursive: true });
   } catch (error) {
+    const ancestor = nearestExistingAncestor(directory);
+    // Nothing along the path exists, so it isn't on any mount. The filesystem
+    // root is what refused the mkdir, but write access to `/` is not the fix.
+    if (ancestor === parse(directory).root) throw missingMount(directory);
     // A new volume's folder does not exist yet, so it is the library root that
     // denied us. Naming the folder we failed to create would send someone off
     // to `chown` a path that isn't there.
-    throw describeWriteFailure(nearestExistingAncestor(directory), error, 'create a folder in');
+    throw describeWriteFailure(ancestor, error, 'create a folder in');
   }
 
   try {
@@ -150,7 +164,7 @@ export interface ImportResult {
 export async function importComicDownload(
   download: Pick<ComicDownload, 'filenameBody'>,
   sourcePath: string,
-  volume: NamingVolume & { folder: string | null }
+  volume: ImportVolume
 ): Promise<ImportResult> {
   if (!existsSync(sourcePath)) {
     throw new Error(`Downloaded file is missing: ${sourcePath}`);

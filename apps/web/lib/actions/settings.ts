@@ -12,7 +12,6 @@ export interface MetadataSourceStatus {
   displayName: string;
   /** What the source supplies metadata for, e.g. "Books". */
   mediaType: string;
-  enabled: boolean;
   configured: boolean;
   requiresApiKey: boolean;
   apiKeyUrl?: string;
@@ -40,26 +39,12 @@ export async function getSourcesStatus(): Promise<MetadataSourceStatus[]> {
       name: 'comicvine' as const,
       displayName: 'ComicVine',
       mediaType: 'Comics',
-      enabled: comicVineConfigured,
       configured: comicVineConfigured,
       requiresApiKey: true,
       apiKeyUrl: 'https://comicvine.gamespot.com/api/',
       canTest: true,
     },
   ];
-}
-
-export async function toggleSource(source: MetadataSource, enabled: boolean) {
-  const currentSettings = await getSetting<Record<string, { enabled: boolean }>>(
-    'metadata_sources',
-    {}
-  ) || {};
-
-  currentSettings[source] = { enabled };
-  setSetting('metadata_sources', currentSettings);
-
-  revalidatePath('/settings');
-  return { success: true };
 }
 
 export async function setApiKey(source: MetadataSource, apiKey: string) {

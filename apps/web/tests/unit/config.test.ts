@@ -4,9 +4,6 @@ import config from '../../lib/config/index.js';
 
 describe('Config', () => {
   it('should have default values', () => {
-    assert.strictEqual(typeof config.port, 'number');
-    assert.ok(config.port > 0);
-    assert.strictEqual(typeof config.env, 'string');
     assert.strictEqual(typeof config.libraryRoot, 'string');
     assert.ok(Array.isArray(config.supportedExtensions));
     assert.ok(config.supportedExtensions.includes('.epub'));
@@ -23,11 +20,6 @@ describe('Config', () => {
     }
   });
 
-  it('should have rate limits', () => {
-    assert.ok(config.rateLimits !== undefined);
-    assert.ok(typeof config.rateLimits.hardcover === 'number');
-  });
-
   it('should have a database path', () => {
     assert.ok(typeof config.dbPath === 'string');
   });
@@ -35,5 +27,10 @@ describe('Config', () => {
   it('should have a data directory', () => {
     assert.ok(config.dataDir);
     assert.strictEqual(typeof config.dataDir, 'string');
+  });
+
+  it('carries no API keys', () => {
+    // Keys are entered in Settings, not read from the environment.
+    assert.ok(!('hardcoverToken' in config));
   });
 });

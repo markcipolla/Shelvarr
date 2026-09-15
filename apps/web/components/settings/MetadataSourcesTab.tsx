@@ -7,7 +7,6 @@ import {
   setComicVineDateType,
   syncHardcoverStatus,
   testSourceConnection,
-  toggleSource,
   type MetadataSourceStatus,
 } from '@/lib/actions/settings';
 
@@ -65,13 +64,6 @@ function SourceRow({
     setTestResult(null);
     setTestResult(await testSourceConnection(source.name));
     setTesting(false);
-  };
-
-  const handleToggle = async () => {
-    setLoading(true);
-    await toggleSource(source.name, !source.enabled);
-    router.refresh();
-    setLoading(false);
   };
 
   const handleSaveApiKey = async () => {
@@ -148,24 +140,6 @@ function SourceRow({
               {source.configured ? 'Update API Key' : 'Add API Key'}
             </button>
           )}
-
-          <button
-            onClick={handleToggle}
-            disabled={loading || (source.requiresApiKey && !source.configured)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              source.enabled ? 'bg-blue-600' : 'bg-shelvarr-bg'
-            } ${
-              loading || (source.requiresApiKey && !source.configured)
-                ? 'opacity-50 cursor-not-allowed'
-                : ''
-            }`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                source.enabled ? 'translate-x-6' : 'translate-x-1'
-              }`}
-            />
-          </button>
         </div>
       </div>
 

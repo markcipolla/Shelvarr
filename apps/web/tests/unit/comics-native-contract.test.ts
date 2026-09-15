@@ -86,7 +86,6 @@ describe('Native app comic API contract', () => {
     libraryRoot = join(root, 'library');
     process.env['DATA_DIR'] = root;
     process.env['DB_PATH'] = join(root, 'test.db');
-    process.env['COMIC_LIBRARY_ROOT'] = libraryRoot;
     mkdirSync(libraryRoot, { recursive: true });
 
     db = await import('../../lib/db/index.js');

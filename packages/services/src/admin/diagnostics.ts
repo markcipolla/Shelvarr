@@ -264,10 +264,8 @@ export function getSystemStatus(): SystemStatus {
     },
     downloads: getDownloadCounts(),
     integrations: {
-      hardcover: Boolean(
-        getServiceConfig().hardcoverToken || process.env['HARDCOVER_API_TOKEN']
-      ),
-      comicvine: Boolean(comicVineKey()),
+      hardcover: Boolean(storedKey('hardcover_api_key')),
+      comicvine: Boolean(storedKey('comicvine_api_key')),
       email: isEmailConfigured(),
       auth: {
         enabled: isAuthEnabled(),
@@ -279,9 +277,9 @@ export function getSystemStatus(): SystemStatus {
   };
 }
 
-/** The ComicVine key, read directly so this stays free of the comics stack. */
-function comicVineKey(): string | null {
-  return getSetting<string>('comicvine_api_key', null) || process.env['COMICVINE_API_KEY'] || null;
+/** An API key from Settings, read directly so this stays free of the service stacks. */
+function storedKey(key: 'hardcover_api_key' | 'comicvine_api_key'): string | null {
+  return getSetting<string>(key, null)?.trim() || null;
 }
 
 /** A count that must not take the whole status response down with it. */
