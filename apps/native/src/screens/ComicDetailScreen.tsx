@@ -3,7 +3,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
-  Image,
   ScrollView,
   StyleSheet,
   ActivityIndicator,
@@ -19,6 +18,7 @@ import {
   ComicIssueProgress,
 } from '../services/api/comics';
 import { useAuthHeaders } from '../hooks/useAuthHeaders';
+import Cover, { CoverTrigger } from '../components/Cover';
 import { useComicDownloadStore } from '../stores/useComicDownloadStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ComicDetail'>;
@@ -52,6 +52,8 @@ function getIssueBadge(issue: ComicIssueSummary, downloaded: boolean, progress?:
   }
   return { label: 'Missing', container: styles.badgeMissing, text: styles.badgeTextMissing };
 }
+
+const COVER_WIDTH = 200;
 
 export default function ComicDetailScreen({ navigation, route }: Props) {
   const { volumeId } = route.params;
@@ -123,11 +125,16 @@ export default function ComicDetailScreen({ navigation, route }: Props) {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Image
-          source={{ uri: getVolumeCoverUrl(volume.id), headers }}
-          style={styles.cover}
-          resizeMode="cover"
-        />
+        <CoverTrigger accessible={false}>
+          <Cover
+            variant="comic"
+            uri={getVolumeCoverUrl(volume.id)}
+            headers={headers}
+            title={volume.title}
+            author={subtitle}
+            width={COVER_WIDTH}
+          />
+        </CoverTrigger>
         <View style={styles.meta}>
           <Text style={styles.title}>{volume.title}</Text>
           {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
@@ -184,7 +191,6 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f1eb', padding: 24 },
   errorText: { fontSize: 18, color: '#a33', textAlign: 'center', lineHeight: 24 },
   header: { flexDirection: 'row', padding: 16 },
-  cover: { width: 200, height: 290, borderRadius: 6, backgroundColor: '#e8e4de' },
   meta: { flex: 1, marginLeft: 16, justifyContent: 'center' },
   title: { fontSize: 27, fontWeight: '600', color: '#222', marginBottom: 10 },
   subtitle: { fontSize: 21, color: '#555', marginBottom: 10 },

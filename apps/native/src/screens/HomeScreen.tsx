@@ -297,6 +297,7 @@ export default function HomeScreen({ navigation }: Props) {
             <Text style={styles.sectionTitle}>Books</Text>
             <FlatList
               horizontal
+              style={styles.shelf}
               data={bookResults}
               keyExtractor={(item) => item.id}
               renderItem={renderBookItem}
@@ -313,6 +314,7 @@ export default function HomeScreen({ navigation }: Props) {
             <Text style={styles.sectionTitle}>Comics</Text>
             <FlatList
               horizontal
+              style={styles.shelf}
               data={comicResults}
               keyExtractor={(item) => String(item.id)}
               renderItem={({ item }) => (
@@ -332,6 +334,7 @@ export default function HomeScreen({ navigation }: Props) {
             <Text style={styles.sectionTitle}>Authors</Text>
             <FlatList
               horizontal
+              style={styles.shelf}
               data={authorResults}
               keyExtractor={(item) => item}
               renderItem={({ item }) => (
@@ -350,6 +353,7 @@ export default function HomeScreen({ navigation }: Props) {
             <Text style={styles.sectionTitle}>Series</Text>
             <FlatList
               horizontal
+              style={styles.shelf}
               data={seriesResults}
               keyExtractor={(item) => item}
               renderItem={({ item }) => (
@@ -400,6 +404,7 @@ export default function HomeScreen({ navigation }: Props) {
             <Text style={styles.sectionTitle}>In Progress</Text>
             <FlatList
               horizontal
+              style={styles.shelf}
               data={inProgress}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
@@ -422,6 +427,7 @@ export default function HomeScreen({ navigation }: Props) {
             <Text style={styles.sectionTitle}>In Progress Comics</Text>
             <FlatList
               horizontal
+              style={styles.shelf}
               data={inProgressComics}
               keyExtractor={(item) => String(item.volume.id)}
               renderItem={({ item }) => (
@@ -445,6 +451,7 @@ export default function HomeScreen({ navigation }: Props) {
             <Text style={styles.sectionTitle}>Next Up</Text>
             <FlatList
               horizontal
+              style={styles.shelf}
               data={visibleNextUpBooks}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
@@ -468,6 +475,7 @@ export default function HomeScreen({ navigation }: Props) {
             <Text style={styles.sectionTitle}>Next Up Comics</Text>
             <FlatList
               horizontal
+              style={styles.shelf}
               data={visibleNextUpComics}
               keyExtractor={(item) => String(item.volume.id)}
               renderItem={({ item }) => (
@@ -498,6 +506,7 @@ export default function HomeScreen({ navigation }: Props) {
             <Text style={styles.sectionTitle}>Downloaded</Text>
             <FlatList
               horizontal
+              style={styles.shelf}
               data={downloadedBooks}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
@@ -520,6 +529,7 @@ export default function HomeScreen({ navigation }: Props) {
             <Text style={styles.sectionTitle}>Recently Added</Text>
             <FlatList
               horizontal
+              style={styles.shelf}
               data={recentlyAdded}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
@@ -542,6 +552,7 @@ export default function HomeScreen({ navigation }: Props) {
             <Text style={styles.sectionTitle}>Recently Added Comics</Text>
             <FlatList
               horizontal
+              style={styles.shelf}
               data={recentComics}
               keyExtractor={(item) => String(item.id)}
               renderItem={({ item }) => (
@@ -586,6 +597,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   horizontalList: { paddingHorizontal: 16, paddingBottom: 8 },
+  // A pressed cover lifts a little above its row; don't clip it there.
+  shelf: { overflow: 'visible' },
   emptyText: { color: '#999', fontSize: 20, paddingHorizontal: 16, paddingTop: 32, textAlign: 'center' },
   searchBarContainer: {
     backgroundColor: '#e8e4de',

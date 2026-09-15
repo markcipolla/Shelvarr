@@ -3,7 +3,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
-  Image,
   ScrollView,
   StyleSheet,
   ActivityIndicator,
@@ -28,6 +27,7 @@ import {
 } from '../services/comicReader';
 import { useComicDownloadStore } from '../stores/useComicDownloadStore';
 import { useAuthHeaders } from '../hooks/useAuthHeaders';
+import Cover, { CoverTrigger } from '../components/Cover';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'IssueDetail'>;
 
@@ -41,6 +41,8 @@ function formatSize(bytes: number | null | undefined): string | null {
   if (mb < 1024) return `${mb.toFixed(1)} MB`;
   return `${(mb / 1024).toFixed(2)} GB`;
 }
+
+const COVER_WIDTH = 200;
 
 export default function IssueDetailScreen({ navigation, route }: Props) {
   const { volumeId, issueId, volumeTitle } = route.params;
@@ -210,11 +212,16 @@ export default function IssueDetailScreen({ navigation, route }: Props) {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Image
-          source={{ uri: coverUri, headers }}
-          style={styles.cover}
-          resizeMode="cover"
-        />
+        <CoverTrigger accessible={false}>
+          <Cover
+            variant="comic"
+            uri={coverUri}
+            headers={headers}
+            title={volumeTitle || `#${issue.issue_number}`}
+            author={issue.title}
+            width={COVER_WIDTH}
+          />
+        </CoverTrigger>
         <View style={styles.meta}>
           <Text style={styles.issueNumber}>#{issue.issue_number}</Text>
           {issue.title ? <Text style={styles.title}>{issue.title}</Text> : null}
@@ -311,7 +318,6 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f1eb', padding: 24 },
   errorText: { fontSize: 18, color: '#a33', textAlign: 'center', lineHeight: 24 },
   header: { flexDirection: 'row', padding: 16 },
-  cover: { width: 200, height: 290, borderRadius: 6, backgroundColor: '#e8e4de' },
   meta: { flex: 1, marginLeft: 16, justifyContent: 'center' },
   issueNumber: { fontSize: 20, color: '#8b5e3c', fontWeight: '700', marginBottom: 6 },
   title: { fontSize: 26, fontWeight: '600', color: '#222', marginBottom: 10 },
