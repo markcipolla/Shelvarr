@@ -204,6 +204,8 @@ existing library rather than rewriting it.
 | `COMIC_PATH_MAP` | - | `from:to` prefix remap, when a library's recorded paths differ from where this process sees them |
 | `LOG_LEVEL` | info | Lowest level written to the log, and so to the buffer the diagnostics API reads |
 | `LOG_BUFFER_SIZE` | 2000 | Recent log lines held in memory for the diagnostics API |
+| `LOG_FILE` | `$DATA_DIR/logs/shelvarr.log` | Where log lines are also written, so they survive a restart. Rotates at 5 MB, keeping two old files. `off` keeps logs in memory only |
+| `SHELVARR_ADMIN_API_TOKEN` | - | Opens the diagnostics API with this token (32+ characters), whatever Settings says, and works even when the database cannot be read |
 
 API keys are not environment variables: Hardcover and ComicVine keys are entered
 under **Settings → Metadata Sources**, and comic downloads go into the root
@@ -372,10 +374,25 @@ curl -H "Authorization: Bearer <token>" "http://localhost:3000/api/admin/tasks?s
 A signed-in admin's session works in place of the token, so the Advanced tab
 can show a log tail without holding one. The shared `api_key` does not — this
 is a narrower door than the rest of the API, and it takes its own key.
+Requests from a browser on another site are turned away, token or not.
 
-Logs live in a ring buffer in the server process, so a restart empties them and
-only the last `LOG_BUFFER_SIZE` lines are kept. Set `LOG_LEVEL=debug` for more
-detail.
+For a token that outlives Regenerate and still works when the database will not
+open, set one in the environment instead:
+
+```bash
+SHELVARR_ADMIN_API_TOKEN=$(openssl rand -hex 32)
+```
+
+That opens the API on its own; the checkbox is shown ticked and locked while it
+is set.
+
+The last `LOG_BUFFER_SIZE` lines are held in memory for fast searching, and
+every line is also written to `LOG_FILE`, synchronously, so the lines just
+before a crash reach the disk. On startup the server reads that file's tail back
+in, which means a restart no longer wipes what led up to it. Output that never
+went through Shelvarr's logger is recorded too, under the `console` context:
+Next.js's own errors, uncaught exceptions and unhandled rejections. Set
+`LOG_LEVEL=debug` for more detail.
 
 ## Android app
 

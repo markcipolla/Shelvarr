@@ -87,6 +87,7 @@ export function BookCover({
             {image && renderImage(image, undefined, true)}
           </div>
         )}
+        {variant === 'comic' && <div className="book-cover__pages" aria-hidden="true" />}
         <div className="book-cover__front">
           {image ? (
             renderImage(image, 'book-cover__img', false)

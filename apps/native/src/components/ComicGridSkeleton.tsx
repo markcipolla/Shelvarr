@@ -1,8 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Animated, FlatList, StyleSheet } from 'react-native';
 import { useColumns } from '../hooks/useColumns';
+import { COVER_ASPECT } from './Cover';
 
-const COVER_ASPECT_RATIO = 140 / 200;
 const SKELETON_COUNT = 12;
 const SKELETON_ITEMS = Array.from({ length: SKELETON_COUNT }, (_, i) => ({
   id: `skeleton-${i}`,
@@ -62,8 +62,12 @@ const styles = StyleSheet.create({
   row: { gap: 12 },
   card: { flex: 1, marginBottom: 12 },
   cover: {
-    aspectRatio: COVER_ASPECT_RATIO,
-    borderRadius: 6,
+    // A comic's shape, so the covers land where the placeholders were.
+    aspectRatio: COVER_ASPECT.comic,
+    borderTopLeftRadius: 1,
+    borderBottomLeftRadius: 1,
+    borderTopRightRadius: 3,
+    borderBottomRightRadius: 3,
     backgroundColor: '#e0dbd3',
   },
   lineWide: {

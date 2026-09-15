@@ -1,21 +1,38 @@
 export async function register() {
   // Only register Node.js process handlers when not in Edge Runtime
   if (typeof process !== 'undefined' && process.env.NEXT_RUNTIME !== 'edge') {
+    // Before anything else, so whatever the startup below prints — a database
+    // that will not open included — reaches the diagnostics log.
+    const { captureConsole, createLogger } = await import('@shelvarr/services/utils/logger');
+    captureConsole();
+
     // Initialize database and services on startup
     // Dynamic import to ensure this only runs server-side
     await import('./lib/config/index');
 
-    // Add global error handlers to catch silent crashes
-    process.on('uncaughtException', (error) => {
-      console.error('UNCAUGHT EXCEPTION:', error);
+    const log = createLogger('process');
+    log.info('Server started', {
+      pid: process.pid,
+      build: process.env['NEXT_PUBLIC_BUILD_VERSION'] || 'dev',
+      node: process.version,
     });
 
-    process.on('unhandledRejection', (reason, promise) => {
-      console.error('UNHANDLED REJECTION at:', promise, 'reason:', reason);
+    // Add global error handlers to catch silent crashes. The log file is
+    // written synchronously, so these lines are on disk even if the process
+    // dies straight after.
+    const describe = (reason: unknown) =>
+      reason instanceof Error ? reason.stack || reason.message : String(reason);
+
+    process.on('uncaughtException', (error) => {
+      log.error(`Uncaught exception: ${describe(error)}`);
+    });
+
+    process.on('unhandledRejection', (reason) => {
+      log.error(`Unhandled rejection: ${describe(reason)}`);
     });
 
     process.on('exit', (code) => {
-      console.log('Process exiting with code:', code);
+      log.info('Process exiting', { code });
     });
 
     // Mirror the user's Hardcover reading statuses (want to read / reading / read)

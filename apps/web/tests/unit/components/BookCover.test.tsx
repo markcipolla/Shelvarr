@@ -43,13 +43,15 @@ describe('BookCover Component', () => {
     assert.strictEqual(container.querySelectorAll('img').length, 0);
   });
 
-  it('gives books a spine and comics none', () => {
+  it('gives books a spine and comics pages instead', () => {
     const { container, rerender } = render(<BookCover src="/cover.jpg" title="Dune" />);
     assert.ok(container.querySelector('.book-cover__spine'));
+    assert.strictEqual(container.querySelector('.book-cover__pages'), null);
 
     rerender(<BookCover variant="comic" src="/cover.jpg" title="Action Comics" />);
     assert.strictEqual(container.querySelector('.book-cover__spine'), null);
     assert.ok(container.querySelector('.book-cover--comic'));
+    assert.ok(container.querySelector('.book-cover__body > .book-cover__pages'));
   });
 
   it('keeps badges on the cover and overlay controls off it', () => {

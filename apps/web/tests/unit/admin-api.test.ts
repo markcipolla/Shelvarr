@@ -5,7 +5,7 @@
  * out of one and the status snapshot counts real rows.
  */
 
-import { describe, it, before, after, beforeEach } from 'node:test';
+import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import { mkdirSync, rmSync } from 'node:fs';
 
@@ -22,6 +22,38 @@ function headers(values: Record<string, string> = {}): Headers {
 function bearer(token: string): Headers {
   return headers({ Authorization: `Bearer ${token}` });
 }
+
+/** A status section's data, failing the test if it came back as an error instead. */
+function loaded<T>(section: T | { error: string }): T {
+  assert.ok(
+    !(typeof section === 'object' && section !== null && 'error' in section),
+    `expected data, got ${JSON.stringify(section)}`
+  );
+  return section as T;
+}
+
+/** Run `fn` with a table renamed out of the way, as if it had never been created. */
+function withoutTable<T>(table: string, fn: () => T): T {
+  db.getDb().exec(`ALTER TABLE ${table} RENAME TO ${table}_away`);
+  try {
+    return fn();
+  } finally {
+    db.getDb().exec(`ALTER TABLE ${table}_away RENAME TO ${table}`);
+  }
+}
+
+/** Run `fn` with a console method silenced, for code paths that are meant to complain. */
+function quietly<T>(method: 'warn' | 'error', fn: () => T): T {
+  const original = console[method];
+  console[method] = () => {};
+  try {
+    return fn();
+  } finally {
+    console[method] = original;
+  }
+}
+
+const ENVIRONMENT_TOKEN = 'e'.repeat(64);
 
 const dataDir = `/tmp/shelvarr-admin-test-${Date.now()}`;
 
@@ -144,6 +176,56 @@ describe('admin diagnostics API', () => {
       assert.strictEqual(result.ok === false && result.status, 403);
     });
 
+    it('turns away a browser on another site, even one holding the token', () => {
+      const { token } = admin.setAdminApiEnabled(true);
+      const result = admin.authoriseAdminRequest(
+        headers({
+          Authorization: `Bearer ${token}`,
+          Origin: 'https://evil.example',
+          Host: 'localhost:3000',
+        })
+      );
+
+      assert.strictEqual(result.ok, false);
+      assert.strictEqual(result.ok === false && result.status, 403);
+    });
+
+    it('lets a page on this server through', () => {
+      const { token } = admin.setAdminApiEnabled(true);
+      const result = admin.authoriseAdminRequest(
+        headers({
+          Authorization: `Bearer ${token}`,
+          Origin: 'http://localhost:3000',
+          Host: 'localhost:3000',
+        })
+      );
+
+      assert.strictEqual(result.ok, true);
+    });
+
+    it('takes the public host from X-Forwarded-Host behind a proxy', () => {
+      const { token } = admin.setAdminApiEnabled(true);
+      const result = admin.authoriseAdminRequest(
+        headers({
+          Authorization: `Bearer ${token}`,
+          Origin: 'https://shelvarr.example',
+          Host: 'shelvarr:3000',
+          'X-Forwarded-Host': 'shelvarr.example',
+        })
+      );
+
+      assert.strictEqual(result.ok, true);
+    });
+
+    it('turns away an opaque "null" origin', () => {
+      const { token } = admin.setAdminApiEnabled(true);
+      const result = admin.authoriseAdminRequest(
+        headers({ Authorization: `Bearer ${token}`, Origin: 'null', Host: 'localhost:3000' })
+      );
+
+      assert.strictEqual(result.ok === false && result.status, 403);
+    });
+
     it('does not accept the legacy shared API key', () => {
       admin.setAdminApiEnabled(true);
       db.setSetting('api_key', 'shared-key');
@@ -153,6 +235,61 @@ describe('admin diagnostics API', () => {
       assert.strictEqual(result.ok, false);
       assert.strictEqual(result.ok === false && result.status, 401);
     });
+  });
+
+  describe('the environment token', () => {
+    afterEach(() => {
+      delete process.env['SHELVARR_ADMIN_API_TOKEN'];
+    });
+
+    it('opens the API with the checkbox unticked', () => {
+      process.env['SHELVARR_ADMIN_API_TOKEN'] = ENVIRONMENT_TOKEN;
+
+      const result = admin.authoriseAdminRequest(bearer(ENVIRONMENT_TOKEN));
+
+      assert.strictEqual(admin.isAdminApiEnabled(), false);
+      assert.strictEqual(admin.isAdminApiOpen(), true);
+      assert.strictEqual(result.ok === true && result.via, 'environment-token');
+    });
+
+    it('still asks everyone else for credentials', () => {
+      process.env['SHELVARR_ADMIN_API_TOKEN'] = ENVIRONMENT_TOKEN;
+
+      const result = admin.authoriseAdminRequest(bearer('e'.repeat(63)));
+
+      assert.strictEqual(result.ok === false && result.status, 401);
+    });
+
+    it('is ignored when too short to trust', () => {
+      process.env['SHELVARR_ADMIN_API_TOKEN'] = 'short';
+
+      const result = quietly('warn', () => admin.authoriseAdminRequest(bearer('short')));
+
+      assert.strictEqual(admin.getEnvironmentAdminToken(), null);
+      assert.strictEqual(result.ok === false && result.status, 404);
+    });
+
+    it('gets in when the database cannot be read', () => {
+      process.env['SHELVARR_ADMIN_API_TOKEN'] = ENVIRONMENT_TOKEN;
+
+      const result = withoutTable('settings', () =>
+        admin.authoriseAdminRequest(bearer(ENVIRONMENT_TOKEN))
+      );
+
+      assert.strictEqual(result.ok, true);
+    });
+  });
+
+  it('answers 503, not a crash, when the database cannot be read', () => {
+    const result = withoutTable('settings', () =>
+      quietly('error', () => admin.authoriseAdminRequest(bearer('anything')))
+    );
+
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.ok === false && result.status, 503);
+    // The reason is for the log, not for a caller who has not proved who they are.
+    assert.ok(result.ok === false && !result.error.includes('no such table'));
+    assert.ok(result.ok === false && result.error.includes('SHELVARR_ADMIN_API_TOKEN'));
   });
 
   describe('status', () => {
@@ -170,15 +307,25 @@ describe('admin diagnostics API', () => {
 
       const status = admin.getSystemStatus();
 
-      assert.strictEqual(status.library.libraries, 1);
-      assert.strictEqual(status.library.books, 2);
-      assert.strictEqual(status.library.booksWithMetadata, 1);
-      assert.strictEqual(status.library.booksMissingMetadata, 1);
-      assert.strictEqual(status.tasks.stats.failed, 1);
-      assert.strictEqual(status.tasks.recentFailures.length, 1);
+      const library = loaded(status.library);
+      assert.strictEqual(library.libraries, 1);
+      assert.strictEqual(library.books, 2);
+      assert.strictEqual(library.booksWithMetadata, 1);
+      assert.strictEqual(library.booksMissingMetadata, 1);
+      assert.strictEqual(loaded(status.tasks).stats.failed, 1);
+      assert.strictEqual(loaded(status.tasks).recentFailures.length, 1);
       assert.ok(status.app.uptimeSeconds >= 0);
-      assert.ok(status.database.path.endsWith('test.db'));
-      assert.strictEqual(status.integrations.auth.enabled, true);
+      assert.ok(loaded(status.database).path.endsWith('test.db'));
+      assert.strictEqual(loaded(status.integrations).auth.enabled, true);
+    });
+
+    it('reports a section it cannot read in place of its data, and the rest as normal', () => {
+      const status = withoutTable('comic_downloads', () => admin.getSystemStatus());
+
+      assert.ok(admin.isSectionError(status.downloads));
+      assert.match((status.downloads as { error: string }).error, /comic_downloads/);
+      assert.strictEqual(loaded(status.library).books, 0);
+      assert.ok(loaded(status.tasks).stats);
     });
 
     it('leaves soft-deleted rows out of the counts', () => {
@@ -189,7 +336,7 @@ describe('admin diagnostics API', () => {
       );
 
 
-      assert.strictEqual(admin.getSystemStatus().library.books, 0);
+      assert.strictEqual(loaded(admin.getSystemStatus().library).books, 0);
     });
   });
 
@@ -302,6 +449,28 @@ describe('admin diagnostics API', () => {
       assert.strictEqual(response?.error, undefined);
       assert.strictEqual(result.isError, true);
       assert.ok(result.content[0].text.includes('level must be one of'));
+    });
+
+    it('reports a tool that throws as a tool error the model can read', () => {
+      const response = withoutTable('comic_downloads', () =>
+        admin.handleMcpMessage({
+          jsonrpc: '2.0',
+          id: 10,
+          method: 'tools/call',
+          params: { name: 'list_comic_downloads', arguments: {} },
+        })
+      );
+
+      const result = response?.result as { isError?: boolean; content: Array<{ text: string }> };
+      assert.strictEqual(response?.error, undefined);
+      assert.strictEqual(result.isError, true);
+      assert.match(result.content[0].text, /^list_comic_downloads failed: .*comic_downloads/);
+    });
+
+    it('knows which protocol revisions it speaks', () => {
+      assert.strictEqual(admin.isSupportedMcpProtocolVersion(admin.MCP_PROTOCOL_VERSION), true);
+      assert.strictEqual(admin.isSupportedMcpProtocolVersion('2025-03-26'), true);
+      assert.strictEqual(admin.isSupportedMcpProtocolVersion('1999-01-01'), false);
     });
 
     it('rejects an unknown tool', () => {
