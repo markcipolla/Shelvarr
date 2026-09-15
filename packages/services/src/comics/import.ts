@@ -8,7 +8,7 @@
 
 import { constants, existsSync, renameSync, statSync } from 'fs';
 import { access, copyFile, mkdir, unlink } from 'fs/promises';
-import { dirname, extname, join } from 'path';
+import { dirname, extname, join, relative, sep } from 'path';
 
 import type { ComicDownload } from '@shelvarr/types';
 
@@ -75,6 +75,51 @@ function nearestExistingAncestor(directory: string): string {
 }
 
 /**
+ * The top-level folder `directory` hangs off, when that folder is missing.
+ *
+ * Nobody keeps a comic library directly in `/`, so a destination with nothing
+ * on disk until the filesystem root is a mount that isn't there — or a
+ * recorded folder from another machine that COMIC_PATH_MAP should translate.
+ * Creating it would at best fail with EACCES on `/`, which reads as a
+ * permissions problem, and at worst succeed as root and fill the container's
+ * own filesystem.
+ */
+function missingTopLevelFolder(directory: string): string | null {
+  const ancestor = nearestExistingAncestor(directory);
+  if (ancestor === directory || dirname(ancestor) !== ancestor) return null;
+  const [first] = relative(ancestor, directory).split(sep);
+  return first ? join(ancestor, first) : null;
+}
+
+/** Explain a destination on a missing mount, naming the setting that fixes it. */
+function describeMissingMount(
+  volume: { folder: string | null },
+  directory: string,
+  missing: string
+): Error {
+  const problem = `Cannot file downloads into ${directory}: ${missing} does not exist on this server`;
+
+  if (!volume.folder) {
+    return new Error(
+      `${problem}, so COMIC_LIBRARY_ROOT (${getServiceConfig().getcomics.libraryRoot}) ` +
+        'is not mounted. Mount your comic library there, or point COMIC_LIBRARY_ROOT ' +
+        'at where it is mounted.'
+    );
+  }
+
+  const { pathMap } = getServiceConfig().comicPaths;
+  const remapped = directory === volume.folder ? '' : ` (remapped from ${volume.folder})`;
+  const current = pathMap
+    ? ` COMIC_PATH_MAP is currently ${pathMap}.`
+    : ' COMIC_PATH_MAP is not set.';
+  return new Error(
+    `${problem}${remapped}, so the volume's folder is not on a mounted library. ` +
+      `Mount the library at ${missing}, or set COMIC_PATH_MAP=${missing}:<where it is mounted> ` +
+      `to translate the recorded folder.${current}`
+  );
+}
+
+/**
  * Check the library folder can be written to, creating it if need be.
  *
  * Called before a download starts as well as during the import: without the
@@ -85,6 +130,9 @@ export async function ensureImportable(
   volume: NamingVolume & { folder: string | null }
 ): Promise<string> {
   const directory = resolveImportDirectory(volume);
+
+  const missing = missingTopLevelFolder(directory);
+  if (missing) throw describeMissingMount(volume, directory, missing);
 
   try {
     await mkdir(directory, { recursive: true });

@@ -306,7 +306,7 @@ describe('Comic download import', () => {
   };
 
   /** Rebuild the whole app config; `libraryRoot: null` exercises the no-destination path. */
-  async function configure(comicLibraryRoot: string | null) {
+  async function configure(comicLibraryRoot: string | null, pathMap: string | null = null) {
     const { initServiceConfig } = await import('@shelvarr/services');
     initServiceConfig({
       env: 'test',
@@ -314,7 +314,7 @@ describe('Comic download import', () => {
       dataDir: root,
       libraryRoot: root,
       dbPath: join(root, 'db.sqlite'),
-      comicPaths: { pathMap: null },
+      comicPaths: { pathMap },
       getcomics: {
         baseUrl: 'https://getcomics.org',
         downloadDir: join(root, 'downloads'),
@@ -428,6 +428,62 @@ describe('Comic download import', () => {
     } finally {
       await configure(join(root, 'library'));
     }
+  });
+
+  describe('when the destination is on a mount that is not there', () => {
+    // A top-level folder that cannot exist, so the nearest thing on disk is `/`.
+    const absent = `/shelvarr-test-absent-${Date.now()}`;
+
+    it('names the missing folder and COMIC_PATH_MAP, not permissions on /', async () => {
+      const folder = join(absent, 'Comics', 'Blood & Thunder');
+      await assert.rejects(
+        () => importer.ensureImportable({ ...volume, folder }),
+        (error: Error) => {
+          assert.ok(error.message.includes(folder), 'expected the full destination');
+          assert.ok(error.message.includes(`${absent} does not exist`));
+          assert.ok(error.message.includes(`COMIC_PATH_MAP=${absent}:`));
+          assert.match(error.message, /COMIC_PATH_MAP is not set/);
+          assert.doesNotMatch(error.message, /PUID|Cannot create a folder in \/ /);
+          return true;
+        }
+      );
+      assert.ok(!existsSync(absent), 'nothing was created at the filesystem root');
+    });
+
+    it('shows the recorded folder and the map when a remap lands on a missing mount', async () => {
+      const pathMap = `/data:${absent}`;
+      await configure(join(root, 'library'), pathMap);
+      try {
+        await assert.rejects(
+          () => importer.ensureImportable({ ...volume, folder: '/data/Comics/Birthright' }),
+          (error: Error) => {
+            assert.ok(error.message.includes(join(absent, 'Comics', 'Birthright')));
+            assert.ok(error.message.includes('remapped from /data/Comics/Birthright'));
+            assert.ok(error.message.includes(`COMIC_PATH_MAP is currently ${pathMap}`));
+            return true;
+          }
+        );
+      } finally {
+        await configure(join(root, 'library'));
+      }
+    });
+
+    it('points at COMIC_LIBRARY_ROOT when a new volume would land on a missing mount', async () => {
+      const libraryRoot = join(absent, 'comics');
+      await configure(libraryRoot);
+      try {
+        await assert.rejects(
+          () => importer.ensureImportable({ ...volume, folder: null }),
+          (error: Error) => {
+            assert.ok(error.message.includes(`COMIC_LIBRARY_ROOT (${libraryRoot})`));
+            assert.doesNotMatch(error.message, /COMIC_PATH_MAP/);
+            return true;
+          }
+        );
+      } finally {
+        await configure(join(root, 'library'));
+      }
+    });
   });
 
   describe('when the library folder cannot be written to', () => {
