@@ -6,6 +6,7 @@ import { useSidebar } from './SidebarContext';
 import type { SidebarCounts } from '@/lib/actions/stats';
 import { APP_VERSION, BUILD_VERSION } from '@/lib/constants';
 import { BookIcon, AuthorIcon, SeriesIcon } from '@/components/ui/Icons';
+import { Logo } from '@/components/ui/Logo';
 
 interface NavItem {
   href: string;
@@ -67,9 +68,12 @@ export function Sidebar({ counts }: SidebarProps) {
         {/* Header with toggle button */}
         <div className={`p-4 border-b border-shelvarr-border flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
           {!isCollapsed && (
-            <div>
-              <h1 className="text-xl font-bold text-shelvarr-primary">Shelvarr</h1>
-              <p className="text-xs text-shelvarr-text-muted mt-1">Book & Comic Manager</p>
+            <div className="flex items-center gap-3">
+              <Logo className="w-9 h-9 flex-shrink-0" />
+              <div>
+                <h1 className="text-xl font-bold text-shelvarr-primary">Shelvarr</h1>
+                <p className="text-xs text-shelvarr-text-muted mt-1">Book & Comic Manager</p>
+              </div>
             </div>
           )}
           <button
