@@ -247,6 +247,27 @@
   z-index: 2;
 }
 
+/*
+ * A card's title sits under its cover, but the cover is positioned, so it
+ * paints after the title and its glow and shadow wash over the words. Each card
+ * is its own stacking context with the cover at the bottom of it, so the title
+ * reads on top while the glow still shows. The card being hovered, or tabbed
+ * into, rises above its neighbours so the cover lifts over them and over the
+ * heading above.
+ */
+.book-cover-trigger {
+  position: relative;
+  isolation: isolate;
+}
+
+.book-cover-trigger .book-cover {
+  z-index: -1;
+}
+
+.book-cover-trigger:is(:hover, :focus-within) {
+  z-index: 1;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .book-cover:hover .book-cover__body,
   .book-cover-trigger:hover .book-cover__body,
