@@ -1,4 +1,5 @@
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import { render, fireEvent } from '@testing-library/react-native';
 import ComicCard from '../../src/components/ComicCard';
 import type { ComicVolumeSummary } from '@shelvarr/types';
@@ -106,5 +107,37 @@ describe('ComicCard', () => {
   it('omits the remove button when onRemove is not provided', () => {
     const { queryByLabelText } = render(<ComicCard volume={makeVolume()} onPress={jest.fn()} />);
     expect(queryByLabelText('Remove from Next Up')).toBeNull();
+  });
+
+  describe('cover', () => {
+    const hidden = { includeHiddenElements: true };
+
+    it('draws the cover as a comic, over a block of pages', () => {
+      const { getByTestId, queryByTestId } = render(<ComicCard volume={makeVolume()} onPress={jest.fn()} fill />);
+      expect(getByTestId('cover-image').props.source.uri).toBe('http://cover/42');
+      expect(getByTestId('cover-pages', hidden)).toBeTruthy();
+      expect(queryByTestId('cover-spine', hidden)).toBeNull();
+    });
+
+    it("is a US comic's shape outside a grid", () => {
+      const { getByTestId } = render(<ComicCard volume={makeVolume()} onPress={jest.fn()} />);
+      const { width, height } = StyleSheet.flatten(getByTestId('cover').props.style);
+      expect(width).toBe(120);
+      expect(height).toBeCloseTo((120 * 82) / 53);
+    });
+
+    it('rides its badges on the cover', () => {
+      const { getByTestId, getByText } = render(
+        <ComicCard volume={makeVolume()} onPress={jest.fn()} progressLabel="#3 · p.12" />
+      );
+      expect(getByTestId('cover')).toContainElement(getByText('4/10'));
+      expect(getByTestId('cover')).toContainElement(getByText('#3 · p.12'));
+    });
+
+    it('falls back to a masthead with the publisher when the cover fails', () => {
+      const { getByTestId } = render(<ComicCard volume={makeVolume()} onPress={jest.fn()} />);
+      fireEvent(getByTestId('cover-image'), 'error');
+      expect(getByTestId('cover-plain', hidden)).toHaveTextContent('The VolumePublisher · 2020');
+    });
   });
 });

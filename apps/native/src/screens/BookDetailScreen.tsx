@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
-  Image,
   ScrollView,
   StyleSheet,
   ActivityIndicator,
@@ -16,6 +15,7 @@ import { fetchBook, getBookThumbnailUrl, deleteReadProgress, updateReadProgress 
 import { fetchSeries } from '../services/api/series';
 import { getMediaFormat, getFormatFromName } from '../utils/fileTypes';
 import { useAuthHeaders } from '../hooks/useAuthHeaders';
+import Cover, { CoverTrigger } from '../components/Cover';
 import { useDownloadStore } from '../stores/useDownloadStore';
 import { prepareBookForReading, downloadBook, removeDownloadedBook } from '../services/downloadManager';
 import { updateReadingStatus, ReadingStatus } from '../services/api/shelvarr';
@@ -48,6 +48,8 @@ function DownloadingLabel({ progress, textStyle, color }: {
     </View>
   );
 }
+
+const COVER_WIDTH = 200;
 
 export default function BookDetailScreen({ route, navigation }: Props) {
   const { bookId } = route.params;
@@ -218,11 +220,15 @@ export default function BookDetailScreen({ route, navigation }: Props) {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Image
-          source={{ uri: getBookThumbnailUrl(book.id), headers }}
-          style={styles.cover}
-          resizeMode="cover"
-        />
+        <CoverTrigger accessible={false}>
+          <Cover
+            uri={getBookThumbnailUrl(book.id)}
+            headers={headers}
+            title={book.metadata.title || book.name}
+            author={book.metadata.authors.map((a) => a.name).join(', ')}
+            width={COVER_WIDTH}
+          />
+        </CoverTrigger>
         <View style={styles.meta}>
           <Text style={styles.title}>{book.metadata.title || book.name}</Text>
           {book.metadata.authors.length > 0 && (
@@ -334,7 +340,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f1eb' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f1eb' },
   header: { flexDirection: 'row', padding: 16 },
-  cover: { width: 200, height: 290, borderRadius: 6, backgroundColor: '#e8e4de' },
   meta: { flex: 1, marginLeft: 16, justifyContent: 'center' },
   title: { fontSize: 27, fontWeight: '600', color: '#222', marginBottom: 10 },
   author: { fontSize: 21, color: '#555', marginBottom: 10 },

@@ -1,11 +1,12 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ViewStyle } from 'react-native';
-import { Image } from 'expo-image';
 import type { ComicVolumeSummary } from '@shelvarr/types';
 import { getVolumeCoverUrl } from '../services/api/comics';
 import { useAuthHeaders } from '../hooks/useAuthHeaders';
+import Cover, { CoverTrigger } from './Cover';
 
-const COVER_ASPECT_RATIO = 140 / 200;
+/** A card outside a grid, in a horizontal row, is this wide. */
+const FIXED_WIDTH = 120;
 
 interface Props {
   volume: ComicVolumeSummary;
@@ -29,22 +30,35 @@ export default function ComicCard({ volume, onPress, fill, placeholder, progress
 
   const containerStyle: ViewStyle = fill
     ? { flex: 1, marginBottom: 12 }
-    : { width: 120, marginRight: 12 };
+    : { width: FIXED_WIDTH, marginRight: 12 };
 
   const subtitleParts = [volume.publisher, volume.year ? String(volume.year) : null].filter(Boolean);
   const subtitle = subtitleParts.join(' · ');
   const showBadge = volume.issue_count > 0;
 
   return (
-    <TouchableOpacity style={containerStyle} onPress={onPress} activeOpacity={0.7}>
-      <View style={fill ? styles.coverWrapper : undefined}>
-        <Image
-          source={{ uri: getVolumeCoverUrl(volume.id), headers }}
-          style={fill ? styles.coverFill : styles.cover}
-          contentFit="cover"
-          transition={200}
-          cachePolicy="memory-disk"
-        />
+    <CoverTrigger style={containerStyle} onPress={onPress}>
+      <Cover
+        variant="comic"
+        uri={getVolumeCoverUrl(volume.id)}
+        headers={headers}
+        title={volume.title}
+        author={subtitle}
+        width={fill ? undefined : FIXED_WIDTH}
+        overlay={
+          onRemove ? (
+            <TouchableOpacity
+              style={styles.removeButton}
+              onPress={onRemove}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Remove from Next Up"
+            >
+              <Text style={styles.removeButtonText}>×</Text>
+            </TouchableOpacity>
+          ) : null
+        }
+      >
         {showBadge && (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>
@@ -57,18 +71,8 @@ export default function ComicCard({ volume, onPress, fill, placeholder, progress
             <Text style={styles.progressBadgeText}>{progressLabel}</Text>
           </View>
         ) : null}
-        {onRemove ? (
-          <TouchableOpacity
-            style={styles.removeButton}
-            onPress={onRemove}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityRole="button"
-            accessibilityLabel="Remove from Next Up"
-          >
-            <Text style={styles.removeButtonText}>×</Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
+      </Cover>
+      {/* After the cover, so its title sits above the cover's glow and shadow. */}
       <View style={styles.info}>
         <Text style={styles.title} numberOfLines={2}>
           {volume.title}
@@ -79,14 +83,11 @@ export default function ComicCard({ volume, onPress, fill, placeholder, progress
           </Text>
         ) : null}
       </View>
-    </TouchableOpacity>
+    </CoverTrigger>
   );
 }
 
 const styles = StyleSheet.create({
-  cover: { width: 140, height: 200, borderRadius: 6, backgroundColor: '#e8e4de' },
-  coverWrapper: { aspectRatio: COVER_ASPECT_RATIO, borderRadius: 6, overflow: 'hidden', backgroundColor: '#e8e4de' },
-  coverFill: { width: '100%', height: '100%' },
   badge: {
     position: 'absolute',
     top: 6,

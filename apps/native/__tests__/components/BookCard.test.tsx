@@ -1,4 +1,5 @@
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import { render, fireEvent } from '@testing-library/react-native';
 import BookCard from '../../src/components/BookCard';
 import { useAuthHeaders } from '../../src/hooks/useAuthHeaders';
@@ -198,5 +199,47 @@ describe('BookCard', () => {
     });
     const { toJSON } = render(<BookCard book={book} onPress={jest.fn()} />);
     expect(toJSON()).toBeTruthy();
+  });
+
+  describe('cover', () => {
+    const hidden = { includeHiddenElements: true };
+
+    it('draws the thumbnail as a book, with its auth headers', () => {
+      const { getByTestId } = render(<BookCard book={makeBook()} onPress={jest.fn()} fill />);
+      expect(getByTestId('cover-image').props.source).toEqual({
+        uri: 'http://thumb/book1',
+        headers: { Authorization: 'Basic abc' },
+      });
+      expect(getByTestId('cover-spine', hidden)).toBeTruthy();
+    });
+
+    it('rides its badges on the cover', () => {
+      const book = makeBook({
+        readProgress: { page: 100, completed: true, readDate: '', created: '', lastModified: '' },
+      });
+      const { getByTestId, getByLabelText } = render(<BookCard book={book} onPress={jest.fn()} />);
+      expect(getByTestId('cover')).toContainElement(getByLabelText('Read'));
+    });
+
+    it('falls back to a typographic cover with the title and authors when the thumbnail fails', () => {
+      const book = makeBook({
+        metadata: {
+          title: 'Book Title',
+          summary: '',
+          number: '1',
+          authors: [{ name: 'Ann Author', role: 'writer' }, { name: 'Bo Writer', role: 'writer' }],
+        },
+      });
+      const { getByTestId, getByText } = render(<BookCard book={book} onPress={jest.fn()} />);
+      fireEvent(getByTestId('cover-image'), 'error');
+      expect(getByTestId('cover-plain', hidden)).toHaveTextContent('Book TitleAnn Author, Bo Writer');
+      // The card's own title is still the one screen readers hear.
+      expect(getByText('Book Title')).toBeTruthy();
+    });
+
+    it('sizes a cover outside a grid to the card, two by three', () => {
+      const { getByTestId } = render(<BookCard book={makeBook()} onPress={jest.fn()} />);
+      expect(StyleSheet.flatten(getByTestId('cover').props.style)).toMatchObject({ width: 120, height: 180 });
+    });
   });
 });
