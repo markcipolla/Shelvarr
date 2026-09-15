@@ -188,6 +188,17 @@ export default function BookDetailScreen({ route, navigation }: Props) {
     }
   };
 
+  const handleMarkIncomplete = async () => {
+    /* istanbul ignore next -- button only shown when progress is completed */
+    if (!book?.readProgress) return;
+    try {
+      await updateReadProgress(book.id, book.readProgress.page, false);
+      setBook({ ...book, readProgress: { ...book.readProgress, completed: false } });
+    } catch {
+      Alert.alert('Error', 'Failed to mark as incomplete');
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -280,7 +291,11 @@ export default function BookDetailScreen({ route, navigation }: Props) {
         </TouchableOpacity>
       )}
 
-      {!book.readProgress?.completed && (
+      {book.readProgress?.completed ? (
+        <TouchableOpacity style={styles.secondaryButton} onPress={handleMarkIncomplete}>
+          <Text style={styles.secondaryButtonText}>Mark as Incomplete</Text>
+        </TouchableOpacity>
+      ) : (
         <TouchableOpacity style={styles.secondaryButton} onPress={handleMarkCompleted}>
           <Text style={styles.secondaryButtonText}>Mark as Completed</Text>
         </TouchableOpacity>

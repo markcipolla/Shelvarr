@@ -164,14 +164,15 @@ describe('IssueDetailScreen', () => {
 
     await waitFor(() => {
       expect(mockUpdateComicProgress).toHaveBeenCalledWith(1, 5, true, 22);
-      // Once completed the button disappears and the "Read" badge shows
-      // (alongside the "Read" CTA button, so there are two matches).
+      // Once completed the button flips to Mark as Incomplete and the "Read"
+      // badge shows (alongside the "Read" CTA button, so there are two matches).
       expect(queryByText('Mark as Completed')).toBeNull();
+      expect(getByText('Mark as Incomplete')).toBeTruthy();
       expect(getAllByText('Read').length).toBe(2);
     });
   });
 
-  it('hides Mark as Completed when the issue is already completed', async () => {
+  it('shows Mark as Incomplete instead of Mark as Completed when already completed', async () => {
     mockFetchComicIssue.mockResolvedValue({ configured: true, issue: makeIssue() });
     mockFetchComicProgress.mockResolvedValue({ page: 20, completed: true, total: 20 });
 
@@ -179,8 +180,43 @@ describe('IssueDetailScreen', () => {
       <IssueDetailScreen navigation={mockNavigation} route={mockRoute} />
     );
 
-    await waitFor(() => expect(getByText('Available')).toBeTruthy());
+    await waitFor(() => expect(getByText('Mark as Incomplete')).toBeTruthy());
     expect(queryByText('Mark as Completed')).toBeNull();
+  });
+
+  it('marks a completed issue as incomplete, keeping its page', async () => {
+    mockFetchComicIssue.mockResolvedValue({ configured: true, issue: makeIssue() });
+    mockFetchComicProgress.mockResolvedValue({ page: 18, completed: true, total: 20 });
+    mockUpdateComicProgress.mockResolvedValue(undefined);
+
+    const { getByText, queryByText } = render(
+      <IssueDetailScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    await waitFor(() => expect(getByText('Mark as Incomplete')).toBeTruthy());
+    fireEvent.press(getByText('Mark as Incomplete'));
+
+    await waitFor(() => {
+      expect(mockUpdateComicProgress).toHaveBeenCalledWith(1, 18, false, 20);
+      expect(queryByText('Mark as Incomplete')).toBeNull();
+      expect(getByText('Mark as Completed')).toBeTruthy();
+      expect(getByText('Reading 18/20')).toBeTruthy();
+    });
+  });
+
+  it('alerts when marking incomplete fails', async () => {
+    mockFetchComicIssue.mockResolvedValue({ configured: true, issue: makeIssue() });
+    mockFetchComicProgress.mockResolvedValue({ page: 18, completed: true, total: 20 });
+    mockUpdateComicProgress.mockRejectedValue(new Error('nope'));
+
+    const { getByText } = render(<IssueDetailScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => expect(getByText('Mark as Incomplete')).toBeTruthy());
+    fireEvent.press(getByText('Mark as Incomplete'));
+
+    await waitFor(() => {
+      expect(Alert.alert).toHaveBeenCalledWith('Error', 'nope');
+    });
   });
 
   it('alerts when marking completed fails', async () => {
