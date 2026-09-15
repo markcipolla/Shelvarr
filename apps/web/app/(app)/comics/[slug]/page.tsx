@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { getComic, getComicProgress, resolveComicRef } from '@/lib/actions/comics';
 import { MarkIssueReadButton } from '@/components/comics/MarkIssueReadButton';
 import { VolumeActions } from '@/components/comics/VolumeActions';
+import { BookCover } from '@/components/ui/BookCover';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,11 +40,7 @@ export default async function ComicDetailPage({ params }: PageProps) {
 
       <div className="flex flex-col md:flex-row gap-6">
         <div className="md:w-64 flex-shrink-0">
-          <div className="aspect-[2/3] bg-shelvarr-surface border border-shelvarr-border rounded-lg overflow-hidden">
-            {coverUrl && (
-              <img src={coverUrl} alt={volume.title} className="w-full h-full object-cover" />
-            )}
-          </div>
+          <BookCover variant="comic" src={coverUrl} title={volume.title} author={subtitle} />
         </div>
 
         <div className="flex-1 space-y-4">

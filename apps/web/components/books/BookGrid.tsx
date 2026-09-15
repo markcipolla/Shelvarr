@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { Book } from '@/types';
 import { formatAuthors } from '@/lib/utils/authors';
-import { BookIcon } from '@/components/ui/Icons';
+import { BookCover } from '@/components/ui/BookCover';
 
 interface BookGridProps {
   books: Book[];
@@ -55,22 +55,8 @@ export function BookCard({ book, showSeriesNumber }: BookCardProps) {
   const badge = getStatusBadge(book);
 
   return (
-    <Link
-      href={`/books/${book.id}`}
-      className="group block bg-shelvarr-surface border border-shelvarr-border rounded-lg overflow-hidden hover:border-shelvarr-primary transition-colors"
-    >
-      <div className="aspect-[2/3] bg-shelvarr-bg relative">
-        {book.coverUrl ? (
-          <img
-            src={book.coverUrl}
-            alt={title}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center p-2">
-            <BookIcon className="w-12 h-12 text-shelvarr-text-muted" />
-          </div>
-        )}
+    <Link href={`/books/${book.id}`} className="book-cover-trigger group block">
+      <BookCover src={book.coverUrl} title={title} author={authors}>
         {showSeriesNumber && book.seriesNumber && (
           <div className="absolute top-2 left-2 bg-shelvarr-primary text-white text-xs font-bold px-2 py-1 rounded">
             #{book.seriesNumber}
@@ -92,8 +78,8 @@ export function BookCard({ book, showSeriesNumber }: BookCardProps) {
             />
           </div>
         )}
-      </div>
-      <div className="p-2">
+      </BookCover>
+      <div className="pt-3">
         <h3 className="text-sm font-medium text-white line-clamp-2 group-hover:text-shelvarr-primary transition-colors">
           {title}
         </h3>

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import './covers.css';
 import { ToastProvider } from '@/components/ui/Toast';
 
 // Force all pages to be dynamic — this app uses SQLite and has no static content
