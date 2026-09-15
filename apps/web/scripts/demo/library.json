@@ -1,0 +1,608 @@
+{
+  "books": [
+    {
+      "title": "A Study in Scarlet",
+      "author": "Arthur Conan Doyle",
+      "series": "Sherlock Holmes",
+      "position": 1,
+      "year": 1887,
+      "isbn": "9781986913867",
+      "publisher": "Ward, Lock & Co.",
+      "openLibraryKey": "/works/OL262496W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/13405534-L.jpg",
+      "description": "A Study in Scarlet is an 1887 detective novel by British writer Arthur Conan Doyle. The story marks the first appearance of Sherlock Holmes and Dr. Watson, who would become the most famous detective duo in literature."
+    },
+    {
+      "title": "The Sign of the Four",
+      "author": "Arthur Conan Doyle",
+      "series": "Sherlock Holmes",
+      "position": 2,
+      "year": 1890,
+      "isbn": "9781407193250",
+      "publisher": "Spencer Blackett",
+      "openLibraryKey": "/works/OL262438W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/9247987-L.jpg",
+      "description": "The Sign of the Four (1890), also called The Sign of Four, is the second novel featuring Sherlock Holmes written by Sir Arthur Conan Doyle."
+    },
+    {
+      "title": "The Adventures of Sherlock Holmes",
+      "author": "Arthur Conan Doyle",
+      "series": "Sherlock Holmes",
+      "position": 3,
+      "year": 1892,
+      "isbn": "9788176554725",
+      "publisher": "George Newnes",
+      "openLibraryKey": "/works/OL262421W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/6717853-L.jpg",
+      "description": "The Adventures of Sherlock Holmes is a collection of twelve short stories by Arthur Conan Doyle, first published on 14 October 1892. It contains the earliest short stories featuring the consulting detective Sherlock Holmes, which had been published in twelve monthly issues of The Strand Magazine from July 1891 to June 1892. The stories are collected in the same sequence, which is not supported by any fictional chronology. The only characters common to all twelve are Holmes and Dr. Watson and all are related in first-person narrative from Watson's point of view."
+    },
+    {
+      "title": "The Memoirs of Sherlock Holmes",
+      "author": "Arthur Conan Doyle",
+      "series": "Sherlock Holmes",
+      "position": 4,
+      "year": 1894,
+      "isbn": "9780517381298",
+      "publisher": "George Newnes",
+      "openLibraryKey": "/works/OL1518150W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/13389297-L.jpg",
+      "description": "The Memoirs of Sherlock Holmes is an 1894 collection of eleven Sherlock Holmes stories, first published in The Strand Magazine, ending with Holmes's struggle with Professor Moriarty at the Reichenbach Falls."
+    },
+    {
+      "title": "The Hound of the Baskervilles",
+      "author": "Arthur Conan Doyle",
+      "series": "Sherlock Holmes",
+      "position": 5,
+      "year": 1902,
+      "isbn": "9781849904094",
+      "publisher": "George Newnes",
+      "openLibraryKey": "/works/OL262454W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/8063264-L.jpg",
+      "description": "The Hound of the Baskervilles is the third of the four crime novels by British writer Arthur Conan Doyle featuring the detective Sherlock Holmes. Originally serialised in The Strand Magazine from August 1901 to April 1902, it is set in 1889 largely on Dartmoor in Devon in England's West Country and tells the story of an attempted murder inspired by the legend of a fearsome, diabolical hound of supernatural origin. Holmes and Watson investigate the case. This was the first appearance of Holmes since his apparent death in \"The Final Problem\", and the success of The Hound of the Baskervilles led to the character's eventual revival."
+    },
+    {
+      "title": "The Return of Sherlock Holmes",
+      "author": "Arthur Conan Doyle",
+      "series": "Sherlock Holmes",
+      "position": 6,
+      "year": 1905,
+      "isbn": "9780517683668",
+      "publisher": "George Newnes",
+      "openLibraryKey": "/works/OL262477W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/9246467-L.jpg",
+      "description": "The Return of Sherlock Holmes is a 1905 collection of 13 Sherlock Holmes stories, originally published in 1903–1904, by Arthur Conan Doyle. The stories were published in the Strand Magazine in Britain and Collier's in the United States."
+    },
+    {
+      "title": "The Wonderful Wizard of Oz",
+      "author": "L. Frank Baum",
+      "series": "Oz",
+      "position": 1,
+      "year": 1900,
+      "isbn": "9781931953122",
+      "publisher": "George M. Hill Company",
+      "openLibraryKey": "/works/OL18417W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/552443-L.jpg",
+      "description": "Over a century after its initial publication, The Wonderful Wizard of Oz is still captivating the hearts of countless readers. Come adventure with Dorothy and her three friends: the Scarecrow, the Tin Woodman, and the Cowardly Lion, as they follow the Yellow Brick Road to the Emerald City for an audience with the Great Oz, the mightiest Wizard in the land, and the only one that can return Dorothy to her home in Kansas."
+    },
+    {
+      "title": "The Marvelous Land of Oz",
+      "author": "L. Frank Baum",
+      "series": "Oz",
+      "position": 2,
+      "year": 1904,
+      "isbn": "9781019705056",
+      "publisher": "Reilly & Britton",
+      "openLibraryKey": "/works/OL18396W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/12648656-L.jpg",
+      "description": "Tip and his creation, Jack Pumpkin, run away to Oz, where they save the city after it is captured by girls."
+    },
+    {
+      "title": "Ozma of Oz",
+      "author": "L. Frank Baum",
+      "series": "Oz",
+      "position": 3,
+      "year": 1907,
+      "isbn": "9781539780915",
+      "publisher": "Reilly & Britton",
+      "openLibraryKey": "/works/OL18415W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/12648657-L.jpg",
+      "description": "When a storm blows Dorothy to the land of Ev where lunches grow on trees, she meets the Scarecrow, the Tin Woodman, the Cowardly Lion, and Princess Ozma, and together they set out to free the Queen of Ev and her ten children."
+    },
+    {
+      "title": "A Princess of Mars",
+      "author": "Edgar Rice Burroughs",
+      "series": "Barsoom",
+      "position": 1,
+      "year": 1912,
+      "isbn": "9781475281965",
+      "publisher": "A. C. McClurg",
+      "openLibraryKey": "/works/OL1418187W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/11481176-L.jpg",
+      "description": "I am a very old man; how old I do not know. Possibly I am a hundred, possibly more; but I cannot tell because I have never aged as other men, nor do I remember any childhood. So far as I can recollect I have always been a man, a man of about thirty. I appear today as I did forty years and more ago, and yet I feel that I cannot go on living forever; that some day I shall die the real death from which there is no resurrection.\r\n[Adventures of John Carter in Mars -- from the author of the Tarzan series.]"
+    },
+    {
+      "title": "The Gods of Mars",
+      "author": "Edgar Rice Burroughs",
+      "series": "Barsoom",
+      "position": 2,
+      "year": 1913,
+      "isbn": "9781548998820",
+      "publisher": "A. C. McClurg",
+      "openLibraryKey": "/works/OL1417942W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/830214-L.jpg",
+      "description": "After the long exile on Earth, John Carter finally returned to his beloved Mars. But beautiful Dejah Thoris, the woman he loved, had vanished. Now he was trapped in the legendary Eden of Mars--an Eden from which none ever escaped alive."
+    },
+    {
+      "title": "The Warlord of Mars",
+      "author": "Edgar Rice Burroughs",
+      "series": "Barsoom",
+      "position": 3,
+      "year": 1914,
+      "isbn": "9781548343477",
+      "publisher": "A. C. McClurg",
+      "openLibraryKey": "/works/OL1418137W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/830208-L.jpg",
+      "description": "The Warlord of mars is the last book in the trilogy that Mr. Burroughs did not intend to write. The first book being:  “The Princess of Mars” and the second being: “The God of Mars”.   The book takes up 6 months after “The Princess of Mars” Where our hero Carter is relentless in trying to find his princess and the villain “Thurid” whom has taken her. Please Note:  This book is easy to read in true text, not scanned images that can sometimes be difficult to decipher.  This eBook has bookmarks at chapter headings and is printable up to two full copies per year."
+    },
+    {
+      "title": "Tarzan of the Apes",
+      "author": "Edgar Rice Burroughs",
+      "series": "Tarzan",
+      "position": 1,
+      "year": 1912,
+      "isbn": "9781656635716",
+      "publisher": "A. C. McClurg",
+      "openLibraryKey": "/works/OL1418251W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/14401403-L.jpg",
+      "description": "Set amidst the vibrant colors and sounds of the savage African jungle, this classic work, rich in suspense and action, has beckoned generations of readers on a glorious journey to romance and pure adventure. This is the story of the ape-man Tarzan, raised in the wild by the great ape Kala, and how he learns the secrets of the jungle to survive -- how to talk with the animals, swing through the trees, and fight the great predators. As Tarzan grows up he makes many friends: Tantor the elephant, Ska the vulture, and Numa the lion. When this paradise is invaded by white men, Tarzan's life changes, for in this group is Jane, the first white woman he has ever seen. Speaking directly to our childhood fantasies, this exhilarating work takes us to that faraway place in our minds where dreams prevail, and where we, too, can be masters of our environment. - Back cover."
+    },
+    {
+      "title": "Pride and Prejudice",
+      "author": "Jane Austen",
+      "series": null,
+      "position": null,
+      "year": 1813,
+      "isbn": "9781986333108",
+      "publisher": "Thomas Egerton",
+      "openLibraryKey": "/works/OL66554W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/14348537-L.jpg",
+      "description": "Pride and Prejudice is an 1813 novel of manners written by Jane Austen. The novel follows the character development of Elizabeth Bennet, the dynamic protagonist of the book who learns about the repercussions of hasty judgments and comes to appreciate the difference between superficial goodness and actual goodness."
+    },
+    {
+      "title": "Emma",
+      "author": "Jane Austen",
+      "series": null,
+      "position": null,
+      "year": 1815,
+      "isbn": "9788417477394",
+      "publisher": "John Murray",
+      "openLibraryKey": "/works/OL66513W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/9278312-L.jpg",
+      "description": "Emma, by Jane Austen, is a novel about youthful hubris and the perils of misconstrued romance. The novel was first published in December 1815. As in her other novels, Austen explores the concerns and difficulties of genteel women living in Georgian-Regency England; she also creates a lively comedy of manners among her characters. Before she began the novel, Austen wrote, \"I am going to take a heroine whom no one but myself will much like.\" In the very first sentence she introduces the title character as \"Emma Woodhouse, handsome, clever, and rich.\" Emma, however, is also rather spoiled, headstrong, and self-satisfied; she greatly overestimates her own matchmaking abilities; she is blind to the dangers of meddling in other people's lives; and her imagination and perceptions often lead her astray."
+    },
+    {
+      "title": "Persuasion",
+      "author": "Jane Austen",
+      "series": null,
+      "position": null,
+      "year": 1817,
+      "isbn": "9780553904567",
+      "publisher": "John Murray",
+      "openLibraryKey": "/works/OL66544W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/12824691-L.jpg",
+      "description": "Persuasion tells the love story of Anne Elliot and Captain Frederick Wentworth, whose sister rents Miss Elliot's father's house, after the Napoleonic Wars come to an end. The story is set in 1814. The book itself is Jane Austen's last published book, published posthumously in December of 1818."
+    },
+    {
+      "title": "Frankenstein",
+      "author": "Mary Shelley",
+      "series": null,
+      "position": null,
+      "year": 1818,
+      "isbn": "9781982146160",
+      "publisher": "Lackington, Hughes & Co.",
+      "openLibraryKey": "/works/OL450063W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/13498737-L.jpg",
+      "description": "Frankenstein; or, The Modern Prometheus is an 1818 novel written by English author Mary Shelley. It tells the story of Victor Frankenstein, a young scientist who creates a sapient creature in an unorthodox scientific experiment."
+    },
+    {
+      "title": "Dracula",
+      "author": "Bram Stoker",
+      "series": null,
+      "position": null,
+      "year": 1897,
+      "isbn": "9781523670314",
+      "publisher": "Archibald Constable and Company",
+      "openLibraryKey": "/works/OL85892W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/2921098-L.jpg",
+      "description": "Dracula is an 1897 Gothic horror novel by Bram Stoker. Told through letters, diary entries and newspaper cuttings, it follows Jonathan Harker, Mina Murray and Professor Van Helsing as they hunt the Count from Transylvania to London and back again."
+    },
+    {
+      "title": "The Time Machine",
+      "author": "H. G. Wells",
+      "series": null,
+      "position": null,
+      "year": 1895,
+      "isbn": "9781986563901",
+      "publisher": "William Heinemann",
+      "openLibraryKey": "/works/OL52267W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/12504951-L.jpg",
+      "description": "The Time Traveller, a dreamer obsessed with traveling through time, builds himself a time machine and, much to his surprise, travels over 800,000 years into the future. He lands in the year 802701: the world has been transformed by a society living in apparent harmony and bliss, but as the Traveler stays in the future he discovers a hidden barbaric and depraved subterranean class. Wells's transparent commentary on the capitalist society was an instant bestseller and launched the time-travel genre."
+    },
+    {
+      "title": "The War of the Worlds",
+      "author": "H. G. Wells",
+      "series": null,
+      "position": null,
+      "year": 1898,
+      "isbn": "9786077200253",
+      "publisher": "William Heinemann",
+      "openLibraryKey": "/works/OL52114W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/15067245-L.jpg",
+      "description": "The ultimate science fiction classic: for more than one hundred years, this compelling tale of the Martian invasion of Earth has enthralled readers with a combination of imagination and incisive commentary on the imbalance of power that continues to be relevant today. The style is revolutionary for its era, employing a sophisticated first and third person account of the events which is both personal and focused on the holistic downfall of Earth's society. The Martians, as evil, mechanical and unknown a threat they are, remain daunting in today's society, where, despite technology's mammoth advances, humanity's hegemony over Earth is yet to be called into question. In Well's introduction to the book, where the character discusses with the later deceased Ogilvy about astronomy and the possibility of alien life defeating the 'savage' (to them) nineteenth-century Britain, is he insinuating t"
+    },
+    {
+      "title": "The Invisible Man",
+      "author": "H. G. Wells",
+      "series": null,
+      "position": null,
+      "year": 1897,
+      "isbn": "9780786105830",
+      "publisher": "C. Arthur Pearson",
+      "openLibraryKey": "/works/OL52266W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/14861361-L.jpg",
+      "description": "This book is the story of Griffin, a scientist who creates a serum to render himself invisible, and his descent into madness that follows."
+    },
+    {
+      "title": "Twenty Thousand Leagues Under the Seas",
+      "author": "Jules Verne",
+      "series": null,
+      "position": null,
+      "year": 1870,
+      "isbn": "9780603062605",
+      "publisher": "Pierre-Jules Hetzel",
+      "openLibraryKey": "/works/OL24304873W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/10817535-L.jpg",
+      "description": "Professor Aronnax, his servant Conseil and the harpooner Ned Land set out to hunt a sea monster, and find themselves prisoners aboard the Nautilus — a submarine commanded by the enigmatic Captain Nemo."
+    },
+    {
+      "title": "Around the World in Eighty Days",
+      "author": "Jules Verne",
+      "series": null,
+      "position": null,
+      "year": 1872,
+      "isbn": "9781081433048",
+      "publisher": "Pierre-Jules Hetzel",
+      "openLibraryKey": "/works/OL24776232W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/11531296-L.jpg",
+      "description": "Phileas Fogg of London wagers half his fortune that he can circle the globe in eighty days, and sets out that same evening with his new valet, Passepartout, and a detective close behind."
+    },
+    {
+      "title": "Moby-Dick",
+      "author": "Herman Melville",
+      "series": null,
+      "position": null,
+      "year": 1851,
+      "isbn": "9783491960398",
+      "publisher": "Harper & Brothers",
+      "openLibraryKey": "/works/OL102749W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/13859423-L.jpg",
+      "description": "\"Command the murderous chalices! Drink ye harpooners! Drink and swear, ye men that man the deathful whaleboat's bow -- Death to Moby Dick!\" So Captain Ahab binds his crew to fulfil his obsession -- the destruction of the great white whale. Under his lordly but maniacal command the Pequod's commercial mission is perverted to one of vengeance. To Ahab, the monster that destroyed his body is not a creature, but the symbol of \"some unknown but still reasoning thing.\" Uncowed by natural disasters, ill omens, even death, Ahab urges his ship towards \"the undeliverable, nameless perils of the whale.\""
+    },
+    {
+      "title": "The Picture of Dorian Gray",
+      "author": "Oscar Wilde",
+      "series": null,
+      "position": null,
+      "year": 1890,
+      "isbn": "9781503121584",
+      "publisher": "Ward, Lock & Co.",
+      "openLibraryKey": "/works/OL8193416W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/14314858-L.jpg",
+      "description": "The Picture of Dorian Gray is a philosophical novel by Irish writer Oscar Wilde. A shorter version was published in the July 1890 issue of Lippincott's Monthly Magazine; the novel-length version followed in April 1891."
+    },
+    {
+      "title": "Great Expectations",
+      "author": "Charles Dickens",
+      "series": null,
+      "position": null,
+      "year": 1861,
+      "isbn": "9781535325387",
+      "publisher": "Chapman & Hall",
+      "openLibraryKey": "/works/OL8721462W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/13322313-L.jpg",
+      "description": "Great Expectations is the thirteenth novel by Charles Dickens and his penultimate completed novel. It depicts the education of an orphan nicknamed Pip (the book is a bildungsroman; a coming-of-age story). It is Dickens' second novel, after David Copperfield, to be fully narrated in the first person. The novel was first published as a serial in Dickens's weekly periodical All the Year Round, from 1 December 1860 to August 1861. In October 1861, Chapman and Hall published the novel in three volumes."
+    },
+    {
+      "title": "A Tale of Two Cities",
+      "author": "Charles Dickens",
+      "series": null,
+      "position": null,
+      "year": 1859,
+      "isbn": "9781800601499",
+      "publisher": "Chapman & Hall",
+      "openLibraryKey": "/works/OL8193465W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/13301713-L.jpg",
+      "description": "A Tale of Two Cities is a historical novel published in 1859 by Charles Dickens, set in London and Paris before and during the French Revolution. The novel tells the story of the French Doctor Manette, his 18-year-long imprisonment in the Bastille in Paris, and his release to live in London with his daughter Lucie whom he had never met. The story is set against the conditions that led up to the French Revolution and the Reign of Terror. In the Introduction to the Encyclopedia of Adventure Fiction, critic Don D'Ammassa argues that it is an adventure novel because the protagonists are in constant danger of being imprisoned or killed."
+    },
+    {
+      "title": "Treasure Island",
+      "author": "Robert Louis Stevenson",
+      "series": null,
+      "position": null,
+      "year": 1883,
+      "isbn": "9781533142092",
+      "publisher": "Cassell & Co.",
+      "openLibraryKey": "/works/OL24034W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/13859660-L.jpg",
+      "description": "Traditionally considered a coming-of-age story, Treasure Island is an adventure tale known for its atmosphere, characters and action, and also as a wry commentary on the ambiguity of morality — as seen in Long John Silver — unusual for children's literature then and now. It is one of the most frequently dramatized of all novels. The influence of Treasure Island on popular perceptions of pirates is enormous, including treasure maps marked with an \"X\", schooners, the Black Spot, tropical islands, and one-legged seamen carrying parrots on their shoulders"
+    },
+    {
+      "title": "Little Women",
+      "author": "Louisa May Alcott",
+      "series": null,
+      "position": null,
+      "year": 1868,
+      "isbn": "9781546606529",
+      "publisher": "Roberts Brothers",
+      "openLibraryKey": "/works/OL29983W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/8775559-L.jpg",
+      "description": "Louisa May Alcott's classic novel, set during the Civil War, follows the four March sisters — Meg, Jo, Beth and Amy — through the joys and disappointments of growing up."
+    },
+    {
+      "title": "The Count of Monte Cristo",
+      "author": "Alexandre Dumas",
+      "series": null,
+      "position": null,
+      "year": 1844,
+      "isbn": null,
+      "publisher": "Pétion",
+      "openLibraryKey": "/works/OL43161739W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/14937760-L.jpg",
+      "description": "Thrown in prison for a crime he has not committed, Edmond Dantès is confined to the grim fortress of If. There he learns of a great hoard of treasure hidden on the Isle of Monte Cristo and he becomes determined not only to escape, but also to use the treasure to plot the destruction of the three men responsible for his incarceration."
+    },
+    {
+      "title": "Jane Eyre",
+      "author": "Charlotte Brontë",
+      "series": null,
+      "position": null,
+      "year": 1847,
+      "isbn": "9780893757793",
+      "publisher": "Smith, Elder & Co.",
+      "openLibraryKey": "/works/OL1095427W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/8235363-L.jpg",
+      "description": "The novel is set somewhere in the north of England. Jane's childhood at Gateshead Hall, where she is emotionally and physically abused by her aunt and cousins; her education at Lowood School, where she acquires friends and role models but also suffers privations and oppression; her time as the governess of Thornfield Hall, where she falls in love with her Byronic employer, Edward Rochester; her time with the Rivers family, during which her earnest but cold clergyman cousin, St John Rivers, proposes to her. Will she or will she not marry him?"
+    },
+    {
+      "title": "Wuthering Heights",
+      "author": "Emily Brontë",
+      "series": null,
+      "position": null,
+      "year": 1847,
+      "isbn": "9781985682313",
+      "publisher": "Thomas Cautley Newby",
+      "openLibraryKey": "/works/OL21177W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/12818862-L.jpg",
+      "description": "Wuthering Heights is an 1847 novel by Emily Brontë, initially published under the pseudonym Ellis Bell. It concerns two families of the landed gentry living on the West Yorkshire moors, the Earnshaws and the Lintons, and their turbulent relationships with Earnshaw's adopted son, Heathcliff. The novel was influenced by Romanticism and Gothic fiction."
+    },
+    {
+      "title": "The Call of the Wild",
+      "author": "Jack London",
+      "series": null,
+      "position": null,
+      "year": 1903,
+      "isbn": "9781433209581",
+      "publisher": "Macmillan",
+      "openLibraryKey": "/works/OL14942956W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/12393037-L.jpg",
+      "description": "As Buck, a mixed breed dog, is taken away from his home, instead of facing a feast for breakfast and the comforts of home, he faces the hardships of being a sled dog. Soon he lands in the wrong hands, being forced to keep going when it is too rough for him and the other dogs in his pack. He also fights the urges to run free with his ancestors, the wolves who live around where he is pulling the sled."
+    },
+    {
+      "title": "Alice's Adventures in Wonderland",
+      "author": "Lewis Carroll",
+      "series": null,
+      "position": null,
+      "year": 1865,
+      "isbn": "9780517501351",
+      "publisher": "Macmillan",
+      "openLibraryKey": "/works/OL138052W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/10527843-L.jpg",
+      "description": "Alice's Adventures in Wonderland (commonly Alice in Wonderland) is an 1865 English children's novel by Lewis Carroll. A young girl named Alice falls through a rabbit hole into a fantasy world of anthropomorphic creatures. It is seen as an example of the literary nonsense genre."
+    }
+  ],
+  "comics": [
+    {
+      "title": "America's Best Comics",
+      "publisher": "Nedor Publishing",
+      "year": 1942,
+      "firstIssue": 1,
+      "lastIssue": 31,
+      "coverUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7c/AmericasBestComics0101.jpg/500px-AmericasBestComics0101.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "coverSource": "https://commons.wikimedia.org/wiki/File:AmericasBestComics0101.jpg"
+    },
+    {
+      "title": "Crime Does Not Pay",
+      "publisher": "Lev Gleason Publications",
+      "year": 1942,
+      "firstIssue": 22,
+      "lastIssue": 147,
+      "coverUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7b/Crime_Does_Not_Pay_no._22.jpg/500px-Crime_Does_Not_Pay_no._22.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "coverSource": "https://commons.wikimedia.org/wiki/File:Crime_Does_Not_Pay_no._22.jpg"
+    },
+    {
+      "title": "Adventures into the Unknown",
+      "publisher": "American Comics Group",
+      "year": 1948,
+      "firstIssue": 1,
+      "lastIssue": 174,
+      "coverUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/57/Adventures_Into_the_Unknown_No_1.jpg/500px-Adventures_Into_the_Unknown_No_1.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "coverSource": "https://commons.wikimedia.org/wiki/File:Adventures_Into_the_Unknown_No_1.jpg"
+    },
+    {
+      "title": "Jungle Comics",
+      "publisher": "Fiction House",
+      "year": 1940,
+      "firstIssue": 1,
+      "lastIssue": 163,
+      "coverUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f4/Jungle_comics_001.jpg/500px-Jungle_comics_001.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "coverSource": "https://commons.wikimedia.org/wiki/File:Jungle_comics_001.jpg"
+    },
+    {
+      "title": "Fight Comics",
+      "publisher": "Fiction House",
+      "year": 1940,
+      "firstIssue": 1,
+      "lastIssue": 86,
+      "coverUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/bb/Fight_Comics_29.jpg/500px-Fight_Comics_29.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "coverSource": "https://commons.wikimedia.org/wiki/File:Fight_Comics_29.jpg"
+    },
+    {
+      "title": "Black Cat",
+      "publisher": "Harvey Comics",
+      "year": 1946,
+      "firstIssue": 1,
+      "lastIssue": 65,
+      "coverUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/39/Black_Cat_-1.jpg/500px-Black_Cat_-1.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "coverSource": "https://commons.wikimedia.org/wiki/File:Black_Cat_-1.jpg"
+    },
+    {
+      "title": "Airboy Comics",
+      "publisher": "Hillman Periodicals",
+      "year": 1945,
+      "firstIssue": 1,
+      "lastIssue": 111,
+      "coverUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/0d/Airboy_Comics_v5_2.jpg/500px-Airboy_Comics_v5_2.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "coverSource": "https://commons.wikimedia.org/wiki/File:Airboy_Comics_v5_2.jpg"
+    },
+    {
+      "title": "Whiz Comics",
+      "publisher": "Fawcett Publications",
+      "year": 1940,
+      "firstIssue": 2,
+      "lastIssue": 155,
+      "coverUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/90/WhizComicsNo02.jpg/500px-WhizComicsNo02.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "coverSource": "https://commons.wikimedia.org/wiki/File:WhizComicsNo02.jpg"
+    },
+    {
+      "title": "Master Comics",
+      "publisher": "Fawcett Publications",
+      "year": 1940,
+      "firstIssue": 1,
+      "lastIssue": 133,
+      "coverUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ee/MasterComics30.jpg/500px-MasterComics30.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "coverSource": "https://commons.wikimedia.org/wiki/File:MasterComics30.jpg"
+    },
+    {
+      "title": "Wow Comics",
+      "publisher": "Fawcett Publications",
+      "year": 1940,
+      "firstIssue": 1,
+      "lastIssue": 69,
+      "coverUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/c/ca/WOWComicsNo12.jpg/500px-WOWComicsNo12.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "coverSource": "https://commons.wikimedia.org/wiki/File:WOWComicsNo12.jpg"
+    },
+    {
+      "title": "Blue Bolt",
+      "publisher": "Novelty Press",
+      "year": 1940,
+      "firstIssue": 1,
+      "lastIssue": 110,
+      "coverUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/28/BlueBoltComics2.jpg/500px-BlueBoltComics2.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "coverSource": "https://commons.wikimedia.org/wiki/File:BlueBoltComics2.jpg"
+    },
+    {
+      "title": "Hit Comics",
+      "publisher": "Quality Comics",
+      "year": 1940,
+      "firstIssue": 1,
+      "lastIssue": 65,
+      "coverUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/8/88/HitComicsNo26.jpg/500px-HitComicsNo26.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "coverSource": "https://commons.wikimedia.org/wiki/File:HitComicsNo26.jpg"
+    },
+    {
+      "title": "Doll Man",
+      "publisher": "Quality Comics",
+      "year": 1941,
+      "firstIssue": 1,
+      "lastIssue": 47,
+      "coverUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b8/DollMan40.jpg/500px-DollMan40.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "coverSource": "https://commons.wikimedia.org/wiki/File:DollMan40.jpg"
+    },
+    {
+      "title": "Amazing-Man Comics",
+      "publisher": "Centaur Publications",
+      "year": 1939,
+      "firstIssue": 5,
+      "lastIssue": 26,
+      "coverUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/50/AmazingMan07.jpg/500px-AmazingMan07.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "coverSource": "https://commons.wikimedia.org/wiki/File:AmazingMan07.jpg"
+    },
+    {
+      "title": "Speed Comics",
+      "publisher": "Harvey Comics",
+      "year": 1939,
+      "firstIssue": 1,
+      "lastIssue": 44,
+      "coverUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/23/SpeedComicsNo32.jpg/500px-SpeedComicsNo32.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "coverSource": "https://commons.wikimedia.org/wiki/File:SpeedComicsNo32.jpg"
+    },
+    {
+      "title": "Jumbo Comics",
+      "publisher": "Fiction House",
+      "year": 1938,
+      "firstIssue": 1,
+      "lastIssue": 167,
+      "coverUrl": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f1/Jumbo_Comics_129.jpg/500px-Jumbo_Comics_129.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "coverSource": "https://commons.wikimedia.org/wiki/File:Jumbo_Comics_129.jpg"
+    }
+  ],
+  "wanted": [
+    {
+      "title": "The Valley of Fear",
+      "author": "Arthur Conan Doyle",
+      "isbn": "9798784434937",
+      "coverUrl": "https://covers.openlibrary.org/b/id/8350377-L.jpg"
+    },
+    {
+      "title": "The Lost World",
+      "author": "Arthur Conan Doyle",
+      "isbn": "9798763094787",
+      "coverUrl": "https://covers.openlibrary.org/b/id/8231444-L.jpg"
+    },
+    {
+      "title": "The Island of Doctor Moreau",
+      "author": "H. G. Wells",
+      "isbn": "9781840227406",
+      "coverUrl": "https://covers.openlibrary.org/b/id/8447768-L.jpg"
+    },
+    {
+      "title": "The First Men in the Moon",
+      "author": "H. G. Wells",
+      "isbn": "9780192828286",
+      "coverUrl": "https://covers.openlibrary.org/b/id/8081288-L.jpg"
+    },
+    {
+      "title": "Northanger Abbey",
+      "author": "Jane Austen",
+      "isbn": "9780393978506",
+      "coverUrl": "https://covers.openlibrary.org/b/id/12567961-L.jpg"
+    },
+    {
+      "title": "The Return of Tarzan",
+      "author": "Edgar Rice Burroughs",
+      "isbn": "9781594568190",
+      "coverUrl": "https://covers.openlibrary.org/b/id/8239514-L.jpg"
+    },
+    {
+      "title": "The Emerald City of Oz",
+      "author": "L. Frank Baum",
+      "isbn": "9781533161345",
+      "coverUrl": "https://covers.openlibrary.org/b/id/1473556-L.jpg"
+    },
+    {
+      "title": "Sense and Sensibility",
+      "author": "Jane Austen",
+      "isbn": "9781980370017",
+      "coverUrl": "https://covers.openlibrary.org/b/id/9278292-L.jpg"
+    }
+  ]
+}

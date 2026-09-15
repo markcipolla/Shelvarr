@@ -35,6 +35,8 @@ playwright-report/
 coverage/
 # Throwaway database the E2E run creates its first admin account in
 apps/web/tests/.e2e-data/
+# Full-size demo screenshots, before they are resized into docs/screenshots
+apps/web/scripts/demo/out/
 
 # Temp files
 *.tmp
