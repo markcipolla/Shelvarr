@@ -1,27 +1,111 @@
-# Shelvarr
+<p align="center">
+  <img src="docs/logo.png" alt="" width="96" height="96">
+</p>
 
-A self-hosted *arr-style web application for book/comic metadata management and file organization. Shelvarr serves its own library over an HTTP API, which [Stackarr](apps/native), the companion mobile app, reads from.
+<h1 align="center">Shelvarr</h1>
+
+<p align="center">
+  <strong>A self-hosted home for your books and comics, in the *arr mould.</strong>
+</p>
+
+<p align="center">
+  <a href="./LICENSE"><img alt="Licence: GPL-3.0" src="https://img.shields.io/badge/licence-GPL--3.0-blue"></a>
+  <a href="https://github.com/markcipolla/Shelvarr/actions/workflows/docker-publish.yml"><img alt="Docker image" src="https://github.com/markcipolla/Shelvarr/actions/workflows/docker-publish.yml/badge.svg"></a>
+  <img alt="Node 24" src="https://img.shields.io/badge/node-24-339933">
+</p>
+
+Shelvarr looks after the ebooks and comics you already have: it scans them in,
+matches their metadata, groups them into series, shows you what's missing, and
+files everything under a naming scheme you choose. For comics it goes further
+and fetches the missing issues itself. You can read in the browser, or on your
+phone with [Stackarr](#android-app), the companion Android app.
+
+![The Shelvarr home screen, with books and comics in progress](docs/screenshots/home.webp)
 
 ## Features
 
-- **Library Management**: Scan and organize book libraries (epub, pdf, cbz, cbr, mobi)
-- **Metadata Fetching**: Search Google Books and OpenLibrary for metadata
-- **File Organization**: Auto-rename files with configurable templates
-- **Duplicate Detection**: Find duplicate books using hash + metadata similarity
-- **Series Detection**: Automatically group books into series
-- **Author Tracking**: Track authors and find missing books in your collection
-- **Book Acquisition**: Search Z-Library, Anna's Archive, and Library Genesis (planned)
+**Books**
 
-## Quick Start
+- **Scan your library.** Point Shelvarr at a folder of epub, pdf, mobi, azw and
+  azw3 files and it imports them.
+- **Metadata from [Hardcover](https://hardcover.app).** Covers, descriptions,
+  series and ISBNs, matched automatically — and fixed by hand when the match is
+  wrong.
+- **Series and authors.** Books group into series, and each author's
+  bibliography comes from OpenLibrary, so you can see what you own and what
+  you're missing.
+- **Tidy files.** Rename and move books to a template, and find duplicates by
+  file hash.
+- **A wanted list.** Keep track of the books you're after and search Z-Library,
+  Anna's Archive and Library Genesis for them.
+- **Read anywhere.** An EPUB reader in the browser, with your place kept per
+  person. Hardcover's reading statuses come across too.
 
-### Docker from GHCR (Recommended)
+**Comics**
 
-Create a `docker-compose.yml` file:
+- **ComicVine metadata.** Add a volume and Shelvarr creates its folder, pulls
+  every issue, and adopts files already sitting there.
+- **Downloads from GetComics.** Search for missing issues and Shelvarr queues
+  them, resumes after a restart, falls back to other mirrors, and files what it
+  fetches under your naming template.
+- **Adopt an existing library.** Scan a folder tree Shelvarr has never seen and
+  confirm its ComicVine matches.
+- **Recurring jobs.** Nightly metadata refreshes, and an optional sweep for
+  anything newly missing.
+
+**Everything else**
+
+- **Accounts without passwords.** Sign in with a code sent to your email, and
+  everyone gets their own reading progress.
+- **[Stackarr](#android-app) for Android.** Your library on your phone, with
+  offline downloads, and it keeps itself up to date.
+- **Diagnostics over MCP.** An optional read-only window onto logs and
+  background jobs, for you or an AI assistant to debug with.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/books.webp" alt="The book library"><br><sub><b>Books.</b> Everything Shelvarr has scanned.</sub></td>
+    <td width="50%"><img src="docs/screenshots/book.webp" alt="A book's detail page"><br><sub><b>A book.</b> Metadata, series and the file on disk.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/reader.webp" alt="Reading an EPUB in the browser"><br><sub><b>The reader.</b> EPUBs open in the browser.</sub></td>
+    <td><img src="docs/screenshots/series-detail.webp" alt="A series with every book owned"><br><sub><b>A series.</b> In order, with what's missing.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/author.webp" alt="An author's bibliography"><br><sub><b>An author.</b> Their bibliography, marked owned, missing or wanted.</sub></td>
+    <td><img src="docs/screenshots/comics.webp" alt="The comic library"><br><sub><b>Comics.</b> Each volume with how many issues you have.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/comic.webp" alt="A comic volume and its issues"><br><sub><b>A volume.</b> Search for missing issues, refresh, rescan and rename.</sub></td>
+    <td><img src="docs/screenshots/comic-downloads.webp" alt="The comic download queue"><br><sub><b>Downloads.</b> The queue, what finished, and what failed.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/settings-comics.webp" alt="Comic settings: root folders and recurring jobs"><br><sub><b>Comic settings.</b> Root folders and recurring jobs.</sub></td>
+    <td><img src="docs/screenshots/settings-users.webp" alt="User accounts in settings"><br><sub><b>Accounts.</b> Invite people; nobody has a password.</sub></td>
+  </tr>
+</table>
+
+And [Stackarr](#android-app), on your phone:
+
+![Stackarr on Android: the book library, home, the comic reader, the EPUB reader and a comic volume](docs/screenshots/stackarr.webp)
+
+<sub>The screenshots show a demo library of public-domain books and Golden Age
+comics, with covers from OpenLibrary and Wikimedia Commons, and one real issue
+and one real novel to read. See
+[Refreshing the screenshots](#refreshing-the-screenshots).</sub>
+
+## Quick start
+
+### Docker (recommended)
+
+Create a `docker-compose.yml`:
 
 ```yaml
 services:
   shelvarr:
-    image: ghcr.io/markcipolla/shelvarr:latest
+    image: ghcr.io/markcipolla/shelvarr-web:latest
     container_name: shelvarr
     ports:
       - "3000:3000"
@@ -41,13 +125,35 @@ volumes:
   shelvarr_data:
 ```
 
-Then run:
+Then start it:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
-Open http://localhost:3000
+Open http://localhost:3000. The first visit runs a setup wizard that creates
+your admin account. From there:
+
+1. **Settings → Metadata Sources**: add a [Hardcover](https://hardcover.app)
+   token for books and a [ComicVine](https://comicvine.gamespot.com/api/) key
+   for comics.
+2. **Libraries**: add `/libraries/ebooks` and scan it.
+3. **Settings → Comics**: add `/libraries/comics` as a root folder, then add
+   volumes from **Comics → Add comic**, or adopt the ones already there.
+
+[`docker-compose.ghcr.yml`](./docker-compose.ghcr.yml) is a fuller example with
+every setting, and [`.env.example`](./.env.example) shows how to set them from
+a `.env` file.
+
+### Build from source
+
+```bash
+git clone https://github.com/markcipolla/Shelvarr.git shelvarr
+cd shelvarr
+docker compose up -d
+```
+
+## Configuration
 
 ### File ownership
 
@@ -68,6 +174,10 @@ that owns your library.
 | `PGID` | 1001 | Gid the server runs as |
 | `UMASK` | 022 | Permissions imported files are created with; `002` shares them with the group |
 
+Setting `user:` in your compose file works too, and takes precedence — but then
+nothing adjusts `/app/data` for you, so it has to be writable by that uid
+already.
+
 ### Timezone
 
 | Variable | Default | Description |
@@ -78,47 +188,7 @@ Dates the server renders — "last synced", "added" and the like — follow `TZ`
 Stored timestamps and the server log stay UTC, so changing this re-reads your
 existing library rather than rewriting it.
 
-Setting `user:` in your compose file works too, and takes precedence — but then
-nothing adjusts `/app/data` for you, so it has to be writable by that uid
-already.
-
-### Docker (Build from Source)
-
-```bash
-git clone <repo-url> shelvarr
-cd shelvarr
-docker-compose up -d
-```
-
-Then open http://localhost:3000
-
-### Development
-
-```bash
-# Install dependencies
-npm install
-
-# Build CSS
-npm run build
-
-# Start development server
-npm run dev
-```
-
-### Running Tests
-
-```bash
-# Run unit + integration tests
-npm test
-
-# Run E2E tests (requires Playwright browsers)
-npx playwright install chromium
-npm run test:e2e
-```
-
-## Configuration
-
-### Environment Variables
+### Environment variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -305,7 +375,11 @@ detail.
 ## Android app
 
 `apps/native` is an Expo app (Stackarr) that reads your Shelvarr library on a
-phone, with offline downloads for books and comics. It is sideloaded rather than
+phone, with offline downloads for books and comics, and EPUB, PDF and comic
+readers built in. Grab the APK from the
+[latest release](https://github.com/markcipolla/Shelvarr/releases/latest).
+
+It is sideloaded rather than
 shipped through the Play Store, so it keeps itself current: on each launch it
 checks the repository's GitHub Releases for a newer version and offers to
 download and install the release APK. **Settings → Updates** has a manual check
@@ -315,15 +389,60 @@ Publishing a new version is a version bump plus a `v*` tag — see
 [apps/native/RELEASING.md](./apps/native/RELEASING.md) for the keystore setup
 that in-place updates depend on.
 
-## Development Status
+## Development
 
-See [PLAN.md](./PLAN.md) for detailed implementation progress.
+Shelvarr is a pnpm monorepo on Node 24: the Next.js server in `apps/web`,
+Stackarr in `apps/native`, and shared code under `packages/`.
 
-### Completed
-- **Phase 1**: Foundation - Express.js, SQLite, TypeScript, Tailwind CSS
-- **Phase 2**: Library management, file scanner, book listing
-- **Phase 3**: Metadata fetching from Google Books and OpenLibrary
-- **Phase 4**: File organization, duplicate detection, series grouping
+```bash
+pnpm install
+pnpm dev                                # the web app on http://localhost:3000
+pnpm test                               # unit and integration tests
+pnpm --filter @shelvarr/web test:e2e    # Playwright; needs `npx playwright install chromium`
+```
+
+### Refreshing the screenshots
+
+The screenshots above come from a demo library built by
+[`apps/web/scripts/demo`](./apps/web/scripts/demo): public-domain novels and
+Golden Age comics, one real EPUB and one real comic issue, three accounts, and
+a download queue with something in every state. To retake them after a UI
+change:
+
+```bash
+cd apps/web
+pnpm build
+export DATA_DIR=/tmp/shelvarr-demo
+npx tsx scripts/demo/seed.ts
+
+SCHEDULER_ENABLED=false \
+  NODE_OPTIONS="--import=./scripts/demo/network.mjs --import=./tests/mocks/e2e-server.mjs" \
+  npx next start --port 3917 > "$DATA_DIR/server.log" 2>&1 &
+
+npx tsx scripts/demo/screenshots.ts
+for shot in scripts/demo/out/*.png; do
+  magick "$shot" -resize 1600x -quality 82 "../../docs/screenshots/$(basename "$shot" .png).webp"
+done
+```
+
+Stackarr's come from an Android emulator pointed at the same server. Start one
+with Stackarr installed — the APK from the latest release will do — then:
+
+```bash
+ANDROID_SERIAL=emulator-5554 npx tsx scripts/demo/stackarr.ts
+npx tsx scripts/demo/stackarr-poster.ts
+magick scripts/demo/out/banner/stackarr.png -resize 1600x -quality 84 ../../docs/screenshots/stackarr.webp
+for shot in scripts/demo/out/stackarr/*.png; do
+  magick "$shot" -resize 640x -quality 84 "../../docs/screenshots/stackarr-$(basename "$shot" .png).webp"
+done
+```
+
+It signs in with the code the server logs, taps through the app by the text on
+screen, and frames the results for the banner.
+
+Seeding needs the internet, for covers, the EPUB and the comic's pages. The
+server stays off it apart from cover images: the demo's download queue points
+at links that don't exist.
 
 ## License
 
