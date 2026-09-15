@@ -20,6 +20,8 @@ mock.module('@shelvarr/services', {
   namedExports: {
     admin: {
       MCP_PROTOCOL_VERSION: '2025-06-18',
+      isSupportedMcpProtocolVersion: (version: string) =>
+        ['2025-06-18', '2025-03-26', '2024-11-05'].includes(version),
       authoriseAdminRequest: () => authResult,
       getSystemStatus: () => ({ app: { name: 'Shelvarr' } }),
       searchLogs: (options: Record<string, unknown>) => {
@@ -181,6 +183,36 @@ describe('admin routes', () => {
       assert.strictEqual(response.status, 200);
       assert.strictEqual(response.headers.get('MCP-Protocol-Version'), '2025-06-18');
       assert.deepStrictEqual(lastMcpBody, { jsonrpc: '2.0', id: 1, method: 'ping' });
+    });
+
+    it('turns away a protocol revision it does not speak, before reading the body', async () => {
+      const { POST } = await import('../../app/api/mcp/route.js');
+
+      const response = await POST(
+        makeRequest('http://localhost/api/mcp', {
+          headers: { 'MCP-Protocol-Version': '1999-01-01' },
+          body: { jsonrpc: '2.0', id: 1, method: 'ping' },
+        })
+      );
+
+      assert.strictEqual(response.status, 400);
+      const body = await response.json();
+      assert.strictEqual(body.error.code, -32600);
+      assert.match(body.error.message, /1999-01-01/);
+      assert.strictEqual(lastMcpBody, null);
+    });
+
+    it('accepts an older revision it still speaks', async () => {
+      const { POST } = await import('../../app/api/mcp/route.js');
+
+      const response = await POST(
+        makeRequest('http://localhost/api/mcp', {
+          headers: { 'MCP-Protocol-Version': '2025-03-26' },
+          body: { jsonrpc: '2.0', id: 1, method: 'ping' },
+        })
+      );
+
+      assert.strictEqual(response.status, 200);
     });
 
     it('answers a notification with an empty 202', async () => {

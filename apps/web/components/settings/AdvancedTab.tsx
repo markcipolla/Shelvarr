@@ -105,7 +105,7 @@ export function AdvancedTab({
           <input
             type="checkbox"
             checked={api.enabled}
-            disabled={busy}
+            disabled={busy || api.environmentToken}
             onChange={(event) => void runAction(() => setAdminApiEnabledAction(event.target.checked))}
             className="mt-1"
           />
@@ -117,6 +117,14 @@ export function AdvancedTab({
             </span>
           </span>
         </label>
+
+        {api.environmentToken && (
+          <p className="text-sm text-shelvarr-text-muted">
+            Held on by <code className="font-mono">SHELVARR_ADMIN_API_TOKEN</code>, which is set
+            in this server&apos;s environment. That token works even when the database cannot be
+            read, and Regenerate below does not touch it. Unset it to switch the API off.
+          </p>
+        )}
 
         {error && <p className="text-sm text-red-400">{error}</p>}
 
@@ -169,9 +177,17 @@ export function AdvancedTab({
         <div>
           <h2 className="text-lg font-semibold text-white">Recent logs</h2>
           <p className="text-sm text-shelvarr-text-muted mt-1">
-            The last {logs.capacity.toLocaleString()} lines from the running server, held in
-            memory. Emptied by a restart, and nothing below{' '}
-            <code className="font-mono">{logs.level}</code> is recorded — set{' '}
+            The last {logs.capacity.toLocaleString()} lines from the server, console output
+            included.{' '}
+            {logs.file ? (
+              <>
+                Also written to <code className="font-mono">{logs.file}</code>, so they survive a
+                restart.
+              </>
+            ) : (
+              'Held in memory only, so a restart empties them.'
+            )}{' '}
+            Nothing below <code className="font-mono">{logs.level}</code> is recorded — set{' '}
             <code className="font-mono">LOG_LEVEL=debug</code> for more.
           </p>
         </div>

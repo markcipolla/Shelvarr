@@ -36,6 +36,11 @@ const SUPPORTED_PROTOCOL_VERSIONS = new Set([
   '2024-11-05',
 ]);
 
+/** Whether an `MCP-Protocol-Version` header names a revision this server speaks. */
+export function isSupportedMcpProtocolVersion(version: string): boolean {
+  return SUPPORTED_PROTOCOL_VERSIONS.has(version);
+}
+
 export const MCP_SERVER_NAME = 'shelvarr-admin';
 
 /** Shown to the model when the server connects, so it knows what this is for. */
@@ -45,13 +50,18 @@ const INSTRUCTIONS = [
   '',
   'Start with get_status for a snapshot: version, uptime, library counts, task',
   'queue, recurring jobs, download queues and which integrations are configured.',
-  'Then use search_logs to read the in-memory log buffer — filter by level,',
-  'logger context (e.g. "scheduler", "queue", "getcomics") or a substring.',
-  'list_tasks and get_task explain background jobs; list_comic_downloads',
-  'explains the comic acquisition queue.',
+  'Then use search_logs to read the log buffer — filter by level, logger context',
+  '(e.g. "scheduler", "queue", "getcomics", or "console" for raw console output',
+  'such as Next.js errors and crashes) or a substring. list_tasks and get_task',
+  'explain background jobs; list_comic_downloads explains the comic acquisition',
+  'queue.',
   '',
-  'The log buffer holds only the most recent lines from the running process, so',
-  'it starts empty after a restart. Nothing here can change the server.',
+  'The buffer holds the most recent lines. When the server logs to a file it is',
+  'refilled from that file on startup, so lines from before a restart survive;',
+  'get_status shows app.startedAt, and logs.restored says how many buffered',
+  'lines predate it. A section of get_status that failed to load is replaced by',
+  '{ "error": ... } rather than failing the whole snapshot. Nothing here can',
+  'change the server.',
 ].join('\n');
 
 interface JsonRpcRequest {
@@ -220,7 +230,19 @@ function optionalInteger(args: Record<string, unknown>, key: string): number | u
   return typeof value === 'number' && Number.isFinite(value) ? Math.floor(value) : undefined;
 }
 
+/**
+ * Run a tool, reporting a failure as a tool result the model can read rather
+ * than a protocol error: "the queue table is missing" is a diagnosis.
+ */
 function callTool(name: string, args: Record<string, unknown>) {
+  try {
+    return runTool(name, args);
+  } catch (error) {
+    return toolError(`${name} failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function runTool(name: string, args: Record<string, unknown>) {
   switch (name) {
     case 'get_status':
       return toolResult(getSystemStatus());
