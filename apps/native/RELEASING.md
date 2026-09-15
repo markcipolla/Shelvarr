@@ -60,18 +60,42 @@ place.
 
 ## Cutting a release
 
-1. Bump `expo.version` in `apps/native/app.json` and commit it.
-2. Tag the commit and push the tag:
+### Patches happen by themselves
 
-   ```bash
-   git tag v1.1.0
-   git push origin v1.1.0
-   ```
+Every time master goes green, `Release Native App (patch)` asks whether anything
+under `apps/native/` or `packages/types/` has changed since the last tag. If it
+has, the workflow tags `v<latest>.<patch + 1>`, builds it, and publishes it.
+Merge a fix and it is on phones without anyone doing anything.
 
-The `Release Native App` workflow then:
+Web-only merges release nothing: the app's code hasn't moved, so an update
+prompt would offer the same build back. Documentation under those paths doesn't
+count as a change either.
 
-- checks the tag matches `expo.version` (it fails loudly if you forgot step 1),
-- derives `android.versionCode` from the version (`major*10000 + minor*100 + patch`),
+### Minor and major releases are yours to call
+
+Bump `expo.version` in `apps/native/app.json` in the pull request that earns it.
+Once it merges, the automatic run publishes exactly that version rather than a
+patch of the old one — so a bump to `1.3.0` releases `v1.3.0`, and the next
+automatic patch after it is `v1.3.1`.
+
+Tagging by hand still works, and skips waiting for CI:
+
+```bash
+git tag v1.3.0
+git push origin v1.3.0
+```
+
+A commit that already carries a tag is left alone, so the two paths never fight
+over the same commit.
+
+### What the build does
+
+The tag is the source of truth. `Release Native App` writes its version into
+`app.json` at build time, which is why an automatic patch needs no commit of its
+own — the committed `expo.version` is only ever a floor. The workflow then:
+
+- derives `android.versionCode` from the version (`major*1000000 + minor*1000 +
+  patch`), which has to increase for Android to install the update,
 - runs `expo prebuild` and builds a release APK signed with the keystore above,
 - creates the GitHub release if the tag doesn't have one, and uploads
   `shelvarr-<version>.apk` to it.
