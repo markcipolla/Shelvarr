@@ -12,7 +12,7 @@ import {
 import type { SourceStatus } from '@/lib/services/downloads';
 import { DownloadSourcesModal } from '@/components/wanted/DownloadSourcesModal';
 import { SourceStatusBar } from '@/components/wanted/SourceStatusBadge';
-import { BookIcon } from '@/components/ui/Icons';
+import { BookCover } from '@/components/ui/BookCover';
 
 interface WantedBookDetailProps {
   book: WantedBook;
@@ -66,22 +66,15 @@ export function WantedBookDetail({ book, sourceStatuses }: WantedBookDetailProps
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Cover and Actions */}
         <div className="lg:col-span-1">
-          <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg overflow-hidden">
-            <div className="aspect-[2/3] bg-shelvarr-bg">
-              {book.cover_url ? (
-                <img
-                  src={book.cover_url}
-                  alt={book.title}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <BookIcon className="w-24 h-24 text-shelvarr-text-muted" />
-                </div>
-              )}
-            </div>
+          <div className="space-y-4">
+            <BookCover
+              src={book.cover_url}
+              title={book.title}
+              author={book.author}
+              className="w-full max-w-[300px] mx-auto"
+            />
 
-            <div className="p-4 space-y-3">
+            <div className="space-y-3">
               <button
                 onClick={() => setShowDownloads(true)}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"

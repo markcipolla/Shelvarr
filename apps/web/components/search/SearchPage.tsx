@@ -2,10 +2,10 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import Link from 'next/link';
 import { addToWanted } from '@/lib/actions/wanted';
-import { BookIcon, LoadingSpinner } from '@/components/ui/Icons';
+import { LoadingSpinner } from '@/components/ui/Icons';
+import { BookCover } from '@/components/ui/BookCover';
 import { HardcoverNotConfigured } from '@/components/ui/HardcoverNotConfigured';
 import { BookCard } from '@/components/books/BookGrid';
 import { ComicCard } from '@/components/comics/ComicGrid';
@@ -181,45 +181,36 @@ function SearchResultCard({ result }: { result: SearchResultWithStatus }) {
   };
 
   return (
-    <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg overflow-hidden">
-      {/* Cover Image */}
-      <div className="aspect-[2/3] relative bg-shelvarr-bg">
-        {result.coverUrl ? (
-          <Image
-            src={result.coverUrl}
-            alt={result.title}
-            fill
-            className="object-cover"
-            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-shelvarr-text-muted">
-            <BookIcon className="w-12 h-12" />
+    <div className="book-cover-trigger">
+      <BookCover
+        src={result.coverUrl}
+        title={result.title}
+        author={result.author}
+        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
+        overlay={
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            {!added && (
+              <button
+                onClick={handleAddToWanted}
+                disabled={adding}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-1.5 px-3 rounded transition-colors disabled:opacity-50 shadow-lg"
+              >
+                {adding ? 'Adding...' : '+ Want'}
+              </button>
+            )}
+            {added && (
+              <Link
+                href="/wanted"
+                className="bg-green-600 text-white text-xs font-medium py-1.5 px-3 rounded shadow-lg"
+              >
+                Already Wanted
+              </Link>
+            )}
           </div>
-        )}
-        {/* Want button overlay */}
-        <div className="absolute inset-0 flex items-center justify-center p-4">
-          {!added && (
-            <button
-              onClick={handleAddToWanted}
-              disabled={adding}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-1.5 px-3 rounded transition-colors disabled:opacity-50 shadow-lg"
-            >
-              {adding ? 'Adding...' : '+ Want'}
-            </button>
-          )}
-          {added && (
-            <Link
-              href="/wanted"
-              className="bg-green-600 text-white text-xs font-medium py-1.5 px-3 rounded shadow-lg"
-            >
-              Already Wanted
-            </Link>
-          )}
-        </div>
-      </div>
+        }
+      />
       {/* Info */}
-      <div className="p-3">
+      <div className="pt-3">
         <h3 className="font-medium text-white text-sm truncate">{result.title}</h3>
         <p className="text-xs text-shelvarr-text-muted truncate mt-1">
           {result.author}{result.publishYear && ` (${result.publishYear})`}

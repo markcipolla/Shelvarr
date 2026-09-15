@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import type { ComicVolumeSummary } from '@shelvarr/types';
-import { BookIcon, ComicIcon } from '@/components/ui/Icons';
+import { BookIcon } from '@/components/ui/Icons';
+import { BookCover } from '@/components/ui/BookCover';
 
 interface ComicGridProps {
   volumes: ComicVolumeSummary[];
@@ -29,27 +29,10 @@ export function ComicCard({ volume, progressLabel }: ComicCardProps) {
   const title = volume.title;
   const subtitle = [volume.publisher, volume.year].filter(Boolean).join(' · ');
   const coverSrc = `/api/comics/${volume.id}/cover`;
-  const [coverFailed, setCoverFailed] = useState(false);
 
   return (
-    <Link
-      href={`/comics/${volume.slug}`}
-      className="group block bg-shelvarr-surface border border-shelvarr-border rounded-lg overflow-hidden hover:border-shelvarr-primary transition-colors"
-    >
-      <div className="aspect-[2/3] bg-shelvarr-bg relative">
-        {coverFailed ? (
-          <div className="w-full h-full flex items-center justify-center p-2">
-            <ComicIcon className="w-12 h-12 text-shelvarr-text-muted" />
-          </div>
-        ) : (
-          <img
-            src={coverSrc}
-            alt={title}
-            className="w-full h-full object-cover"
-            loading="lazy"
-            onError={() => setCoverFailed(true)}
-          />
-        )}
+    <Link href={`/comics/${volume.slug}`} className="book-cover-trigger group block">
+      <BookCover variant="comic" src={coverSrc} title={title} author={subtitle}>
         {volume.issue_count > 0 && (
           <div className="absolute top-2 right-2 bg-shelvarr-primary/90 text-white text-xs font-bold px-2 py-1 rounded">
             {volume.issues_downloaded}/{volume.issue_count}
@@ -60,8 +43,8 @@ export function ComicCard({ volume, progressLabel }: ComicCardProps) {
             {progressLabel}
           </div>
         )}
-      </div>
-      <div className="p-2">
+      </BookCover>
+      <div className="pt-3">
         <h3 className="text-sm font-medium text-white line-clamp-2 group-hover:text-shelvarr-primary transition-colors">
           {title}
         </h3>

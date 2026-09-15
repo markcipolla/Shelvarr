@@ -183,12 +183,14 @@ describe('SearchPage Component', () => {
     it('should display cover images when available', () => {
       render(<SearchPage initialQuery="test" initialResults={mockResults} isConfigured={true} />);
 
-      const images = document.querySelectorAll('img');
-      // Two results have covers
-      const coverImages = Array.from(images).filter(
-        img => img.src.includes('example.com')
+      // Two results have covers; the third gets a typographic stand-in. The
+      // spine and glow repeat each cover, but only decoratively.
+      const covers = screen.getAllByRole('img');
+      const coverImages = covers.filter(
+        img => (img as HTMLImageElement).src?.includes('example.com')
       );
       assert.strictEqual(coverImages.length, 2);
+      assert.ok(screen.getByRole('img', { name: 'No Cover Book' }));
     });
 
     it('should show "+ Want" button for non-wanted books', () => {

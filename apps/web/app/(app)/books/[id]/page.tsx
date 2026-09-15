@@ -5,8 +5,8 @@ import { getLibraryById } from '@/lib/services/library';
 import { getAuthorByName } from '@/lib/actions/authors';
 import { BookDetails } from '@/components/books/BookDetails';
 import { BookActions } from '@/components/books/BookActions';
-import { parseAuthors } from '@/lib/utils/authors';
-import { BookIcon } from '@/components/ui/Icons';
+import { formatAuthors, parseAuthors } from '@/lib/utils/authors';
+import { BookCover } from '@/components/ui/BookCover';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,21 +52,12 @@ export default async function BookDetailPage({ params }: PageProps) {
 
       <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6">
         <div className="space-y-4">
-          <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg overflow-hidden">
-            <div className="aspect-[2/3] bg-shelvarr-bg">
-              {book.coverUrl ? (
-                <img
-                  src={book.coverUrl}
-                  alt={book.title || 'Book cover'}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <BookIcon className="w-24 h-24 text-shelvarr-text-muted" />
-                </div>
-              )}
-            </div>
-          </div>
+          <BookCover
+            src={book.coverUrl}
+            title={book.title || 'Unknown'}
+            author={formatAuthors(book.authors)}
+            className="w-full max-w-[300px] mx-auto"
+          />
 
           <BookActions book={book} readProgress={readProgress} />
         </div>

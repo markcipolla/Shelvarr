@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getSeries } from '@/lib/actions/series';
 import { SeriesSearch } from '@/components/series/SeriesSearch';
 import { formatAuthors } from '@/lib/utils/authors';
-import { SeriesIcon } from '@/components/ui/Icons';
+import { BookCover } from '@/components/ui/BookCover';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,25 +59,14 @@ function SeriesCard({
   return (
     <Link
       href={`/series/${encodeURIComponent(series.seriesName)}`}
-      className="group block bg-shelvarr-surface border border-shelvarr-border rounded-lg overflow-hidden hover:border-shelvarr-primary transition-colors"
+      className="book-cover-trigger group block"
     >
-      <div className="aspect-[2/3] bg-shelvarr-bg relative">
-        {series.coverUrl ? (
-          <img
-            src={series.coverUrl}
-            alt={series.seriesName}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center p-2">
-            <SeriesIcon className="w-12 h-12 text-shelvarr-text-muted" />
-          </div>
-        )}
+      <BookCover src={series.coverUrl} title={series.seriesName} author={authors}>
         <div className="absolute top-2 right-2 bg-shelvarr-primary/90 text-white text-xs font-bold px-2 py-1 rounded">
           {series.bookCount} {series.bookCount === 1 ? 'book' : 'books'}
         </div>
-      </div>
-      <div className="p-2">
+      </BookCover>
+      <div className="pt-3">
         <h3 className="text-sm font-medium text-white line-clamp-2 group-hover:text-shelvarr-primary transition-colors">
           {series.seriesName}
         </h3>

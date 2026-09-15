@@ -1,0 +1,351 @@
+/*
+ * Covers drawn as objects instead of flat rectangles.
+ *
+ * Books are hardcovers: a spine the book turns to show on hover, the groove of
+ * the hinge and a hard drop shadow, after HighFlyer910's "George Orwell" pen
+ * (codepen.io/HighFlyer910/pen/LaXrgV). Hover also brings up a sheen and a
+ * blurred copy of the cover glowing underneath, after yancy's "Books Hover
+ * Animation" (codepen.io/yancy/pen/jpWPGx). Comics are the same idea without
+ * the spine: a thin floppy whose cover lifts off its pages, as in yancy's pen.
+ *
+ * Everything is sized in container units, so the same rules draw a grid
+ * thumbnail and the detail page's cover.
+ */
+
+.book-cover {
+  --bc-depth: 8cqw;
+  --bc-radius: 0.8cqw 2.4cqw 2.4cqw 0.8cqw;
+  --bc-pages: #ebe5d6;
+  --bc-perspective: 600cqw;
+  position: relative;
+  container-type: inline-size;
+  aspect-ratio: 2 / 3;
+}
+
+.book-cover--comic {
+  --bc-depth: 0.8cqw;
+  --bc-radius: 0.3cqw 1cqw 1cqw 0.3cqw;
+  /* A US comic is 6.625" by 10.25": a touch narrower than a novel. */
+  aspect-ratio: 53 / 82;
+}
+
+.book-cover__glow {
+  position: absolute;
+  inset: 8% 6% -2%;
+  overflow: hidden;
+  border-radius: 8cqw;
+  filter: blur(10cqw) saturate(1.4);
+  opacity: 0.5;
+  transform: translateY(4%) scale(0.92);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  pointer-events: none;
+}
+
+.book-cover__glow > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.book-cover__body {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transform: perspective(var(--bc-perspective)) translateY(0) rotateY(0deg) rotateZ(0deg) scale(1);
+  transition: transform 0.5s cubic-bezier(0.2, 0.7, 0.3, 1), box-shadow 0.5s ease;
+  border-radius: var(--bc-radius);
+  background: #111318;
+  box-shadow: 2.5cqw 2.5cqw 2cqw rgba(0, 0, 0, 0.45), 0 0 0 var(--bc-pages);
+}
+
+.book-cover--comic .book-cover__body {
+  transform-origin: left center;
+  box-shadow: 0.5cqw 1.5cqw 1.5cqw rgba(0, 0, 0, 0.45), 0 0 0 var(--bc-pages);
+}
+
+.book-cover__front {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  transform: translateZ(calc(var(--bc-depth) / 2));
+  border-radius: var(--bc-radius);
+  background: #1f2329;
+}
+
+.book-cover__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* The hinge groove and the shading where the board meets the spine. */
+.book-cover__shine {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      90deg,
+      transparent 2.5%,
+      rgba(0, 0, 0, 0.25) 2.5%,
+      rgba(0, 0, 0, 0.25) 3.3%,
+      rgba(255, 255, 255, 0.16) 3.3%,
+      transparent 6.5%
+    ),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.3), transparent 7%);
+}
+
+/* A comic has no boards, just the fold at its staples. */
+.book-cover--comic .book-cover__shine {
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.22), transparent 2.5%);
+}
+
+.book-cover__shine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 60%);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.book-cover__spine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--bc-depth) / -2);
+  width: var(--bc-depth);
+  overflow: hidden;
+  transform: rotateY(-90deg);
+  border-radius: 0.6cqw;
+  background: #2b2f36;
+}
+
+/* The cover's own edge, mirrored so its colour runs on round the hinge. */
+.book-cover__spine > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: left center;
+  transform: scaleX(-1);
+}
+
+.book-cover__spine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.45),
+    rgba(0, 0, 0, 0.15) 35%,
+    rgba(255, 255, 255, 0.1) 55%,
+    rgba(0, 0, 0, 0.35)
+  );
+}
+
+.book-cover__spine::before {
+  content: attr(data-title);
+  position: absolute;
+  inset: 6cqw 0;
+  z-index: 1;
+  overflow: hidden;
+  writing-mode: vertical-rl;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 4cqw;
+  font-weight: 600;
+  line-height: var(--bc-depth);
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/*
+ * No cover to show: a plain typographic one, in the spirit of the Orwell pen.
+ * The words are generated content so they don't repeat the card's own title
+ * to screen readers.
+ */
+.book-cover__plain {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  /* Deep enough at the top to clear a corner badge. */
+  padding: 22cqw 11cqw 11cqw 13cqw;
+  background: linear-gradient(45deg, hsl(var(--bc-hue) 9% 82%), hsl(var(--bc-hue) 28% 95%));
+  color: #2b2b2b;
+}
+
+.book-cover__plain::before,
+.book-cover__plain::after {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.book-cover__plain::before {
+  content: attr(data-title);
+  -webkit-line-clamp: 6;
+  font-size: 9cqw;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.book-cover__plain::after {
+  content: attr(data-author);
+  -webkit-line-clamp: 2;
+  font-size: 5.5cqw;
+  line-height: 1.3;
+  opacity: 0.8;
+}
+
+/* A masthead with its publisher beneath, leaving the foot free for progress. */
+.book-cover--comic .book-cover__plain {
+  justify-content: flex-start;
+  gap: 4cqw;
+  background: linear-gradient(160deg, hsl(var(--bc-hue) 60% 42%), hsl(calc(var(--bc-hue) + 40) 55% 28%));
+  color: #fff;
+}
+
+.book-cover--comic .book-cover__plain::before {
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.book-cover--plain .book-cover__spine {
+  background: hsl(var(--bc-hue) 9% 76%);
+}
+
+.book-cover--plain .book-cover__spine::before {
+  color: #2b2b2b;
+}
+
+.book-cover--plain .book-cover__glow {
+  background: hsl(var(--bc-hue) 30% 70%);
+}
+
+.book-cover--comic.book-cover--plain .book-cover__glow {
+  background: hsl(var(--bc-hue) 60% 45%);
+}
+
+.book-cover--muted img {
+  filter: grayscale(1);
+}
+
+/* Controls laid flat over the cover, so they hold still while it turns. */
+.book-cover__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .book-cover:hover .book-cover__body,
+  .book-cover-trigger:hover .book-cover__body,
+  .book-cover-trigger:focus-visible .book-cover__body {
+    transform: perspective(var(--bc-perspective)) translateY(-3%) rotateY(28deg) rotateZ(-1deg) scale(1.02);
+    box-shadow: 4cqw 4cqw 7cqw rgba(0, 0, 0, 0.45), 0 0 0 var(--bc-pages);
+  }
+
+  .book-cover--comic:hover .book-cover__body,
+  .book-cover-trigger:hover .book-cover--comic .book-cover__body,
+  .book-cover-trigger:focus-visible .book-cover--comic .book-cover__body {
+    transform: perspective(var(--bc-perspective)) translateY(-2%) rotateY(-24deg) rotateZ(-2deg) scale(1.02);
+    box-shadow: 0.5cqw 1.5cqw 1cqw rgba(0, 0, 0, 0.5), 6cqw 2.5cqw 0 var(--bc-pages);
+  }
+
+  .book-cover:hover .book-cover__glow,
+  .book-cover-trigger:hover .book-cover__glow,
+  .book-cover-trigger:focus-visible .book-cover__glow {
+    opacity: 0.75;
+    transform: translateY(8%) scale(1);
+  }
+
+  .book-cover:hover .book-cover__shine::after,
+  .book-cover-trigger:hover .book-cover__shine::after,
+  .book-cover-trigger:focus-visible .book-cover__shine::after {
+    opacity: 1;
+  }
+}
+
+/*
+ * The Read button's little book, which falls open on hover with its pages
+ * fanned, after Dhanish Gajjar's "CSS Only Flipping Book"
+ * (codepen.io/dhanishgajjar/pen/bjaYYo). Its front is the book's own cover.
+ */
+.flip-book {
+  position: relative;
+  flex-shrink: 0;
+  width: 1.25rem;
+  height: 1.875rem;
+  perspective: 7rem;
+  transform-style: preserve-3d;
+}
+
+.flip-book > span {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  transform-style: preserve-3d;
+  transition: transform 0.5s ease-in-out, box-shadow 0.35s ease-in-out;
+  border-radius: 0 0.15rem 0.15rem 0;
+}
+
+.flip-book__back {
+  background: #14532d;
+}
+
+.flip-book__page:nth-child(2) { background: #fdfdfd; }
+.flip-book__page:nth-child(3) { background: #fafafa; }
+.flip-book__page:nth-child(4),
+.flip-book__page:nth-child(5) { background: #f5f5f5; }
+.flip-book__page:nth-child(6),
+.flip-book__page:nth-child(7) { background: #efefef; }
+
+.flip-book__front {
+  background: hsl(var(--bc-hue, 150) 28% 88%);
+}
+
+.flip-book__front > img,
+.flip-book__front::before {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  backface-visibility: hidden;
+}
+
+.flip-book__front > img {
+  object-fit: cover;
+}
+
+/* The inside of the board, seen once it has swung open. */
+.flip-book__front::before {
+  content: '';
+  transform: rotateY(180deg);
+  background: #e8e2d4;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .flip-book-trigger:is(:hover, :focus-visible) .flip-book > span {
+    box-shadow: 0 0.2rem 0.6rem rgba(0, 0, 0, 0.2);
+  }
+
+  .flip-book-trigger:is(:hover, :focus-visible) .flip-book__front { transform: rotateY(-160deg) scale(1.1); }
+  .flip-book-trigger:is(:hover, :focus-visible) .flip-book__page:nth-child(7) { transform: rotateY(-150deg) scale(1.1); }
+  .flip-book-trigger:is(:hover, :focus-visible) .flip-book__page:nth-child(6) { transform: rotateY(-30deg) scale(1.1); }
+  .flip-book-trigger:is(:hover, :focus-visible) .flip-book__page:nth-child(5) { transform: rotateY(-140deg) scale(1.1); }
+  .flip-book-trigger:is(:hover, :focus-visible) .flip-book__page:nth-child(4) { transform: rotateY(-40deg) scale(1.1); }
+  .flip-book-trigger:is(:hover, :focus-visible) .flip-book__page:nth-child(3) { transform: rotateY(-130deg) scale(1.1); }
+  .flip-book-trigger:is(:hover, :focus-visible) .flip-book__page:nth-child(2) { transform: rotateY(-50deg) scale(1.1); }
+  .flip-book-trigger:is(:hover, :focus-visible) .flip-book__back { transform: rotateY(-20deg) scale(1.1); }
+}
