@@ -24,6 +24,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
+  // The spec has clients send the negotiated revision on every request after
+  // initialize, and servers turn away one they do not speak with a 400.
+  const protocolVersion = request.headers.get('mcp-protocol-version');
+  if (protocolVersion && !admin.isSupportedMcpProtocolVersion(protocolVersion)) {
+    return NextResponse.json(
+      {
+        jsonrpc: '2.0',
+        id: null,
+        error: {
+          code: -32600,
+          message: `Unsupported MCP-Protocol-Version: ${protocolVersion}. This server speaks ${admin.MCP_PROTOCOL_VERSION}.`,
+        },
+      },
+      { status: 400 }
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();

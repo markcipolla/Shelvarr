@@ -182,6 +182,55 @@ function getDatabaseInfo(): { path: string; sizeBytes: number | null } {
   }
 }
 
+/** A part of the status snapshot that could not be read, standing in for its data. */
+export interface SectionError {
+  error: string;
+}
+
+export type Section<T> = T | SectionError;
+
+export function isSectionError(value: unknown): value is SectionError {
+  return typeof value === 'object' && value !== null && 'error' in value;
+}
+
+/**
+ * Read one part of the snapshot, so a missing table or a locked database
+ * costs that part rather than the whole answer. A server in trouble is the
+ * one most in need of a status report.
+ */
+function section<T>(read: () => T): Section<T> {
+  try {
+    return read();
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export interface TaskSummary {
+  stats: ReturnType<typeof queue.getTaskStats>;
+  running: queue.Task[];
+  recentFailures: queue.Task[];
+}
+
+export interface SchedulerSummary {
+  running: boolean;
+  schedules: Array<{
+    name: string;
+    description: string;
+    enabled: boolean;
+    intervalSeconds: number;
+    lastRun: string | null;
+    nextRun: string | null;
+  }>;
+}
+
+export interface IntegrationSummary {
+  hardcover: boolean;
+  comicvine: boolean;
+  email: boolean;
+  auth: { enabled: boolean; users: number; admins: number };
+}
+
 export interface SystemStatus {
   app: {
     name: string;
@@ -194,31 +243,12 @@ export interface SystemStatus {
     startedAt: string;
     now: string;
   };
-  database: { path: string; sizeBytes: number | null };
-  library: LibraryCounts;
-  tasks: {
-    stats: ReturnType<typeof queue.getTaskStats>;
-    running: queue.Task[];
-    recentFailures: queue.Task[];
-  };
-  scheduler: {
-    running: boolean;
-    schedules: Array<{
-      name: string;
-      description: string;
-      enabled: boolean;
-      intervalSeconds: number;
-      lastRun: string | null;
-      nextRun: string | null;
-    }>;
-  };
-  downloads: DownloadCounts;
-  integrations: {
-    hardcover: boolean;
-    comicvine: boolean;
-    email: boolean;
-    auth: { enabled: boolean; users: number; admins: number };
-  };
+  database: Section<{ path: string; sizeBytes: number | null }>;
+  library: Section<LibraryCounts>;
+  tasks: Section<TaskSummary>;
+  scheduler: Section<SchedulerSummary>;
+  downloads: Section<DownloadCounts>;
+  integrations: Section<IntegrationSummary>;
   logs: ReturnType<typeof getLogBufferStats>;
 }
 
@@ -244,14 +274,14 @@ export function getSystemStatus(): SystemStatus {
       startedAt: new Date(now.getTime() - uptimeSeconds * 1000).toISOString(),
       now: now.toISOString(),
     },
-    database: getDatabaseInfo(),
-    library: getLibraryCounts(),
-    tasks: {
+    database: section(getDatabaseInfo),
+    library: section(getLibraryCounts),
+    tasks: section(() => ({
       stats: queue.getTaskStats(),
       running: queue.getRunningTasks(),
       recentFailures: queue.getTasks({ status: 'failed', limit: 5 }).tasks,
-    },
-    scheduler: {
+    })),
+    scheduler: section(() => ({
       running: scheduler.isSchedulerRunning(),
       schedules: scheduler.listSchedules().map((schedule) => ({
         name: schedule.name,
@@ -261,9 +291,9 @@ export function getSystemStatus(): SystemStatus {
         lastRun: secondsToIso(schedule.lastRun),
         nextRun: secondsToIso(schedule.nextRun),
       })),
-    },
-    downloads: getDownloadCounts(),
-    integrations: {
+    })),
+    downloads: section(getDownloadCounts),
+    integrations: section(() => ({
       hardcover: Boolean(
         getServiceConfig().hardcoverToken || process.env['HARDCOVER_API_TOKEN']
       ),
@@ -274,7 +304,7 @@ export function getSystemStatus(): SystemStatus {
         users: safeCount(countUsers),
         admins: safeCount(countAdmins),
       },
-    },
+    })),
     logs: getLogBufferStats(),
   };
 }

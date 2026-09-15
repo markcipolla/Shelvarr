@@ -7,9 +7,20 @@ import '@/lib/config';
 import { getCurrentUser } from '@/lib/auth';
 
 export interface AdminApiSettings {
+  /** Whether the API answers: the checkbox, or a token in the environment. */
   enabled: boolean;
   /** Null until the API has been switched on at least once. */
   token: string | null;
+  /**
+   * Whether SHELVARR_ADMIN_API_TOKEN is set. The token itself stays in the
+   * environment: whoever set it already has it, and it is not for the page.
+   */
+  environmentToken: boolean;
+}
+
+function currentSettings(token: string | null = admin.getAdminApiToken()): AdminApiSettings {
+  const environmentToken = admin.getEnvironmentAdminToken() !== null;
+  return { enabled: environmentToken || admin.isAdminApiEnabled(), token, environmentToken };
 }
 
 /**
@@ -30,14 +41,14 @@ async function requireAdmin(): Promise<void> {
 
 export async function getAdminApiSettings(): Promise<AdminApiSettings> {
   await requireAdmin();
-  return { enabled: admin.isAdminApiEnabled(), token: admin.getAdminApiToken() };
+  return currentSettings();
 }
 
 export async function setAdminApiEnabledAction(enabled: boolean): Promise<AdminApiSettings> {
   await requireAdmin();
-  const result = admin.setAdminApiEnabled(enabled);
+  const { token } = admin.setAdminApiEnabled(enabled);
   revalidatePath('/settings/advanced');
-  return result;
+  return currentSettings(token);
 }
 
 /** Mint a new token. Anything still using the old one stops working. */
@@ -45,7 +56,7 @@ export async function regenerateAdminApiTokenAction(): Promise<AdminApiSettings>
   await requireAdmin();
   const token = admin.regenerateAdminApiToken();
   revalidatePath('/settings/advanced');
-  return { enabled: admin.isAdminApiEnabled(), token };
+  return currentSettings(token);
 }
 
 export interface LogTailEntry {
@@ -63,6 +74,8 @@ export interface LogTail {
   buffered: number;
   capacity: number;
   level: LogLevel;
+  /** Where lines are also written, or null when they live in memory only. */
+  file: string | null;
 }
 
 /**
@@ -89,5 +102,6 @@ export async function getLogTail(
     buffered: result.buffer.buffered,
     capacity: result.buffer.capacity,
     level: result.buffer.level,
+    file: result.buffer.file,
   };
 }
