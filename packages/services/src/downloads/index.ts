@@ -61,12 +61,61 @@ export function getSearchLinks(query: string): SearchLinks {
   };
 }
 
+// A result smaller than this is almost certainly a saved error page or a
+// corrupt stub, not a book — no real epub/pdf/mobi is this small. Results
+// with an unparseable/"Unknown" size are never dropped by this floor: we
+// don't have enough information to reject them, and hiding a legitimate
+// result because a source didn't report a size would be worse than
+// occasionally showing a bad one.
+export const MINIMUM_RESULT_SIZE_BYTES = 20 * 1024; // 20 KB
+
+const SIZE_UNIT_MULTIPLIERS: Record<string, number> = {
+  kb: 1024,
+  mb: 1024 * 1024,
+  gb: 1024 * 1024 * 1024,
+};
+
+/**
+ * Parse a source's free-text size label (e.g. "2.5 MB", "850 KB", "1.2 GB")
+ * into a byte count. Returns null for "Unknown" or anything else that
+ * doesn't match a recognised unit — an unknown size is not the same as a
+ * known-zero size, so callers must not treat null as 0.
+ */
+export function parseSizeToBytes(size: string): number | null {
+  const trimmed = size.trim();
+  if (!trimmed || trimmed.toLowerCase() === 'unknown') return null;
+
+  const match = trimmed.match(/^(\d+(?:\.\d+)?)\s*(kb|mb|gb)$/i);
+  if (!match) return null;
+
+  const value = parseFloat(match[1]!);
+  const multiplier = SIZE_UNIT_MULTIPLIERS[match[2]!.toLowerCase()];
+  if (!Number.isFinite(value) || multiplier === undefined) return null;
+
+  return Math.round(value * multiplier);
+}
+
+// Format preference, applied only as a sort tie-break (never a filter):
+// epub > mobi/azw3 > pdf > everything else. Extensions not listed here
+// (including the literal "unknown" some parsers fall back to) rank last.
+const FORMAT_RANK: Record<string, number> = {
+  epub: 0,
+  mobi: 1,
+  azw3: 1,
+  pdf: 2,
+};
+const UNRANKED_FORMAT_RANK = 99;
+
+function formatRank(extension: string): number {
+  return FORMAT_RANK[extension.toLowerCase()] ?? UNRANKED_FORMAT_RANK;
+}
+
 /**
  * Search all enabled sources for a book
  */
 export async function searchAllSources(
   query: string,
-  options?: { isbn?: string; sources?: DownloadSource[] }
+  options?: { isbn?: string; sources?: DownloadSource[]; language?: string }
 ): Promise<SearchAllSourcesResult> {
   const results: DownloadResult[] = [];
   const blockedSources: BlockedSource[] = [];
@@ -120,7 +169,7 @@ export async function searchAllSources(
 
   if (sourcesToSearch.includes('annas') && isSourceEnabled('annas')) {
     searchPromises.push(
-      searchAnnas(query)
+      searchAnnas(query, { language: options?.language })
         .then((annasResults: AnnasResult[]) => {
           for (const r of annasResults) {
             results.push({
@@ -188,8 +237,17 @@ export async function searchAllSources(
   // Wait for all searches to complete
   await Promise.all(searchPromises);
 
-  // Sort results: prefer sources that are 'up', then by relevance (title match)
-  results.sort((a, b) => {
+  // Drop results whose parsed size is known and below the floor — a saved
+  // HTML error page, not a book. Results with an unparseable/"Unknown" size
+  // are kept: we don't have enough information to reject them.
+  const filteredResults = results.filter((result) => {
+    const bytes = parseSizeToBytes(result.size);
+    return bytes === null || bytes >= MINIMUM_RESULT_SIZE_BYTES;
+  });
+
+  // Sort results: prefer sources that are 'up', then by relevance (title
+  // match), then by format preference (epub > mobi/azw3 > pdf > other).
+  filteredResults.sort((a, b) => {
     // Status priority: up > degraded > down > unknown
     const statusPriority = { up: 0, degraded: 1, down: 2, unknown: 3 };
     const aStatus = statusPriority[a.sourceStatus || 'unknown'];
@@ -204,10 +262,15 @@ export async function searchAllSources(
     const aMatch = a.title.toLowerCase().includes(queryLower) ? 0 : 1;
     const bMatch = b.title.toLowerCase().includes(queryLower) ? 0 : 1;
 
-    return aMatch - bMatch;
+    if (aMatch !== bMatch) {
+      return aMatch - bMatch;
+    }
+
+    // Then by format preference (tie-break only — never filters results out)
+    return formatRank(a.extension) - formatRank(b.extension);
   });
 
-  return { results, blockedSources };
+  return { results: filteredResults, blockedSources };
 }
 
 /**
@@ -216,7 +279,7 @@ export async function searchAllSources(
 export async function searchSource(
   source: DownloadSource,
   query: string,
-  options?: { isbn?: string }
+  options?: { isbn?: string; language?: string }
 ): Promise<SearchAllSourcesResult> {
   return searchAllSources(query, {
     ...options,
