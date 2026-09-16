@@ -131,6 +131,36 @@ describe('PATCH /api/comics/issues/[id]/progress', () => {
     assert.equal(total, 24);
   });
 
+  it('keeps the saved page when the client only says completed', async () => {
+    getComicReadProgressMock.mock.mockImplementation(() => ({
+      id: 1, issue_id: 1, page: 7, completed: 0, total: 22,
+    }));
+
+    await PATCH(makeRequest('PATCH', { completed: true, total: 22 }) as any, { params });
+
+    const [, , page, completed] = upsertComicReadProgressMock.mock.calls[0].arguments;
+    assert.equal(page, 7);
+    assert.equal(completed, true);
+  });
+
+  it('records page 0 for an issue that was never opened', async () => {
+    getComicReadProgressMock.mock.mockImplementation(() => null);
+
+    await PATCH(makeRequest('PATCH', { completed: true }) as any, { params });
+
+    assert.equal(upsertComicReadProgressMock.mock.calls[0].arguments[2], 0);
+  });
+
+  it('honours an explicit page 0 rather than reviving the saved page', async () => {
+    getComicReadProgressMock.mock.mockImplementation(() => ({
+      id: 1, issue_id: 1, page: 7, completed: 0, total: 22,
+    }));
+
+    await PATCH(makeRequest('PATCH', { page: 0, completed: false }) as any, { params });
+
+    assert.equal(upsertComicReadProgressMock.mock.calls[0].arguments[2], 0);
+  });
+
   it("writes to the calling reader's shelf", async () => {
     readingUserId = 42;
     getComicReadProgressMock.mock.mockImplementation(() => null);

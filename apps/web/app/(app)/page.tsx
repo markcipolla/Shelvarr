@@ -2,9 +2,10 @@ import Link from 'next/link';
 import { getRecentBooks, getCurrentlyReadingBooks, getWantToReadBooks } from '@/lib/services/scanner';
 import { getRecentComics, getInProgressComics } from '@/lib/actions/comics';
 import { BookCard } from '@/components/books/BookGrid';
+import { CurrentlyReadingRow } from '@/components/books/CurrentlyReadingRow';
 import { ComicCard, type ComicVolumeCardData } from '@/components/comics/ComicGrid';
+import { InProgressComicRow } from '@/components/comics/InProgressComicRow';
 import type { Book } from '@/types';
-import type { InProgressComic } from '@/lib/db';
 import { getReadingUserId } from '@/lib/auth';
 import { LiveRefresh } from '@/components/live/LiveRefresh';
 
@@ -54,7 +55,7 @@ export default async function HomePage() {
         empty="No books in progress. Open a book to start reading."
         isEmpty={currentlyReading.length === 0}
       >
-        <BookRow books={currentlyReading} />
+        <CurrentlyReadingRow books={currentlyReading} />
       </HomeSection>
 
       {nextUp.length > 0 && (
@@ -146,20 +147,6 @@ function ComicRow({ volumes }: { volumes: ComicVolumeCardData[] }) {
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
       {volumes.map((volume) => (
         <ComicCard key={volume.id} volume={volume} />
-      ))}
-    </div>
-  );
-}
-
-function InProgressComicRow({ comics }: { comics: InProgressComic[] }) {
-  return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
-      {comics.map((c) => (
-        <ComicCard
-          key={c.volume.id}
-          volume={c.volume}
-          progressLabel={c.issueNumber ? `Reading #${c.issueNumber}` : 'Reading'}
-        />
       ))}
     </div>
   );

@@ -27,7 +27,11 @@ export async function PATCH(
     return NextResponse.json({ error: 'Book not found' }, { status: 404 });
   }
 
-  upsertReadProgress(userId, bookId, body.page || 0, body.completed || false);
+  // A client that only says "completed" — the card's tick, the phone's detail
+  // screen — keeps its place in the book. Writing 0 over it would lose the page
+  // for good, so marking the book incomplete again would reopen it at the start.
+  const page = body.page ?? getReadProgress(userId, bookId)?.page ?? 0;
+  upsertReadProgress(userId, bookId, page, body.completed || false);
 
   // Sync status to Hardcover on transitions (start reading / finish). Hardcover
   // is configured once for the whole server, so this mirrors whoever read the

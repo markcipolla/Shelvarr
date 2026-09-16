@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import type { Book } from '@/types';
 import { formatAuthors } from '@/lib/utils/authors';
 import { BookCover } from '@/components/ui/BookCover';
@@ -20,6 +21,8 @@ export function BookGrid({ books }: BookGridProps) {
 interface BookCardProps {
   book: Book;
   showSeriesNumber?: boolean;
+  /** Controls laid over the cover — a shelf's own actions, e.g. ticking a book off. */
+  overlay?: ReactNode;
 }
 
 interface StatusBadge {
@@ -47,7 +50,7 @@ function getStatusBadge(book: Book): StatusBadge | null {
   }
 }
 
-export function BookCard({ book, showSeriesNumber }: BookCardProps) {
+export function BookCard({ book, showSeriesNumber, overlay }: BookCardProps) {
   const authors = formatAuthors(book.authors);
   const title = book.title || getFilenameFromPath(book.filePath);
   const percent = book.progressPercent;
@@ -56,7 +59,7 @@ export function BookCard({ book, showSeriesNumber }: BookCardProps) {
 
   return (
     <Link href={`/books/${book.id}`} className="book-cover-trigger group block">
-      <BookCover src={book.coverUrl} title={title} author={authors}>
+      <BookCover src={book.coverUrl} title={title} author={authors} overlay={overlay}>
         {showSeriesNumber && book.seriesNumber && (
           <div className="absolute top-2 left-2 bg-shelvarr-primary text-white text-xs font-bold px-2 py-1 rounded">
             #{book.seriesNumber}

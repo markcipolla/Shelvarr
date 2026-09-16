@@ -40,10 +40,14 @@ export async function PATCH(
   const body = await request.json() as { page?: number; completed?: boolean; total?: number };
 
   const userId = getReadingUserId(request.headers);
+  // A client that only says "completed" — the "×" on the home shelf, the Mark
+  // read button on the volume page — keeps whatever page was saved. Writing 0
+  // over it would lose the reader's place in that issue for good.
+  const page = body.page ?? getComicReadProgress(userId, issueId)?.page ?? 0;
   upsertComicReadProgress(
     userId,
     issueId,
-    body.page ?? 0,
+    page,
     body.completed ?? false,
     body.total ?? null,
   );
