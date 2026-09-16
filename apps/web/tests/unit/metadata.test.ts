@@ -281,14 +281,13 @@ describe('Metadata Service - Scoring', () => {
       assert.strictEqual(sources[0].displayName, 'Hardcover');
       assert.strictEqual(sources[0].requiresApiKey, true);
       assert.strictEqual(sources[0].apiKeyUrl, 'https://hardcover.app/account/api');
-      assert.strictEqual(typeof sources[0].enabled, 'boolean');
-      assert.strictEqual(typeof sources[0].configured, 'boolean');
+      assert.strictEqual(sources[0].configured, true);
     });
 
-    it('should have enabled matching configured status', async () => {
+    it('reports an unconfigured source as such', async () => {
       mockIsConfigured.mock.mockImplementation(() => false);
       const sources = await getAllSourcesStatus();
-      assert.strictEqual(sources[0].enabled, sources[0].configured);
+      assert.strictEqual(sources[0].configured, false);
     });
   });
 

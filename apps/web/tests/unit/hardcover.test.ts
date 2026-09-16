@@ -3,16 +3,18 @@
  * Tests the Hardcover metadata service with mocked API responses
  */
 
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, before, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import * as hardcover from '../../lib/services/metadata/hardcover.js';
-import { initServiceConfig, getServiceConfig } from '@shelvarr/services';
+import { setHardcoverKey } from '../hardcover-key';
 
 // Mock global fetch
 let originalFetch: typeof global.fetch;
 let mockFetchResponse: any = null;
 
 describe('Hardcover API Service', { timeout: 120_000 }, () => {
+  before(() => setHardcoverKey('test-token'));
+
   beforeEach(() => {
     originalFetch = global.fetch;
     mockFetchResponse = null;
@@ -22,17 +24,14 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
     global.fetch = originalFetch;
   });
   describe('isConfigured', () => {
-    it('should return false when no API key is set', async () => {
-      // Clear any existing config
-      delete process.env['HARDCOVER_TOKEN'];
-
-      // Need to reimport to get fresh state
-      const { isConfigured } = await import('../../lib/services/metadata/hardcover.js');
-
-      // Without database access, it should check env vars
-      // This test verifies the function exists and returns boolean
-      const result = isConfigured();
-      assert.strictEqual(typeof result, 'boolean');
+    it('follows the key stored in Settings', async () => {
+      await setHardcoverKey(null);
+      try {
+        assert.strictEqual(hardcover.isConfigured(), false);
+      } finally {
+        await setHardcoverKey('test-token');
+      }
+      assert.strictEqual(hardcover.isConfigured(), true);
     });
   });
 
@@ -147,13 +146,12 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
 
   describe('getBookById', () => {
     it('should return null when API token is not configured', async () => {
-      const original = getServiceConfig();
-      initServiceConfig({ ...original, hardcoverToken: null });
+      await setHardcoverKey(null);
       try {
         const result = await hardcover.getBookById('123');
         assert.strictEqual(result, null);
       } finally {
-        initServiceConfig(original);
+        await setHardcoverKey('test-token');
       }
     });
 
@@ -167,7 +165,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         })
       }) as any;
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.getBookById('123');
       assert.strictEqual(result, null);
@@ -202,7 +199,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
       }) as any;
 
       // Set mock API token
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.getBookById('123');
 
@@ -238,7 +234,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         })
       }) as any;
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.getBookById('123');
       assert.ok(result);
@@ -260,7 +255,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         })
       }) as any;
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.getBookById('123');
       assert.ok(result);
@@ -274,7 +268,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         json: async () => ({ data: { books: [] } })
       }) as any;
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.getBookById('999');
       assert.strictEqual(result, null);
@@ -286,7 +279,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         status: 404,
       }) as any;
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.getBookById('123');
       assert.strictEqual(result, null);
@@ -298,7 +290,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         status: 429,
       }) as any;
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       await assert.rejects(
         async () => await hardcover.getBookById('123'),
@@ -312,7 +303,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         status: 500,
       }) as any;
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       await assert.rejects(
         async () => await hardcover.getBookById('123'),
@@ -328,13 +318,12 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
     });
 
     it('should return null when API token is not configured', async () => {
-      const original = getServiceConfig();
-      initServiceConfig({ ...original, hardcoverToken: null });
+      await setHardcoverKey(null);
       try {
         const result = await hardcover.searchBooks('test');
         assert.deepStrictEqual(result, []);
       } finally {
-        initServiceConfig(original);
+        await setHardcoverKey('test-token');
       }
     });
 
@@ -398,7 +387,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const results = await hardcover.searchBooks('test query', 10);
 
@@ -450,7 +438,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const results = await hardcover.searchBooks('test', 10);
       assert.strictEqual(results.length, 1);
@@ -495,7 +482,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const results = await hardcover.searchBooks('test', 10);
       assert.strictEqual(results.length, 1);
@@ -540,7 +526,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const results = await hardcover.searchBooks('test', 10);
       assert.strictEqual(results.length, 1);
@@ -585,7 +570,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const results = await hardcover.searchBooks('test', 10);
       assert.strictEqual(results.length, 1);
@@ -628,7 +612,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const results = await hardcover.searchBooks('test', 10);
       assert.strictEqual(results.length, 1);
@@ -655,7 +638,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const results = await hardcover.searchBooks('test', 10);
       assert.deepStrictEqual(results, []);
@@ -682,7 +664,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const results = await hardcover.searchBooks('test', 10);
       assert.deepStrictEqual(results, []);
@@ -695,7 +676,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         json: async () => ({ data: { search: { results: [] } } })
       }) as any;
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const results = await hardcover.searchBooks('nonexistent', 10);
       assert.deepStrictEqual(results, []);
@@ -708,7 +688,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         json: async () => ({ data: {} })
       }) as any;
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const results = await hardcover.searchBooks('test', 10);
       assert.deepStrictEqual(results, []);
@@ -753,7 +732,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const results = await hardcover.searchBooks('test', 10);
       assert.strictEqual(results.length, 1);
@@ -799,7 +777,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const results = await hardcover.searchBooks('test', 10);
       assert.strictEqual(results.length, 1);
@@ -841,7 +818,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const results = await hardcover.searchBooks('test', 10);
       assert.strictEqual(results[0].title, 'Book B');
@@ -886,7 +862,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const results = await hardcover.searchBooks('test', 2);
       assert.strictEqual(results.length, 2);
@@ -934,7 +909,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.searchByIsbn('978-1-234-56789-0');
       assert.ok(result);
@@ -986,7 +960,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.searchByIsbn('9781234567890');
       assert.ok(result);
@@ -1031,7 +1004,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.searchByIsbn('9781234567890');
       assert.ok(result);
@@ -1045,7 +1017,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         json: async () => ({ data: { search: { results: [] } } })
       }) as any;
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.searchByIsbn('9781234567890');
       assert.strictEqual(result, null);
@@ -1112,7 +1083,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.searchSeries('Test Series');
       assert.ok(result);
@@ -1162,7 +1132,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.searchSeries('test series');
       assert.ok(result);
@@ -1209,7 +1178,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.searchSeries('Test Series');
       assert.ok(result);
@@ -1273,7 +1241,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.searchSeries('Series');
       assert.ok(result);
@@ -1332,7 +1299,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.searchSeries('Series');
       assert.ok(result);
@@ -1390,7 +1356,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.searchSeries('Series');
       assert.ok(result);
@@ -1439,7 +1404,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.searchSeries('Series A');
       assert.ok(result);
@@ -1493,7 +1457,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.searchSeries('Test Series');
       assert.ok(result);
@@ -1537,7 +1500,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         return { ok: false, status: 404 } as any;
       };
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.searchSeries('Nonexistent Series');
       assert.strictEqual(result, null);
@@ -1550,7 +1512,6 @@ describe('Hardcover API Service', { timeout: 120_000 }, () => {
         json: async () => ({ data: { search: { results: [] } } })
       }) as any;
 
-      process.env.HARDCOVER_TOKEN = 'test-token';
 
       const result = await hardcover.searchSeries('Nonexistent');
       assert.strictEqual(result, null);

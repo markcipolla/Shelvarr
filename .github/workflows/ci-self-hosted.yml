@@ -60,8 +60,6 @@ jobs:
   test-self-hosted:
     name: test (self-hosted)
     runs-on: self-hosted
-    env:
-      HARDCOVER_API_TOKEN: test-token-for-ci
     steps:
       - uses: actions/checkout@v4
 

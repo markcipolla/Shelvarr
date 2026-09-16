@@ -1,5 +1,6 @@
 import { describe, it, mock, beforeEach } from 'node:test';
 import assert from 'node:assert';
+import { setHardcoverKey } from '../hardcover-key';
 
 // ============ Mock graphqlFetch responses ============
 
@@ -25,21 +26,7 @@ function teardownMockFetch() {
   globalThis.fetch = originalFetch;
 }
 
-// Mock the config and db modules before importing hardcover
-mock.module('@/lib/config', {
-  namedExports: {},
-  defaultExport: {
-    hardcoverToken: 'test-token-123',
-    rateLimits: { hardcover: 600 },
-    dbPath: '/tmp/test.db',
-  },
-});
-
-mock.module('@/lib/db', {
-  namedExports: {
-    getSetting: () => null,
-  },
-});
+await setHardcoverKey('test-token-123');
 
 const {
   searchUserBook,

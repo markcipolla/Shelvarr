@@ -38,7 +38,6 @@ import type {
   SpecialVersion,
 } from '@shelvarr/types';
 
-import { getServiceConfig } from '../config';
 import { describeWriteFailure } from '../utils/fs-errors';
 import { createLogger } from '../utils/logger';
 import { ComicVine, InvalidComicVineApiKeyError } from './comicvine/index';
@@ -54,10 +53,7 @@ const log = createLogger('comics-library');
  * it's entered through the UI rather than being a deployment concern.
  */
 export async function getComicVine(signal?: AbortSignal): Promise<ComicVine> {
-  const apiKey =
-    (await getSetting<string>('comicvine_api_key', null)) ||
-    process.env['COMICVINE_API_KEY'] ||
-    null;
+  const apiKey = await getSetting<string>('comicvine_api_key', null);
 
   if (!apiKey) {
     throw new InvalidComicVineApiKeyError();
@@ -72,11 +68,7 @@ export async function getComicVine(signal?: AbortSignal): Promise<ComicVine> {
 
 /** Whether a ComicVine key has been configured at all. */
 export async function isComicVineConfigured(): Promise<boolean> {
-  const apiKey =
-    (await getSetting<string>('comicvine_api_key', null)) ||
-    process.env['COMICVINE_API_KEY'] ||
-    null;
-  return Boolean(apiKey);
+  return Boolean(await getSetting<string>('comicvine_api_key', null));
 }
 
 // region Root folders
@@ -336,13 +328,6 @@ export function listVolumes(): Array<ComicVolume & ReturnType<typeof getComicVol
     ...volume,
     ...getComicVolumeFileStats(volume.id),
   }));
-}
-
-/** The comic library root, for callers that just need somewhere to write. */
-export function defaultRootFolderPath(): string | null {
-  const folders = getComicRootFolders();
-  if (folders.length > 0) return folders[0]!.path;
-  return getServiceConfig().getcomics.libraryRoot;
 }
 
 export type { ComicVolumeMetadata };

@@ -131,8 +131,6 @@ describe('Comic download retries', () => {
 
     const { initServiceConfig } = await import('@shelvarr/services');
     initServiceConfig({
-      env: 'test',
-      port: 3000,
       dataDir,
       libraryRoot: join(dataDir, 'library'),
       dbPath: join(dataDir, 'test.db'),
@@ -140,13 +138,10 @@ describe('Comic download retries', () => {
       getcomics: {
         baseUrl: 'https://getcomics.org',
         downloadDir: scratchDir,
-        libraryRoot: join(dataDir, 'library'),
         hostPreference: ['getcomics', 'pixeldrain'],
         renameDownloadedFiles: true,
       },
       supportedExtensions: ['.cbz'],
-      rateLimits: { hardcover: 60 },
-      hardcoverToken: null,
     });
 
     queue = await import('@shelvarr/services/queue/index');

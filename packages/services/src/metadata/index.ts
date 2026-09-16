@@ -40,7 +40,6 @@ export async function getAllSourcesStatus() {
   return [{
     name: 'hardcover' as const,
     displayName: 'Hardcover',
-    enabled: configured,
     configured,
     requiresApiKey: true,
     apiKeyUrl: 'https://hardcover.app/account/api',
