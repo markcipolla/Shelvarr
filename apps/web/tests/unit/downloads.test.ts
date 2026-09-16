@@ -412,6 +412,141 @@ describe('Download Services', () => {
         assert.ok(callUrl.includes('md5/testmd5'));
       });
     });
+
+    describe('resolveAnnasDownload', () => {
+      // E4-5: prefers the member fast_download API when a key is configured,
+      // falling back to the free scraped detail-page candidates
+      // (getAnnasDownloadLinks) otherwise. Every candidate — from either
+      // path — is only probed for headers, the same way LibGen's resolve
+      // functions never fetch a file body just to inspect it.
+
+      it('resolves a working candidate via the free scraped path when no API key is configured', async () => {
+        const db = await import('../../lib/db/index.js');
+        db.upsertDownloadSourceConfig('annas', true, undefined);
+
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          if (url.includes('/md5/')) {
+            return new Response('<a href="https://annas.example/download/file1">Download</a>', {
+              status: 200,
+            });
+          }
+          return new Response('book', {
+            status: 200,
+            headers: new Headers({
+              'content-type': 'application/epub+zip',
+              'content-disposition': 'attachment; filename="book.epub"',
+            }),
+          });
+        });
+
+        const results = await annas.resolveAnnasDownload('abc123');
+        assert.strictEqual(results.length, 1);
+        assert.strictEqual(results[0]?.filename, 'book.epub');
+      });
+
+      it('prefers the member fast_download API when an API key is configured', async () => {
+        const db = await import('../../lib/db/index.js');
+        db.upsertDownloadSourceConfig('annas', true, { apiKey: 'secret-key' });
+
+        let scrapedDetailPage = false;
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          if (url.includes('fast_download.json')) {
+            assert.ok(url.includes('key=secret-key'));
+            return new Response(JSON.stringify({ download_url: 'https://annas.example/direct-file' }), {
+              status: 200,
+            });
+          }
+          if (url.includes('/md5/')) {
+            scrapedDetailPage = true;
+            return new Response('', { status: 200 });
+          }
+          return new Response('book', {
+            status: 200,
+            headers: new Headers({ 'content-type': 'application/epub+zip' }),
+          });
+        });
+
+        const results = await annas.resolveAnnasDownload('abc123');
+        assert.strictEqual(results.length, 1);
+        assert.strictEqual(results[0]?.url, 'https://annas.example/direct-file');
+        assert.strictEqual(scrapedDetailPage, false, 'should not fall back to scraping when the API key path works');
+      });
+
+      it('falls back to the free scraped path when the API key path returns no download', async () => {
+        const db = await import('../../lib/db/index.js');
+        db.upsertDownloadSourceConfig('annas', true, { apiKey: 'bad-key' });
+
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          if (url.includes('fast_download.json')) {
+            return new Response(JSON.stringify({ error: 'invalid key' }), { status: 200 });
+          }
+          if (url.includes('/md5/')) {
+            return new Response('<a href="https://annas.example/download/fallback">Download</a>', {
+              status: 200,
+            });
+          }
+          return new Response('book', {
+            status: 200,
+            headers: new Headers({ 'content-type': 'application/epub+zip' }),
+          });
+        });
+
+        const results = await annas.resolveAnnasDownload('abc123');
+        assert.strictEqual(results.length, 1);
+        assert.strictEqual(results[0]?.url, 'https://annas.example/download/fallback');
+      });
+
+      it('throws SourceBlockedError when a candidate is a bot-check challenge page', async () => {
+        const db = await import('../../lib/db/index.js');
+        db.upsertDownloadSourceConfig('annas', true, undefined);
+
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          if (url.includes('/md5/')) {
+            return new Response('<a href="https://annas.example/download/blocked">Download</a>', {
+              status: 200,
+            });
+          }
+          return new Response(
+            '<html><head><title>Just a moment...</title></head><body><div class="cf-turnstile"></div></body></html>',
+            { status: 200, headers: new Headers({ 'content-type': 'text/html' }) }
+          );
+        });
+
+        await assert.rejects(
+          () => annas.resolveAnnasDownload('abc123'),
+          (err: unknown) => err instanceof SourceBlockedError
+        );
+      });
+
+      it('falls through a dead candidate to the next one', async () => {
+        const db = await import('../../lib/db/index.js');
+        db.upsertDownloadSourceConfig('annas', true, undefined);
+
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          if (url.includes('/md5/')) {
+            return new Response(
+              '<a href="https://annas.example/download/dead">Download</a>' +
+                '<a href="https://annas.example/download/alive">Download</a>',
+              { status: 200 }
+            );
+          }
+          if (url.includes('/download/dead')) {
+            return new Response('<html>error page</html>', {
+              status: 200,
+              headers: new Headers({ 'content-type': 'text/html' }),
+            });
+          }
+          return new Response('book', {
+            status: 200,
+            headers: new Headers({ 'content-type': 'application/epub+zip' }),
+          });
+        });
+
+        const results = await annas.resolveAnnasDownload('abc123');
+        assert.strictEqual(results.length, 1);
+        assert.strictEqual(results[0]?.url, 'https://annas.example/download/alive');
+      });
+    });
   });
 
   describe('LibGen Service', async () => {
@@ -1224,6 +1359,102 @@ describe('Download Services', () => {
         await zlib.authenticateZLibrary('user@test.com', 'mypassword');
         const callOptions = mockFetch.mock.calls[0]?.arguments[1];
         assert.strictEqual(callOptions?.method, 'POST');
+      });
+    });
+
+    describe('resolveZlibraryDownload', () => {
+      // E4-5: unlike LibGen and Anna's Archive, a Z-Library search result's
+      // downloadUrl is the book's detail page, not a file — this fetches
+      // that page with an authenticated session's cookies and scrapes it for
+      // the real link. It always needs an account, so "no credentials
+      // configured" is its own typed failure rather than an empty list.
+
+      it('throws ZLibraryNotConfiguredError when no credentials are configured', async () => {
+        const db = await import('../../lib/db/index.js');
+        db.upsertDownloadSourceConfig('zlibrary', false, undefined);
+
+        await assert.rejects(
+          () => zlib.resolveZlibraryDownload('12345'),
+          (err: unknown) => err instanceof zlib.ZLibraryNotConfiguredError
+        );
+      });
+
+      it('authenticates with stored email/password when no session is cached, then resolves the download link', async () => {
+        const db = await import('../../lib/db/index.js');
+        db.upsertDownloadSourceConfig('zlibrary', true, { email: 'user@test.com', password: 'secret' });
+
+        let loginCalled = false;
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          if (url.includes('singlelogin.re')) {
+            loginCalled = true;
+            const headers = new Headers();
+            headers.set('set-cookie', 'remix_userid=42; Path=/; remix_userkey=cachedkey; Path=/');
+            return new Response('', { status: 200, headers });
+          }
+          if (url.includes('/book/')) {
+            return new Response('<a class="dlButton" href="/dl/98765">Download</a>', { status: 200 });
+          }
+          return new Response('book', {
+            status: 200,
+            headers: new Headers({ 'content-type': 'application/epub+zip' }),
+          });
+        });
+
+        const results = await zlib.resolveZlibraryDownload('98765');
+        assert.strictEqual(loginCalled, true);
+        assert.strictEqual(results.length, 1);
+
+        // The session is cached for next time, so a later call need not
+        // authenticate again.
+        const stored = JSON.parse(db.getDownloadSourceConfig('zlibrary')!.credentials!);
+        assert.strictEqual(stored.remix_userid, '42');
+        assert.strictEqual(stored.remix_userkey, 'cachedkey');
+      });
+
+      it('reuses a cached session instead of re-authenticating', async () => {
+        const db = await import('../../lib/db/index.js');
+        db.upsertDownloadSourceConfig('zlibrary', true, {
+          email: 'user@test.com',
+          password: 'secret',
+          remix_userid: '42',
+          remix_userkey: 'cachedkey',
+        });
+
+        let loginCalled = false;
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          if (url.includes('singlelogin.re')) {
+            loginCalled = true;
+            return new Response('', { status: 500 });
+          }
+          if (url.includes('/book/')) {
+            return new Response('<a class="dlButton" href="/dl/11111">Download</a>', { status: 200 });
+          }
+          return new Response('book', {
+            status: 200,
+            headers: new Headers({ 'content-type': 'application/epub+zip' }),
+          });
+        });
+
+        const results = await zlib.resolveZlibraryDownload('11111');
+        assert.strictEqual(loginCalled, false, 'a cached session should not trigger another login');
+        assert.strictEqual(results.length, 1);
+      });
+
+      it('throws SourceBlockedError when the detail page is a bot-check challenge', async () => {
+        const db = await import('../../lib/db/index.js');
+        db.upsertDownloadSourceConfig('zlibrary', true, { remix_userid: '1', remix_userkey: 'key' });
+
+        mockFetch.mock.mockImplementation(async () =>
+          new Response(
+            '<html><head><title>Just a moment...</title></head><body><div class="cf-turnstile"></div></body></html>',
+            { status: 200 }
+          )
+        );
+
+        await assert.rejects(
+          () => zlib.resolveZlibraryDownload('1'),
+          (err: unknown) => err instanceof SourceBlockedError
+        );
       });
     });
   });

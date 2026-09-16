@@ -21,6 +21,20 @@ import { useLiveEvents } from '@/components/live/LiveEvents';
 // off by default and only searched once an operator opts in from Settings.
 const SHADOW_LIBRARY_SOURCES = ['zlibrary', 'annas', 'libgen'] as const;
 
+/**
+ * Whether a search result can be queued as a real download, or only opened
+ * in a browser. LibGen and Anna's Archive always resolve their own direct
+ * link; Z-Library's `downloadUrl` is only populated by `searchAllSources`
+ * when credentials are configured (see downloads/index.ts's searchZLibrary
+ * call), which is exactly when `resolveZlibraryDownload` has a session to
+ * use — so its presence here doubles as the "can this be queued" check.
+ */
+function canQueueDownload(result: DownloadResult): boolean {
+  if (result.source === 'libgen' || result.source === 'annas') return true;
+  if (result.source === 'zlibrary') return Boolean(result.downloadUrl);
+  return false;
+}
+
 interface Library {
   id: number;
   name: string;
@@ -139,9 +153,12 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
       return;
     }
 
-    // Only libgen supported for now
-    if (result.source !== 'libgen') {
-      // Open in browser for other sources
+    // LibGen and Anna's Archive can always be fetched directly once
+    // enabled; Z-Library needs an authenticated session to resolve a real
+    // file link (see resolveZlibraryDownload) — without one, its result's
+    // downloadUrl is just the book's detail page, so open that in a browser
+    // instead of queuing a download that can only fail.
+    if (!canQueueDownload(result)) {
       window.open(result.downloadUrl || result.searchUrl, '_blank');
       return;
     }
@@ -477,8 +494,7 @@ function DownloadResultItem({
     libgen: 'LibGen',
   };
 
-  // LibGen downloads can be queued, others open in browser
-  const canQueueDownload = result.source === 'libgen';
+  const canQueue = canQueueDownload(result);
 
   return (
     <div className="p-4 flex items-start gap-4">
@@ -502,7 +518,7 @@ function DownloadResultItem({
       </div>
 
       <div className="flex-shrink-0 flex items-center gap-2">
-        {canQueueDownload ? (
+        {canQueue ? (
           <button
             onClick={() => onDownload(result)}
             disabled={isDownloading}

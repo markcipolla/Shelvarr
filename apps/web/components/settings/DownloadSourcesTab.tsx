@@ -6,6 +6,8 @@ import {
   toggleDownloadSource,
   saveZLibraryCredentials,
   clearZLibraryCredentials,
+  saveAnnasApiKey,
+  clearAnnasApiKey,
   testDownloadSource,
   refreshDownloadSourceStatuses,
   getDownloadParserHealth,
@@ -27,6 +29,7 @@ interface SourceInfo {
   displayName: string;
   description: string;
   category: SourceCategory;
+  /** Whether downloads are unusable at all without credentials configured here. */
   requiresAuth: boolean;
   authFields?: { name: string; type: string; label: string }[];
 }
@@ -62,9 +65,11 @@ const SOURCES: SourceInfo[] = [
   {
     name: 'annas',
     displayName: "Anna's Archive",
-    description: 'Search engine for shadow libraries. No authentication required.',
+    description:
+      'Search engine for shadow libraries. Works with no account via a scraped, Cloudflare-gated path; a member API key enables a faster, reliable download path instead.',
     category: 'ebook',
     requiresAuth: false,
+    authFields: [{ name: 'apiKey', type: 'text', label: 'API Key (optional)' }],
   },
   {
     name: 'libgen',
@@ -170,14 +175,15 @@ function SourceCard({
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
 
   // Mirrors isSourceEnabled: no config row means shadow libraries
   // (zlibrary, annas, libgen) default off; other sources default on.
   const isEnabled =
     config != null ? config.enabled === 1 : !SHADOW_LIBRARY_SOURCES.has(source.name);
   const hasCredentials = config?.credentials != null;
+  const hasAuthFields = (source.authFields?.length ?? 0) > 0;
+  const fieldsFilled = source.authFields?.every((field) => fieldValues[field.name]) ?? false;
 
   const handleToggle = async () => {
     setLoading(true);
@@ -199,17 +205,23 @@ function SourceCard({
     setTesting(false);
   };
 
+  // Z-Library's credentials (email/password) are authenticated up front, the
+  // same way they always have been; Anna's Archive's is a bare API key with
+  // nothing to authenticate — it's just stored for resolveAnnasDownload to
+  // prefer over the free scraped path.
   const handleSaveCredentials = async () => {
-    if (!email || !password) return;
+    if (!fieldsFilled) return;
     setLoading(true);
-    const result = await saveZLibraryCredentials(email, password);
+    const result =
+      source.name === 'zlibrary'
+        ? await saveZLibraryCredentials(fieldValues.email!, fieldValues.password!)
+        : await saveAnnasApiKey(fieldValues.apiKey!);
     if (result.success) {
-      setEmail('');
-      setPassword('');
+      setFieldValues({});
       setExpanded(false);
-      toast.success('Credentials saved');
+      toast.success(source.name === 'zlibrary' ? 'Credentials saved' : 'API key saved');
     } else {
-      toast.error(result.error || 'Failed to save credentials');
+      toast.error(result.error || 'Failed to save');
     }
     router.refresh();
     setLoading(false);
@@ -218,7 +230,8 @@ function SourceCard({
   const handleClearCredentials = async () => {
     if (!confirm('Clear saved credentials?')) return;
     setLoading(true);
-    await clearZLibraryCredentials();
+    if (source.name === 'zlibrary') await clearZLibraryCredentials();
+    else await clearAnnasApiKey();
     router.refresh();
     setLoading(false);
   };
@@ -262,9 +275,9 @@ function SourceCard({
         </div>
 
         <div className="flex items-center gap-2">
-          {source.requiresAuth && hasCredentials && (
+          {hasAuthFields && hasCredentials && (
             <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">
-              Authenticated
+              {source.requiresAuth ? 'Authenticated' : 'Configured'}
             </span>
           )}
           <button
@@ -274,7 +287,7 @@ function SourceCard({
           >
             {testing ? 'Testing...' : 'Test'}
           </button>
-          {source.requiresAuth && (
+          {hasAuthFields && (
             <button
               onClick={() => setExpanded(!expanded)}
               className="text-shelvarr-text-muted hover:text-white transition-colors"
@@ -297,46 +310,48 @@ function SourceCard({
         </div>
       )}
 
-      {source.requiresAuth && expanded && (
+      {hasAuthFields && expanded && (
         <div className="p-4 border-t border-shelvarr-border bg-shelvarr-bg/50">
           {hasCredentials ? (
             <div className="flex items-center justify-between">
               <span className="text-sm text-shelvarr-text-muted">
-                Credentials saved. Downloads will use your account.
+                {source.requiresAuth
+                  ? 'Credentials saved. Downloads will use your account.'
+                  : 'API key saved. Downloads will use the member download path.'}
               </span>
               <button
                 onClick={handleClearCredentials}
                 disabled={loading}
                 className="text-sm text-red-400 hover:text-red-300 transition-colors"
               >
-                Clear Credentials
+                Clear {source.requiresAuth ? 'Credentials' : 'API Key'}
               </button>
             </div>
           ) : (
             <div className="space-y-3">
               <p className="text-sm text-shelvarr-text-muted">
-                Enter your {source.displayName} credentials to enable downloads:
+                {source.requiresAuth
+                  ? `Enter your ${source.displayName} credentials to enable downloads:`
+                  : `Enter your ${source.displayName} member API key for faster, reliable downloads:`}
               </p>
               {source.authFields?.map((field) => (
                 <input
                   key={field.name}
                   type={field.type}
                   placeholder={field.label}
-                  value={field.name === 'email' ? email : password}
+                  value={fieldValues[field.name] ?? ''}
                   onChange={(e) =>
-                    field.name === 'email'
-                      ? setEmail(e.target.value)
-                      : setPassword(e.target.value)
+                    setFieldValues((prev) => ({ ...prev, [field.name]: e.target.value }))
                   }
                   className="w-full bg-shelvarr-bg border border-shelvarr-border rounded-lg px-3 py-2 text-white placeholder-shelvarr-text-muted focus:outline-none focus:border-blue-500"
                 />
               ))}
               <button
                 onClick={handleSaveCredentials}
-                disabled={loading || !email || !password}
+                disabled={loading || !fieldsFilled}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
               >
-                {loading ? 'Saving...' : 'Save Credentials'}
+                {loading ? 'Saving...' : source.requiresAuth ? 'Save Credentials' : 'Save API Key'}
               </button>
             </div>
           )}

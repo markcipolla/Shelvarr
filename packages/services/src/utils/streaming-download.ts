@@ -68,6 +68,117 @@ export interface DownloadResult {
   bytes: number;
 }
 
+/** Pull a filename out of a Content-Disposition header. */
+export function filenameFromDisposition(disposition: string | null, fallback: string): string {
+  if (!disposition) return fallback;
+  const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+  return match?.[1] ? match[1].replace(/['"]/g, '') : fallback;
+}
+
+/**
+ * Fetch `url` with a Range request for byte 0 — enough to read a download's
+ * real headers (size, content type, whether Range is honoured) without
+ * pulling the file body across the wire. Shared by every source that
+ * resolves a "is this link actually a file" candidate (LibGen, Anna's
+ * Archive, Z-Library): each supplies its own headers and, where it already
+ * has one, its own retrying fetch (`fetchFn`) — LibGen's mirrors
+ * intermittently 500 under load and are worth a retry, so it passes its own
+ * `fetchWithRetry`; sources without that infrastructure fall back to a
+ * plain fetch that treats a network error as "this candidate didn't work"
+ * rather than throwing.
+ *
+ * Returns null on a network failure or a non-2xx/206 status. The body is
+ * left undrained — callers that don't need it (an HTML-detection path that
+ * wants the text instead) can read it their own way.
+ */
+export async function fetchProbe(
+  url: string,
+  options: {
+    headers?: Record<string, string>;
+    fetchFn?: (url: string, init: RequestInit) => Promise<Response | null>;
+  } = {}
+): Promise<Response | null> {
+  const doFetch =
+    options.fetchFn ??
+    (async (u: string, init: RequestInit) => {
+      try {
+        return await fetch(u, init);
+      } catch {
+        return null;
+      }
+    });
+
+  const response = await doFetch(url, {
+    headers: { 'User-Agent': USER_AGENT, 'Accept': '*/*', 'Range': 'bytes=0-0', ...options.headers },
+    redirect: 'follow',
+  });
+  if (!response) return null;
+  if (!response.ok && response.status !== 206) return null;
+
+  return response;
+}
+
+/**
+ * Turn an already-fetched probe response into a `ResolvedDownload`. Does not
+ * read or drain the body — callers that haven't already consumed it should
+ * do so first (`response.arrayBuffer().catch(() => undefined)` is enough;
+ * the bytes themselves are never used) so the underlying socket can be
+ * reused.
+ */
+export function buildResolvedDownload(response: Response, url: string, fallbackFilename: string): ResolvedDownload {
+  const contentType = response.headers.get('content-type');
+
+  let size: number | null = null;
+  const contentRange = response.headers.get('content-range');
+  if (contentRange) {
+    const total = /\/(\d+)\s*$/.exec(contentRange)?.[1];
+    if (total) size = parseInt(total, 10);
+  } else {
+    const length = response.headers.get('content-length');
+    if (length) size = parseInt(length, 10);
+  }
+
+  return {
+    url: response.url || url,
+    filename: filenameFromDisposition(response.headers.get('content-disposition'), fallbackFilename),
+    size: size !== null && Number.isFinite(size) ? size : null,
+    supportsRange: response.status === 206 || response.headers.get('accept-ranges') === 'bytes',
+    contentType,
+  };
+}
+
+/**
+ * Probe `url` and resolve it into a streamable download, without fetching
+ * the file body. A response whose content type is `text/html` is treated as
+ * `LinkBrokenError` — a rate-limit or error page, not the file — which is
+ * the right call for a source with no notion of a bot-check challenge page.
+ * A source that does (Anna's Archive) uses `fetchProbe` + `buildResolvedDownload`
+ * directly instead, so it can tell a challenge apart from an ordinary dead
+ * link before deciding which error to raise.
+ */
+export async function probeDownloadUrl(
+  url: string,
+  options: {
+    headers?: Record<string, string>;
+    fallbackFilename: string;
+    fetchFn?: (url: string, init: RequestInit) => Promise<Response | null>;
+  }
+): Promise<ResolvedDownload | null> {
+  const response = await fetchProbe(url, options);
+  if (!response) return null;
+
+  // Drain the tiny probe body so the socket can be reused; only the headers
+  // are actually used below.
+  await response.arrayBuffer().catch(() => undefined);
+
+  const contentType = response.headers.get('content-type');
+  if (contentType?.includes('text/html')) {
+    throw new LinkBrokenError(url, 'Server served HTML instead of a file');
+  }
+
+  return buildResolvedDownload(response, url, options.fallbackFilename);
+}
+
 /**
  * Stream a resolved download to `destination`, resuming from a partial file
  * when the server supports it.

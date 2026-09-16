@@ -18,6 +18,7 @@ import {
   DownloadLimitReachedError,
   LinkBrokenError,
   downloadToFile,
+  probeDownloadUrl,
   type DownloadResult,
   type DownloadToFileOptions,
   type ResolvedDownload,
@@ -364,20 +365,18 @@ export async function getActualDownloadUrl(md5: string): Promise<string | null> 
   return null;
 }
 
-/** Pull a filename out of a Content-Disposition header, LibGen's own way. */
-function filenameFromDisposition(disposition: string | null, fallback: string): string {
-  if (!disposition) return fallback;
-  const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-  return match?.[1] ? match[1].replace(/['"]/g, '') : fallback;
-}
-
 /**
  * Resolve one mirror's get.php link into a streamable download, without
  * fetching the file body.
  *
  * A Range request for the first byte is enough to read the real headers —
  * size, content type, whether the mirror honours Range — without pulling
- * megabytes across the wire just to inspect them.
+ * megabytes across the wire just to inspect them. The actual probe (and its
+ * HTML-means-broken-link handling) is `probeDownloadUrl`, shared with Anna's
+ * Archive and Z-Library; this mirror-specific wrapper only knows how to get
+ * from a domain + md5 to the get.php URL in the first place, and threads
+ * LibGen's own retrying fetch through so a mirror's occasional 500 under
+ * load still gets a second try.
  *
  * @throws LinkBrokenError when this mirror's response is an HTML page (a
  * rate-limit or error page) rather than a file.
@@ -386,45 +385,11 @@ async function probeLibgenDomain(domain: string, md5: string): Promise<ResolvedD
   const downloadUrl = await getDownloadUrlFromDomain(domain, md5);
   if (!downloadUrl) return null;
 
-  const response = await fetchWithRetry(downloadUrl, {
-    headers: {
-      ...BROWSER_HEADERS,
-      'Accept': '*/*',
-      'Referer': `https://${domain}/ads.php?md5=${md5}`,
-      'Range': 'bytes=0-0',
-    },
-    redirect: 'follow',
+  return probeDownloadUrl(downloadUrl, {
+    headers: { ...BROWSER_HEADERS, 'Referer': `https://${domain}/ads.php?md5=${md5}` },
+    fallbackFilename: `${md5}.epub`,
+    fetchFn: fetchWithRetry,
   });
-  if (!response) return null;
-
-  // Drain the tiny probe body so the socket can be reused; only the headers
-  // below are actually used.
-  await response.arrayBuffer().catch(() => undefined);
-
-  const contentType = response.headers.get('content-type');
-  if (contentType?.includes('text/html')) {
-    // A rate-limit or error page, not the book.
-    throw new LinkBrokenError(downloadUrl, `${domain} served HTML instead of a file`);
-  }
-
-  let size: number | null = null;
-  const contentRange = response.headers.get('content-range');
-  if (contentRange) {
-    const total = /\/(\d+)\s*$/.exec(contentRange)?.[1];
-    if (total) size = parseInt(total, 10);
-  } else {
-    const length = response.headers.get('content-length');
-    if (length) size = parseInt(length, 10);
-  }
-
-  return {
-    url: response.url || downloadUrl,
-    filename: filenameFromDisposition(response.headers.get('content-disposition'), `${md5}.epub`),
-    size: size !== null && Number.isFinite(size) ? size : null,
-    supportsRange:
-      response.status === 206 || response.headers.get('accept-ranges') === 'bytes',
-    contentType,
-  };
 }
 
 /**

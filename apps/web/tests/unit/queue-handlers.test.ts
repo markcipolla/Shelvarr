@@ -48,6 +48,22 @@ class MockDownloadLimitReachedError extends Error {
   }
 }
 
+/** Same shape as the real `SourceBlockedError` from challenge.ts. */
+class MockSourceBlockedError extends Error {
+  constructor(readonly source: string, message?: string) {
+    super(message ?? `${source} is behind a bot check right now`);
+    this.name = 'SourceBlockedError';
+  }
+}
+
+/** Same shape as the real `ZLibraryNotConfiguredError` from zlibrary.ts. */
+class MockZLibraryNotConfiguredError extends Error {
+  constructor() {
+    super('Z-Library credentials are not configured');
+    this.name = 'ZLibraryNotConfiguredError';
+  }
+}
+
 /**
  * The single mirror most tests use. Wrapped in an array by the mocked
  * `resolveLibgenDownloads` below unless a test sets `resolvedDownloadList`
@@ -123,6 +139,71 @@ const mockDownloadToFile = mock.fn(
     return { path: destination, bytes: written };
   }
 );
+
+/** The single candidate most Anna's Archive tests use — see `resolvedDownload` above. */
+let resolvedAnnas: MockResolvedLink | null = {
+  url: 'https://annas.example/fast_download?md5=test',
+  filename: 'annas-source-name-is-ignored.epub',
+  size: DEFAULT_CONTENT.length,
+  supportsRange: false,
+  contentType: 'application/epub+zip',
+};
+
+/** Overrides `resolvedAnnas` when a test needs more than one candidate. */
+let resolvedAnnasList: MockResolvedLink[] | null = null;
+
+/** Set by a test that wants `resolveAnnasDownload` to reject instead of resolving. */
+let resolvedAnnasError: Error | null = null;
+
+const mockResolveAnnasDownload = mock.fn(async (_md5: string) => {
+  if (resolvedAnnasError) throw resolvedAnnasError;
+  if (resolvedAnnasList) return resolvedAnnasList;
+  return resolvedAnnas ? [resolvedAnnas] : [];
+});
+
+mock.module('@shelvarr/services/downloads/annas', {
+  namedExports: {
+    resolveAnnasDownload: mockResolveAnnasDownload,
+    // Not used by any test in this file, but `downloads/index.ts` re-exports
+    // these from this same module, so a full mock has to provide them too or
+    // that re-export fails to link.
+    searchAnnas: mock.fn(async () => []),
+    getAnnasSearchUrl: mock.fn((query: string) => `https://annas.example/search?q=${query}`),
+    getAnnasDownloadLinks: mock.fn(async () => []),
+  },
+});
+
+/** The single candidate most Z-Library tests use — see `resolvedDownload` above. */
+let resolvedZlibrary: MockResolvedLink | null = {
+  url: 'https://zlib.example/dl/12345',
+  filename: 'zlibrary-source-name-is-ignored.epub',
+  size: DEFAULT_CONTENT.length,
+  supportsRange: false,
+  contentType: 'application/epub+zip',
+};
+
+/** Overrides `resolvedZlibrary` when a test needs more than one candidate. */
+let resolvedZlibraryList: MockResolvedLink[] | null = null;
+
+/** Set by a test that wants `resolveZlibraryDownload` to reject instead of resolving. */
+let resolvedZlibraryError: Error | null = null;
+
+const mockResolveZlibraryDownload = mock.fn(async (_id: string) => {
+  if (resolvedZlibraryError) throw resolvedZlibraryError;
+  if (resolvedZlibraryList) return resolvedZlibraryList;
+  return resolvedZlibrary ? [resolvedZlibrary] : [];
+});
+
+mock.module('@shelvarr/services/downloads/zlibrary', {
+  namedExports: {
+    resolveZlibraryDownload: mockResolveZlibraryDownload,
+    // Not used by any test in this file, but `downloads/index.ts` re-exports
+    // these from this same module, so a full mock has to provide them too or
+    // that re-export fails to link.
+    searchZLibrary: mock.fn(async () => []),
+    getZLibrarySearchUrl: mock.fn((query: string) => `https://zlib.example/s/${query}`),
+  },
+});
 
 mock.module('@shelvarr/services/downloads/libgen', {
   namedExports: {
@@ -597,6 +678,28 @@ if (canRunTests) {
       execute('DELETE FROM book_blocklist', []);
       mockResolveLibgenDownloads.mock.resetCalls();
       mockDownloadToFile.mock.resetCalls();
+
+      resolvedAnnas = {
+        url: 'https://annas.example/fast_download?md5=test',
+        filename: 'annas-source-name-is-ignored.epub',
+        size: DEFAULT_CONTENT.length,
+        supportsRange: false,
+        contentType: 'application/epub+zip',
+      };
+      resolvedAnnasList = null;
+      resolvedAnnasError = null;
+      mockResolveAnnasDownload.mock.resetCalls();
+
+      resolvedZlibrary = {
+        url: 'https://zlib.example/dl/12345',
+        filename: 'zlibrary-source-name-is-ignored.epub',
+        size: DEFAULT_CONTENT.length,
+        supportsRange: false,
+        contentType: 'application/epub+zip',
+      };
+      resolvedZlibraryList = null;
+      resolvedZlibraryError = null;
+      mockResolveZlibraryDownload.mock.resetCalls();
     });
 
     afterEach(() => {
@@ -792,8 +895,11 @@ if (canRunTests) {
         const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
         registerAllHandlers();
 
+        // libgen, annas and zlibrary are all supported now (E4-5) — reach for
+        // a source name that genuinely isn't, to exercise the handler's
+        // fallback for one that never will be.
         const task = createTask('download', {
-          source: 'annas',
+          source: 'not-a-real-source',
           md5: 'abc123',
           title: 'Test Book',
           author: 'Test Author',
@@ -824,10 +930,10 @@ if (canRunTests) {
           [1, 'Wanted Book', 'Author', 'searching']
         );
 
-        // 'annas' isn't a supported download source yet, so this fails fast
-        // and deterministically without touching the (mocked) libgen client.
+        // An unsupported source fails fast and deterministically, without
+        // touching any of the (mocked) download clients.
         const task = createTask('download', {
-          source: 'annas',
+          source: 'not-a-real-source',
           md5: 'abc123',
           title: 'Wanted Book',
           author: 'Author',
@@ -859,7 +965,7 @@ if (canRunTests) {
         );
 
         const task = createTask('download', {
-          source: 'annas',
+          source: 'not-a-real-source',
           md5: 'abc123',
           title: 'Wanted Book',
           author: 'Author',
@@ -876,6 +982,187 @@ if (canRunTests) {
           [1]
         );
         assert.strictEqual(wanted?.status, 'acquired');
+      });
+
+      // E4-5: annas and zlibrary are wired into the same
+      // downloadBookWithFallback path libgen already used, via
+      // resolveAnnasDownload/resolveZlibraryDownload (mocked at the top of
+      // this file the same way resolveLibgenDownloads is).
+      describe("Anna's Archive downloads", () => {
+        it('downloads successfully when resolveAnnasDownload finds a working candidate', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          const task = createTask('download', {
+            source: 'annas',
+            md5: 'annas-md5',
+            title: 'Annas Book',
+            author: 'Annas Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(task.id);
+
+          const updated = getTask(task.id);
+          assert.strictEqual(updated?.status, 'completed');
+          assert.strictEqual(mockResolveAnnasDownload.mock.calls.length, 1);
+          assert.strictEqual(mockResolveAnnasDownload.mock.calls[0]?.arguments[0], 'annas-md5');
+
+          const download = getBookDownloads({ libraryId: 1 })[0]!;
+          assert.strictEqual(download.state, 'completed');
+          assert.strictEqual(readFileSync(download.filePath!, 'utf8'), 'new downloaded content');
+        });
+
+        it('fails the task cleanly, not a crash, when the source is behind a bot check', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          resolvedAnnasError = new MockSourceBlockedError(
+            'annas',
+            'annas-archive.li is behind a bot check right now'
+          );
+
+          const task = createTask('download', {
+            source: 'annas',
+            md5: 'blocked-md5',
+            title: 'Blocked Book',
+            author: 'Blocked Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(task.id);
+
+          const updated = getTask(task.id);
+          assert.strictEqual(updated?.status, 'failed');
+          assert.ok(updated?.error?.includes('bot check'));
+
+          const download = getBookDownloads({ libraryId: 1 })[0]!;
+          assert.strictEqual(download.state, 'failed');
+        });
+
+        it('falls through to the next candidate when the first one is a dead link', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          const first: MockResolvedLink = {
+            url: 'https://annas.example/dead-candidate',
+            filename: 'annas-book.epub',
+            size: DEFAULT_CONTENT.length,
+            supportsRange: false,
+            contentType: 'application/epub+zip',
+          };
+          const second: MockResolvedLink = {
+            url: 'https://annas.example/working-candidate',
+            filename: 'annas-book.epub',
+            size: DEFAULT_CONTENT.length,
+            supportsRange: false,
+            contentType: 'application/epub+zip',
+          };
+          resolvedAnnasList = [first, second];
+          downloadFailure = new MockLinkBrokenError(first.url, 'first candidate is dead');
+          downloadFailOnlyFirstAttempt = true;
+
+          const task = createTask('download', {
+            source: 'annas',
+            md5: 'fallback-md5',
+            title: 'Fallback Book',
+            author: 'Fallback Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(task.id);
+
+          assert.strictEqual(getTask(task.id)?.status, 'completed');
+          assert.strictEqual(mockDownloadToFile.mock.calls.length, 2);
+          assert.ok(bookBlocklistContains(first.url));
+        });
+      });
+
+      describe('Z-Library downloads', () => {
+        it('downloads successfully when resolveZlibraryDownload finds a working candidate', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          const task = createTask('download', {
+            source: 'zlibrary',
+            md5: '12345',
+            title: 'Zlibrary Book',
+            author: 'Zlibrary Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(task.id);
+
+          const updated = getTask(task.id);
+          assert.strictEqual(updated?.status, 'completed');
+          assert.strictEqual(mockResolveZlibraryDownload.mock.calls.length, 1);
+          assert.strictEqual(mockResolveZlibraryDownload.mock.calls[0]?.arguments[0], '12345');
+
+          const download = getBookDownloads({ libraryId: 1 })[0]!;
+          assert.strictEqual(download.state, 'completed');
+          assert.strictEqual(readFileSync(download.filePath!, 'utf8'), 'new downloaded content');
+        });
+
+        it('fails cleanly, not a crash, when no Z-Library credentials are configured', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          resolvedZlibraryError = new MockZLibraryNotConfiguredError();
+
+          const task = createTask('download', {
+            source: 'zlibrary',
+            md5: '99999',
+            title: 'Unconfigured Book',
+            author: 'Some Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(task.id);
+
+          const updated = getTask(task.id);
+          assert.strictEqual(updated?.status, 'failed');
+          assert.ok(updated?.error?.includes('not configured'));
+
+          const download = getBookDownloads({ libraryId: 1 })[0]!;
+          assert.strictEqual(download.state, 'failed');
+        });
+
+        it('falls through to the next candidate when the first one is a dead link', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          const first: MockResolvedLink = {
+            url: 'https://zlib.example/dead-candidate',
+            filename: 'zlib-book.epub',
+            size: DEFAULT_CONTENT.length,
+            supportsRange: false,
+            contentType: 'application/epub+zip',
+          };
+          const second: MockResolvedLink = {
+            url: 'https://zlib.example/working-candidate',
+            filename: 'zlib-book.epub',
+            size: DEFAULT_CONTENT.length,
+            supportsRange: false,
+            contentType: 'application/epub+zip',
+          };
+          resolvedZlibraryList = [first, second];
+          downloadFailure = new MockLinkBrokenError(first.url, 'first candidate is dead');
+          downloadFailOnlyFirstAttempt = true;
+
+          const task = createTask('download', {
+            source: 'zlibrary',
+            md5: '55555',
+            title: 'Fallback Book',
+            author: 'Fallback Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(task.id);
+
+          assert.strictEqual(getTask(task.id)?.status, 'completed');
+          assert.strictEqual(mockDownloadToFile.mock.calls.length, 2);
+          assert.ok(bookBlocklistContains(first.url));
+        });
       });
 
       it('should not overwrite a book you already have — it saves the new download under a numbered suffix', async () => {
