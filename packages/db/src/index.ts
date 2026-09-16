@@ -34,6 +34,55 @@ import { uniqueComicSlug } from './comic-slug';
 
 export { slugify, baseComicSlug, uniqueComicSlug } from './comic-slug';
 
+// ---------------------------------------------------------------------------
+// Timestamps
+//
+// Every timestamp column in the schema is written by SQLite's CURRENT_TIMESTAMP
+// and so is stored as "YYYY-MM-DD HH:MM:SS" — always UTC, but with nothing on
+// it to say so. That format is load-bearing: it sorts lexicographically, which
+// is what lets session and login-code expiry be compared in SQL against
+// CURRENT_TIMESTAMP rather than in JavaScript, so the two can never disagree
+// about a timezone. The stored format therefore stays exactly as it is.
+//
+// The catch is that `new Date("2026-09-16 01:54:53")` reads that string as
+// *local* time, so a reader in AEST places every row ten hours further into the
+// past than it really is. Anything leaving the database for a client, or being
+// parsed into a Date here, goes through `sqlTimeToIso` first; anything arriving
+// from a client to be compared against a column goes through `isoToSqlTime`.
+// ---------------------------------------------------------------------------
+
+/** SQLite's CURRENT_TIMESTAMP shape: "YYYY-MM-DD HH:MM:SS", UTC, no zone. */
+const SQLITE_TIMESTAMP = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/;
+
+/**
+ * Mark a stored timestamp as the UTC instant it actually is.
+ *
+ * Anything not in SQLite's shape — a value already written from JavaScript as
+ * ISO, an empty placeholder, null — is passed through untouched, so this is
+ * idempotent and safe over columns written from both sides.
+ */
+export function sqlTimeToIso(value: string): string;
+export function sqlTimeToIso(value: string | null): string | null;
+export function sqlTimeToIso(value: string | null): string | null {
+  if (value === null || !SQLITE_TIMESTAMP.test(value)) return value;
+  return `${value.replace(' ', 'T')}Z`;
+}
+
+/**
+ * Put an instant back into the stored format, for comparing against a column.
+ *
+ * The inverse of `sqlTimeToIso`: a client that hands us back a cursor we gave
+ * it is holding an ISO string, and binding that straight into `WHERE
+ * updated_at > ?` would compare 'T' against ' ' and silently skip rows.
+ * Returns null for anything unparseable, so callers can reject it.
+ */
+export function isoToSqlTime(value: string): string | null {
+  if (SQLITE_TIMESTAMP.test(value)) return value;
+  const ms = Date.parse(value);
+  if (Number.isNaN(ms)) return null;
+  return new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+}
+
 // Get directory of this file
 let __dbDirname: string;
 try {
@@ -584,15 +633,20 @@ export function getAllSettings(): Record<string, unknown> {
 
 // ============ Wanted Books Functions ============
 
+/** The row is the domain shape here, so only the timestamp needs marking. */
+function rowToWantedBook<T extends WantedBook | null>(row: T): T {
+  return row === null ? row : { ...row, added_at: sqlTimeToIso(row.added_at) };
+}
+
 export function getWantedBooks(status?: string): WantedBook[] {
-  if (status) {
-    return query<WantedBook>('SELECT * FROM wanted_books WHERE status = ? ORDER BY priority DESC, added_at DESC', [status]);
-  }
-  return query<WantedBook>('SELECT * FROM wanted_books ORDER BY priority DESC, added_at DESC');
+  const rows = status
+    ? query<WantedBook>('SELECT * FROM wanted_books WHERE status = ? ORDER BY priority DESC, added_at DESC', [status])
+    : query<WantedBook>('SELECT * FROM wanted_books ORDER BY priority DESC, added_at DESC');
+  return rows.map(rowToWantedBook);
 }
 
 export function getWantedBookById(id: number): WantedBook | null {
-  return queryOne<WantedBook>('SELECT * FROM wanted_books WHERE id = ?', [id]);
+  return rowToWantedBook(queryOne<WantedBook>('SELECT * FROM wanted_books WHERE id = ?', [id]));
 }
 
 export function addWantedBook(data: {
@@ -683,7 +737,7 @@ export function markWantedBookAsAcquired(
       "UPDATE wanted_books SET status = 'acquired' WHERE id = ?",
       [wantedBook.id]
     );
-    return { ...wantedBook, status: 'acquired' };
+    return rowToWantedBook({ ...wantedBook, status: 'acquired' });
   }
 
   return null;
@@ -739,7 +793,7 @@ export function isStatusCacheStale(maxAgeMinutes: number = 5): boolean {
   );
   if (!result?.oldest) return true;
 
-  const lastUpdate = new Date(result.oldest.endsWith('Z') ? result.oldest : result.oldest + 'Z');
+  const lastUpdate = new Date(sqlTimeToIso(result.oldest));
   const now = new Date();
   const diffMinutes = (now.getTime() - lastUpdate.getTime()) / (1000 * 60);
   return diffMinutes > maxAgeMinutes;
@@ -1096,8 +1150,47 @@ export function getComicReadProgressForVolume(
     page: r.page,
     completed: Boolean(r.completed),
     total: r.total,
-    updatedAt: r.updated_at,
+    updatedAt: sqlTimeToIso(r.updated_at),
   }));
+}
+
+/**
+ * Which of these volumes this person has read right through: every issue the
+ * volume has, finished.
+ *
+ * Completeness is derived rather than stored, so it stays true by itself: when
+ * a new issue lands the volume stops being complete until that issue is read
+ * too, and no one has to remember to clear a flag. A volume with no issues is
+ * never complete.
+ *
+ * Pass `volumeIds` to ask about a known set; omit it to scan the library.
+ */
+export function getReadComicVolumeIds(userId: number, volumeIds?: number[]): Set<number> {
+  const conditions = ['ci.deleted_at IS NULL'];
+  const params: unknown[] = [progressUserId(userId)];
+
+  if (volumeIds !== undefined) {
+    if (volumeIds.length === 0) return new Set();
+    conditions.push(`ci.volume_id IN (${volumeIds.map(() => '?').join(', ')})`);
+    params.push(...volumeIds);
+  }
+
+  const rows = query<{ volume_id: number }>(
+    `SELECT ci.volume_id AS volume_id
+       FROM comic_issues ci
+       JOIN comics c ON c.id = ci.volume_id AND c.deleted_at IS NULL
+       LEFT JOIN comic_read_progress crp ON crp.issue_id = ci.id AND crp.user_id = ?
+      WHERE ${conditions.join(' AND ')}
+      GROUP BY ci.volume_id
+     HAVING SUM(CASE WHEN crp.completed = 1 THEN 1 ELSE 0 END) = COUNT(*)`,
+    params
+  );
+  return new Set(rows.map((r) => r.volume_id));
+}
+
+/** Whether this person has finished every issue of one volume. */
+export function isComicVolumeRead(userId: number, volumeId: number): boolean {
+  return getReadComicVolumeIds(userId, [volumeId]).has(volumeId);
 }
 
 export interface InProgressComic {
@@ -1154,7 +1247,7 @@ export function getInProgressComics(userId: number, limit: number): InProgressCo
     issueNumber: r.issue_number,
     page: r.crp_page,
     total: r.crp_total,
-    updatedAt: r.crp_updated_at,
+    updatedAt: sqlTimeToIso(r.crp_updated_at),
   }));
 }
 
@@ -1227,7 +1320,7 @@ export function getNextUpComics(userId: number, limit: number): NextUpComic[] {
     volume: rowToVolume(r),
     issueId: r.nu_issue_id,
     issueNumber: r.nu_issue_number,
-    updatedAt: r.last_done_at,
+    updatedAt: sqlTimeToIso(r.last_done_at),
   }));
 }
 
@@ -1766,7 +1859,7 @@ export function isComicDetailStale(id: number, maxAgeMinutes: number): boolean {
     [id]
   );
   if (!row?.detail_cached_at) return true;
-  const cachedAt = new Date(row.detail_cached_at.endsWith('Z') ? row.detail_cached_at : row.detail_cached_at + 'Z');
+  const cachedAt = new Date(sqlTimeToIso(row.detail_cached_at));
   const diffMinutes = (Date.now() - cachedAt.getTime()) / 60000;
   return diffMinutes > maxAgeMinutes;
 }
@@ -1784,10 +1877,25 @@ export interface SyncChangesSince {
  * Return all rows with updated_at > since for each synced table.
  * Pass `null` to return every row (first-time sync). Soft-deleted rows
  * are included so the client can tombstone them locally.
+ *
+ * Rows go out as stored, timestamps included: the client keeps a mirror of
+ * these tables, so it wants what the columns hold rather than the ISO an API
+ * response would carry. The cursor is the exception — it is handed back to us
+ * as `since`, so it is normalised to the stored format before it is compared
+ * against `updated_at`. Left as ISO it would compare 'T' against ' ' and, since
+ * 'T' sorts higher, silently skip every row stamped in the same second.
+ *
+ * The comparison is `>=` rather than `>` because the two sides have different
+ * precision: the cursor is taken to the millisecond, but CURRENT_TIMESTAMP only
+ * records whole seconds. A row written later in the same second as the cursor
+ * stores a value equal to it, and a strict `>` would drop that row forever.
+ * Including the boundary second instead re-sends at most one second of rows,
+ * which the client applies idempotently.
  */
 export function getSyncChangesSince(since: string | null): SyncChangesSince {
-  const sinceClause = since ? 'WHERE updated_at > ?' : '';
-  const params = since ? [since] : [];
+  const sinceSqlTime = since === null ? null : isoToSqlTime(since);
+  const sinceClause = sinceSqlTime ? 'WHERE updated_at >= ?' : '';
+  const params = sinceSqlTime ? [sinceSqlTime] : [];
 
   const comics = query<Record<string, unknown>>(
     `SELECT * FROM comics ${sinceClause} ORDER BY updated_at`,
@@ -1942,9 +2050,9 @@ function rowToComicDownload(row: ComicDownloadRow): ComicDownload {
     size: row.size,
     attempts: row.attempts ?? 0,
     error: row.error,
-    heartbeatAt: row.heartbeat_at,
-    createdAt: row.created_at,
-    completedAt: row.completed_at,
+    heartbeatAt: sqlTimeToIso(row.heartbeat_at),
+    createdAt: sqlTimeToIso(row.created_at),
+    completedAt: sqlTimeToIso(row.completed_at),
   };
 }
 
@@ -2224,7 +2332,7 @@ function rowToBlocklistEntry(row: ComicBlocklistRow): ComicBlocklistEntry {
     downloadLink: row.download_link,
     host: row.host as DownloadHost | null,
     reason: row.reason as BlocklistReason,
-    addedAt: row.added_at,
+    addedAt: sqlTimeToIso(row.added_at),
   };
 }
 
@@ -3143,17 +3251,10 @@ export const initDatabaseAsync = initDatabase;
 // ---------------------------------------------------------------------------
 // User accounts and sessions
 //
-// Every timestamp here is a SQLite CURRENT_TIMESTAMP string
-// ("YYYY-MM-DD HH:MM:SS", always UTC), matching the rest of the schema.
-// Expiry is compared in SQL rather than JavaScript so the two never disagree
-// about a timezone: that format sorts lexicographically, so a plain string
-// comparison against CURRENT_TIMESTAMP is a correct chronological one.
+// Expiry is compared here as a raw stored string against `currentSqlTime()`,
+// never through `sqlTimeToIso` — see the Timestamps section at the top of this
+// file for why both sides must stay in SQLite's format.
 // ---------------------------------------------------------------------------
-
-/** Turn a stored timestamp into an ISO-8601 instant for API responses. */
-export function sqlTimeToIso(value: string): string {
-  return `${value.replace(' ', 'T')}Z`;
-}
 
 interface UserRow {
   id: number;
@@ -3170,8 +3271,8 @@ function mapUser(row: UserRow): User {
     email: row.email,
     name: row.name,
     role: row.role === 'admin' ? 'admin' : 'user',
-    createdAt: row.created_at,
-    lastLoginAt: row.last_login_at,
+    createdAt: sqlTimeToIso(row.created_at),
+    lastLoginAt: sqlTimeToIso(row.last_login_at),
   };
 }
 
@@ -3273,9 +3374,9 @@ function mapSession(row: SessionRow): Session {
     userId: row.user_id,
     client: row.client === 'native' ? 'native' : 'web',
     label: row.label,
-    createdAt: row.created_at,
-    lastSeenAt: row.last_seen_at,
-    expiresAt: row.expires_at,
+    createdAt: sqlTimeToIso(row.created_at),
+    lastSeenAt: sqlTimeToIso(row.last_seen_at),
+    expiresAt: sqlTimeToIso(row.expires_at),
   };
 }
 

@@ -15,7 +15,7 @@
 import { existsSync, readdirSync, statSync, unlinkSync } from 'fs';
 import { join } from 'path';
 
-import { getComicDownload } from '@shelvarr/db';
+import { getComicDownload, sqlTimeToIso } from '@shelvarr/db';
 
 import { getServiceConfig } from '../config';
 import { createLogger } from '../utils/logger';
@@ -66,7 +66,7 @@ function isDisposable(filename: string, keepFailedHours: number): boolean {
       return true;
     case 'failed': {
       if (!download.completedAt) return true;
-      const failedAt = new Date(`${download.completedAt.replace(' ', 'T')}Z`).getTime();
+      const failedAt = new Date(sqlTimeToIso(download.completedAt)).getTime();
       if (Number.isNaN(failedAt)) return true;
       return Date.now() - failedAt > keepFailedHours * 60 * 60 * 1000;
     }

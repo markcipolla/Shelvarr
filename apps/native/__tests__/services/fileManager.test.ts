@@ -4,6 +4,7 @@ jest.mock('expo-file-system/legacy', () => ({
   getInfoAsync: jest.fn().mockResolvedValue({ exists: false, isDirectory: false }),
   makeDirectoryAsync: jest.fn().mockResolvedValue(undefined),
   deleteAsync: jest.fn().mockResolvedValue(undefined),
+  moveAsync: jest.fn().mockResolvedValue(undefined),
   readDirectoryAsync: jest.fn().mockResolvedValue([]),
   readAsStringAsync: jest.fn().mockResolvedValue(''),
   writeAsStringAsync: jest.fn().mockResolvedValue(undefined),
@@ -18,6 +19,7 @@ import {
   deleteBookFiles,
   listExtractedFiles,
   cleanAllDownloads,
+  readExtractedPageCount,
 } from '../../src/services/fileManager';
 
 const fsMock = jest.requireMock('expo-file-system/legacy');
@@ -26,6 +28,8 @@ const mockedMakeDir = fsMock.makeDirectoryAsync as jest.Mock;
 const mockedDelete = fsMock.deleteAsync as jest.Mock;
 const mockedReadDir = fsMock.readDirectoryAsync as jest.Mock;
 const mockedCreateDl = fsMock.createDownloadResumable as jest.Mock;
+const mockedMove = fsMock.moveAsync as jest.Mock;
+const mockedReadAs = fsMock.readAsStringAsync as jest.Mock;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -53,9 +57,11 @@ describe('ensureDirectories', () => {
 });
 
 describe('downloadBookFile', () => {
-  it('downloads a file and returns its URI', async () => {
+  it('downloads to a sidecar, moves it into place and returns the final path', async () => {
     mockedGetInfo.mockResolvedValue({ exists: true }); // ensureDirectories pass
-    const mockDl = { downloadAsync: jest.fn().mockResolvedValue({ uri: 'file:///dl/book.epub' }) };
+    const mockDl = {
+      downloadAsync: jest.fn().mockResolvedValue({ uri: 'file:///dl/b1.epub.part', status: 200 }),
+    };
     mockedCreateDl.mockReturnValue(mockDl);
 
     const result = await downloadBookFile(
@@ -64,13 +70,38 @@ describe('downloadBookFile', () => {
       '.epub',
       { Authorization: 'Basic abc' }
     );
-    expect(result).toBe('file:///dl/book.epub');
+    expect(result).toMatch(/b1\.epub$/);
+    expect(result).not.toMatch(/\.part$/);
     expect(mockedCreateDl).toHaveBeenCalledWith(
       'http://example.com/file',
-      expect.stringContaining('b1.epub'),
+      expect.stringContaining('b1.epub.part'),
       { headers: { Authorization: 'Basic abc' } },
       expect.any(Function)
     );
+    expect(mockedMove).toHaveBeenCalledWith({
+      from: 'file:///dl/b1.epub.part',
+      to: expect.stringContaining('b1.epub'),
+    });
+  });
+
+  it('leaves nothing behind when the download throws partway', async () => {
+    mockedGetInfo.mockResolvedValue({ exists: true });
+    const mockDl = {
+      downloadAsync: jest.fn().mockRejectedValue(new Error('Network request failed')),
+    };
+    mockedCreateDl.mockReturnValue(mockDl);
+
+    await expect(
+      downloadBookFile('http://example.com/file', 'b1', '.epub', {})
+    ).rejects.toThrow('Network request failed');
+
+    // The truncated sidecar is cleaned up, and nothing was moved into the
+    // place the cache check looks at.
+    expect(mockedDelete).toHaveBeenCalledWith(
+      expect.stringContaining('b1.epub.part'),
+      { idempotent: true }
+    );
+    expect(mockedMove).not.toHaveBeenCalled();
   });
 
   it('calls onProgress callback', async () => {
@@ -82,7 +113,7 @@ describe('downloadBookFile', () => {
       return {
         downloadAsync: jest.fn().mockImplementation(async () => {
           progressCallback!({ totalBytesWritten: 50, totalBytesExpectedToWrite: 100 });
-          return { uri: 'file:///dl/b.epub' };
+          return { uri: 'file:///dl/b.epub.part', status: 200 };
         }),
       };
     });
@@ -98,7 +129,7 @@ describe('downloadBookFile', () => {
       downloadAsync: jest.fn().mockImplementation(async () => {
         // expo reports -1 when the server omits Content-Length
         cb({ totalBytesWritten: 12967268, totalBytesExpectedToWrite: -1 });
-        return { uri: 'file:///dl/b.epub' };
+        return { uri: 'file:///dl/b.epub.part', status: 200 };
       }),
     }));
 
@@ -120,16 +151,24 @@ describe('downloadBookFile', () => {
 });
 
 describe('deleteBookFiles', () => {
-  it('deletes file and directory when they exist', async () => {
+  it('deletes file, sidecar and directory when they exist', async () => {
     mockedGetInfo.mockResolvedValue({ exists: true });
     await deleteBookFiles('b1', '.epub');
-    expect(mockedDelete).toHaveBeenCalledTimes(2);
+    expect(mockedDelete).toHaveBeenCalledTimes(3);
+    expect(mockedDelete).toHaveBeenCalledWith(
+      expect.stringContaining('b1.epub.part'),
+      { idempotent: true }
+    );
   });
 
-  it('skips deletion when files do not exist', async () => {
+  it('only clears the sidecar when the files do not exist', async () => {
     mockedGetInfo.mockResolvedValue({ exists: false });
     await deleteBookFiles('b1', '.epub');
-    expect(mockedDelete).not.toHaveBeenCalled();
+    expect(mockedDelete).toHaveBeenCalledTimes(1);
+    expect(mockedDelete).toHaveBeenCalledWith(
+      expect.stringContaining('b1.epub.part'),
+      { idempotent: true }
+    );
   });
 
   it('swallows errors during deletion', async () => {
@@ -150,6 +189,28 @@ describe('listExtractedFiles', () => {
     mockedGetInfo.mockResolvedValue({ exists: false });
     const result = await listExtractedFiles('b1');
     expect(result).toEqual([]);
+  });
+});
+
+describe('readExtractedPageCount', () => {
+  it('returns the count recorded when extraction finished', async () => {
+    mockedGetInfo.mockResolvedValue({ exists: true });
+    mockedReadAs.mockResolvedValue(JSON.stringify({ pages: 24 }));
+    await expect(readExtractedPageCount('comic-7')).resolves.toBe(24);
+  });
+
+  it('returns null when the marker is missing — a half-extracted directory', async () => {
+    mockedGetInfo.mockResolvedValue({ exists: false });
+    await expect(readExtractedPageCount('comic-7')).resolves.toBeNull();
+  });
+
+  it('returns null when the marker is unreadable or malformed', async () => {
+    mockedGetInfo.mockResolvedValue({ exists: true });
+    mockedReadAs.mockResolvedValue('not json');
+    await expect(readExtractedPageCount('comic-7')).resolves.toBeNull();
+
+    mockedReadAs.mockResolvedValue(JSON.stringify({ pages: 0 }));
+    await expect(readExtractedPageCount('comic-7')).resolves.toBeNull();
   });
 });
 

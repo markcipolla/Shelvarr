@@ -1,13 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { refreshUnmatchedMetadata } from '@/lib/actions/libraries';
 import { getTaskById } from '@/lib/actions/tasks';
+import { useLiveConnection, useLiveEvents } from '@/components/live/LiveEvents';
 import { useToast } from '@/components/ui/Toast';
-
-/** How often to check the task and re-render the list while it runs. */
-const POLL_MS = 2000;
 
 interface Progress {
   current: number;
@@ -15,73 +12,114 @@ interface Progress {
 }
 
 /**
- * Starts a metadata lookup for the books on the Unmatched page and keeps the
- * page current while it runs, so matched books drop off as they're found
- * rather than all at once when the task ends.
+ * Starts a metadata lookup for the books on the Unmatched page and reports on
+ * it while it runs, so matched books drop off as they're found rather than all
+ * at once when the task ends.
+ *
+ * This used to ask the server how the task was doing every couple of seconds,
+ * which meant a full page render every two seconds whether or not anything had
+ * changed. It now listens on the live event stream instead: the count comes
+ * from the task's own progress reports, and the page itself is kept current by
+ * the `LiveRefresh` on the Unmatched page.
  */
-export function RefreshUnmatchedButton({
-  libraryId,
-  pollMs = POLL_MS,
-}: {
-  libraryId?: number;
-  /** Tests shorten this so they don't sit through real polling delays. */
-  pollMs?: number;
-}) {
-  const router = useRouter();
+export function RefreshUnmatchedButton({ libraryId }: { libraryId?: number }) {
   const toast = useToast();
+  const connected = useLiveConnection();
   const [starting, setStarting] = useState(false);
   const [taskId, setTaskId] = useState<number | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
 
   // The toast context hands out a new object every time a toast shows, which
-  // would restart the poll loop if the effect depended on it.
+  // would re-run the effect below if it were a dependency.
   const toastRef = useRef(toast);
   toastRef.current = toast;
 
-  useEffect(() => {
-    if (taskId === null) return;
+  /** Stop watching, and say how it went. */
+  const finish = useCallback(
+    (status: string, error: string | null, matched: number | null) => {
+      if (status === 'completed') {
+        toastRef.current.success(`Metadata refresh finished: ${matched ?? 0} matched`);
+      } else if (status === 'failed') {
+        toastRef.current.error(error ?? 'Metadata refresh failed');
+      }
+      setTaskId(null);
+      setProgress(null);
+    },
+    []
+  );
 
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout>;
-
-    // Chained timeouts rather than an interval, so a slow response can't
-    // stack up overlapping polls.
-    const poll = async () => {
-      let task: Awaited<ReturnType<typeof getTaskById>>;
-      try {
-        task = await getTaskById(taskId);
-      } catch {
-        // A dropped request says nothing about the task; try again next tick.
-        if (!cancelled) timer = setTimeout(poll, pollMs);
+  /**
+   * Read the result off a finished task.
+   *
+   * The event says the task completed but not what it found, which is a
+   * deliberately small payload — the count is worth one request at the end,
+   * where polling wanted one every couple of seconds throughout.
+   */
+  const announceResult = useCallback(
+    async (id: number, status: string, error: string | null) => {
+      if (status !== 'completed') {
+        finish(status, error, null);
         return;
       }
+
+      const task = await getTaskById(id).catch(() => null);
+      const matched = typeof task?.data?.['matched'] === 'number' ? task.data['matched'] : 0;
+      finish('completed', null, matched);
+    },
+    [finish]
+  );
+
+  useLiveEvents((event) => {
+    if (taskId === null) return;
+    if (event.kind !== 'task' || event.id !== taskId) return;
+
+    if (event.event === 'progress') {
+      setProgress({ current: event.progress, total: event.total });
+      return;
+    }
+
+    if (event.status === 'completed' || event.status === 'failed' || event.status === 'cancelled') {
+      void announceResult(taskId, event.status, event.error ?? null);
+    }
+  });
+
+  /**
+   * Catch up whenever the stream is (re)connected.
+   *
+   * Events that happen while the connection is down are gone — they are not
+   * replayed — so a task that finished during a dropout would otherwise leave
+   * this button saying "Refreshing..." for good. One read on reconnect covers
+   * that, and covers the gap between starting the task and the first event.
+   */
+  useEffect(() => {
+    if (taskId === null || !connected) return;
+
+    let cancelled = false;
+
+    void (async () => {
+      const task = await getTaskById(taskId).catch(() => null);
       if (cancelled) return;
 
-      router.refresh();
-
-      // No task means it was cleaned up underneath us; nothing left to watch.
-      if (!task || task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') {
-        if (task?.status === 'completed') {
-          const matched = typeof task.data?.matched === 'number' ? task.data.matched : 0;
-          toastRef.current.success(`Metadata refresh finished: ${matched} matched`);
-        } else if (task?.status === 'failed') {
-          toastRef.current.error(task.error ?? 'Metadata refresh failed');
-        }
+      // A task that has been cleaned up underneath us is nothing left to watch.
+      if (!task) {
         setTaskId(null);
         setProgress(null);
         return;
       }
 
-      setProgress({ current: task.progress, total: task.total });
-      timer = setTimeout(poll, pollMs);
-    };
+      if (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') {
+        const matched = typeof task.data?.['matched'] === 'number' ? task.data['matched'] : 0;
+        finish(task.status, task.error, matched);
+        return;
+      }
 
-    timer = setTimeout(poll, pollMs);
+      setProgress({ current: task.progress, total: task.total });
+    })();
+
     return () => {
       cancelled = true;
-      clearTimeout(timer);
     };
-  }, [taskId, router, pollMs]);
+  }, [taskId, connected, finish]);
 
   const handleRefresh = async () => {
     setStarting(true);

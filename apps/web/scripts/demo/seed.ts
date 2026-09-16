@@ -32,6 +32,7 @@ import {
   refreshComicVolumeStats,
   query,
   setSetting,
+  isoToSqlTime,
 } from '@shelvarr/db';
 import { generateToken, hashToken } from '@shelvarr/services/auth/tokens';
 
@@ -81,7 +82,7 @@ const USER_AGENT = 'Shelvarr demo seed (https://github.com/markcipolla/shelvarr)
 
 /** SQLite's CURRENT_TIMESTAMP format, `minutesAgo` in the past. */
 function ago(minutesAgo: number): string {
-  return new Date(Date.now() - minutesAgo * 60_000).toISOString().slice(0, 19).replace('T', ' ');
+  return isoToSqlTime(new Date(Date.now() - minutesAgo * 60_000).toISOString())!;
 }
 
 /** A stable pseudo-random number in [0, 1) for a string, so reruns match. */

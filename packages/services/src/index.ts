@@ -1,3 +1,7 @@
+// Live updates: the in-process bus that background work announces itself on
+export * as events from './events/index';
+export type { DownloadEvent, LiveEvent, TaskEvent } from './events/index';
+
 // Config initialization
 export { initServiceConfig, getServiceConfig, loadConfigFromEnv } from './config';
 
@@ -12,6 +16,7 @@ export * as comicScan from './comics/scan';
 export * as comicRename from './comics/rename';
 export * as comicLibraryImport from './comics/import-library';
 export { ensureImportable, importComicDownload, resolveImportTarget } from './comics/import';
+export * as comicDownloadEvents from './comics/download-events';
 export { sweepComicScratch, DEFAULT_KEEP_FAILED_HOURS } from './comics/scratch';
 
 // Services

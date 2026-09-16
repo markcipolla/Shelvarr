@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import type { Task } from '@/lib/services/queue';
 import { cancelTask, retryTask, type ComicDownloadSubject } from '@/lib/actions/tasks';
 import { formatBytes } from '@/lib/utils/bytes';
+import { formatRelativeTime } from '@/lib/utils/dates';
+import { useLiveTaskProgress } from '@/components/live/useLiveProgress';
 import { useToast } from '@/components/ui/Toast';
 
 interface TaskListProps {
@@ -40,6 +42,10 @@ function TaskRow({ task }: { task: Task }) {
   const toast = useToast();
   const [cancelling, setCancelling] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const { progress, total } = useLiveTaskProgress(task.id, {
+    progress: task.progress,
+    total: task.total,
+  });
 
   const typeLabel = {
     scan: 'Library Scan',
@@ -106,8 +112,8 @@ function TaskRow({ task }: { task: Task }) {
   // percentage is left off: it's the bar sitting right above the label.
   const countsBytes = task.type === 'comic_download';
   const progressLabel = countsBytes
-    ? `${formatBytes(task.progress)} / ${formatBytes(task.total ?? 0)}`
-    : `${task.progress} / ${task.total}`;
+    ? `${formatBytes(progress)} / ${formatBytes(total ?? 0)}`
+    : `${progress} / ${total}`;
 
   // What actually landed, once it has: the handler records the imported size.
   const importedBytes =
@@ -137,19 +143,19 @@ function TaskRow({ task }: { task: Task }) {
           )}
           {organizeResult && <OrganizeResultSummary result={organizeResult} />}
           <div className="text-xs text-shelvarr-text-muted mt-1">
-            Created: {formatDate(task.createdAt)}
-            {task.completedAt && ` • Completed: ${formatDate(task.completedAt)}`}
+            Created: {formatRelativeTime(task.createdAt)}
+            {task.completedAt && ` • Completed: ${formatRelativeTime(task.completedAt)}`}
           </div>
         </div>
       </div>
 
       <div className="flex items-center gap-4">
-        {task.status === 'running' && task.total && task.total > 0 && (
+        {task.status === 'running' && total && total > 0 && (
           <div className="w-32">
             <div className="h-2 bg-shelvarr-bg rounded-full overflow-hidden">
               <div
                 className="h-full bg-blue-600 transition-all"
-                style={{ width: `${(task.progress / task.total) * 100}%` }}
+                style={{ width: `${Math.min(100, (progress / total) * 100)}%` }}
               />
             </div>
             <div className="text-xs text-shelvarr-text-muted text-center mt-1">
@@ -351,16 +357,4 @@ function TaskIcon({ type }: { type: string }) {
         </div>
       );
   }
-}
-
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-
-  if (diff < 60000) return 'Just now';
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-
-  return date.toLocaleDateString();
 }

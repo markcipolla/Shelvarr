@@ -600,4 +600,31 @@ describe('Database Operations', () => {
       assert.strictEqual(again.name, 'First renamed');
     });
   });
+
+  describe('sqlTimeToIso', () => {
+    it('marks a stored SQLite timestamp as the UTC instant it is', async () => {
+      const { sqlTimeToIso } = await import('@shelvarr/db');
+
+      assert.strictEqual(sqlTimeToIso('2026-09-16 01:54:53'), '2026-09-16T01:54:53Z');
+      assert.strictEqual(sqlTimeToIso('2026-09-16 01:54:53.123'), '2026-09-16T01:54:53.123Z');
+
+      // The point of the exercise: read back as UTC, not as the reader's zone.
+      assert.strictEqual(
+        new Date(sqlTimeToIso('2026-09-16 01:54:53')).toISOString(),
+        '2026-09-16T01:54:53.000Z'
+      );
+    });
+
+    it('leaves alone anything that already carries a zone', async () => {
+      const { sqlTimeToIso } = await import('@shelvarr/db');
+
+      // Columns written from JavaScript are already ISO, and applying this
+      // twice must not produce "...ZZ".
+      assert.strictEqual(sqlTimeToIso('2026-09-16T01:54:53.000Z'), '2026-09-16T01:54:53.000Z');
+      assert.strictEqual(sqlTimeToIso(sqlTimeToIso('2026-09-16 01:54:53')), '2026-09-16T01:54:53Z');
+      assert.strictEqual(sqlTimeToIso('2026-09-16T11:54:53+10:00'), '2026-09-16T11:54:53+10:00');
+      assert.strictEqual(sqlTimeToIso(''), '');
+      assert.strictEqual(sqlTimeToIso(null), null);
+    });
+  });
 });

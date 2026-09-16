@@ -2,11 +2,11 @@ import Link from 'next/link';
 import { getRecentBooks, getCurrentlyReadingBooks, getWantToReadBooks } from '@/lib/services/scanner';
 import { getRecentComics, getInProgressComics } from '@/lib/actions/comics';
 import { BookCard } from '@/components/books/BookGrid';
-import { ComicCard } from '@/components/comics/ComicGrid';
+import { ComicCard, type ComicVolumeCardData } from '@/components/comics/ComicGrid';
 import type { Book } from '@/types';
-import type { ComicVolumeSummary } from '@shelvarr/types';
 import type { InProgressComic } from '@/lib/db';
 import { getReadingUserId } from '@/lib/auth';
+import { LiveRefresh } from '@/components/live/LiveRefresh';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +34,20 @@ export default async function HomePage() {
   return (
     <div className="space-y-8">
       <h1 className="text-2xl font-bold text-white">Home</h1>
+      {/* Anything that adds to the library changes these rows. */}
+      <LiveRefresh
+        taskTypes={[
+          'scan',
+          'book_scan_all',
+          'organize',
+          'book_organize_all',
+          'metadata',
+          'book_metadata',
+          'comic_scan',
+          'comic_download',
+          'comic_library_import',
+        ]}
+      />
 
       <HomeSection
         title="Currently Reading"
@@ -127,7 +141,7 @@ function BookRow({ books }: { books: Book[] }) {
   );
 }
 
-function ComicRow({ volumes }: { volumes: ComicVolumeSummary[] }) {
+function ComicRow({ volumes }: { volumes: ComicVolumeCardData[] }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
       {volumes.map((volume) => (

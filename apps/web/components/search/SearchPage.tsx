@@ -8,16 +8,15 @@ import { LoadingSpinner } from '@/components/ui/Icons';
 import { BookCover } from '@/components/ui/BookCover';
 import { HardcoverNotConfigured } from '@/components/ui/HardcoverNotConfigured';
 import { BookCard } from '@/components/books/BookGrid';
-import { ComicCard } from '@/components/comics/ComicGrid';
+import { ComicCard, type ComicVolumeCardData } from '@/components/comics/ComicGrid';
 import type { SearchResultWithStatus } from '@/app/(app)/search/page';
 import type { Book } from '@/types';
-import type { ComicVolumeSummary } from '@shelvarr/types';
 
 interface SearchPageProps {
   initialQuery: string;
   initialResults: SearchResultWithStatus[];
   initialLocalBooks?: Book[];
-  initialLocalComics?: ComicVolumeSummary[];
+  initialLocalComics?: ComicVolumeCardData[];
   isConfigured: boolean;
 }
 

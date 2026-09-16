@@ -6,6 +6,7 @@ import { useDownloadStore } from '../src/stores/useDownloadStore';
 import { useComicDownloadStore } from '../src/stores/useComicDownloadStore';
 import { useUpdateStore } from '../src/stores/useUpdateStore';
 import { retryOfflineQueue } from '../src/services/progressSync';
+import { sweepExpiredDownloads } from '../src/services/downloadCache';
 import * as Font from 'expo-font';
 
 // Prefixed with `mock` so jest's hoisting of the factories below allows the
@@ -50,6 +51,9 @@ jest.mock('../src/components/UpdateBanner', () => {
 jest.mock('../src/services/progressSync', () => ({
   retryOfflineQueue: jest.fn(),
 }));
+jest.mock('../src/services/downloadCache', () => ({
+  sweepExpiredDownloads: jest.fn().mockResolvedValue({ books: [], comics: [] }),
+}));
 jest.mock('../src/navigation/RootNavigator', () => {
   const { Text } = require('react-native');
   return function MockRootNavigator() {
@@ -71,8 +75,12 @@ describe('App', () => {
     (useSettingsStore.getState as jest.Mock).mockReturnValue({
       loadSettings: jest.fn().mockResolvedValue(undefined),
     });
-    (useDownloadStore.getState as jest.Mock).mockReturnValue({ loadDownloads: jest.fn() });
-    (useComicDownloadStore.getState as jest.Mock).mockReturnValue({ loadDownloads: jest.fn() });
+    (useDownloadStore.getState as jest.Mock).mockReturnValue({
+      loadDownloads: jest.fn().mockResolvedValue(undefined),
+    });
+    (useComicDownloadStore.getState as jest.Mock).mockReturnValue({
+      loadDownloads: jest.fn().mockResolvedValue(undefined),
+    });
     (useUpdateStore.getState as jest.Mock).mockReturnValue({
       loadDismissed: jest.fn().mockResolvedValue(undefined),
       check: jest.fn(),
@@ -100,6 +108,26 @@ describe('App', () => {
     expect(useDownloadStore.getState().loadDownloads).toHaveBeenCalled();
     expect(useComicDownloadStore.getState().loadDownloads).toHaveBeenCalled();
     expect(retryOfflineQueue).toHaveBeenCalled();
+  });
+
+  it('sweeps expired downloads once the setting and both manifests are in', async () => {
+    let resolveManifest: () => void = () => {};
+    (useComicDownloadStore.getState as jest.Mock).mockReturnValue({
+      loadDownloads: jest.fn().mockReturnValue(
+        new Promise<void>((resolve) => {
+          resolveManifest = resolve;
+        })
+      ),
+    });
+
+    render(<App />);
+
+    // Sweeping against a manifest that hasn't loaded would find nothing to do.
+    await waitFor(() => expect(useSettingsStore.getState().loadSettings).toHaveBeenCalled());
+    expect(sweepExpiredDownloads).not.toHaveBeenCalled();
+
+    resolveManifest();
+    await waitFor(() => expect(sweepExpiredDownloads).toHaveBeenCalled());
   });
 
   it('checks the sign-in state once settings have loaded', async () => {

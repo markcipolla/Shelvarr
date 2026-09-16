@@ -581,4 +581,29 @@ describe('Comic download persistence', () => {
     assert.strictEqual(switched.progress, 0, 'a different link is a different file');
   });
 
+  // The scratch sweep and the download queue both date these, and a naked
+  // stored timestamp reads ten hours early on a machine in AEST.
+  it('dates a download in a form that says which timezone it is in', () => {
+    const before = Date.now();
+    const download = db.addComicDownload({
+      volumeId: 501,
+      host: 'getcomics',
+      downloadLink: LINK_A,
+    });
+
+    assert.match(download.createdAt, /Z$/);
+    assert.match(download.heartbeatAt, /Z$/);
+    assert.strictEqual(download.completedAt, null, 'nothing to date until it ends');
+
+    // Whole seconds, so allow the boundary at either end.
+    const createdAt = new Date(download.createdAt).getTime();
+    assert.ok(
+      createdAt >= before - 1000 && createdAt <= Date.now() + 1000,
+      `createdAt ${download.createdAt} is not within a second of now`
+    );
+
+    db.setComicDownloadState(download.id, 'failed');
+    assert.match(db.getComicDownload(download.id)!.completedAt!, /Z$/);
+  });
+
 });

@@ -11,6 +11,7 @@ import type {
   ComicGeneralFile,
 } from '@shelvarr/types';
 import { getDatabase } from './database';
+import { parseSqlTime } from '../../utils/dates';
 
 interface ComicRow {
   id: number;
@@ -375,8 +376,9 @@ export async function isComicDetailStale(id: number, maxAgeMinutes: number): Pro
     'SELECT detail_cached_at FROM comics WHERE id = ?',
     [id]
   );
-  if (!row?.detail_cached_at) return true;
-  const cachedAt = new Date(row.detail_cached_at.endsWith('Z') ? row.detail_cached_at : row.detail_cached_at + 'Z');
+  const cachedAt = parseSqlTime(row?.detail_cached_at);
+  // No usable timestamp means we have nothing to trust — refetch.
+  if (!cachedAt) return true;
   const diffMinutes = (Date.now() - cachedAt.getTime()) / 60000;
   return diffMinutes > maxAgeMinutes;
 }

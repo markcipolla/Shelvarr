@@ -81,6 +81,25 @@ describe('ComicCard', () => {
     expect(queryByText('0/0')).toBeNull();
   });
 
+  it('ticks a comic whose every issue has been read', () => {
+    const { getByLabelText } = render(
+      <ComicCard volume={{ ...makeVolume(), read: true }} onPress={jest.fn()} />
+    );
+    expect(getByLabelText('Read')).toBeTruthy();
+  });
+
+  it('shows no tick while an issue is still unread', () => {
+    const { queryByLabelText } = render(
+      <ComicCard volume={{ ...makeVolume(), read: false }} onPress={jest.fn()} />
+    );
+    expect(queryByLabelText('Read')).toBeNull();
+  });
+
+  it('shows no tick when the list came from the cache, which has no read state', () => {
+    const { queryByLabelText } = render(<ComicCard volume={makeVolume()} onPress={jest.fn()} />);
+    expect(queryByLabelText('Read')).toBeNull();
+  });
+
   it('calls onPress when tapped', () => {
     const onPress = jest.fn();
     const { getByText } = render(<ComicCard volume={makeVolume()} onPress={onPress} />);

@@ -8,7 +8,7 @@
  * the Next.js build).
  */
 
-import { query, execute } from '@shelvarr/db';
+import { query, execute, sqlTimeToIso } from '@shelvarr/db';
 import type { Author, AuthorWork } from '@shelvarr/types';
 
 /**
@@ -147,8 +147,9 @@ function mapAuthorRow(row: AuthorRow): Author {
     openlibraryId: row.openlibrary_id,
     googleBooksId: row.google_books_id,
     totalWorks: row.total_works,
-    lastSynced: row.last_synced,
-    createdAt: row.created_at,
+    // `last_synced` is written from JavaScript as ISO and passes through.
+    lastSynced: sqlTimeToIso(row.last_synced),
+    createdAt: sqlTimeToIso(row.created_at),
   };
 }
 
@@ -165,7 +166,7 @@ function mapAuthorWorkRow(row: AuthorWorkRow): AuthorWork {
     owned: row.owned === 1,
     bookId: row.book_id,
     wanted: row.wanted === 1,
-    createdAt: row.created_at,
+    createdAt: sqlTimeToIso(row.created_at),
   };
 }
 

@@ -22,7 +22,7 @@ const USER: User = {
   email: 'reader@example.com',
   name: 'Reader',
   role: 'user',
-  createdAt: '2026-01-01 00:00:00',
+  createdAt: '2026-01-01T00:00:00Z',
   lastLoginAt: null,
 };
 

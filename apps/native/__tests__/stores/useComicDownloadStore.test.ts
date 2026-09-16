@@ -118,5 +118,75 @@ describe('useComicDownloadStore', () => {
       await useComicDownloadStore.getState().loadDownloads();
       expect(useComicDownloadStore.getState().hydrated).toBe(true);
     });
+
+    it('keeps a download recorded while it was still reading', async () => {
+      // Hydration is kicked off unawaited at startup. An issue opened before
+      // it lands must not be dropped when the older manifest arrives.
+      mockGetInfo.mockResolvedValue({ exists: true });
+      mockReadString.mockResolvedValue(JSON.stringify({ 1: makeComic(1) }));
+
+      const hydrating = useComicDownloadStore.getState().loadDownloads();
+      useComicDownloadStore.getState().setDownload(2, makeComic(2));
+      await hydrating;
+
+      const { downloads } = useComicDownloadStore.getState();
+      expect(downloads[1]).toEqual(makeComic(1));
+      expect(downloads[2]).toEqual(makeComic(2));
+    });
+
+    it('lets the newer in-memory entry win over the stored one', async () => {
+      mockGetInfo.mockResolvedValue({ exists: true });
+      mockReadString.mockResolvedValue(JSON.stringify({ 1: makeComic(1) }));
+      const fresh = { ...makeComic(1), totalPages: 99 };
+
+      const hydrating = useComicDownloadStore.getState().loadDownloads();
+      useComicDownloadStore.getState().setDownload(1, fresh);
+      await hydrating;
+
+      expect(useComicDownloadStore.getState().downloads[1]).toEqual(fresh);
+    });
+
+    it('reads the manifest once when called twice in a row', async () => {
+      mockGetInfo.mockResolvedValue({ exists: true });
+      mockReadString.mockResolvedValue(JSON.stringify({ 1: makeComic(1) }));
+
+      await Promise.all([
+        useComicDownloadStore.getState().loadDownloads(),
+        useComicDownloadStore.getState().loadDownloads(),
+      ]);
+
+      expect(mockReadString).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('touchLastRead', () => {
+    it('stamps the entry and persists it', () => {
+      useComicDownloadStore.getState().setDownload(1, makeComic(1));
+      useComicDownloadStore.getState().touchLastRead(1, 12345);
+      expect(useComicDownloadStore.getState().downloads[1].lastReadAt).toBe(12345);
+      expect(mockWriteString).toHaveBeenCalledTimes(2);
+    });
+
+    it('defaults to now', () => {
+      useComicDownloadStore.getState().setDownload(1, makeComic(1));
+      const before = Date.now();
+      useComicDownloadStore.getState().touchLastRead(1);
+      expect(useComicDownloadStore.getState().downloads[1].lastReadAt).toBeGreaterThanOrEqual(before);
+    });
+
+    it('ignores an issue that was never downloaded', () => {
+      useComicDownloadStore.getState().touchLastRead(99);
+      expect(useComicDownloadStore.getState().downloads).toEqual({});
+      expect(mockWriteString).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('clearDownloads', () => {
+    it('empties the map and persists it', () => {
+      useComicDownloadStore.getState().setDownload(1, makeComic(1));
+      useComicDownloadStore.getState().clearDownloads();
+      expect(useComicDownloadStore.getState().downloads).toEqual({});
+      expect(mockWriteString).toHaveBeenLastCalledWith(expect.any(String), '{}');
+    });
   });
 });

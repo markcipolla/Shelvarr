@@ -8,15 +8,19 @@ import {
   getComicSlug,
   getComicSlugs,
   getManagedComicDetail,
+  isComicVolumeRead,
   listComicVolumes,
   type InProgressComic,
   type ComicIssueProgress,
+  sqlTimeToIso,
 } from '@/lib/db';
 import type { ComicVolumeSummary, ComicVolumeDetail } from '@shelvarr/types';
 import { getReadingUserId } from '@/lib/auth';
+import { withComicReadState } from '@/lib/comics/readState';
 
 export interface ComicsListResult {
-  volumes: Array<ComicVolumeSummary & { managed?: boolean }>;
+  /** `read` is the signed-in person's: every issue of the volume, finished. */
+  volumes: Array<ComicVolumeSummary & { managed?: boolean; read?: boolean }>;
 }
 
 export interface ComicDetailResult {
@@ -30,11 +34,13 @@ export interface ComicDetailResult {
 }
 
 export async function getComics(search?: string): Promise<ComicsListResult> {
-  return { volumes: listComicVolumes({ ...(search ? { search } : {}) }) };
+  const volumes = listComicVolumes({ ...(search ? { search } : {}) });
+  return { volumes: await withComicReadState(volumes) };
 }
 
 export async function getRecentComics(limit: number): Promise<ComicsListResult> {
-  return { volumes: listComicVolumes({ sort: 'recently_added' }).slice(0, limit) };
+  const volumes = listComicVolumes({ sort: 'recently_added' }).slice(0, limit);
+  return { volumes: await withComicReadState(volumes) };
 }
 
 /**
@@ -43,6 +49,15 @@ export async function getRecentComics(limit: number): Promise<ComicsListResult> 
  */
 export async function getInProgressComics(limit: number): Promise<InProgressComic[]> {
   return dbGetInProgressComics(await getReadingUserId(), limit);
+}
+
+/**
+ * Whether the signed-in person has read every issue of a volume. Derived from
+ * their per-issue progress, so a newly published issue drops the volume back to
+ * unread until they catch up.
+ */
+export async function isComicRead(volumeId: number): Promise<boolean> {
+  return isComicVolumeRead(await getReadingUserId(), volumeId);
 }
 
 /** The signed-in person's per-issue read progress for a volume. */
@@ -331,7 +346,7 @@ export async function getComicDownloadQueue(): Promise<DownloadQueueView> {
       fileTitle: entry.file_title,
       host: entry.host,
       success: entry.success === 1,
-      downloadedAt: entry.downloaded_at,
+      downloadedAt: sqlTimeToIso(entry.downloaded_at),
     })),
     blocklist: getComicBlocklist(50).map((entry) => ({
       id: entry.id,
@@ -352,7 +367,8 @@ export async function getComicDownloadQueue(): Promise<DownloadQueueView> {
 export async function cancelComicDownload(
   id: number
 ): Promise<{ success: boolean; error?: string }> {
-  const { deleteComicDownload, getComicDownload, setComicDownloadState } = await import('@/lib/db');
+  const { getComicDownload } = await import('@/lib/db');
+  const { comicDownloadEvents } = await import('@shelvarr/services');
   const { revalidatePath } = await import('next/cache');
 
   const download = getComicDownload(id);
@@ -363,9 +379,9 @@ export async function cancelComicDownload(
     download.state === 'downloading' ||
     download.state === 'importing'
   ) {
-    setComicDownloadState(id, 'cancelled');
+    comicDownloadEvents.setDownloadState(id, 'cancelled');
   } else {
-    deleteComicDownload(id);
+    comicDownloadEvents.removeDownload(id);
   }
 
   revalidatePath('/comics/downloads');
@@ -382,8 +398,8 @@ export async function cancelComicDownload(
 export async function retryComicDownload(
   id: number
 ): Promise<{ success: boolean; error?: string }> {
-  const { getComicDownload, resetComicDownloadForRetry } = await import('@/lib/db');
-  const { queue } = await import('@shelvarr/services');
+  const { getComicDownload } = await import('@/lib/db');
+  const { comicDownloadEvents, queue } = await import('@shelvarr/services');
   const { revalidatePath } = await import('next/cache');
 
   const download = getComicDownload(id);
@@ -397,7 +413,7 @@ export async function retryComicDownload(
     return { success: false, error: `Download is already ${download.state}` };
   }
 
-  resetComicDownloadForRetry(id);
+  comicDownloadEvents.resetDownloadForRetry(id);
   queue.enqueueTask('comic_download', { comicDownloadId: id });
 
   revalidatePath('/comics/downloads');

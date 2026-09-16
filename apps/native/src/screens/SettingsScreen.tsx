@@ -6,8 +6,10 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MainTabParamList, RootStackParamList } from '../navigation/types';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { cleanAllDownloads } from '../services/fileManager';
+import { useDownloadStore } from '../stores/useDownloadStore';
+import { useComicDownloadStore } from '../stores/useComicDownloadStore';
 import { useUpdateStore } from '../stores/useUpdateStore';
-import { APP_VERSION, BUILD_VERSION } from '../utils/constants';
+import { APP_VERSION, BUILD_VERSION, DOWNLOAD_RETENTION_DAYS } from '../utils/constants';
 import { testShelvarrConnection } from '../services/api/shelvarr';
 import { useAuthStore } from '../stores/useAuthStore';
 
@@ -20,7 +22,7 @@ type SettingsNav = CompositeNavigationProp<
 
 export default function SettingsScreen() {
   const navigation = useNavigation<SettingsNav>();
-  const autoDelete = useSettingsStore((s) => s.autoDeleteAfterReading);
+  const autoDelete = useSettingsStore((s) => s.autoDeleteOldDownloads);
   const setAutoDelete = useSettingsStore((s) => s.setAutoDelete);
   const shelvarrUrl = useSettingsStore((s) => s.shelvarrUrl);
   const setShelvarrUrl = useSettingsStore((s) => s.setShelvarrUrl);
@@ -75,6 +77,10 @@ export default function SettingsScreen() {
         style: 'destructive',
         onPress: async () => {
           await cleanAllDownloads();
+          // Forget them too. A manifest still listing files that are gone
+          // leaves the library showing downloads it can no longer open.
+          useDownloadStore.getState().clearDownloads();
+          useComicDownloadStore.getState().clearDownloads();
           Alert.alert('Done', 'All downloads cleared.');
         },
       },
@@ -150,8 +156,10 @@ export default function SettingsScreen() {
       <Text style={styles.sectionTitle}>Reading</Text>
       <View style={styles.row}>
         <View style={styles.rowText}>
-          <Text style={styles.label}>Auto-delete after reading</Text>
-          <Text style={styles.description}>Remove downloaded files when you close the reader</Text>
+          <Text style={styles.label}>Free up space automatically</Text>
+          <Text style={styles.description}>
+            {`Delete files you opened but didn't download, once they've gone ${DOWNLOAD_RETENTION_DAYS} days unread`}
+          </Text>
         </View>
         <Switch
           value={autoDelete}

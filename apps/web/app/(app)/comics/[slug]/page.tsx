@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { getComic, getComicProgress, resolveComicRef } from '@/lib/actions/comics';
+import { getComic, getComicProgress, isComicRead, resolveComicRef } from '@/lib/actions/comics';
 import { MarkIssueReadButton } from '@/components/comics/MarkIssueReadButton';
 import { VolumeActions } from '@/components/comics/VolumeActions';
 import { BookCover } from '@/components/ui/BookCover';
+import { CheckIcon } from '@/components/ui/Icons';
+import { LiveRefresh } from '@/components/live/LiveRefresh';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,9 +23,10 @@ export default async function ComicDetailPage({ params }: PageProps) {
   if (resolved.slug !== ref) redirect(`/comics/${resolved.slug}`);
 
   const volumeId = resolved.id;
-  const [result, progressRows] = await Promise.all([
+  const [result, progressRows, read] = await Promise.all([
     getComic(volumeId),
     getComicProgress(volumeId),
+    isComicRead(volumeId),
   ]);
   const progressByIssue = new Map(progressRows.map((p) => [p.issueId, p]));
 
@@ -34,6 +37,19 @@ export default async function ComicDetailPage({ params }: PageProps) {
 
   return (
     <div className="space-y-6">
+      {/* This is the page someone sits on while a volume fills up, so it
+          follows downloads as well as the tasks behind them: an issue turns
+          from wanted to owned here without a reload. */}
+      <LiveRefresh
+        downloads
+        taskTypes={[
+          'comic_search',
+          'comic_download',
+          'comic_refresh',
+          'comic_scan',
+          'comic_rename',
+        ]}
+      />
       <Link href="/comics" className="text-shelvarr-text-muted hover:text-white text-sm inline-block">
         ← Back to Comics
       </Link>
@@ -53,6 +69,12 @@ export default async function ComicDetailPage({ params }: PageProps) {
             <span className="bg-shelvarr-surface border border-shelvarr-border rounded px-3 py-1 text-shelvarr-text-muted">
               {volume.issues_downloaded}/{volume.issue_count} issues
             </span>
+            {read && (
+              <span className="bg-green-600 text-white rounded px-3 py-1 flex items-center gap-1.5">
+                <CheckIcon className="w-3.5 h-3.5" />
+                Read
+              </span>
+            )}
             {volume.monitored && (
               <span className="bg-green-600/20 text-green-400 border border-green-500/40 rounded px-3 py-1">
                 Monitored

@@ -39,6 +39,8 @@ export {
   upsertComicReadProgress,
   deleteComicReadProgress,
   getComicReadProgressForVolume,
+  getReadComicVolumeIds,
+  isComicVolumeRead,
   getInProgressComics,
   getNextUpComics,
   getNextUpBooks,
@@ -124,6 +126,8 @@ export {
   getComicIssueFileRef,
   getComicIssueDetail,
   listComicVolumes,
+  sqlTimeToIso,
+  isoToSqlTime,
 } from '@shelvarr/db';
 
 export type {

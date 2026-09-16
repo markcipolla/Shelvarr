@@ -2,6 +2,7 @@ import { getWantedBooks } from '@/lib/actions/wanted';
 import { getDownloadSourceStatuses } from '@/lib/actions/downloads';
 import { WantedBookGrid } from '@/components/wanted/WantedBookGrid';
 import { SourceStatusBar } from '@/components/wanted/SourceStatusBadge';
+import { LiveRefresh } from '@/components/live/LiveRefresh';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,9 @@ export default async function WantedListPage() {
 
   return (
     <>
+      {/* Searching flips a book to "searching" and a finished download takes
+          it off the list entirely. */}
+      <LiveRefresh taskTypes={['download', 'organize', 'book_organize_all']} />
       {/* Source Status */}
       <div className="mb-6 p-4 bg-shelvarr-surface border border-shelvarr-border rounded-lg">
         <SourceStatusBar statuses={sourceStatuses} />

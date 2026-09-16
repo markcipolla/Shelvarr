@@ -1,9 +1,10 @@
 'use server';
 
-import { query, searchBooksFts, searchComicsFts, buildFtsQuery, listComicVolumes } from '@/lib/db';
+import { query, searchBooksFts, searchComicsFts, buildFtsQuery, listComicVolumes, sqlTimeToIso } from '@/lib/db';
 import * as metadataService from '@/lib/services/metadata';
 import type { Book } from '@/types';
 import type { ComicVolumeSummary } from '@shelvarr/types';
+import { withComicReadState, type ComicVolumeWithReadState } from '@/lib/comics/readState';
 
 export interface LocalSearchResult {
   type: 'book' | 'author' | 'series' | 'comic';
@@ -188,16 +189,19 @@ export async function searchLocalBooks(searchQuery: string, limit = 20): Promise
     extension: row.extension,
     metadataSource: row.metadata_source,
     metadataId: row.metadata_id,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    createdAt: sqlTimeToIso(row.created_at),
+    updatedAt: sqlTimeToIso(row.updated_at),
   }));
 }
 
 /**
  * Search the comic library. Used by the /search page.
  */
-export async function searchLocalComicsList(searchQuery: string, limit = 20): Promise<ComicVolumeSummary[]> {
-  return searchLocalComics(searchQuery, limit);
+export async function searchLocalComicsList(
+  searchQuery: string,
+  limit = 20
+): Promise<ComicVolumeWithReadState[]> {
+  return withComicReadState(searchLocalComics(searchQuery, limit));
 }
 
 /**

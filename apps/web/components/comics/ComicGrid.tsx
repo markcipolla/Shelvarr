@@ -2,11 +2,14 @@
 
 import Link from 'next/link';
 import type { ComicVolumeSummary } from '@shelvarr/types';
-import { BookIcon } from '@/components/ui/Icons';
+import { BookIcon, CheckIcon } from '@/components/ui/Icons';
 import { BookCover } from '@/components/ui/BookCover';
 
+/** A volume, plus whether the reader has finished every issue of it. */
+export type ComicVolumeCardData = ComicVolumeSummary & { read?: boolean };
+
 interface ComicGridProps {
-  volumes: ComicVolumeSummary[];
+  volumes: ComicVolumeCardData[];
 }
 
 export function ComicGrid({ volumes }: ComicGridProps) {
@@ -20,7 +23,7 @@ export function ComicGrid({ volumes }: ComicGridProps) {
 }
 
 interface ComicCardProps {
-  volume: ComicVolumeSummary;
+  volume: ComicVolumeCardData;
   /** Optional badge shown at the bottom-left, e.g. resume point for in-progress comics. */
   progressLabel?: string;
 }
@@ -33,6 +36,15 @@ export function ComicCard({ volume, progressLabel }: ComicCardProps) {
   return (
     <Link href={`/comics/${volume.slug}`} className="book-cover-trigger group block">
       <BookCover variant="comic" src={coverSrc} title={title} author={subtitle}>
+        {volume.read && (
+          <div
+            className="absolute top-2 left-2 bg-green-600 text-white rounded-full p-1 shadow-md ring-1 ring-black/20"
+            title="Read"
+          >
+            <CheckIcon className="w-4 h-4" />
+            <span className="sr-only">Read</span>
+          </div>
+        )}
         {volume.issue_count > 0 && (
           <div className="absolute top-2 right-2 bg-shelvarr-primary/90 text-white text-xs font-bold px-2 py-1 rounded">
             {volume.issues_downloaded}/{volume.issue_count}

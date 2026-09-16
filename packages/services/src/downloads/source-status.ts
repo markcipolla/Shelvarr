@@ -13,6 +13,7 @@ import {
   getSourceStatusCache,
   updateSourceStatus,
   isStatusCacheStale,
+  sqlTimeToIso,
 } from '@shelvarr/db';
 
 import { getServiceConfig } from '../config';
@@ -106,7 +107,7 @@ export async function getSourceStatuses(forceRefresh = false): Promise<SourceSta
       displayName: sourceInfo.displayName,
       status: c.status,
       responseTime: c.response_time || undefined,
-      lastChecked: new Date(c.last_updated),
+      lastChecked: new Date(sqlTimeToIso(c.last_updated)),
       url: sourceInfo.url,
     };
   });

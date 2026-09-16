@@ -1,12 +1,8 @@
 import { useCallback } from 'react';
 import { useReaderStore } from '../stores/useReaderStore';
-import { useSettingsStore } from '../stores/useSettingsStore';
 import { useDownloadStore } from '../stores/useDownloadStore';
 import { useComicDownloadStore } from '../stores/useComicDownloadStore';
 import { syncProgress, syncComicProgress, flushProgress } from '../services/progressSync';
-import { deleteBookFiles } from '../services/fileManager';
-import { removeDownloadedComic } from '../services/comicReader';
-import { getFileExtension } from '../utils/fileTypes';
 
 export interface BookReaderOpts {
   kind?: 'comic';
@@ -15,12 +11,12 @@ export interface BookReaderOpts {
 
 export function useBookReader(bookId: string, opts?: BookReaderOpts) {
   const { setPage: setStorePage, startReading, stopReading } = useReaderStore();
-  const autoDelete = useSettingsStore((s) => s.autoDeleteAfterReading);
   const download = useDownloadStore((s) => s.downloads[bookId]);
-  const removeDownload = useDownloadStore((s) => s.removeDownload);
+  const touchLastRead = useDownloadStore((s) => s.touchLastRead);
   const comicDownload = useComicDownloadStore((s) =>
     opts?.issueId !== undefined ? s.downloads[opts.issueId] : undefined
   );
+  const touchComicLastRead = useComicDownloadStore((s) => s.touchLastRead);
 
   const isComic = opts?.kind === 'comic' && opts.issueId !== undefined;
 
@@ -59,24 +55,24 @@ export function useBookReader(bookId: string, opts?: BookReaderOpts) {
     await flushProgress(bookId);
     stopReading();
 
-    // Auto-delete if enabled (but never delete explicitly-downloaded items)
-    if (autoDelete) {
-      if (isComic && comicDownload && !comicDownload.persisted) {
-        try {
-          await removeDownloadedComic(comicDownload.issueId);
-        } catch (err) {
-          console.error('Failed to delete comic files:', err);
-        }
-      } else if (!isComic && download && !download.persisted) {
-        try {
-          await deleteBookFiles(bookId, getFileExtension(download.format));
-          removeDownload(bookId);
-        } catch (err) {
-          console.error('Failed to delete book files:', err);
-        }
-      }
+    // Keep the file and note when it was last read. Closing the reader used to
+    // delete anything not explicitly downloaded, which meant re-downloading a
+    // book to read its next chapter; sweepExpiredDownloads() clears it instead
+    // once it has gone DOWNLOAD_RETENTION_DAYS untouched.
+    if (isComic && comicDownload) {
+      touchComicLastRead(comicDownload.issueId);
+    } else if (!isComic && download) {
+      touchLastRead(bookId);
     }
-  }, [bookId, autoDelete, download, comicDownload, isComic, stopReading, removeDownload]);
+  }, [
+    bookId,
+    download,
+    comicDownload,
+    isComic,
+    stopReading,
+    touchLastRead,
+    touchComicLastRead,
+  ]);
 
   return { onPageChange, onReaderExit, startReading };
 }
