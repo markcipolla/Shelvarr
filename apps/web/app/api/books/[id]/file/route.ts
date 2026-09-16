@@ -47,11 +47,18 @@ export async function GET(
     const stream = createReadStream(row.file_path);
     const webStream = Readable.toWeb(stream) as ReadableStream;
 
+    // PDFs are meant to be displayed in-browser (PdfReader embeds this route
+    // directly in an iframe) rather than downloaded, so they alone get
+    // `inline`. Every other format keeps `attachment` exactly as before —
+    // EpubReader, for instance, fetches this via JS into an ArrayBuffer and
+    // never relies on the browser's own handling of the response either way.
+    const disposition = ext === 'pdf' ? 'inline' : 'attachment';
+
     return new Response(webStream, {
       headers: {
         'Content-Type': contentType,
         'Content-Length': String(stats.size),
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
+        'Content-Disposition': `${disposition}; filename="${encodeURIComponent(filename)}"`,
       },
     });
   } catch {

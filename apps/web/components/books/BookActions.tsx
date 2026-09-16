@@ -6,6 +6,8 @@ import type { Book } from '@/types';
 import { deleteBook } from '@/lib/actions/books';
 import { MetadataSearchModal } from '@/components/books/MetadataSearchModal';
 import { EpubReader } from '@/components/books/EpubReader';
+import { BookPageReader } from '@/components/books/BookPageReader';
+import { PdfReader } from '@/components/books/PdfReader';
 import { useToast } from '@/components/ui/Toast';
 import { FlipBook } from '@/components/ui/BookCover';
 
@@ -31,7 +33,11 @@ export function BookActions({ book, readProgress = null }: BookActionsProps) {
 
   const hasMatch = !!book.metadataSource;
   const hasHardcover = book.metadataSource === 'hardcover';
-  const isEpub = book.filePath.toLowerCase().endsWith('.epub');
+  const filePathLower = book.filePath.toLowerCase();
+  const isEpub = filePathLower.endsWith('.epub');
+  const isCbzOrCbr = filePathLower.endsWith('.cbz') || filePathLower.endsWith('.cbr');
+  const isPdf = filePathLower.endsWith('.pdf');
+  const isReadable = isEpub || isCbzOrCbr || isPdf;
 
   const handleStatusChange = async (
     status: 'want-to-read' | 'reading' | 'read' | 'dnf'
@@ -101,7 +107,7 @@ export function BookActions({ book, readProgress = null }: BookActionsProps) {
   return (
     <>
       <div className="space-y-2">
-        {isEpub && (
+        {isReadable && (
           <button
             onClick={() => setShowReader(true)}
             disabled={loading}
@@ -210,8 +216,23 @@ export function BookActions({ book, readProgress = null }: BookActionsProps) {
         />
       )}
 
-      {showReader && (
+      {showReader && isEpub && (
         <EpubReader
+          book={book}
+          onClose={() => setShowReader(false)}
+        />
+      )}
+
+      {showReader && isCbzOrCbr && (
+        <BookPageReader
+          book={book}
+          readProgress={readProgress}
+          onClose={() => setShowReader(false)}
+        />
+      )}
+
+      {showReader && isPdf && (
+        <PdfReader
           book={book}
           onClose={() => setShowReader(false)}
         />
