@@ -8,7 +8,7 @@ import { isBookWanted } from '@/lib/actions/wanted';
 import { isHardcoverConfigured } from '@/lib/actions/settings';
 import { SearchPage } from '@/components/search/SearchPage';
 import type { Book } from '@/types';
-import type { ComicVolumeSummary } from '@shelvarr/types';
+import type { ComicVolumeCardData } from '@/components/comics/ComicGrid';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +28,7 @@ export default async function SearchRoute({ searchParams }: PageProps) {
 
   let hardcoverResults: SearchResultWithStatus[] = [];
   let localBooks: Book[] = [];
-  let localComics: ComicVolumeSummary[] = [];
+  let localComics: ComicVolumeCardData[] = [];
 
   if (query) {
     const [books, comics, hardcover] = await Promise.all([

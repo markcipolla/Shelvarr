@@ -145,6 +145,34 @@ describe('ComicDetailScreen', () => {
     expect(getByText('Reading 4/20')).toBeTruthy();
   });
 
+  it('marks the volume read once every issue is finished', async () => {
+    mockFetchComicDetail.mockResolvedValue({ configured: true, volume: makeVolume() });
+    mockFetchVolumeProgress.mockResolvedValue(
+      new Map([
+        [1, { issueId: 1, page: 20, completed: true, total: 20, updatedAt: 'x' }],
+        [2, { issueId: 2, page: 20, completed: true, total: 20, updatedAt: 'x' }],
+      ])
+    );
+
+    const { getByText } = render(<ComicDetailScreen navigation={mockNavigation} route={mockRoute} />);
+
+    await waitFor(() => expect(getByText('✓ Read')).toBeTruthy());
+  });
+
+  it('leaves the volume unread while one issue is outstanding', async () => {
+    mockFetchComicDetail.mockResolvedValue({ configured: true, volume: makeVolume() });
+    mockFetchVolumeProgress.mockResolvedValue(
+      new Map([[1, { issueId: 1, page: 20, completed: true, total: 20, updatedAt: 'x' }]])
+    );
+
+    const { queryByText, getByText } = render(
+      <ComicDetailScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    await waitFor(() => expect(getByText('Batman')).toBeTruthy());
+    expect(queryByText('✓ Read')).toBeNull();
+  });
+
   it('shows page number when total is unknown', async () => {
     mockFetchComicDetail.mockResolvedValue({ configured: true, volume: makeVolume() });
     mockFetchVolumeProgress.mockResolvedValue(

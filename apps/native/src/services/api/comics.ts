@@ -11,13 +11,20 @@ import type { ComicVolumeSummary, ComicVolumeDetail, ComicIssueSummary } from '@
 export type { ComicVolumeSummary, ComicVolumeDetail, ComicIssueSummary };
 
 /**
+ * A volume in a list, plus whether this reader has finished every issue of it.
+ * The server works `read` out per request; the offline cache doesn't keep it,
+ * so a list served from the cache simply has no read state to show.
+ */
+export type ComicVolumeListItem = ComicVolumeSummary & { read?: boolean };
+
+/**
  * Comic responses.
  *
  * `cached` means the payload came from the on-device database because the
  * server could not be reached; `error` carries why.
  */
 export interface ComicsListResponse {
-  volumes: ComicVolumeSummary[];
+  volumes: ComicVolumeListItem[];
   cached?: boolean;
   error?: string;
 }

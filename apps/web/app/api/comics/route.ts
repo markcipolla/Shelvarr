@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
-import { validateApiAuth } from '@shelvarr/services';
-import { listComicVolumes } from '@/lib/db';
+import { validateApiAuth, getReadingUserId } from '@shelvarr/services';
+import { getReadComicVolumeIds, listComicVolumes } from '@/lib/db';
 import type { ComicListSort } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +14,10 @@ const VALID_SORTS: ComicListSort[] = [
   'publisher',
 ];
 
-/** The comic library, filtered and sorted in the database. */
+/**
+ * The comic library, filtered and sorted in the database. Each volume carries
+ * `read`: whether the requester has finished every issue of it.
+ */
 export async function GET(request: NextRequest) {
   if (!validateApiAuth(request.headers)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -28,7 +31,13 @@ export async function GET(request: NextRequest) {
       ? (sortParam as ComicListSort)
       : undefined;
 
+  const volumes = listComicVolumes({ ...(search ? { search } : {}), ...(sort ? { sort } : {}) });
+  const readIds = getReadComicVolumeIds(
+    getReadingUserId(request.headers),
+    volumes.map((volume) => volume.id)
+  );
+
   return NextResponse.json({
-    volumes: listComicVolumes({ ...(search ? { search } : {}), ...(sort ? { sort } : {}) }),
+    volumes: volumes.map((volume) => ({ ...volume, read: readIds.has(volume.id) })),
   });
 }

@@ -8,15 +8,18 @@ import {
   getComicSlug,
   getComicSlugs,
   getManagedComicDetail,
+  isComicVolumeRead,
   listComicVolumes,
   type InProgressComic,
   type ComicIssueProgress,
 } from '@/lib/db';
 import type { ComicVolumeSummary, ComicVolumeDetail } from '@shelvarr/types';
 import { getReadingUserId } from '@/lib/auth';
+import { withComicReadState } from '@/lib/comics/readState';
 
 export interface ComicsListResult {
-  volumes: Array<ComicVolumeSummary & { managed?: boolean }>;
+  /** `read` is the signed-in person's: every issue of the volume, finished. */
+  volumes: Array<ComicVolumeSummary & { managed?: boolean; read?: boolean }>;
 }
 
 export interface ComicDetailResult {
@@ -30,11 +33,13 @@ export interface ComicDetailResult {
 }
 
 export async function getComics(search?: string): Promise<ComicsListResult> {
-  return { volumes: listComicVolumes({ ...(search ? { search } : {}) }) };
+  const volumes = listComicVolumes({ ...(search ? { search } : {}) });
+  return { volumes: await withComicReadState(volumes) };
 }
 
 export async function getRecentComics(limit: number): Promise<ComicsListResult> {
-  return { volumes: listComicVolumes({ sort: 'recently_added' }).slice(0, limit) };
+  const volumes = listComicVolumes({ sort: 'recently_added' }).slice(0, limit);
+  return { volumes: await withComicReadState(volumes) };
 }
 
 /**
@@ -43,6 +48,15 @@ export async function getRecentComics(limit: number): Promise<ComicsListResult> 
  */
 export async function getInProgressComics(limit: number): Promise<InProgressComic[]> {
   return dbGetInProgressComics(await getReadingUserId(), limit);
+}
+
+/**
+ * Whether the signed-in person has read every issue of a volume. Derived from
+ * their per-issue progress, so a newly published issue drops the volume back to
+ * unread until they catch up.
+ */
+export async function isComicRead(volumeId: number): Promise<boolean> {
+  return isComicVolumeRead(await getReadingUserId(), volumeId);
 }
 
 /** The signed-in person's per-issue read progress for a volume. */

@@ -20,7 +20,7 @@ import {
   fetchRecentComics,
   fetchInProgressComics,
   fetchNextUpComics,
-  ComicVolumeSummary,
+  ComicVolumeListItem,
   InProgressComic,
   NextUpComic,
 } from '../services/api/comics';
@@ -62,7 +62,7 @@ export default function HomeScreen({ navigation }: Props) {
   const [inProgress, setInProgress] = useState<Book[]>([]);
   const [nextUpBooks, setNextUpBooks] = useState<Book[]>([]);
   const [recentlyAdded, setRecentlyAdded] = useState<Book[]>([]);
-  const [recentComics, setRecentComics] = useState<ComicVolumeSummary[]>([]);
+  const [recentComics, setRecentComics] = useState<ComicVolumeListItem[]>([]);
   const [inProgressComics, setInProgressComics] = useState<InProgressComic[]>([]);
   const [nextUpComics, setNextUpComics] = useState<NextUpComic[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,7 +72,7 @@ export default function HomeScreen({ navigation }: Props) {
   const { width: screenWidth } = useWindowDimensions();
   const cardWidth = (screenWidth - 32 - 12 * (columns - 1)) / columns;
   const [searchResults, setSearchResults] = useState<Book[]>([]);
-  const [comicSearchResults, setComicSearchResults] = useState<ComicVolumeSummary[]>([]);
+  const [comicSearchResults, setComicSearchResults] = useState<ComicVolumeListItem[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchPage, setSearchPage] = useState(0);
   const [searchHasMore, setSearchHasMore] = useState(false);

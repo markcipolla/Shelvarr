@@ -39,6 +39,8 @@ export {
   upsertComicReadProgress,
   deleteComicReadProgress,
   getComicReadProgressForVolume,
+  getReadComicVolumeIds,
+  isComicVolumeRead,
   getInProgressComics,
   getNextUpComics,
   getNextUpBooks,

@@ -13,10 +13,16 @@ type ListOptions = { search?: string; sort?: string };
 
 let authResult = true;
 const listComicVolumesMock = mock.fn<(options: ListOptions) => ListedVolume[]>(() => []);
+/** Volume ids the requester has read right through. */
+let readVolumeIds: number[] = [];
+const getReadComicVolumeIdsMock = mock.fn<(userId: number, volumeIds?: number[]) => Set<number>>(
+  () => new Set(readVolumeIds)
+);
 
 mock.module('@shelvarr/services', {
   namedExports: {
     validateApiAuth: () => authResult,
+    getReadingUserId: () => 7,
   },
 });
 
@@ -25,6 +31,8 @@ mock.module('@/lib/config', { namedExports: {} });
 mock.module('@/lib/db', {
   namedExports: {
     listComicVolumes: (options: ListOptions) => listComicVolumesMock(options),
+    getReadComicVolumeIds: (userId: number, volumeIds?: number[]) =>
+      getReadComicVolumeIdsMock(userId, volumeIds),
   },
 });
 
@@ -63,8 +71,10 @@ const { GET } = await import('../../app/api/comics/route.js');
 describe('GET /api/comics', () => {
   beforeEach(() => {
     authResult = true;
+    readVolumeIds = [];
     listComicVolumesMock.mock.resetCalls();
     listComicVolumesMock.mock.mockImplementation(() => []);
+    getReadComicVolumeIdsMock.mock.resetCalls();
   });
 
   it('returns 401 when auth validation fails', async () => {
@@ -101,6 +111,24 @@ describe('GET /api/comics', () => {
   it('omits both keys when neither was given', async () => {
     await GET(makeRequest('http://host/api/comics'));
     assert.deepStrictEqual(listComicVolumesMock.mock.calls[0]!.arguments[0], {});
+  });
+
+  it('says which volumes the requester has read right through', async () => {
+    listComicVolumesMock.mock.mockImplementation(() => [
+      makeVolume({ id: 1, title: 'Saga' }),
+      makeVolume({ id: 2, title: 'Paper Girls' }),
+    ]);
+    readVolumeIds = [2];
+
+    const res = await GET(makeRequest('http://host/api/comics'));
+    const body = await res.json();
+
+    assert.strictEqual(body.volumes[0].read, false);
+    assert.strictEqual(body.volumes[1].read, true);
+    // Asked about the volumes on this page, for this reader, in one query.
+    const [userId, volumeIds] = getReadComicVolumeIdsMock.mock.calls[0]!.arguments;
+    assert.strictEqual(userId, 7);
+    assert.deepStrictEqual(volumeIds, [1, 2]);
   });
 
   it('returns an empty list rather than an error for an empty library', async () => {
