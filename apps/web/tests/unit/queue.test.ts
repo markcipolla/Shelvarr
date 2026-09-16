@@ -88,6 +88,25 @@ if (canRunTests) {
           assert.strictEqual(task.type, type);
         }
       });
+
+      // SQLite stores CURRENT_TIMESTAMP as "YYYY-MM-DD HH:MM:SS" in UTC with
+      // nothing on it to say so, and the browser reads a string in that shape
+      // as local time. A reader in UTC+10 saw every task as ten hours old the
+      // moment it was created, so the zone has to be on the wire.
+      it('should stamp the timezone on the timestamps it hands out', () => {
+        const before = Date.now();
+        const task = createTask('scan');
+        const after = Date.now();
+
+        assert.match(task.createdAt, /Z$/);
+
+        // Whole seconds, so allow the boundary at either end.
+        const createdAt = new Date(task.createdAt).getTime();
+        assert.ok(
+          createdAt >= before - 1000 && createdAt <= after + 1000,
+          `createdAt ${task.createdAt} is not within a second of now`
+        );
+      });
     });
 
     describe('getTask', () => {
@@ -218,6 +237,7 @@ if (canRunTests) {
         assert.ok(updated);
         assert.strictEqual(updated.status, 'completed');
         assert.ok(updated.completedAt);
+        assert.match(updated.completedAt, /Z$/);
         assert.ok(updated.data);
         assert.strictEqual((updated.data as Record<string, number>).added, 10);
       });

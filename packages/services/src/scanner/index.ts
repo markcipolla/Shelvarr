@@ -2,7 +2,7 @@ import { existsSync, readdirSync, rmdirSync, statSync, unlinkSync } from 'fs';
 import { join, extname, basename, dirname, resolve, sep } from 'path';
 import { createHash } from 'crypto';
 import { readFileSync } from 'fs';
-import { query, queryOne, execute, hardcoverStatusLabel, progressUserId } from '@shelvarr/db';
+import { query, queryOne, execute, hardcoverStatusLabel, progressUserId, sqlTimeToIso } from '@shelvarr/db';
 import { getLibraryById } from '../library';
 import { getServiceConfig } from '../config';
 import { describeWriteFailure } from '../utils/fs-errors';
@@ -83,8 +83,8 @@ function rowToBook(row: BookRow): Book {
     extension: row.extension,
     metadataSource: row.metadata_source,
     metadataId: row.metadata_id,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    createdAt: sqlTimeToIso(row.created_at),
+    updatedAt: sqlTimeToIso(row.updated_at),
     ...computeProgress(row),
     ...computeHardcoverStatus(row),
   };

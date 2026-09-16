@@ -11,6 +11,7 @@ import {
   type DownloadQueueView,
 } from '@/lib/actions/comics';
 import { formatByteProgress } from '@/lib/utils/bytes';
+import { formatRelativeTime } from '@/lib/utils/dates';
 import { useLiveRefresh } from '@/components/live/LiveEvents';
 import { useLiveDownloadProgress } from '@/components/live/useLiveProgress';
 
@@ -163,7 +164,7 @@ export function DownloadQueue({ data }: { data: DownloadQueueView }) {
                     {entry.fileTitle ?? entry.volumeTitle ?? 'Unknown'}
                   </p>
                   <p className="text-xs text-shelvarr-text-muted">
-                    {entry.host ?? 'unknown host'} · {entry.downloadedAt}
+                    {entry.host ?? 'unknown host'} · {formatRelativeTime(entry.downloadedAt)}
                   </p>
                 </div>
                 <span className={entry.success ? 'text-green-400' : 'text-red-400'}>
@@ -192,7 +193,7 @@ export function DownloadQueue({ data }: { data: DownloadQueueView }) {
                 <div className="min-w-0">
                   <p className="text-white truncate">{entry.webTitle ?? entry.downloadLink}</p>
                   <p className="text-xs text-shelvarr-text-muted">
-                    {entry.reason} · {entry.addedAt}
+                    {entry.reason} · {formatRelativeTime(entry.addedAt)}
                   </p>
                 </div>
                 <button

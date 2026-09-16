@@ -1,6 +1,6 @@
 'use server';
 
-import { query, isBookWanted } from '@/lib/db';
+import { query, isBookWanted, sqlTimeToIso } from '@/lib/db';
 import type { Book } from '@/types';
 import * as hardcover from '@/lib/services/metadata/hardcover';
 
@@ -54,8 +54,8 @@ function mapBookRow(row: BookRow): Book {
     extension: row.extension,
     metadataSource: row.metadata_source,
     metadataId: row.metadata_id,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    createdAt: sqlTimeToIso(row.created_at),
+    updatedAt: sqlTimeToIso(row.updated_at),
   };
 }
 

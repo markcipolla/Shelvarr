@@ -124,6 +124,8 @@ export {
   getComicIssueFileRef,
   getComicIssueDetail,
   listComicVolumes,
+  sqlTimeToIso,
+  isoToSqlTime,
 } from '@shelvarr/db';
 
 export type {

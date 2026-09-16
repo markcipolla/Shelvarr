@@ -1,4 +1,4 @@
-import { query, queryOne, execute, insertReturning } from '@shelvarr/db';
+import { query, queryOne, execute, insertReturning, sqlTimeToIso } from '@shelvarr/db';
 import type { Library } from '@shelvarr/types';
 import { existsSync, statSync } from 'fs';
 
@@ -14,7 +14,7 @@ function rowToLibrary(row: LibraryRow): Library {
     id: row.id,
     name: row.name,
     path: row.path,
-    createdAt: row.created_at,
+    createdAt: sqlTimeToIso(row.created_at),
   };
 }
 
