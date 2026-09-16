@@ -117,6 +117,11 @@ export default function ComicDetailScreen({ navigation, route }: Props) {
     );
   }
 
+  // Read right through: every issue the volume has, finished. The same rule
+  // the library grid's tick follows, so the two never disagree.
+  const read =
+    volume.issues.length > 0 &&
+    volume.issues.every((issue) => progress.get(issue.id)?.completed);
   const subtitleParts = [volume.publisher, volume.year ? String(volume.year) : null].filter(Boolean);
   const subtitle = subtitleParts.join(' · ');
   const description = volume.description ? stripHtml(volume.description) : '';
@@ -145,6 +150,7 @@ export default function ComicDetailScreen({ navigation, route }: Props) {
             Issues: {volume.issues_downloaded}/{volume.issue_count}
           </Text>
           {totalSize ? <Text style={styles.detail}>Size: {totalSize}</Text> : null}
+          {read ? <Text style={styles.read}>✓ Read</Text> : null}
           {volume.monitored ? <Text style={styles.monitored}>Monitored</Text> : null}
         </View>
       </View>
@@ -196,6 +202,7 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 21, color: '#555', marginBottom: 10 },
   detail: { fontSize: 20, color: '#777', marginBottom: 6 },
   monitored: { fontSize: 18, color: '#4a7c59', marginTop: 4, fontWeight: '500' },
+  read: { fontSize: 18, color: '#16a34a', marginTop: 4, fontWeight: '600' },
   summary: { fontSize: 21, color: '#444', lineHeight: 30, padding: 16, paddingTop: 0 },
   issuesSection: { paddingHorizontal: 16, paddingBottom: 24 },
   issuesHeading: { fontSize: 22, fontWeight: '600', color: '#333', marginBottom: 12, marginTop: 8 },

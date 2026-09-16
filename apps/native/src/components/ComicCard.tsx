@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ViewStyle } from 'react-native';
-import type { ComicVolumeSummary } from '@shelvarr/types';
-import { getVolumeCoverUrl } from '../services/api/comics';
+import { getVolumeCoverUrl, type ComicVolumeListItem } from '../services/api/comics';
 import { useAuthHeaders } from '../hooks/useAuthHeaders';
 import Cover, { CoverTrigger } from './Cover';
 
@@ -9,7 +8,7 @@ import Cover, { CoverTrigger } from './Cover';
 const FIXED_WIDTH = 120;
 
 interface Props {
-  volume: ComicVolumeSummary;
+  volume: ComicVolumeListItem;
   onPress: () => void;
   fill?: boolean;
   placeholder?: boolean;
@@ -59,6 +58,11 @@ export default function ComicCard({ volume, onPress, fill, placeholder, progress
           ) : null
         }
       >
+        {volume.read ? (
+          <View style={styles.readBadge} accessibilityLabel="Read">
+            <Text style={styles.readBadgeText}>✓</Text>
+          </View>
+        ) : null}
         {showBadge && (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>
@@ -98,6 +102,18 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   badgeText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  readBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#16a34a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  readBadgeText: { color: '#fff', fontSize: 12, lineHeight: 14, fontWeight: '700' },
   progressBadge: {
     position: 'absolute',
     bottom: 6,

@@ -1154,6 +1154,45 @@ export function getComicReadProgressForVolume(
   }));
 }
 
+/**
+ * Which of these volumes this person has read right through: every issue the
+ * volume has, finished.
+ *
+ * Completeness is derived rather than stored, so it stays true by itself: when
+ * a new issue lands the volume stops being complete until that issue is read
+ * too, and no one has to remember to clear a flag. A volume with no issues is
+ * never complete.
+ *
+ * Pass `volumeIds` to ask about a known set; omit it to scan the library.
+ */
+export function getReadComicVolumeIds(userId: number, volumeIds?: number[]): Set<number> {
+  const conditions = ['ci.deleted_at IS NULL'];
+  const params: unknown[] = [progressUserId(userId)];
+
+  if (volumeIds !== undefined) {
+    if (volumeIds.length === 0) return new Set();
+    conditions.push(`ci.volume_id IN (${volumeIds.map(() => '?').join(', ')})`);
+    params.push(...volumeIds);
+  }
+
+  const rows = query<{ volume_id: number }>(
+    `SELECT ci.volume_id AS volume_id
+       FROM comic_issues ci
+       JOIN comics c ON c.id = ci.volume_id AND c.deleted_at IS NULL
+       LEFT JOIN comic_read_progress crp ON crp.issue_id = ci.id AND crp.user_id = ?
+      WHERE ${conditions.join(' AND ')}
+      GROUP BY ci.volume_id
+     HAVING SUM(CASE WHEN crp.completed = 1 THEN 1 ELSE 0 END) = COUNT(*)`,
+    params
+  );
+  return new Set(rows.map((r) => r.volume_id));
+}
+
+/** Whether this person has finished every issue of one volume. */
+export function isComicVolumeRead(userId: number, volumeId: number): boolean {
+  return getReadComicVolumeIds(userId, [volumeId]).has(volumeId);
+}
+
 export interface InProgressComic {
   volume: ComicVolumeSummary;
   issueId: number;

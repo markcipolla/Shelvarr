@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
-import { fetchComics, ComicVolumeSummary } from '../services/api/comics';
+import { fetchComics, ComicVolumeListItem } from '../services/api/comics';
 import { getCachedComics, searchCachedComics } from '../services/db/comics';
 import { useComicDownloadStore } from '../stores/useComicDownloadStore';
 import {
@@ -42,7 +42,7 @@ function comicDownloads() {
 
 export default function ComicsScreen({ navigation }: Props) {
   const connection = useConnectionStatus();
-  const [volumes, setVolumes] = useState<ComicVolumeSummary[]>([]);
+  const [volumes, setVolumes] = useState<ComicVolumeListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -227,14 +227,14 @@ export default function ComicsScreen({ navigation }: Props) {
           keyboardShouldPersistTaps="handled"
           renderItem={({ item }) =>
             isPlaceholder(item) ? (
-              <ComicCard volume={{} as ComicVolumeSummary} onPress={() => {}} fill placeholder />
+              <ComicCard volume={{} as ComicVolumeListItem} onPress={() => {}} fill placeholder />
             ) : (
               <ComicCard
-                volume={(item as { volume: ComicVolumeSummary }).volume}
+                volume={(item as { volume: ComicVolumeListItem }).volume}
                 fill
                 onPress={() =>
                   navigation.navigate('ComicDetail', {
-                    volumeId: (item as { volume: ComicVolumeSummary }).volume.id,
+                    volumeId: (item as { volume: ComicVolumeListItem }).volume.id,
                   })
                 }
               />

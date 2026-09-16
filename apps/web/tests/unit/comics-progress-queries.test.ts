@@ -1,10 +1,11 @@
 /**
  * Unit tests for comic read-progress queries in @shelvarr/db:
  * getInProgressComics (dedup-by-volume, most-recent-first),
- * getNextUpComics and getComicReadProgressForVolume (per-issue progress).
+ * getNextUpComics and getComicReadProgressForVolume (per-issue progress),
+ * and getReadComicVolumeIds / isComicVolumeRead (volumes read right through).
  *
- * All three are per-reader: on a server with accounts, one person finishing an
- * issue must not move anybody else's rows.
+ * All of them are per-reader: on a server with accounts, one person finishing
+ * an issue must not move anybody else's rows.
  */
 
 import { describe, it, before, after, beforeEach } from 'node:test';
@@ -338,6 +339,110 @@ describe('Comic progress queries (@shelvarr/db)', () => {
       db.upsertComicReadProgress(OTHER_READER, 2, 4, false, 20); // mid-read, but not ours
 
       assert.strictEqual(db.getNextUpComics(READER, 10)[0]?.issueId, 2);
+    });
+  });
+  describe('getReadComicVolumeIds', () => {
+    it('is empty when nothing has been read', () => {
+      db.upsertComicDetail(makeDetail(101, [makeIssue({ id: 1, volume_id: 101 })]));
+      assert.deepStrictEqual([...db.getReadComicVolumeIds(READER)], []);
+    });
+
+    it('marks a volume read once every issue is finished', () => {
+      db.upsertComicDetail(makeDetail(101, [
+        makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
+        makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
+      ]));
+      db.upsertComicReadProgress(READER, 1, 20, true, 20);
+      assert.deepStrictEqual([...db.getReadComicVolumeIds(READER)], []);
+
+      db.upsertComicReadProgress(READER, 2, 20, true, 20);
+      assert.deepStrictEqual([...db.getReadComicVolumeIds(READER)], [101]);
+    });
+
+    it('drops a volume again when a new unread issue arrives', () => {
+      const issues = [makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 })];
+      db.upsertComicDetail(makeDetail(101, issues));
+      db.upsertComicReadProgress(READER, 1, 20, true, 20);
+      assert.deepStrictEqual([...db.getReadComicVolumeIds(READER)], [101]);
+
+      db.upsertComicDetail(makeDetail(101, [
+        ...issues,
+        makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
+      ]));
+      assert.deepStrictEqual([...db.getReadComicVolumeIds(READER)], []);
+    });
+
+    it('does not count an issue that is only part-read', () => {
+      db.upsertComicDetail(makeDetail(101, [makeIssue({ id: 1, volume_id: 101 })]));
+      db.upsertComicReadProgress(READER, 1, 19, false, 20);
+      assert.deepStrictEqual([...db.getReadComicVolumeIds(READER)], []);
+    });
+
+    it('ignores issues that have been soft-deleted', () => {
+      db.upsertComicDetail(makeDetail(101, [
+        makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
+        makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
+      ]));
+      db.upsertComicReadProgress(READER, 1, 20, true, 20);
+      // #2 was pulled from the volume's metadata, so it can't be read.
+      db.upsertComicDetail(makeDetail(101, [
+        makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
+      ]));
+
+      assert.deepStrictEqual([...db.getReadComicVolumeIds(READER)], [101]);
+    });
+
+    it('never marks a volume with no issues read', () => {
+      db.upsertComicDetail(makeDetail(101, []));
+      assert.deepStrictEqual([...db.getReadComicVolumeIds(READER)], []);
+    });
+
+    it('excludes soft-deleted volumes', () => {
+      db.upsertComicDetail(makeDetail(101, [makeIssue({ id: 1, volume_id: 101 })]));
+      db.upsertComicReadProgress(READER, 1, 20, true, 20);
+      // Straight to the column: softDeleteComic also retires the issues, which
+      // would hide the volume even without the check on the volume itself.
+      db.getDb().prepare('UPDATE comics SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(101);
+
+      assert.deepStrictEqual([...db.getReadComicVolumeIds(READER)], []);
+    });
+
+    it('is one reader at a time', () => {
+      db.upsertComicDetail(makeDetail(101, [makeIssue({ id: 1, volume_id: 101 })]));
+      db.upsertComicReadProgress(OTHER_READER, 1, 20, true, 20);
+
+      assert.deepStrictEqual([...db.getReadComicVolumeIds(READER)], []);
+      assert.deepStrictEqual([...db.getReadComicVolumeIds(OTHER_READER)], [101]);
+    });
+
+    it('answers only for the volumes it is asked about', () => {
+      db.upsertComicDetail(makeDetail(101, [makeIssue({ id: 1, volume_id: 101 })]));
+      db.upsertComicDetail(makeDetail(202, [makeIssue({ id: 2, volume_id: 202 })]));
+      db.upsertComicReadProgress(READER, 1, 20, true, 20);
+      db.upsertComicReadProgress(READER, 2, 20, true, 20);
+
+      assert.deepStrictEqual([...db.getReadComicVolumeIds(READER, [202])], [202]);
+      assert.deepStrictEqual([...db.getReadComicVolumeIds(READER, [])], []);
+      assert.deepStrictEqual([...db.getReadComicVolumeIds(READER)].sort(), [101, 202]);
+    });
+  });
+
+  describe('isComicVolumeRead', () => {
+    it('is true only once the last issue is finished', () => {
+      db.upsertComicDetail(makeDetail(101, [
+        makeIssue({ id: 1, volume_id: 101, issue_number: '1', calculated_issue_number: 1 }),
+        makeIssue({ id: 2, volume_id: 101, issue_number: '2', calculated_issue_number: 2 }),
+      ]));
+      db.upsertComicReadProgress(READER, 1, 20, true, 20);
+      assert.strictEqual(db.isComicVolumeRead(READER, 101), false);
+
+      db.upsertComicReadProgress(READER, 2, 20, true, 20);
+      assert.strictEqual(db.isComicVolumeRead(READER, 101), true);
+      assert.strictEqual(db.isComicVolumeRead(OTHER_READER, 101), false);
+    });
+
+    it('is false for a volume that does not exist', () => {
+      assert.strictEqual(db.isComicVolumeRead(READER, 999), false);
     });
   });
 });
