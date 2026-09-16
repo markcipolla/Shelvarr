@@ -66,6 +66,7 @@ function TaskRow({ task }: { task: Task }) {
     comic_resume: 'Resume Interrupted Downloads',
     comic_library_import: 'Comic Library Import',
     auth_prune: 'Session Cleanup',
+    source_health: 'Source Health Check',
   }[task.type] || task.type;
 
   // A deferred task is restarted in place rather than duplicated, so it keeps

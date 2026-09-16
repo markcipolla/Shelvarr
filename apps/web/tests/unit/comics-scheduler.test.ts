@@ -78,6 +78,16 @@ describe('Scheduler', () => {
     assert.strictEqual(scheduler.getSchedule('book_organize_all')!.enabled, false);
   });
 
+  it('probes download sources every 15 minutes, on by default since it has no side effects', () => {
+    scheduler.ensureDefaultSchedules();
+
+    const schedule = scheduler.getSchedule('source_health')!;
+    assert.strictEqual(schedule.taskType, 'source_health');
+    assert.strictEqual(schedule.intervalSeconds, 15 * 60);
+    assert.strictEqual(schedule.enabled, true);
+    assert.strictEqual(schedule.category, 'books');
+  });
+
   it('does not overwrite settings the user has changed', () => {
     scheduler.ensureDefaultSchedules();
     scheduler.setScheduleEnabled('comic_update_all', false);
