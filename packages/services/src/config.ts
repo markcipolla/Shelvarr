@@ -4,6 +4,35 @@ import { join } from 'path';
 let _config: AppConfig | null = null;
 
 /**
+ * Read the server's configuration from the environment.
+ *
+ * The one place an env var becomes config: the web app hands the result to
+ * `initServiceConfig`, and `getServiceConfig` falls back to it when nothing has.
+ */
+export function loadConfigFromEnv(): AppConfig {
+  const dataDir = process.env['DATA_DIR'] || process.cwd() + '/data';
+  return {
+    dataDir,
+    dbPath: process.env['DB_PATH'] || join(dataDir, 'shelvarr.db'),
+    libraryRoot: process.env['LIBRARY_ROOT'] || '/libraries',
+    supportedExtensions: ['.epub', '.pdf', '.mobi', '.azw', '.azw3'],
+    // Only for reading paths that were recorded under a different mount.
+    comicPaths: {
+      pathMap: process.env['COMIC_PATH_MAP'] || null,
+    },
+    getcomics: {
+      baseUrl: process.env['GETCOMICS_URL'] || 'https://getcomics.org',
+      downloadDir: process.env['GETCOMICS_DOWNLOAD_DIR'] || join(dataDir, 'downloads'),
+      hostPreference: (process.env['GETCOMICS_HOST_PREFERENCE'] || 'getcomics,pixeldrain')
+        .split(',')
+        .map((host) => host.trim())
+        .filter(Boolean),
+      renameDownloadedFiles: process.env['GETCOMICS_RENAME'] !== 'false',
+    },
+  };
+}
+
+/**
  * Initialize the service config. Must be called before using any service.
  */
 export function initServiceConfig(config: AppConfig): void {
@@ -11,36 +40,10 @@ export function initServiceConfig(config: AppConfig): void {
 }
 
 /**
- * Get the current service config.
- * Falls back to env-based defaults if not explicitly initialized.
+ * Get the current service config, reading the environment if nothing has been
+ * initialized.
  */
 export function getServiceConfig(): AppConfig {
-  if (!_config) {
-    // Auto-initialize from environment variables
-    const dataDir = process.env['DATA_DIR'] || process.cwd() + '/data';
-    _config = {
-      env: process.env['NODE_ENV'] || 'development',
-      dbPath: process.env['DB_PATH'] || join(dataDir, 'shelvarr.db'),
-      dataDir,
-      libraryRoot: process.env['LIBRARY_ROOT'] || '/libraries',
-      port: parseInt(process.env['PORT'] || '3000', 10),
-      supportedExtensions: ['.epub', '.pdf', '.cbz', '.cbr', '.mobi', '.azw3'],
-      hardcoverToken: process.env['HARDCOVER_API_TOKEN'] || null,
-      comicPaths: {
-        pathMap: process.env['COMIC_PATH_MAP'] || null,
-      },
-      getcomics: {
-        baseUrl: process.env['GETCOMICS_URL'] || 'https://getcomics.org',
-        downloadDir: process.env['GETCOMICS_DOWNLOAD_DIR'] || join(dataDir, 'downloads'),
-        libraryRoot: process.env['COMIC_LIBRARY_ROOT'] || null,
-        hostPreference: (process.env['GETCOMICS_HOST_PREFERENCE'] || 'getcomics,pixeldrain')
-          .split(',')
-          .map((host) => host.trim())
-          .filter(Boolean),
-        renameDownloadedFiles: process.env['GETCOMICS_RENAME'] !== 'false',
-      },
-      rateLimits: { hardcover: 60 },
-    };
-  }
+  if (!_config) _config = loadConfigFromEnv();
   return _config;
 }

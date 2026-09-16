@@ -5,7 +5,6 @@
  * Simplified: Always fetch full book details for complete metadata.
  */
 
-import { getServiceConfig } from '../config';
 import { getSetting, replaceHardcoverStatuses } from '@shelvarr/db';
 import { pace } from '../utils/pacing';
 
@@ -44,33 +43,26 @@ export interface BookMetadata {
   sourceId: string;
 }
 
-// Rate limiting
+// Hardcover allows 60 requests a minute.
+const MIN_REQUEST_INTERVAL_MS = 1000;
 let lastRequestTime = 0;
-function getMinInterval() {
-  return 1000 / (getServiceConfig().rateLimits.hardcover / 60);
-}
 
+/** The key entered on the Metadata Sources tab, minus any pasted `Bearer `. */
 function getApiToken(): string | null {
-  const dbToken = getSetting<string>('hardcover_api_key', null);
-  if (dbToken) {
-    let cleaned = dbToken.trim().replace(/^["']|["']$/g, '');
-    if (cleaned.toLowerCase().startsWith('bearer ')) {
-      cleaned = cleaned.substring(7).trim();
-    }
-    return cleaned || null;
+  const stored = getSetting<string>('hardcover_api_key', null);
+  if (!stored) return null;
+
+  let cleaned = stored.trim().replace(/^["']|["']$/g, '');
+  if (cleaned.toLowerCase().startsWith('bearer ')) {
+    cleaned = cleaned.substring(7).trim();
   }
-  let envToken = getServiceConfig().hardcoverToken?.trim() || null;
-  if (envToken?.toLowerCase().startsWith('bearer ')) {
-    envToken = envToken.substring(7).trim();
-  }
-  return envToken;
+  return cleaned || null;
 }
 
 async function graphqlFetch<T>(query: string, variables: Record<string, unknown> = {}): Promise<T | null> {
   const now = Date.now();
-  const interval = getMinInterval();
-  if (now - lastRequestTime < interval) {
-    await pace(interval - (now - lastRequestTime));
+  if (now - lastRequestTime < MIN_REQUEST_INTERVAL_MS) {
+    await pace(MIN_REQUEST_INTERVAL_MS - (now - lastRequestTime));
   }
   lastRequestTime = Date.now();
 

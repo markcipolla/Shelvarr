@@ -305,37 +305,31 @@ describe('Comic download import', () => {
     publisher: 'Marvel',
   };
 
-  /** Rebuild the whole app config; `libraryRoot: null` exercises the no-destination path. */
-  async function configure(comicLibraryRoot: string | null, pathMap: string | null = null) {
-    const { initServiceConfig } = await import('@shelvarr/services');
-    initServiceConfig({
-      env: 'test',
-      port: 3000,
-      dataDir: root,
-      libraryRoot: root,
-      dbPath: join(root, 'db.sqlite'),
-      comicPaths: { pathMap },
-      getcomics: {
-        baseUrl: 'https://getcomics.org',
-        downloadDir: join(root, 'downloads'),
-        libraryRoot: comicLibraryRoot,
-        hostPreference: ['getcomics', 'pixeldrain'],
-        renameDownloadedFiles: true,
-      },
-      supportedExtensions: ['.cbz'],
-      rateLimits: { hardcover: 60 },
-      hardcoverToken: null,
-    });
+  /**
+   * Make `path` the only comic root folder, as if set up in Settings → Comics;
+   * `null` leaves none, which exercises the no-destination path.
+   */
+  function useRootFolder(path: string | null) {
+    db.getDb().exec('DELETE FROM comic_root_folders');
+    if (path) db.addComicRootFolder(path);
   }
 
   before(async () => {
     root = '/tmp/shelvarr-comic-import-test-' + Date.now();
     mkdirSync(root, { recursive: true });
-    await configure(join(root, 'library'));
+    process.env['DATA_DIR'] = root;
+    process.env['DB_PATH'] = join(root, 'db.sqlite');
+
+    db = await import('../../lib/db/index.js');
+    db.initDatabase();
+    useRootFolder(join(root, 'library'));
     importer = await import('@shelvarr/services/comics/import');
   });
 
-  after(() => rmSync(root, { recursive: true, force: true }));
+  after(() => {
+    db.closeDatabase();
+    rmSync(root, { recursive: true, force: true });
+  });
 
   function scratchFile(name: string, contents = 'comic-bytes'): string {
     const dir = join(root, 'downloads');
@@ -345,7 +339,7 @@ describe('Comic download import', () => {
     return path;
   }
 
-  it('renames the file and files it under the library root', async () => {
+  it('renames the file and files it under the comic root folder', async () => {
     const source = scratchFile('raw-download-1.cbz');
     const result = await importer.importComicDownload(
       { filenameBody: 'Immortal Hulk (2018) Volume 01 Issue 005' },
@@ -417,42 +411,65 @@ describe('Comic download import', () => {
     );
   });
 
+  it("files a folderless volume under its own root folder, not just the first", async () => {
+    const own = join(root, 'second-root');
+    const { id } = db.addComicRootFolder(own);
+    try {
+      const target = importer.resolveImportTarget(
+        { ...volume, folder: null, rootFolderId: id },
+        'x.cbz'
+      );
+      assert.strictEqual(target.directory, join(own, 'Immortal Hulk', 'Volume 01 (2018)'));
+    } finally {
+      useRootFolder(join(root, 'library'));
+    }
+  });
+
   it('refuses to guess a destination when there is nowhere to put the file', async () => {
-    await configure(null);
+    useRootFolder(null);
     try {
       assert.throws(
         () => importer.resolveImportTarget({ ...volume, folder: null }, 'x.cbz'),
-        /COMIC_LIBRARY_ROOT/,
-        'expected the error to name the setting that would fix it'
+        /Settings → Comics/,
+        'expected the error to say where to set up a root folder'
       );
     } finally {
-      await configure(join(root, 'library'));
+      useRootFolder(join(root, 'library'));
     }
   });
 
   describe('when the destination is on a mount that is not there', () => {
     // A top-level folder that cannot exist, so the nearest thing on disk is `/`.
-    const absent = `/shelvarr-test-absent-${Date.now()}`;
+    const absent = `/shelvarr-not-mounted-${Date.now()}`;
 
-    it('names the missing folder and COMIC_PATH_MAP, not permissions on /', async () => {
-      const folder = join(absent, 'Comics', 'Blood & Thunder');
+    /** Re-read the config with COMIC_PATH_MAP set, or unset for `null`. */
+    async function usePathMap(map: string | null) {
+      const { initServiceConfig, loadConfigFromEnv } = await import('@shelvarr/services');
+      if (map) process.env['COMIC_PATH_MAP'] = map;
+      else delete process.env['COMIC_PATH_MAP'];
+      initServiceConfig(loadConfigFromEnv());
+    }
+
+    it('says the path is not mounted, rather than asking for write access to /', async () => {
+      const folder = join(absent, 'Immortal Hulk');
       await assert.rejects(
         () => importer.ensureImportable({ ...volume, folder }),
         (error: Error) => {
           assert.ok(error.message.includes(folder), 'expected the full destination');
-          assert.ok(error.message.includes(`${absent} does not exist`));
+          assert.match(error.message, /\/shelvarr-not-mounted-\d+ does not exist/);
           assert.ok(error.message.includes(`COMIC_PATH_MAP=${absent}:`));
           assert.match(error.message, /COMIC_PATH_MAP is not set/);
-          assert.doesNotMatch(error.message, /PUID|Cannot create a folder in \/ /);
+          assert.doesNotMatch(error.message, /PUID\/PGID/);
           return true;
         }
       );
+      // Even as root, where the mkdir would have succeeded.
       assert.ok(!existsSync(absent), 'nothing was created at the filesystem root');
     });
 
     it('shows the recorded folder and the map when a remap lands on a missing mount', async () => {
       const pathMap = `/data:${absent}`;
-      await configure(join(root, 'library'), pathMap);
+      await usePathMap(pathMap);
       try {
         await assert.rejects(
           () => importer.ensureImportable({ ...volume, folder: '/data/Comics/Birthright' }),
@@ -464,24 +481,23 @@ describe('Comic download import', () => {
           }
         );
       } finally {
-        await configure(join(root, 'library'));
+        await usePathMap(null);
       }
     });
 
-    it('points at COMIC_LIBRARY_ROOT when a new volume would land on a missing mount', async () => {
-      const libraryRoot = join(absent, 'comics');
-      await configure(libraryRoot);
+    it('points at the root folder when a new volume would land on a missing mount', async () => {
+      useRootFolder(join(absent, 'comics'));
       try {
         await assert.rejects(
           () => importer.ensureImportable({ ...volume, folder: null }),
           (error: Error) => {
-            assert.ok(error.message.includes(`COMIC_LIBRARY_ROOT (${libraryRoot})`));
+            assert.match(error.message, /root folder in Settings → Comics/);
             assert.doesNotMatch(error.message, /COMIC_PATH_MAP/);
             return true;
           }
         );
       } finally {
-        await configure(join(root, 'library'));
+        useRootFolder(join(root, 'library'));
       }
     });
   });
@@ -518,7 +534,7 @@ describe('Comic download import', () => {
     it('names the folder that exists when the volume folder is the one we cannot create', async (t) => {
       if (asRoot) return t.skip('running as root; mode bits are not enforced');
       const libraryRoot = readOnlyFolder('locked-root');
-      await configure(libraryRoot);
+      useRootFolder(libraryRoot);
       try {
         await assert.rejects(
           () => importer.ensureImportable({ ...volume, folder: null }),
@@ -534,7 +550,7 @@ describe('Comic download import', () => {
         );
       } finally {
         chmodSync(libraryRoot, 0o700);
-        await configure(join(root, 'library'));
+        useRootFolder(join(root, 'library'));
       }
     });
 

@@ -61,4 +61,13 @@ describe('SeriesCard', () => {
     fireEvent.press(getByText('Series Title'));
     expect(onPress).toHaveBeenCalled();
   });
+
+  it('draws the series thumbnail as a book cover', () => {
+    const { getByTestId } = render(<SeriesCard series={makeSeries()} onPress={jest.fn()} />);
+    expect(getByTestId('cover-image').props.source).toEqual({
+      uri: 'http://thumb/series1',
+      headers: { Authorization: 'Basic abc' },
+    });
+    expect(getByTestId('cover-spine', { includeHiddenElements: true })).toBeTruthy();
+  });
 });

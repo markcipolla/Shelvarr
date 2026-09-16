@@ -4,7 +4,6 @@ import {
   Text,
   TextInput,
   FlatList,
-  Image,
   StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
@@ -19,10 +18,13 @@ import {
 } from '../services/api/wanted';
 import { useConnectionStatus } from '../hooks/useConnectionStatus';
 import ConnectionNotice from '../components/ConnectionNotice';
+import Cover from '../components/Cover';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'WantedSearch'>;
 
 type AddState = 'idle' | 'adding' | 'added';
+
+const COVER_WIDTH = 70;
 
 export default function WantedSearchScreen(_props: Props) {
   const connection = useConnectionStatus();
@@ -106,15 +108,13 @@ export default function WantedSearchScreen(_props: Props) {
     const state = addState[item.hardcoverId] || 'idle';
     return (
       <View style={styles.row}>
-        <View style={styles.coverWrapper}>
-          {item.coverUrl ? (
-            <Image source={{ uri: item.coverUrl }} style={styles.cover} resizeMode="cover" />
-          ) : (
-            <View style={[styles.cover, styles.coverPlaceholder]}>
-              <Text style={styles.coverPlaceholderText}>📖</Text>
-            </View>
-          )}
-        </View>
+        <Cover
+          uri={item.coverUrl}
+          title={item.title}
+          author={item.author}
+          width={COVER_WIDTH}
+          style={styles.cover}
+        />
         <View style={styles.info}>
           <Text style={styles.title} numberOfLines={2}>
             {item.title}
@@ -257,17 +257,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e8e4de',
   },
-  coverWrapper: {
-    width: 70,
-    height: 100,
-    borderRadius: 4,
-    overflow: 'hidden',
-    backgroundColor: '#e8e4de',
-    marginRight: 12,
-  },
-  cover: { width: '100%', height: '100%' },
-  coverPlaceholder: { justifyContent: 'center', alignItems: 'center' },
-  coverPlaceholderText: { fontSize: 28 },
+  cover: { marginRight: 12 },
   info: { flex: 1, justifyContent: 'space-between' },
   title: { fontSize: 15, fontWeight: '600', color: '#222', lineHeight: 19 },
   author: { fontSize: 13, color: '#555', marginTop: 2 },

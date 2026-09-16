@@ -948,8 +948,12 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
   const loaded = getcomics.loadVolume(download.volumeId);
   if (!loaded) throw new Error(`Comic volume ${download.volumeId} not found`);
 
-  const volumeRow = queryOne<{ folder: string | null; publisher: string | null }>(
-    'SELECT folder, publisher FROM comics WHERE id = ?',
+  const volumeRow = queryOne<{
+    folder: string | null;
+    publisher: string | null;
+    root_folder_id: number | null;
+  }>(
+    'SELECT folder, publisher, root_folder_id FROM comics WHERE id = ?',
     [download.volumeId]
   );
 
@@ -1039,6 +1043,7 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
     specialVersion: loaded.volume.specialVersion,
     publisher: volumeRow?.publisher ?? null,
     folder: volumeRow?.folder ?? null,
+    rootFolderId: volumeRow?.root_folder_id ?? null,
   };
 
   // Check the library folder is writable before spending bandwidth on a file

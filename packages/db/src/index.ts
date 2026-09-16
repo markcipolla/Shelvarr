@@ -55,9 +55,6 @@ function findSchemaPath(): string {
     join(__dbDirname, 'schema.sql'),
     join(process.cwd(), 'packages', 'db', 'schema.sql'),
     resolve('packages', 'db', 'schema.sql'),
-    // Legacy paths for backwards compatibility
-    join(process.cwd(), 'lib', 'db', 'schema.sql'),
-    join(process.cwd(), '.next', 'standalone', 'lib', 'db', 'schema.sql'),
   ];
 
   for (const p of possiblePaths) {
@@ -199,6 +196,21 @@ function runMigrations(database: Database.Database): void {
   if (librariesInfo.some(col => col.name === 'komga_library_id')) {
     console.log('Running migration: dropping komga_library_id column from libraries');
     database.exec('ALTER TABLE libraries DROP COLUMN komga_library_id');
+  }
+
+  // Settings nothing reads any more: credentials for integrations that were
+  // removed, and the metadata source on/off map, which never switched anything.
+  const staleSettings = database
+    .prepare(
+      `DELETE FROM settings WHERE key IN (
+        'kapowarr_url', 'kapowarr_api_key',
+        'komga_url', 'komga_username', 'komga_password', 'komga_api_key',
+        'metadata_sources'
+      )`
+    )
+    .run();
+  if (staleSettings.changes > 0) {
+    console.log(`Running migration: removed ${staleSettings.changes} unused settings`);
   }
 
   // Check if author_works table has 'language' column

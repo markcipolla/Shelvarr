@@ -568,15 +568,6 @@ if (canRunTests) {
       });
     });
 
-    describe('toggleSource', () => {
-      it('should toggle metadata source', async () => {
-        const { toggleSource } = await import('../../lib/actions/settings.js');
-        const result = await toggleSource('hardcover', true);
-
-        assert.strictEqual(result.success, true);
-      });
-    });
-
     describe('setApiKey', () => {
       it('should set API key for source', async () => {
         const { setApiKey } = await import('../../lib/actions/settings.js');

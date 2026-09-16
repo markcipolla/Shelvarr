@@ -279,8 +279,6 @@ describe('Comic library', () => {
 
     const { initServiceConfig } = await import('@shelvarr/services');
     initServiceConfig({
-      env: 'test',
-      port: 3000,
       dataDir: root,
       libraryRoot: root,
       dbPath: join(root, 'test.db'),
@@ -288,13 +286,10 @@ describe('Comic library', () => {
       getcomics: {
         baseUrl: 'https://getcomics.example',
         downloadDir: join(root, 'downloads'),
-        libraryRoot: join(root, 'library'),
         hostPreference: ['getcomics'],
         renameDownloadedFiles: true,
       },
       supportedExtensions: ['.cbz'],
-      rateLimits: { hardcover: 60 },
-      hardcoverToken: null,
     });
 
     scan = await import('@shelvarr/services/comics/scan');
@@ -789,8 +784,6 @@ describe('Adding and refreshing a volume', () => {
 
   it('refuses to add without a ComicVine key', async () => {
     e2eDb.setSetting('comicvine_api_key', '');
-    const previous = process.env['COMICVINE_API_KEY'];
-    delete process.env['COMICVINE_API_KEY'];
 
     try {
       const rootFolder = await library.addRootFolder(join(e2eRoot, 'lib'));
@@ -800,7 +793,6 @@ describe('Adding and refreshing a volume', () => {
       );
     } finally {
       e2eDb.setSetting('comicvine_api_key', 'test-key');
-      if (previous !== undefined) process.env['COMICVINE_API_KEY'] = previous;
     }
   });
 

@@ -1,12 +1,14 @@
 import React from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, ViewStyle } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ViewStyle } from 'react-native';
 import { Book } from '../types/api';
 import { getBookThumbnailUrl } from '../services/api/books';
 import { useAuthHeaders } from '../hooks/useAuthHeaders';
 import { useConnectivityStore } from '../stores/useConnectivityStore';
 import { useDownloadStore } from '../stores/useDownloadStore';
+import Cover, { CoverTrigger } from './Cover';
 
-const COVER_ASPECT_RATIO = 140 / 200; // match SeriesCard
+/** A card outside a grid, in a horizontal row, is this wide. */
+const FIXED_WIDTH = 120;
 
 interface StatusPill {
   label: string;
@@ -69,26 +71,38 @@ export default function BookCard({ book, onPress, fill, placeholder, onRemove }:
 
   const containerStyle: ViewStyle = fill
     ? { flex: 1, marginBottom: 12 }
-    : { width: 120, marginRight: 12 };
+    : { width: FIXED_WIDTH, marginRight: 12 };
 
-  const coverWrapperStyle: ViewStyle = fill
-    ? styles.coverWrapper
-    : styles.coverWrapperFixed;
+  const title = book.metadata.title || book.name;
+  const authors = book.metadata.authors.map((a) => a.name).join(', ');
 
   return (
-    <TouchableOpacity
+    <CoverTrigger
       style={[containerStyle, offlineUnavailable && styles.dimmed]}
       onPress={onPress}
-      activeOpacity={0.7}
       disabled={offlineUnavailable}
       accessibilityState={{ disabled: offlineUnavailable }}
     >
-      <View style={coverWrapperStyle}>
-        <Image
-          source={{ uri: getBookThumbnailUrl(book.id), headers }}
-          style={fill ? styles.coverFill : styles.cover}
-          resizeMode="cover"
-        />
+      <Cover
+        uri={getBookThumbnailUrl(book.id)}
+        headers={headers}
+        title={title}
+        author={authors}
+        width={fill ? undefined : FIXED_WIDTH}
+        overlay={
+          onRemove && (
+            <TouchableOpacity
+              style={styles.removeButton}
+              onPress={onRemove}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Remove from Next Up"
+            >
+              <Text style={styles.removeButtonText}>×</Text>
+            </TouchableOpacity>
+          )
+        }
+      >
         {showBar && (
           <View style={styles.progressBarOverlay}>
             <View style={[styles.progressFillOverlay, { width: `${progressPercent}%` }]} />
@@ -106,32 +120,18 @@ export default function BookCard({ book, onPress, fill, placeholder, onRemove }:
             </Text>
           </View>
         )}
-        {onRemove && (
-          <TouchableOpacity
-            style={styles.removeButton}
-            onPress={onRemove}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityRole="button"
-            accessibilityLabel="Remove from Next Up"
-          >
-            <Text style={styles.removeButtonText}>×</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      </Cover>
+      {/* After the cover, so its title sits above the cover's glow and shadow. */}
       <View style={styles.info}>
         <Text style={styles.title} numberOfLines={2}>
-          {book.metadata.title || book.name}
+          {title}
         </Text>
       </View>
-    </TouchableOpacity>
+    </CoverTrigger>
   );
 }
 
 const styles = StyleSheet.create({
-  cover: { width: 140, height: 200, borderRadius: 6, backgroundColor: '#e8e4de' },
-  coverWrapper: { aspectRatio: COVER_ASPECT_RATIO, borderRadius: 6, overflow: 'hidden', backgroundColor: '#e8e4de' },
-  coverWrapperFixed: { width: 140, height: 200, borderRadius: 6, overflow: 'hidden', backgroundColor: '#e8e4de' },
-  coverFill: { width: '100%', height: '100%' },
   readBadge: {
     position: 'absolute',
     top: 6,

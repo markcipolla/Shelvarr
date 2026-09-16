@@ -194,19 +194,24 @@ existing library rather than rewriting it.
 |----------|---------|-------------|
 | `PORT` | 3000 | Server port |
 | `DATA_DIR` | ./data | Data directory for SQLite database and app files |
-| `LIBRARY_ROOT` | /libraries | Base path for library mounts |
+| `DB_PATH` | `$DATA_DIR/shelvarr.db` | The SQLite database itself |
+| `LIBRARY_ROOT` | /libraries | Where the folder browser starts when you add a library |
 | `GETCOMICS_URL` | https://getcomics.org | GetComics base URL (change to use a mirror) |
 | `GETCOMICS_DOWNLOAD_DIR` | `$DATA_DIR/downloads` | Scratch directory for in-flight comic downloads |
-| `COMIC_LIBRARY_ROOT` | - | Where comic downloads are imported, if a volume has no folder recorded |
 | `GETCOMICS_HOST_PREFERENCE` | getcomics,pixeldrain | Order to try download hosts in |
 | `GETCOMICS_RENAME` | true | Rename imported files to the naming template; set `false` to keep original names |
 | `SCHEDULER_ENABLED` | true | Set `false` to stop Shelvarr running recurring jobs in-process |
-| `COMICVINE_API_KEY` | - | ComicVine key; normally set in Settings → Metadata Sources instead |
 | `COMIC_PATH_MAP` | - | `from:to` prefix remap, when a library's recorded paths differ from where this process sees them |
 | `LOG_LEVEL` | info | Lowest level written to the log, and so to the buffer the diagnostics API reads |
 | `LOG_BUFFER_SIZE` | 2000 | Recent log lines held in memory for the diagnostics API |
 | `LOG_FILE` | `$DATA_DIR/logs/shelvarr.log` | Where log lines are also written, so they survive a restart. Rotates at 5 MB, keeping two old files. `off` keeps logs in memory only |
 | `SHELVARR_ADMIN_API_TOKEN` | - | Opens the diagnostics API with this token (32+ characters), whatever Settings says, and works even when the database cannot be read |
+
+API keys are not environment variables: Hardcover and ComicVine keys are entered
+under **Settings → Metadata Sources**, and comic downloads go into the root
+folders set up under **Settings → Comics**. `HARDCOVER_API_TOKEN`,
+`COMICVINE_API_KEY` and `COMIC_LIBRARY_ROOT` used to be read too, and no longer
+are — if you set them, enter the same values in Settings.
 
 #### Accounts and email
 

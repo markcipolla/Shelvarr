@@ -8,8 +8,9 @@
 
 import { constants, existsSync, renameSync, statSync } from 'fs';
 import { access, copyFile, mkdir, unlink } from 'fs/promises';
-import { dirname, extname, join, relative, sep } from 'path';
+import { dirname, extname, join, parse, sep } from 'path';
 
+import { getComicRootFolder, getComicRootFolders } from '@shelvarr/db';
 import type { ComicDownload } from '@shelvarr/types';
 
 import { getServiceConfig } from '../config';
@@ -27,32 +28,34 @@ export interface ImportTarget {
   path: string;
 }
 
+export type ImportVolume = NamingVolume & {
+  folder: string | null;
+  rootFolderId?: number | null;
+};
+
 /**
  * Work out where a download belongs.
  *
  * Prefers the volume's existing folder, so files land next to the rest of the
- * series — including while Kapowarr still owns the library, where the recorded
- * folder is a Kapowarr-side path and needs the usual remap. Falls back to
- * building a folder from the naming template under the configured library root.
+ * series; a path recorded under another mount goes through COMIC_PATH_MAP.
+ * Failing that, builds a folder from the naming template inside the volume's
+ * root folder, or the first one set up in Settings → Comics.
  */
-export function resolveImportDirectory(
-  volume: NamingVolume & { folder: string | null }
-): string {
-  const { getcomics } = getServiceConfig();
-
+export function resolveImportDirectory(volume: ImportVolume): string {
   if (volume.folder) return remapComicPath(volume.folder);
-  if (getcomics.libraryRoot) {
-    return join(getcomics.libraryRoot, generateVolumeFolderName(volume));
-  }
+
+  const rootFolder =
+    (volume.rootFolderId != null ? getComicRootFolder(volume.rootFolderId) : null) ??
+    getComicRootFolders()[0];
+  if (rootFolder) return join(rootFolder.path, generateVolumeFolderName(volume));
+
   throw new Error(
-    'No destination for the download: the volume has no folder and COMIC_LIBRARY_ROOT is unset'
+    'No destination for the download: the volume has no folder and no comic root ' +
+      'folder is set up — add one in Settings → Comics'
   );
 }
 
-export function resolveImportTarget(
-  volume: NamingVolume & { folder: string | null },
-  filename: string
-): ImportTarget {
+export function resolveImportTarget(volume: ImportVolume, filename: string): ImportTarget {
   const directory = resolveImportDirectory(volume);
   return { directory, path: join(directory, filename) };
 }
@@ -75,46 +78,34 @@ function nearestExistingAncestor(directory: string): string {
 }
 
 /**
- * The top-level folder `directory` hangs off, when that folder is missing.
+ * Explain a destination that is not on any mount, naming what would fix it.
  *
- * Nobody keeps a comic library directly in `/`, so a destination with nothing
- * on disk until the filesystem root is a mount that isn't there — or a
- * recorded folder from another machine that COMIC_PATH_MAP should translate.
- * Creating it would at best fail with EACCES on `/`, which reads as a
- * permissions problem, and at worst succeed as root and fill the container's
- * own filesystem.
+ * Nobody keeps a comic library in the filesystem root, so a path with nothing
+ * on disk above it is either a mount that is not there, or a folder recorded
+ * under another machine's mount for COMIC_PATH_MAP to translate.
  */
-function missingTopLevelFolder(directory: string): string | null {
-  const ancestor = nearestExistingAncestor(directory);
-  if (ancestor === directory || dirname(ancestor) !== ancestor) return null;
-  const [first] = relative(ancestor, directory).split(sep);
-  return first ? join(ancestor, first) : null;
-}
-
-/** Explain a destination on a missing mount, naming the setting that fixes it. */
-function describeMissingMount(
-  volume: { folder: string | null },
-  directory: string,
-  missing: string
-): Error {
-  const problem = `Cannot file downloads into ${directory}: ${missing} does not exist on this server`;
+function missingMount(volume: ImportVolume, directory: string): Error {
+  const { root } = parse(directory);
+  const topLevel = root + directory.slice(root.length).split(sep)[0];
 
   if (!volume.folder) {
     return new Error(
-      `${problem}, so COMIC_LIBRARY_ROOT (${getServiceConfig().getcomics.libraryRoot}) ` +
-        'is not mounted. Mount your comic library there, or point COMIC_LIBRARY_ROOT ' +
-        'at where it is mounted.'
+      `Cannot file into ${directory}: ${topLevel} does not exist here. Mount your comic ` +
+        'library there, or point the root folder in Settings → Comics at where it is mounted.'
     );
   }
 
+  // The recorded folder is worth naming: it is what COMIC_PATH_MAP translates,
+  // and after a remap the path that failed is no longer the one on record.
   const { pathMap } = getServiceConfig().comicPaths;
-  const remapped = directory === volume.folder ? '' : ` (remapped from ${volume.folder})`;
+  const recorded = directory === volume.folder ? '' : ` (remapped from ${volume.folder})`;
   const current = pathMap
     ? ` COMIC_PATH_MAP is currently ${pathMap}.`
     : ' COMIC_PATH_MAP is not set.';
+
   return new Error(
-    `${problem}${remapped}, so the volume's folder is not on a mounted library. ` +
-      `Mount the library at ${missing}, or set COMIC_PATH_MAP=${missing}:<where it is mounted> ` +
+    `Cannot file into ${directory}${recorded}: ${topLevel} does not exist here. Mount the ` +
+      `comic library at ${topLevel}, or set COMIC_PATH_MAP=${topLevel}:<where it is mounted> ` +
       `to translate the recorded folder.${current}`
   );
 }
@@ -126,13 +117,17 @@ function describeMissingMount(
  * up-front check a wrongly-owned bind mount downloads the whole file and only
  * then fails on the move into place.
  */
-export async function ensureImportable(
-  volume: NamingVolume & { folder: string | null }
-): Promise<string> {
+export async function ensureImportable(volume: ImportVolume): Promise<string> {
   const directory = resolveImportDirectory(volume);
 
-  const missing = missingTopLevelFolder(directory);
-  if (missing) throw describeMissingMount(volume, directory, missing);
+  // Nothing along the path exists, so it is not on any mount. Checked before
+  // the mkdir rather than on its failure: running as root the mkdir would
+  // succeed, filling the container's own filesystem with comics that vanish
+  // with it, and running as anyone else it fails on `/`, whose permissions are
+  // not the fix.
+  if (nearestExistingAncestor(directory) === parse(directory).root) {
+    throw missingMount(volume, directory);
+  }
 
   try {
     await mkdir(directory, { recursive: true });
@@ -198,7 +193,7 @@ export interface ImportResult {
 export async function importComicDownload(
   download: Pick<ComicDownload, 'filenameBody'>,
   sourcePath: string,
-  volume: NamingVolume & { folder: string | null }
+  volume: ImportVolume
 ): Promise<ImportResult> {
   if (!existsSync(sourcePath)) {
     throw new Error(`Downloaded file is missing: ${sourcePath}`);

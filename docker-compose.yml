@@ -42,10 +42,11 @@ services:
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_FROM=${SMTP_FROM:-}
-      # Comic sourcing from GetComics
-      - COMIC_LIBRARY_ROOT=/libraries/comics
+      # Comic sourcing from GetComics. Downloads go into the root folders set
+      # up under Settings > Comics; API keys go under Settings too.
       # - GETCOMICS_HOST_PREFERENCE=getcomics,pixeldrain
-      # Only while migrating a library another tool organised
+      # When the library's recorded paths are not where this container sees
+      # them, e.g. a library another tool organised under a different mount.
       # - COMIC_PATH_MAP=/comics-1:/libraries/comics
     restart: unless-stopped
     healthcheck:

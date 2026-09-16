@@ -1,69 +1,22 @@
 import { join } from 'path';
-import type { AppConfig } from '@shelvarr/types';
 import { initDatabase } from '@shelvarr/db';
-import { initServiceConfig, scheduler } from '@shelvarr/services';
+import { initServiceConfig, loadConfigFromEnv, scheduler } from '@shelvarr/services';
 import { configureLogFile } from '@shelvarr/services/utils/logger';
 
-// Data directory - use environment variable or default
-const dataDir = process.env['DATA_DIR'] || process.cwd() + '/data';
+const config = loadConfigFromEnv();
 
 // Every log line also goes to a file in the data directory, and the next start
 // reads its tail back, so the diagnostics API can still see what happened
 // before a restart. Opened before the database so a database that will not
 // open is on the record too. `LOG_FILE=off` keeps logs in memory only; builds
 // and tests never write one.
-const logFile = process.env['LOG_FILE']?.trim() || join(dataDir, 'logs', 'shelvarr.log');
+const logFile = process.env['LOG_FILE']?.trim() || join(config.dataDir, 'logs', 'shelvarr.log');
 const logFileDisabled =
   logFile === 'off' ||
   process.env['NODE_ENV'] === 'test' ||
   process.env['NEXT_PHASE'] === 'phase-production-build';
 
 if (!logFileDisabled) configureLogFile(logFile);
-
-const config: AppConfig = {
-  env: process.env['NODE_ENV'] || 'development',
-  port: parseInt(process.env['PORT'] || '3000', 10),
-
-  // Data directory for config files
-  dataDir,
-
-  // Root path for library mounts
-  libraryRoot: process.env['LIBRARY_ROOT'] || '/libraries',
-
-  // SQLite database path
-  dbPath: process.env['DB_PATH'] || '',
-
-  // Only used while adopting a library organised by something else.
-  comicPaths: {
-    pathMap: process.env['COMIC_PATH_MAP'] || null,
-  },
-
-  // GetComics sourcing for comics
-  getcomics: {
-    baseUrl: process.env['GETCOMICS_URL'] || 'https://getcomics.org',
-    downloadDir: process.env['GETCOMICS_DOWNLOAD_DIR'] || join(dataDir, 'downloads'),
-    libraryRoot: process.env['COMIC_LIBRARY_ROOT'] || null,
-    hostPreference: (process.env['GETCOMICS_HOST_PREFERENCE'] || 'getcomics,pixeldrain')
-      .split(',')
-      .map((host) => host.trim())
-      .filter(Boolean),
-    renameDownloadedFiles: process.env['GETCOMICS_RENAME'] !== 'false',
-  },
-
-  // Supported file extensions
-  supportedExtensions: ['.epub', '.pdf', '.mobi', '.azw', '.azw3'],
-
-  // Rate limiting for external APIs (requests per minute)
-  rateLimits: {
-    hardcover: 60,
-  },
-
-  // API keys from environment
-  hardcoverToken: process.env['HARDCOVER_API_TOKEN'] || null,
-};
-
-// Derive dbPath if not explicitly set
-config.dbPath = process.env['DB_PATH'] || join(config.dataDir, 'shelvarr.db');
 
 // Initialize shared packages
 initDatabase(config.dbPath);
