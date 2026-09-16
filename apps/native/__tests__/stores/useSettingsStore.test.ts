@@ -22,14 +22,14 @@ describe('useSettingsStore', () => {
   describe('setAutoDelete', () => {
     it('updates state and persists JSON to SecureStore', async () => {
       useSettingsStore.getState().setAutoDelete(false);
-      expect(useSettingsStore.getState().autoDeleteAfterReading).toBe(false);
+      expect(useSettingsStore.getState().autoDeleteOldDownloads).toBe(false);
       await new Promise((r) => setTimeout(r, 0));
       expect(await SecureStore.getItemAsync('settings_autoDelete')).toBe('false');
     });
 
     it('persists true value', async () => {
       useSettingsStore.getState().setAutoDelete(true);
-      expect(useSettingsStore.getState().autoDeleteAfterReading).toBe(true);
+      expect(useSettingsStore.getState().autoDeleteOldDownloads).toBe(true);
       await new Promise((r) => setTimeout(r, 0));
       expect(await SecureStore.getItemAsync('settings_autoDelete')).toBe('true');
     });
@@ -69,14 +69,14 @@ describe('useSettingsStore', () => {
 
       await useSettingsStore.getState().loadSettings();
       const state = useSettingsStore.getState();
-      expect(state.autoDeleteAfterReading).toBe(false);
+      expect(state.autoDeleteOldDownloads).toBe(false);
       expect(state.shelvarrUrl).toBe('http://shelvarr.local');
     });
 
     it('defaults autoDelete to true and URLs to empty when missing', async () => {
       await useSettingsStore.getState().loadSettings();
       const state = useSettingsStore.getState();
-      expect(state.autoDeleteAfterReading).toBe(true);
+      expect(state.autoDeleteOldDownloads).toBe(true);
       expect(state.shelvarrUrl).toBe('');
     });
 

@@ -1,7 +1,14 @@
 import type { ComicIssueSummary } from '@shelvarr/types';
 import { getInfoAsync, readDirectoryAsync } from 'expo-file-system/legacy';
 import { getFormatFromName } from '../utils/fileTypes';
-import { downloadBookFile, extractComicArchive, deleteBookFiles, DownloadHttpError } from './fileManager';
+import {
+  downloadBookFile,
+  extractComicArchive,
+  deleteBookFiles,
+  readExtractedPageCount,
+  DownloadHttpError,
+} from './fileManager';
+import { getBookDownloadPath, getBookExtractDir } from '../utils/paths';
 import { getComicIssueFileUrl } from './api/comics';
 import { useComicDownloadStore, DownloadedComic } from '../stores/useComicDownloadStore';
 
@@ -76,6 +83,25 @@ async function reuseExistingDownload(
 }
 
 /**
+ * Find a complete copy on disk that the manifest has lost track of. The
+ * manifest is a cache of what was downloaded, not the record of truth: it can
+ * fail to write, or still be hydrating when a screen asks for an issue. The
+ * files outlive it, and re-downloading something already sitting on the phone
+ * is the waste this guards against.
+ */
+async function findOnDisk(key: string, format: string): Promise<ComicReadResult | null> {
+  if (format === 'pdf') {
+    const filePath = getBookDownloadPath(key, '.pdf');
+    const info = await getInfoAsync(filePath);
+    return info.exists ? { kind: 'pdf', filePath } : null;
+  }
+
+  const totalPages = await readExtractedPageCount(key);
+  if (!totalPages) return null;
+  return { kind: 'images', extractedDir: getBookExtractDir(key), totalPages };
+}
+
+/**
  * Reuse an already-downloaded copy on this device when its files are still on
  * disk, otherwise download (and, for archives, extract) the issue afresh.
  */
@@ -89,6 +115,10 @@ async function ensureComicDownloaded(
 
   const key = `comic-${issue.id}`;
   const format = getFormatFromName(issue.files[0]?.filepath ?? '');
+
+  const onDisk = await findOnDisk(key, format);
+  if (onDisk) return onDisk;
+
   if (format === 'pdf') {
     const downloadedPath = await downloadBookFile(
       getComicIssueFileUrl(issue.id),

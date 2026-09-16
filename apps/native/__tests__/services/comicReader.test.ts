@@ -13,6 +13,7 @@ jest.mock('../../src/services/fileManager', () => {
     downloadBookFile: jest.fn(),
     extractComicArchive: jest.fn(),
     deleteBookFiles: jest.fn(),
+    readExtractedPageCount: jest.fn(),
     DownloadHttpError,
   };
 });
@@ -31,6 +32,7 @@ import {
   downloadBookFile,
   extractComicArchive,
   deleteBookFiles,
+  readExtractedPageCount,
   DownloadHttpError,
 } from '../../src/services/fileManager';
 import { getComicIssueFileUrl } from '../../src/services/api/comics';
@@ -41,6 +43,7 @@ import type { ComicIssueSummary } from '@shelvarr/types';
 const mockDownload = downloadBookFile as jest.Mock;
 const mockExtract = extractComicArchive as jest.Mock;
 const mockDelete = deleteBookFiles as jest.Mock;
+const mockPageCount = readExtractedPageCount as jest.Mock;
 const mockGetInfo = getInfoAsync as jest.Mock;
 const mockReadDir = readDirectoryAsync as jest.Mock;
 
@@ -65,6 +68,7 @@ beforeEach(() => {
   useComicDownloadStore.setState({ downloads: {}, activeIssueId: null, progress: 0, hydrated: false });
   mockGetInfo.mockResolvedValue({ exists: false });
   mockReadDir.mockResolvedValue([]);
+  mockPageCount.mockResolvedValue(null);
 });
 
 describe('prepareComicForReading', () => {
@@ -317,6 +321,52 @@ describe('prepareComicForReading', () => {
 
       await prepareComicForReading(makeIssue('/server/path/issue.cbz'), {});
       expect(mockDownload).toHaveBeenCalled();
+    });
+  });
+
+  describe('falling back to what is on disk', () => {
+    // The manifest can be lost, fail to write, or still be hydrating. The
+    // files are what actually matter, so a manifest miss checks disk before
+    // spending someone's data on a file they already have.
+    it('reads a pdf already on disk when the manifest has no entry', async () => {
+      mockGetInfo.mockResolvedValue({ exists: true });
+
+      const result = await prepareComicForReading(makeIssue('/server/path/issue.pdf'), {});
+
+      expect(mockDownload).not.toHaveBeenCalled();
+      expect(result).toEqual({ kind: 'pdf', filePath: expect.stringContaining('comic-7.pdf') });
+      // And the manifest is repopulated from what was found.
+      expect(useComicDownloadStore.getState().downloads[7]).toMatchObject({ kind: 'pdf' });
+    });
+
+    it('reads a fully extracted archive when the manifest has no entry', async () => {
+      mockPageCount.mockResolvedValue(18);
+
+      const result = await prepareComicForReading(makeIssue('/server/path/issue.cbz'), {});
+
+      expect(mockDownload).not.toHaveBeenCalled();
+      expect(mockExtract).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        kind: 'images',
+        extractedDir: expect.stringContaining('comic-7'),
+        totalPages: 18,
+      });
+      expect(useComicDownloadStore.getState().downloads[7]).toMatchObject({
+        kind: 'images',
+        totalPages: 18,
+      });
+    });
+
+    it('re-downloads when only a half-extracted directory is on disk', async () => {
+      // No marker: extraction never finished, so those pages can't be trusted.
+      mockPageCount.mockResolvedValue(null);
+      mockDownload.mockResolvedValue('/local/comic-7.cbz');
+      mockExtract.mockResolvedValue({ dir: '/extracted/comic-7/', pageCount: 22 });
+
+      await prepareComicForReading(makeIssue('/server/path/issue.cbz'), {});
+
+      expect(mockDownload).toHaveBeenCalled();
+      expect(mockExtract).toHaveBeenCalled();
     });
   });
 });

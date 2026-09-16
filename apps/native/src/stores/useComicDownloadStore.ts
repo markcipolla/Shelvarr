@@ -24,6 +24,8 @@ export interface DownloadedComic {
   extractedDir?: string;
   totalPages?: number;
   downloadedAt: number;
+  /** Last time the reader was closed on this issue; drives cache expiry. */
+  lastReadAt?: number;
   /** true for explicit downloads; false for on-demand read-and-cache. */
   persisted?: boolean;
   /** Cached issue metadata so detail screens work offline. */
@@ -39,6 +41,8 @@ interface ComicDownloadState {
 
   setDownload: (issueId: number, download: DownloadedComic) => void;
   removeDownload: (issueId: number) => void;
+  touchLastRead: (issueId: number, at?: number) => void;
+  clearDownloads: () => void;
   setActiveDownload: (issueId: number | null, progress?: number) => void;
   loadDownloads: () => Promise<void>;
 }
@@ -48,6 +52,36 @@ async function persist(downloads: Record<number, DownloadedComic>): Promise<void
     await writeAsStringAsync(MANIFEST_PATH, JSON.stringify(downloads));
   } catch (err) {
     console.warn('Failed to persist comic downloads manifest:', err);
+  }
+}
+
+type SetState = (
+  partial:
+    | Partial<ComicDownloadState>
+    | ((state: ComicDownloadState) => Partial<ComicDownloadState>)
+) => void;
+
+let inFlight: Promise<void> | null = null;
+
+async function hydrate(set: SetState): Promise<void> {
+  try {
+    const info = await getInfoAsync(MANIFEST_PATH);
+    if (!info.exists) {
+      set({ hydrated: true });
+      return;
+    }
+    const raw = await readAsStringAsync(MANIFEST_PATH);
+    const parsed = (JSON.parse(raw) || {}) as Record<number, DownloadedComic>;
+    // Merge under what is already in memory rather than replacing it. Hydration
+    // is kicked off unawaited at startup, so an issue opened before it lands
+    // has already recorded a download that the stored manifest predates.
+    set((state) => ({
+      downloads: { ...parsed, ...state.downloads },
+      hydrated: true,
+    }));
+  } catch (err) {
+    console.warn('Failed to load comic downloads manifest:', err);
+    set({ hydrated: true });
   }
 }
 
@@ -71,23 +105,31 @@ export const useComicDownloadStore = create<ComicDownloadState>((set, get) => ({
       return { downloads: rest };
     }),
 
+  touchLastRead: (issueId, at = Date.now()) =>
+    set((state) => {
+      const existing = state.downloads[issueId];
+      if (!existing) return state;
+      const next = { ...state.downloads, [issueId]: { ...existing, lastReadAt: at } };
+      persist(next);
+      return { downloads: next };
+    }),
+
+  clearDownloads: () =>
+    set(() => {
+      persist({});
+      return { downloads: {} };
+    }),
+
   setActiveDownload: (issueId, progress = 0) =>
     set({ activeIssueId: issueId, progress }),
 
-  loadDownloads: async () => {
-    if (get().hydrated) return;
-    try {
-      const info = await getInfoAsync(MANIFEST_PATH);
-      if (!info.exists) {
-        set({ hydrated: true });
-        return;
-      }
-      const raw = await readAsStringAsync(MANIFEST_PATH);
-      const parsed = JSON.parse(raw) as Record<number, DownloadedComic>;
-      set({ downloads: parsed || {}, hydrated: true });
-    } catch (err) {
-      console.warn('Failed to load comic downloads manifest:', err);
-      set({ hydrated: true });
-    }
+  loadDownloads: () => {
+    if (get().hydrated) return Promise.resolve();
+    // Share one read: a second caller arriving mid-flight waits for the first
+    // rather than starting its own, which would race to overwrite `downloads`.
+    inFlight ??= hydrate(set).finally(() => {
+      inFlight = null;
+    });
+    return inFlight;
   },
 }));

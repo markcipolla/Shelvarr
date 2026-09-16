@@ -1,34 +1,30 @@
 import { renderHook, act } from '@testing-library/react-native';
 import { useBookReader } from '../../src/hooks/useBookReader';
 import { useReaderStore } from '../../src/stores/useReaderStore';
-import { useSettingsStore } from '../../src/stores/useSettingsStore';
 import { useDownloadStore } from '../../src/stores/useDownloadStore';
 import { useComicDownloadStore } from '../../src/stores/useComicDownloadStore';
 import { syncProgress, syncComicProgress, flushProgress } from '../../src/services/progressSync';
 import { deleteBookFiles } from '../../src/services/fileManager';
 import { removeDownloadedComic } from '../../src/services/comicReader';
-import { getFileExtension } from '../../src/utils/fileTypes';
 
 jest.mock('../../src/services/api/client', () => ({
   getApiClient: jest.fn(),
   resetApiClient: jest.fn(),
 }));
 jest.mock('../../src/stores/useReaderStore');
-jest.mock('../../src/stores/useSettingsStore');
 jest.mock('../../src/stores/useDownloadStore');
 jest.mock('../../src/stores/useComicDownloadStore');
 jest.mock('../../src/services/progressSync');
 jest.mock('../../src/services/fileManager');
 jest.mock('../../src/services/comicReader');
-jest.mock('../../src/utils/fileTypes');
 
 const mockSetPage = jest.fn();
 const mockStartReading = jest.fn();
 const mockStopReading = jest.fn();
-const mockRemoveDownload = jest.fn();
+const mockTouchLastRead = jest.fn();
+const mockTouchComicLastRead = jest.fn();
 
 const mockUseReaderStore = useReaderStore as unknown as jest.Mock;
-const mockUseSettingsStore = useSettingsStore as unknown as jest.Mock;
 const mockUseDownloadStore = useDownloadStore as unknown as jest.Mock;
 const mockUseComicDownloadStore = useComicDownloadStore as unknown as jest.Mock;
 const mockSyncProgress = syncProgress as jest.Mock;
@@ -36,10 +32,9 @@ const mockSyncComicProgress = syncComicProgress as jest.Mock;
 const mockFlushProgress = flushProgress as jest.Mock;
 const mockDeleteBookFiles = deleteBookFiles as jest.Mock;
 const mockRemoveDownloadedComic = removeDownloadedComic as jest.Mock;
-const mockGetFileExtension = getFileExtension as jest.Mock;
 
 function setupMocks(
-  opts: { autoDelete?: boolean; download?: any; comicDownloads?: Record<number, any> } = {}
+  opts: { download?: any; comicDownloads?: Record<number, any> } = {}
 ) {
   const readerState = {
     setPage: mockSetPage,
@@ -49,22 +44,21 @@ function setupMocks(
   mockUseReaderStore.mockImplementation((selector?: any) =>
     selector ? selector(readerState) : readerState
   );
-  mockUseSettingsStore.mockImplementation((selector: any) =>
-    selector({ autoDeleteAfterReading: opts.autoDelete ?? false })
-  );
   const downloadState = {
     downloads: opts.download ? { 'book-1': opts.download } : {},
-    removeDownload: mockRemoveDownload,
+    touchLastRead: mockTouchLastRead,
   };
   mockUseDownloadStore.mockImplementation((selector: any) =>
     selector(downloadState)
   );
-  const comicState = { downloads: opts.comicDownloads ?? {} };
+  const comicState = {
+    downloads: opts.comicDownloads ?? {},
+    touchLastRead: mockTouchComicLastRead,
+  };
   mockUseComicDownloadStore.mockImplementation((selector: any) => selector(comicState));
   mockFlushProgress.mockResolvedValue(undefined);
   mockDeleteBookFiles.mockResolvedValue(undefined);
   mockRemoveDownloadedComic.mockResolvedValue(undefined);
-  mockGetFileExtension.mockReturnValue('epub');
 }
 
 describe('useBookReader', () => {
@@ -166,110 +160,67 @@ describe('useBookReader', () => {
     expect(mockStopReading).toHaveBeenCalled();
   });
 
-  it('onReaderExit auto-deletes when enabled with download', async () => {
+  it('onReaderExit keeps the file and stamps when it was last read', async () => {
     const download = { bookId: 'book-1', format: 'epub', filePath: '/f', downloadedAt: 1 };
-    setupMocks({ autoDelete: true, download });
+    setupMocks({ download });
     const { result } = renderHook(() => useBookReader('book-1'));
 
     await act(async () => {
       await result.current.onReaderExit();
     });
 
-    expect(mockGetFileExtension).toHaveBeenCalledWith('epub');
-    expect(mockDeleteBookFiles).toHaveBeenCalledWith('book-1', 'epub');
-    expect(mockRemoveDownload).toHaveBeenCalledWith('book-1');
-  });
-
-  it('onReaderExit does not auto-delete when disabled', async () => {
-    const download = { bookId: 'book-1', format: 'epub', filePath: '/f', downloadedAt: 1 };
-    setupMocks({ autoDelete: false, download });
-    const { result } = renderHook(() => useBookReader('book-1'));
-
-    await act(async () => {
-      await result.current.onReaderExit();
-    });
-
+    expect(mockTouchLastRead).toHaveBeenCalledWith('book-1');
+    // Closing the reader must not delete the file: reopening it tomorrow
+    // would otherwise mean downloading the whole book again.
     expect(mockDeleteBookFiles).not.toHaveBeenCalled();
   });
 
-  it('onReaderExit does not auto-delete when no download', async () => {
-    setupMocks({ autoDelete: true });
+  it('onReaderExit stamps nothing when the book was never downloaded', async () => {
+    setupMocks();
     const { result } = renderHook(() => useBookReader('book-1'));
 
     await act(async () => {
       await result.current.onReaderExit();
     });
 
+    expect(mockTouchLastRead).not.toHaveBeenCalled();
     expect(mockDeleteBookFiles).not.toHaveBeenCalled();
   });
 
-  it('onReaderExit handles delete failure gracefully', async () => {
-    const download = { bookId: 'book-1', format: 'epub', filePath: '/f', downloadedAt: 1 };
-    setupMocks({ autoDelete: true, download });
-    mockDeleteBookFiles.mockRejectedValue(new Error('delete failed'));
-    const { result } = renderHook(() => useBookReader('book-1'));
-
-    await act(async () => {
-      await result.current.onReaderExit();
-    });
-
-    // Should not throw, removeDownload should not be called
-    expect(mockRemoveDownload).not.toHaveBeenCalled();
-  });
-
-  it('onReaderExit auto-deletes a non-persisted comic download', async () => {
-    setupMocks({
-      autoDelete: true,
-      comicDownloads: { 11: { issueId: 11, persisted: false } },
-    });
+  it('onReaderExit stamps a comic and keeps its files', async () => {
+    setupMocks({ comicDownloads: { 11: { issueId: 11, persisted: false } } });
     const { result } = renderHook(() => useBookReader('comic-11', { kind: 'comic', issueId: 11 }));
 
     await act(async () => {
       await result.current.onReaderExit();
     });
 
-    expect(mockRemoveDownloadedComic).toHaveBeenCalledWith(11);
-    // The book-only delete path must not run for comics.
-    expect(mockDeleteBookFiles).not.toHaveBeenCalled();
+    expect(mockTouchComicLastRead).toHaveBeenCalledWith(11);
+    expect(mockRemoveDownloadedComic).not.toHaveBeenCalled();
+    // The book-only path must not run for comics.
+    expect(mockTouchLastRead).not.toHaveBeenCalled();
   });
 
-  it('onReaderExit keeps a persisted (explicitly downloaded) comic', async () => {
-    setupMocks({
-      autoDelete: true,
-      comicDownloads: { 11: { issueId: 11, persisted: true } },
-    });
+  it('onReaderExit stamps a persisted comic too', async () => {
+    setupMocks({ comicDownloads: { 11: { issueId: 11, persisted: true } } });
     const { result } = renderHook(() => useBookReader('comic-11', { kind: 'comic', issueId: 11 }));
 
     await act(async () => {
       await result.current.onReaderExit();
     });
 
+    expect(mockTouchComicLastRead).toHaveBeenCalledWith(11);
     expect(mockRemoveDownloadedComic).not.toHaveBeenCalled();
   });
 
-  it('onReaderExit does not delete a comic that was never downloaded', async () => {
-    setupMocks({ autoDelete: true });
+  it('onReaderExit stamps nothing for a comic that was never downloaded', async () => {
+    setupMocks();
     const { result } = renderHook(() => useBookReader('comic-11', { kind: 'comic', issueId: 11 }));
 
     await act(async () => {
       await result.current.onReaderExit();
     });
 
-    expect(mockRemoveDownloadedComic).not.toHaveBeenCalled();
-  });
-
-  it('onReaderExit handles comic delete failure gracefully', async () => {
-    setupMocks({
-      autoDelete: true,
-      comicDownloads: { 11: { issueId: 11, persisted: false } },
-    });
-    mockRemoveDownloadedComic.mockRejectedValue(new Error('comic delete failed'));
-    const { result } = renderHook(() => useBookReader('comic-11', { kind: 'comic', issueId: 11 }));
-
-    await act(async () => {
-      await result.current.onReaderExit();
-    });
-
-    expect(mockRemoveDownloadedComic).toHaveBeenCalledWith(11);
+    expect(mockTouchComicLastRead).not.toHaveBeenCalled();
   });
 });

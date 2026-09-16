@@ -3,6 +3,7 @@ jest.mock('expo-file-system/legacy', () => ({
   EncodingType: { UTF8: 'utf8', Base64: 'base64' },
   getInfoAsync: jest.fn().mockResolvedValue({ exists: false }),
   makeDirectoryAsync: jest.fn().mockResolvedValue(undefined),
+  deleteAsync: jest.fn().mockResolvedValue(undefined),
   readAsStringAsync: jest.fn().mockResolvedValue('base64data'),
   writeAsStringAsync: jest.fn().mockResolvedValue(undefined),
 }));
@@ -15,6 +16,7 @@ import { extractComicArchive } from '../../src/services/fileManager';
 const fsMock = jest.requireMock('expo-file-system/legacy');
 const mockedGetInfo = fsMock.getInfoAsync as jest.Mock;
 const mockedMakeDir = fsMock.makeDirectoryAsync as jest.Mock;
+const mockedDelete = fsMock.deleteAsync as jest.Mock;
 const mockedReadAs = fsMock.readAsStringAsync as jest.Mock;
 const mockedWriteAs = fsMock.writeAsStringAsync as jest.Mock;
 
@@ -31,6 +33,7 @@ function makeZipEntry(name: string, data: string) {
 beforeEach(() => {
   jest.clearAllMocks();
   mockedGetInfo.mockResolvedValue({ exists: false });
+  mockedDelete.mockResolvedValue(undefined);
 });
 
 describe('extractComicArchive', () => {
@@ -50,8 +53,8 @@ describe('extractComicArchive', () => {
     expect(result.pageCount).toBe(3);
     expect(result.dir).toMatch(/comic-42/);
 
-    // Should have written 3 image files (not the txt)
-    expect(mockedWriteAs).toHaveBeenCalledTimes(3);
+    // Should have written 3 image files (not the txt), plus the page-count marker
+    expect(mockedWriteAs).toHaveBeenCalledTimes(4);
 
     // First call should be 00000.jpg (sorted: page001.jpg)
     const firstCall = mockedWriteAs.mock.calls[0];
@@ -62,11 +65,15 @@ describe('extractComicArchive', () => {
 
     const thirdCall = mockedWriteAs.mock.calls[2];
     expect(thirdCall[0]).toMatch(/00002\.jpg$/);
+
+    // The marker goes last, once every page is on disk.
+    const markerCall = mockedWriteAs.mock.calls[3];
+    expect(markerCall[0]).toMatch(/pages\.json$/);
+    expect(JSON.parse(markerCall[1])).toEqual({ pages: 3 });
   });
 
-  it('creates the extract directory if it does not exist', async () => {
+  it('creates the extract directory', async () => {
     (JSZipMock.loadAsync as jest.Mock).mockResolvedValue({ files: {} });
-    mockedGetInfo.mockResolvedValue({ exists: false });
 
     await extractComicArchive('/path/to/file.cbz', 'comic-99');
 
@@ -76,13 +83,20 @@ describe('extractComicArchive', () => {
     );
   });
 
-  it('skips directory creation when extract dir already exists', async () => {
+  it('clears a previous extraction first so stale pages cannot pad the count', async () => {
     (JSZipMock.loadAsync as jest.Mock).mockResolvedValue({ files: {} });
     mockedGetInfo.mockResolvedValue({ exists: true });
 
     await extractComicArchive('/path/to/file.cbz', 'comic-99');
 
-    expect(mockedMakeDir).not.toHaveBeenCalled();
+    expect(mockedDelete).toHaveBeenCalledWith(
+      expect.stringContaining('comic-99'),
+      { idempotent: true }
+    );
+    expect(mockedMakeDir).toHaveBeenCalledWith(
+      expect.stringContaining('comic-99'),
+      { intermediates: true }
+    );
   });
 
   it('returns pageCount 0 when zip has no image entries', async () => {
@@ -94,7 +108,9 @@ describe('extractComicArchive', () => {
 
     const result = await extractComicArchive('/path/to/file.cbz', 'comic-0');
     expect(result.pageCount).toBe(0);
-    expect(mockedWriteAs).not.toHaveBeenCalled();
+    // Only the marker — no pages.
+    expect(mockedWriteAs).toHaveBeenCalledTimes(1);
+    expect(mockedWriteAs.mock.calls[0][0]).toMatch(/pages\.json$/);
   });
 
   it('skips directory entries', async () => {
