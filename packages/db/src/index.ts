@@ -367,6 +367,15 @@ function runMigrations(database: Database.Database): void {
     database.exec("INSERT INTO comics_fts(comics_fts) VALUES('rebuild')");
   }
 
+  // Rate-limit retries: records when a rate-limited task is due to be
+  // retried, so a restart can rebuild the in-memory retry queue from the
+  // database instead of losing it.
+  const tasksInfo = database.prepare('PRAGMA table_info(tasks)').all() as Array<{ name: string }>;
+  if (!tasksInfo.some((col) => col.name === 'not_before')) {
+    console.log('Running migration: adding not_before column to tasks');
+    database.exec('ALTER TABLE tasks ADD COLUMN not_before TEXT');
+  }
+
   migrateProgressToPerUser(database);
 }
 

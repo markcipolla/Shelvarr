@@ -1,7 +1,7 @@
 import { join } from 'path';
 import { initDatabase } from '@shelvarr/db';
 import { initServiceConfig, loadConfigFromEnv, scheduler } from '@shelvarr/services';
-import { failOrphanedRunningTasks } from '@shelvarr/services/queue/index';
+import { failOrphanedRunningTasks, rebuildRetryQueueFromDatabase } from '@shelvarr/services/queue/index';
 import { configureLogFile, createLogger } from '@shelvarr/services/utils/logger';
 
 const log = createLogger('config');
@@ -46,6 +46,20 @@ if (!orphanRecoveryDisabled) {
   } catch (error) {
     // A broken recovery pass must not stop the app from serving.
     console.error('Failed to reconcile orphaned running tasks:', error);
+  }
+
+  // The rate-limit retry queue lives in memory; a restart loses it, leaving a
+  // rate-limited task stuck at `pending` until a human finds it and clicks
+  // retry. `scheduleRetry` also stamps `not_before` onto the task's row, so
+  // it can be rebuilt here instead.
+  try {
+    const requeued = rebuildRetryQueueFromDatabase();
+    if (requeued > 0) {
+      log.info('Rebuilt the retry queue left over from a server restart', { count: requeued });
+    }
+  } catch (error) {
+    // A broken rebuild must not stop the app from serving.
+    console.error('Failed to rebuild the retry queue:', error);
   }
 }
 

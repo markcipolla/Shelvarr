@@ -63,7 +63,12 @@ CREATE TABLE IF NOT EXISTS tasks (
   result TEXT,
   error TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  completed_at TEXT
+  completed_at TEXT,
+  -- Naked-UTC timestamp (see the Timestamps note in packages/db/src/index.ts)
+  -- before which a rate-limited task should not be retried. Set alongside the
+  -- in-memory retry queue so a restart can rebuild it instead of losing it;
+  -- cleared once the task leaves the retry queue for any reason.
+  not_before TEXT
 );
 
 -- Settings
