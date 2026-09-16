@@ -15,6 +15,7 @@ import type { DownloadResult, SourceStatus, BlockedSource } from '@/lib/services
 import { SourceStatusBadge } from './SourceStatusBadge';
 import { useToast } from '@/components/ui/Toast';
 import { LoadingSpinner } from '@/components/ui/Icons';
+import { useLiveEvents } from '@/components/live/LiveEvents';
 
 // These are external, unofficial book sources (shadow libraries) — they are
 // off by default and only searched once an operator opts in from Settings.
@@ -31,7 +32,12 @@ interface DownloadSourcesModalProps {
   onClose: () => void;
 }
 
-type TabType = 'all' | 'zlibrary' | 'annas' | 'libgen';
+type TabType = 'all' | 'zlibrary' | 'annas' | 'libgen' | 'manual';
+
+interface ImportProgress {
+  current: number;
+  total: number | null;
+}
 
 export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProps) {
   const toast = useToast();
@@ -50,6 +56,16 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
   const [selectedLibraryId, setSelectedLibraryId] = useState<number | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [noSourcesEnabled, setNoSourcesEnabled] = useState(false);
+
+  // "I already have this file" (E4-3) — a manual upload, separate from the
+  // shadow-library search above. Two of those three sources can't be
+  // downloaded from directly yet, and even once they can, someone will
+  // occasionally grab a file by hand anyway.
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importUploading, setImportUploading] = useState(false);
+  const [importTaskId, setImportTaskId] = useState<number | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -156,11 +172,78 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
     }
   };
 
+  // Watch the import task's own progress, the same way RefreshUnmatchedButton
+  // watches a metadata-refresh task: read live events for this task's id,
+  // and settle on completion.
+  useLiveEvents((event) => {
+    if (importTaskId === null) return;
+    if (event.kind !== 'task' || event.id !== importTaskId) return;
+
+    if (event.event === 'progress') {
+      setImportProgress({ current: event.progress, total: event.total });
+      return;
+    }
+
+    if (event.status === 'completed') {
+      toast.success('Import finished');
+      setImportTaskId(null);
+      setImportProgress(null);
+      setImportFile(null);
+    } else if (event.status === 'failed') {
+      toast.error(event.error || 'Import failed');
+      setImportTaskId(null);
+      setImportProgress(null);
+    } else if (event.status === 'cancelled') {
+      setImportTaskId(null);
+      setImportProgress(null);
+    }
+  });
+
+  const handleImportSubmit = async () => {
+    if (!importFile) {
+      setImportError('Choose a file to import');
+      return;
+    }
+    if (!selectedLibraryId) {
+      setImportError('Please select a library to import into');
+      return;
+    }
+
+    setImportError(null);
+    setImportUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', importFile);
+      formData.append('libraryId', String(selectedLibraryId));
+
+      const response = await fetch(`/api/wanted/${book.id}/import`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        setImportError(data.error || 'Failed to import file');
+        return;
+      }
+
+      toast.success(`Import started (Task #${data.taskId})`);
+      setImportTaskId(data.taskId);
+      setImportProgress(null);
+    } catch {
+      setImportError('Failed to import file');
+    } finally {
+      setImportUploading(false);
+    }
+  };
+
   const tabs: { id: TabType; label: string }[] = [
     { id: 'all', label: 'All Sources' },
     { id: 'zlibrary', label: 'Z-Library' },
     { id: 'annas', label: "Anna's Archive" },
     { id: 'libgen', label: 'LibGen' },
+    { id: 'manual', label: 'I Have This File' },
   ];
 
   return (
@@ -248,7 +331,7 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
               }`}
             >
               {tab.label}
-              {tab.id !== 'all' && (
+              {tab.id !== 'all' && tab.id !== 'manual' && (
                 <span className="ml-1.5">
                   <SourceStatusBadge status={getStatusForSource(tab.id) as SourceStatus['status']} />
                 </span>
@@ -257,70 +340,114 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
           ))}
         </div>
 
-        {/* Blocked source notices */}
-        {!loading && blockedSources.length > 0 && (
-          <div className="px-4 py-2 border-b border-shelvarr-border bg-shelvarr-bg/50 space-y-1">
-            {blockedSources
-              .filter((b) => activeTab === 'all' || b.source === activeTab)
-              .map((b) => (
-                <p key={b.source} className="text-xs text-amber-400">
-                  {b.message}
-                </p>
-              ))}
+        {activeTab === 'manual' ? (
+          /* Manual import (E4-3): the file already exists somewhere on this
+             machine's disk — no search, just an upload. */
+          <div className="overflow-y-auto max-h-[45vh] p-4">
+            <p className="text-sm text-shelvarr-text-muted mb-4">
+              Already downloaded this book yourself? Upload it here and Shelvarr
+              will add it to the library selected above, match its metadata and
+              file it the same way a normal download would be.
+            </p>
+
+            <div className="space-y-3">
+              <input
+                type="file"
+                aria-label="Book file"
+                onChange={(e) => {
+                  setImportFile(e.target.files?.[0] ?? null);
+                  setImportError(null);
+                }}
+                disabled={importUploading || importTaskId !== null}
+                className="block w-full text-sm text-shelvarr-text-muted file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-shelvarr-bg file:text-white hover:file:bg-shelvarr-border"
+              />
+
+              {importError && <p className="text-sm text-red-400">{importError}</p>}
+
+              <button
+                onClick={handleImportSubmit}
+                disabled={importUploading || importTaskId !== null || !importFile}
+                className="bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:cursor-not-allowed text-white px-4 py-2 rounded text-sm font-medium transition-colors inline-flex items-center gap-2"
+              >
+                {importUploading && <LoadingSpinner className="w-4 h-4 animate-spin" />}
+                {importUploading
+                  ? 'Uploading...'
+                  : importTaskId !== null
+                    ? importProgress?.total
+                      ? `Importing ${importProgress.current}/${importProgress.total}...`
+                      : 'Importing...'
+                    : 'Import File'}
+              </button>
+            </div>
           </div>
+        ) : (
+          <>
+            {/* Blocked source notices */}
+            {!loading && blockedSources.length > 0 && (
+              <div className="px-4 py-2 border-b border-shelvarr-border bg-shelvarr-bg/50 space-y-1">
+                {blockedSources
+                  .filter((b) => activeTab === 'all' || b.source === activeTab)
+                  .map((b) => (
+                    <p key={b.source} className="text-xs text-amber-400">
+                      {b.message}
+                    </p>
+                  ))}
+              </div>
+            )}
+
+            {/* Results */}
+            <div className="overflow-y-auto max-h-[45vh]">
+              {loading && (
+                <div className="p-8 text-center text-shelvarr-text-muted">
+                  Searching download sources...
+                </div>
+              )}
+
+              {error && !loading && (
+                <div className="p-8 text-center text-shelvarr-text-muted">{error}</div>
+              )}
+
+              {!loading && !error && noSourcesEnabled && (
+                <div className="p-8 text-center text-shelvarr-text-muted">
+                  <p>
+                    LibGen, Anna&apos;s Archive and Z-Library are external, unofficial
+                    book sources. None are enabled yet, so nothing was searched.
+                  </p>
+                  <p className="mt-2">
+                    Turn them on under{' '}
+                    <Link
+                      href="/settings/downloads"
+                      className="text-shelvarr-primary hover:underline"
+                      onClick={onClose}
+                    >
+                      Settings → Download Sources
+                    </Link>
+                    .
+                  </p>
+                </div>
+              )}
+
+              {!loading && !error && !noSourcesEnabled && filteredResults.length === 0 && (
+                <div className="p-8 text-center text-shelvarr-text-muted">
+                  No results found. Try the quick search links above.
+                </div>
+              )}
+
+              {!loading && filteredResults.length > 0 && (
+                <div className="divide-y divide-shelvarr-border">
+                  {filteredResults.map((result, index) => (
+                    <DownloadResultItem
+                      key={`${result.source}-${result.id}-${index}`}
+                      result={result}
+                      onDownload={handleDownload}
+                      isDownloading={downloadingId === result.id}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
         )}
-
-        {/* Results */}
-        <div className="overflow-y-auto max-h-[45vh]">
-          {loading && (
-            <div className="p-8 text-center text-shelvarr-text-muted">
-              Searching download sources...
-            </div>
-          )}
-
-          {error && !loading && (
-            <div className="p-8 text-center text-shelvarr-text-muted">{error}</div>
-          )}
-
-          {!loading && !error && noSourcesEnabled && (
-            <div className="p-8 text-center text-shelvarr-text-muted">
-              <p>
-                LibGen, Anna&apos;s Archive and Z-Library are external, unofficial
-                book sources. None are enabled yet, so nothing was searched.
-              </p>
-              <p className="mt-2">
-                Turn them on under{' '}
-                <Link
-                  href="/settings/downloads"
-                  className="text-shelvarr-primary hover:underline"
-                  onClick={onClose}
-                >
-                  Settings → Download Sources
-                </Link>
-                .
-              </p>
-            </div>
-          )}
-
-          {!loading && !error && !noSourcesEnabled && filteredResults.length === 0 && (
-            <div className="p-8 text-center text-shelvarr-text-muted">
-              No results found. Try the quick search links above.
-            </div>
-          )}
-
-          {!loading && filteredResults.length > 0 && (
-            <div className="divide-y divide-shelvarr-border">
-              {filteredResults.map((result, index) => (
-                <DownloadResultItem
-                  key={`${result.source}-${result.id}-${index}`}
-                  result={result}
-                  onDownload={handleDownload}
-                  isDownloading={downloadingId === result.id}
-                />
-              ))}
-            </div>
-          )}
-        </div>
 
         <div className="p-4 border-t border-shelvarr-border flex justify-end">
           <button
