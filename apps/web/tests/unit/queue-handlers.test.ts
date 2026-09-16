@@ -105,7 +105,7 @@ if (canRunTests) {
   process.env['DB_PATH'] = join(testDir, 'test.db');
 
   // Dynamic imports only when tests can run
-  const { initDatabase, closeDatabase, execute, getBookDownloads, getBookDownload } = await import('../../lib/db/index.js');
+  const { initDatabase, closeDatabase, execute, getBookDownloads, getBookDownload, addBookDownload, claimStalledBookDownloads } = await import('../../lib/db/index.js');
   const {
     registerTaskHandler,
     enqueueTask,
@@ -890,6 +890,159 @@ if (canRunTests) {
         assert.strictEqual(downloads.length, 1);
         assert.strictEqual(downloads[0]!.state, 'failed');
         assert.ok(downloads[0]!.error?.includes('connection reset mid-stream'));
+      });
+    });
+
+    describe('bookResumeHandler integration', () => {
+      it('claims a downloading row whose heartbeat has gone cold, and leaves a live one alone', () => {
+        const stale = addBookDownload({
+          libraryId: 1,
+          source: 'libgen',
+          title: 'Stale Book',
+          author: 'Stale Author',
+          extension: 'epub',
+          downloadUrl: 'libgen:stale-md5',
+          md5: 'stale-md5',
+        });
+        execute(
+          `UPDATE book_downloads SET state = 'downloading', heartbeat_at = datetime('now', '-60 minutes') WHERE id = ?`,
+          [stale.id]
+        );
+
+        const live = addBookDownload({
+          libraryId: 1,
+          source: 'libgen',
+          title: 'Live Book',
+          author: 'Live Author',
+          extension: 'epub',
+          downloadUrl: 'libgen:live-md5',
+          md5: 'live-md5',
+        });
+        execute(`UPDATE book_downloads SET state = 'downloading' WHERE id = ?`, [live.id]);
+
+        const claimed = claimStalledBookDownloads(30);
+
+        assert.deepStrictEqual(claimed.map((download) => download.id), [stale.id]);
+        assert.strictEqual(getBookDownload(stale.id)!.state, 'queued');
+        assert.strictEqual(
+          getBookDownload(live.id)!.state,
+          'downloading',
+          'a download that is still checking in is left alone'
+        );
+      });
+
+      it('does not claim a row still in queued — nothing was ever driving it to begin with', () => {
+        const neverStarted = addBookDownload({
+          libraryId: 1,
+          source: 'libgen',
+          title: 'Never Started',
+          author: 'Some Author',
+          extension: 'epub',
+          downloadUrl: 'libgen:never-md5',
+          md5: 'never-md5',
+        });
+        execute(
+          `UPDATE book_downloads SET heartbeat_at = datetime('now', '-60 minutes') WHERE id = ?`,
+          [neverStarted.id]
+        );
+
+        assert.deepStrictEqual(claimStalledBookDownloads(30), []);
+      });
+
+      it('will not let two sweeps claim the same orphan', () => {
+        const orphan = addBookDownload({
+          libraryId: 1,
+          source: 'libgen',
+          title: 'Orphan Book',
+          author: 'Orphan Author',
+          extension: 'epub',
+          downloadUrl: 'libgen:orphan-md5',
+          md5: 'orphan-md5',
+        });
+        execute(
+          `UPDATE book_downloads SET state = 'importing', heartbeat_at = datetime('now', '-60 minutes') WHERE id = ?`,
+          [orphan.id]
+        );
+
+        const first = claimStalledBookDownloads(30);
+        const second = claimStalledBookDownloads(30);
+
+        assert.deepStrictEqual(first.map((download) => download.id), [orphan.id]);
+        assert.deepStrictEqual(second, []);
+        assert.strictEqual(getBookDownload(orphan.id)!.state, 'queued');
+      });
+
+      it('resumes an interrupted download by driving its existing row, not creating a second one', async () => {
+        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+        registerAllHandlers();
+
+        const orphan = addBookDownload({
+          libraryId: 1,
+          source: 'libgen',
+          title: 'Resumed Book',
+          author: 'Resumed Author',
+          extension: 'epub',
+          downloadUrl: 'libgen:resume-md5',
+          md5: 'resume-md5',
+        });
+        execute(
+          `UPDATE book_downloads SET state = 'downloading', heartbeat_at = datetime('now', '-60 minutes') WHERE id = ?`,
+          [orphan.id]
+        );
+
+        const resumeTask = createTask('book_resume', { staleMinutes: 30, limit: 25 });
+        await runTask(resumeTask.id);
+
+        const resumeResult = getTask(resumeTask.id)!;
+        assert.strictEqual(resumeResult.status, 'completed');
+        assert.deepStrictEqual(
+          (resumeResult.data as { downloadIds: number[] }).downloadIds,
+          [orphan.id]
+        );
+
+        // The resume handler only enqueues the download task — it does not
+        // await it — so poll for that nested task to actually finish.
+        let downloadRow = getBookDownload(orphan.id)!;
+        for (
+          let i = 0;
+          i < 20 && downloadRow.state !== 'completed' && downloadRow.state !== 'failed';
+          i++
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          downloadRow = getBookDownload(orphan.id)!;
+        }
+
+        assert.strictEqual(downloadRow.state, 'completed');
+
+        // Only the original row exists — resuming did not fork a second one.
+        const allDownloads = getBookDownloads({ libraryId: 1 });
+        assert.strictEqual(allDownloads.length, 1);
+        assert.strictEqual(allDownloads[0]!.id, orphan.id);
+        assert.ok(allDownloads[0]!.completedAt);
+      });
+
+      it('fails clearly, rather than silently creating a new row, when the referenced book_downloads row is gone', async () => {
+        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+        registerAllHandlers();
+
+        const task = createTask('download', {
+          bookDownloadId: 999999,
+          source: 'libgen',
+          md5: 'ghost-md5',
+          title: 'Ghost Book',
+          author: 'Ghost Author',
+          extension: 'epub',
+          libraryId: 1,
+        });
+        await runTask(task.id);
+
+        const updated = getTask(task.id);
+        assert.ok(updated);
+        assert.strictEqual(updated.status, 'failed');
+        assert.ok(updated.error?.includes('999999'));
+
+        // No new book_downloads row was created as a fallback.
+        assert.strictEqual(getBookDownloads({ libraryId: 1 }).length, 0);
       });
     });
 

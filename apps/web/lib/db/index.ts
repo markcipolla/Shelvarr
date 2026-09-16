@@ -99,6 +99,7 @@ export {
   getBookDownloads,
   updateBookDownloadProgress,
   setBookDownloadState,
+  claimStalledBookDownloads,
   addBookDownloadHistory,
   addToBookBlocklist,
   bookBlocklistContains,

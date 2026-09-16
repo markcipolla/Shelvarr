@@ -70,6 +70,17 @@ export const DEFAULT_SCHEDULES: ScheduleDefinition[] = [
     enabledByDefault: false,
   },
   {
+    name: 'book_resume',
+    taskType: 'book_resume',
+    intervalSeconds: 15 * 60,
+    description: 'Resume interrupted book downloads',
+    category: 'books',
+    // Same threshold as comic_resume: long enough that a download still
+    // making progress is never mistaken for an orphan.
+    payload: { staleMinutes: 30, limit: 25 },
+    enabledByDefault: true,
+  },
+  {
     name: 'comic_update_all',
     taskType: 'comic_update_all',
     intervalSeconds: 24 * HOUR,
