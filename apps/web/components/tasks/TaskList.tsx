@@ -53,6 +53,7 @@ function TaskRow({ task }: { task: Task }) {
     book_metadata: 'Book Metadata',
     organize: 'File Organization',
     download: 'Download',
+    book_import: 'Manual Import',
     author_sync: 'Author Sync',
     book_scan_all: 'Scan All Libraries',
     book_organize_all: 'Organize All Libraries',

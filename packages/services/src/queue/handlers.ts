@@ -42,7 +42,7 @@ import {
   setDownloadState as setBookDownloadState,
   setDownloadProgress as updateBookDownloadProgress,
 } from '../downloads/download-events';
-import type { ComicDownloadLink } from '@shelvarr/types';
+import type { ComicDownloadLink, Library } from '@shelvarr/types';
 import * as getcomics from '../comics/getcomics/index';
 import * as comicLibrary from '../comics/library';
 import { ensureImportable, importComicDownload } from '../comics/import';
@@ -384,6 +384,167 @@ function sanitizeFilename(name: string): string {
 }
 
 /**
+ * Result of matching a freshly-added book against Hardcover.
+ *
+ * Shared between `downloadHandler` and `bookImportHandler` (E4-3): both add a
+ * book row for a file that just landed on disk, then want the exact same
+ * "prefer a direct hardcover-id lookup, else search by title/author, and
+ * never let a lookup failure fail the whole job" behaviour.
+ */
+interface MetadataMatchResult {
+  metadataFound: boolean;
+  finalTitle: string;
+  finalAuthor: string | null;
+}
+
+/**
+ * Fetch metadata for `bookId` and apply it, exactly as `downloadHandler`'s
+ * old inline Step 5 did. A failed or empty lookup is not an error — the book
+ * stays in the library unmatched, the same way a scan's `metadataHandler`
+ * leaves an unmatched book alone rather than failing the scan.
+ */
+async function matchBookMetadata(
+  bookId: number,
+  title: string,
+  author: string | null,
+  hardcoverId?: string | null
+): Promise<MetadataMatchResult> {
+  let finalTitle = title;
+  let finalAuthor = author;
+  let metadataFound = false;
+
+  try {
+    // If we have a hardcover_id from the wanted book, fetch directly instead of searching
+    let metadata = null;
+    if (hardcoverId) {
+      metadata = await metadataService.getBookBySourceId('hardcover', hardcoverId);
+    }
+    // Fall back to search if no hardcover_id or direct fetch failed
+    if (!metadata) {
+      metadata = await metadataService.autoMatch(title, author || undefined);
+    }
+
+    if (metadata) {
+      metadataFound = true;
+      finalTitle = metadata.title;
+
+      // Parse authors from metadata
+      if (metadata.authors) {
+        try {
+          const authorsArr = JSON.parse(metadata.authors);
+          if (Array.isArray(authorsArr) && authorsArr.length > 0) {
+            finalAuthor = authorsArr[0];
+          }
+        } catch {
+          finalAuthor = metadata.authors;
+        }
+      }
+
+      // Update book with metadata
+      await updateBook(bookId, {
+        title: metadata.title,
+        authors: metadata.authors,
+        publisher: metadata.publisher,
+        publishDate: metadata.publishDate,
+        description: metadata.description,
+        isbn: metadata.isbn,
+        coverUrl: metadata.coverUrl,
+        metadataSource: metadata.source,
+        metadataId: metadata.sourceId,
+      });
+
+      // Handle series if present
+      if (metadata.series && metadata.series.length > 0) {
+        const primarySeries = metadata.series[0];
+        if (primarySeries) {
+          execute(
+            'UPDATE books SET series = ?, series_name = ?, series_number = ? WHERE id = ?',
+            [JSON.stringify(metadata.series), primarySeries[0], primarySeries[1], bookId]
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Metadata fetch failed, continuing without metadata:', err);
+  }
+
+  return { metadataFound, finalTitle, finalAuthor };
+}
+
+/** Result of filing a freshly-added book with the organizer. */
+interface OrganizeNewBookResult {
+  finalPath: string;
+  organized: boolean;
+}
+
+/**
+ * File a freshly-added book using the same naming template every other book
+ * in the library is organized with (E2-6). Shared between `downloadHandler`
+ * and `bookImportHandler` (E4-3) — both hand the organizer a book that has
+ * never been filed anywhere yet, so this always runs; it does not check
+ * `organize_auto_run`, which only gates bulk-reorganizing a library someone
+ * may have filed by hand.
+ *
+ * A failure here is not fatal: the book stays where it landed rather than the
+ * whole import/download being thrown away over a filing problem.
+ */
+async function organizeNewBook(
+  bookId: number,
+  library: Pick<Library, 'path'>,
+  currentPath: string
+): Promise<OrganizeNewBookResult> {
+  let finalPath = currentPath;
+  let organized = false;
+
+  try {
+    const freshBook = await getBookById(bookId);
+    if (freshBook) {
+      // generateNewPath only defaults to DEFAULT_ORGANIZE_TEMPLATE — it
+      // doesn't read settings itself, that's on the caller (organizeHandler
+      // does the same lookup, just merged with an explicit task-level
+      // override that doesn't apply here since neither caller carries one).
+      let organizeTemplate: string | undefined;
+      const templateRow = queryOne<{ value: string }>(
+        'SELECT value FROM settings WHERE key = ?',
+        ['organize_template'],
+      );
+      if (templateRow?.value) {
+        try {
+          const parsed = JSON.parse(templateRow.value);
+          if (typeof parsed === 'string' && parsed.length > 0) {
+            organizeTemplate = parsed;
+          }
+        } catch {
+          organizeTemplate = templateRow.value;
+        }
+      }
+
+      const wantedPath = generateNewPath(freshBook, library.path, organizeTemplate);
+      if (wantedPath !== currentPath) {
+        const organizedPath = resolveTargetCollision(wantedPath, currentPath);
+        const organizedDir = path.dirname(organizedPath);
+        if (!fs.existsSync(organizedDir)) {
+          fs.mkdirSync(organizedDir, { recursive: true });
+        }
+
+        moveFile(currentPath, organizedPath);
+        finalPath = organizedPath;
+        organized = true;
+
+        execute(
+          'UPDATE books SET file_path = ? WHERE id = ?',
+          [organizedPath, bookId]
+        );
+      }
+    }
+  } catch (err) {
+    console.warn('File organization failed, keeping original location:', err);
+  }
+
+  return { finalPath, organized };
+}
+
+/**
  * Download task handler
  * Downloads a file from a source and saves it to a library
  */
@@ -692,66 +853,18 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
     if (signal.aborted) throw new Error('Task cancelled');
     onProgress(4, 6);
 
-    // Step 5: Fetch metadata and update book
-    let finalPath = targetPath;
-    let finalTitle = bookTitle;
-    let finalAuthor = bookAuthor;
-    let metadataFound = false;
-
-    try {
-      // If we have a hardcover_id from the wanted book, fetch directly instead of searching
-      let metadata = null;
-      if (wantedBook?.hardcover_id) {
-        metadata = await metadataService.getBookBySourceId('hardcover', wantedBook.hardcover_id);
-      }
-      // Fall back to search if no hardcover_id or direct fetch failed
-      if (!metadata) {
-        metadata = await metadataService.autoMatch(bookTitle, bookAuthor || undefined);
-      }
-
-      if (metadata) {
-        metadataFound = true;
-        finalTitle = metadata.title;
-
-        // Parse authors from metadata
-        if (metadata.authors) {
-          try {
-            const authorsArr = JSON.parse(metadata.authors);
-            if (Array.isArray(authorsArr) && authorsArr.length > 0) {
-              finalAuthor = authorsArr[0];
-            }
-          } catch {
-            finalAuthor = metadata.authors;
-          }
-        }
-
-        // Update book with metadata
-        await updateBook(bookId, {
-          title: metadata.title,
-          authors: metadata.authors,
-          publisher: metadata.publisher,
-          publishDate: metadata.publishDate,
-          description: metadata.description,
-          isbn: metadata.isbn,
-          coverUrl: metadata.coverUrl,
-          metadataSource: metadata.source,
-          metadataId: metadata.sourceId,
-        });
-
-        // Handle series if present
-        if (metadata.series && metadata.series.length > 0) {
-          const primarySeries = metadata.series[0];
-          if (primarySeries) {
-            execute(
-              'UPDATE books SET series = ?, series_name = ?, series_number = ? WHERE id = ?',
-              [JSON.stringify(metadata.series), primarySeries[0], primarySeries[1], bookId]
-            );
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('Metadata fetch failed, continuing without metadata:', err);
-    }
+    // Step 5: Fetch metadata and update book (E4-3 pulled this into
+    // `matchBookMetadata`, shared with `bookImportHandler`; behaviour here is
+    // unchanged).
+    const metadataMatch = await matchBookMetadata(
+      bookId,
+      bookTitle,
+      bookAuthor,
+      wantedBook?.hardcover_id
+    );
+    const finalTitle = metadataMatch.finalTitle;
+    const finalAuthor = metadataMatch.finalAuthor;
+    const metadataFound = metadataMatch.metadataFound;
 
     if (signal.aborted) throw new Error('Task cancelled');
     onProgress(5, 6);
@@ -772,50 +885,11 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
     // leave alone. Skipping this step when auto-run is off would just mean
     // every download lands under its raw download filename in the library
     // root, which reads as a bug rather than a respected preference.
-    try {
-      const freshBook = await getBookById(bookId);
-      if (freshBook) {
-        // generateNewPath only defaults to DEFAULT_ORGANIZE_TEMPLATE — it
-        // doesn't read settings itself, that's on the caller (organizeHandler
-        // does the same lookup, just merged with an explicit task-level
-        // override that doesn't apply here since a download never carries
-        // one).
-        let organizeTemplate: string | undefined;
-        const templateRow = queryOne<{ value: string }>(
-          'SELECT value FROM settings WHERE key = ?',
-          ['organize_template'],
-        );
-        if (templateRow?.value) {
-          try {
-            const parsed = JSON.parse(templateRow.value);
-            if (typeof parsed === 'string' && parsed.length > 0) {
-              organizeTemplate = parsed;
-            }
-          } catch {
-            organizeTemplate = templateRow.value;
-          }
-        }
-
-        const wantedPath = generateNewPath(freshBook, library.path, organizeTemplate);
-        if (wantedPath !== targetPath) {
-          const organizedPath = resolveTargetCollision(wantedPath, targetPath);
-          const organizedDir = path.dirname(organizedPath);
-          if (!fs.existsSync(organizedDir)) {
-            fs.mkdirSync(organizedDir, { recursive: true });
-          }
-
-          moveFile(targetPath, organizedPath);
-          finalPath = organizedPath;
-
-          execute(
-            'UPDATE books SET file_path = ? WHERE id = ?',
-            [organizedPath, bookId]
-          );
-        }
-      }
-    } catch (err) {
-      console.warn('File organization failed, keeping original location:', err);
-    }
+    //
+    // E4-3 pulled this into `organizeNewBook`, shared with
+    // `bookImportHandler`; behaviour here is unchanged.
+    const organizeResult = await organizeNewBook(bookId, library, targetPath);
+    const finalPath = organizeResult.finalPath;
 
     onProgress(6, 6);
 
@@ -845,6 +919,139 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
     recordFailure(err instanceof Error ? err.message : String(err));
     throw err;
   }
+};
+
+/**
+ * Import a book file a person already downloaded themselves (E4-3).
+ *
+ * Two of the three book sources (Anna's Archive, Z-Library) still can't be
+ * fetched by Shelvarr directly, and even once they can, someone will
+ * occasionally grab a file by hand and want to hand it over without dropping
+ * it in a library folder and waiting for the nightly scan. The upload route
+ * (`POST /api/wanted/[id]/import`) saves the file to a scratch location
+ * synchronously and queues this task with the path to it.
+ *
+ * This is a sibling to `downloadHandler`, not a mode of it: the download
+ * handler's first three steps (resolve a mirror, stream it, land it next to
+ * where it will finally live) are libgen-specific plumbing that a
+ * already-on-disk file has no use for, and threading a "skip the fetch"
+ * branch through that recently-landed, already-intricate mirror-fallback
+ * logic would risk it for no real benefit. What *is* shared — add the book
+ * row, match metadata, file it with the organizer — lives in
+ * `matchBookMetadata` / `organizeNewBook` above, which this calls the same
+ * way `downloadHandler` does.
+ */
+const bookImportHandler: TaskHandler = async (taskId, onProgress, signal) => {
+  const taskRow = queryOne<{ result: string | null }>(
+    'SELECT result FROM tasks WHERE id = ?',
+    [taskId]
+  );
+
+  if (!taskRow?.result) {
+    throw new Error('Task missing import configuration');
+  }
+
+  const data = JSON.parse(taskRow.result) as {
+    libraryId: number;
+    /** Where the upload route saved the file — a scratch path, not yet in the library. */
+    filePath: string;
+    originalFilename: string;
+    extension: string;
+    title: string;
+    author: string | null;
+    wantedBookId?: number;
+  };
+
+  if (!data.libraryId || !data.filePath) {
+    throw new Error('Invalid import task configuration');
+  }
+
+  onProgress(0, 4); // 4 steps: place file, add to db, fetch metadata, organize
+
+  const library = await getLibraryById(data.libraryId);
+  if (!library) {
+    throw new Error(`Library ${data.libraryId} not found`);
+  }
+
+  // Same as downloadHandler: prefer the clean title/author (and hardcover id)
+  // off the wanted book over whatever the uploader typed.
+  let wantedBook: { title: string; author: string | null; hardcover_id: string | null } | null = null;
+  if (data.wantedBookId) {
+    wantedBook = queryOne<{ title: string; author: string | null; hardcover_id: string | null }>(
+      'SELECT title, author, hardcover_id FROM wanted_books WHERE id = ?',
+      [data.wantedBookId]
+    );
+  }
+  const bookTitle = wantedBook?.title || data.title;
+  const bookAuthor = wantedBook?.author || data.author;
+
+  if (signal.aborted) throw new Error('Task cancelled');
+  onProgress(1, 4);
+
+  // Move the upload out of scratch and into the library under a plain
+  // filename — the organizer step below is what actually files it properly.
+  if (!fs.existsSync(library.path)) {
+    fs.mkdirSync(library.path, { recursive: true });
+  }
+
+  const ext = data.extension || path.extname(data.originalFilename).replace('.', '') || 'epub';
+  const authorPart = bookAuthor && bookAuthor !== 'Unknown' ? `${sanitizeFilename(bookAuthor)} - ` : '';
+  const titlePart = sanitizeFilename(bookTitle || 'Unknown');
+  const targetPath = resolveTargetCollision(path.join(library.path, `${authorPart}${titlePart}.${ext}`));
+
+  moveFile(data.filePath, targetPath);
+  const fileSize = fs.statSync(targetPath).size;
+
+  if (signal.aborted) throw new Error('Task cancelled');
+  onProgress(2, 4);
+
+  // Step: add book to database
+  const bookId = await addBook({
+    libraryId: data.libraryId,
+    filePath: targetPath,
+    title: bookTitle,
+    authors: bookAuthor ? JSON.stringify([bookAuthor]) : null,
+    extension: ext,
+    fileSize,
+  });
+
+  if (signal.aborted) throw new Error('Task cancelled');
+
+  // Step: fetch metadata and update book
+  const metadataMatch = await matchBookMetadata(
+    bookId,
+    bookTitle,
+    bookAuthor,
+    wantedBook?.hardcover_id
+  );
+
+  onProgress(3, 4);
+
+  // Step: file the book with the organizer, same as a completed download.
+  const organizeResult = await organizeNewBook(bookId, library, targetPath);
+
+  onProgress(4, 4);
+
+  // Mark the wanted book acquired on success — unconditionally, the same way
+  // downloadHandler does: the book is in the library either way, matched or
+  // not, so "wanted" no longer describes it.
+  if (data.wantedBookId) {
+    execute(
+      "UPDATE wanted_books SET status = 'acquired' WHERE id = ?",
+      [data.wantedBookId]
+    );
+  }
+
+  return {
+    success: true,
+    bookId,
+    filePath: organizeResult.finalPath,
+    filename: path.basename(organizeResult.finalPath),
+    fileSize,
+    wantedBookId: data.wantedBookId,
+    metadataFound: metadataMatch.metadataFound,
+    organized: organizeResult.organized,
+  };
 };
 
 /**
@@ -1774,6 +1981,7 @@ export function registerAllHandlers(): void {
   registerTaskHandler('organize', organizeHandler);
 
   registerTaskHandler('download', downloadHandler);
+  registerTaskHandler('book_import', bookImportHandler);
 
   // Library-wide book sweeps, run on a timer from Settings -> Books.
   registerTaskHandler('book_scan_all', bookScanAllHandler);
