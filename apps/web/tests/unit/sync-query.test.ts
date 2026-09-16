@@ -100,4 +100,58 @@ describe('getSyncChangesSince', () => {
     const changes = db.getSyncChangesSince(null);
     assert.ok(changes.now > '2025-01-01T00:00:00.000Z');
   });
+
+  // The cursor we hand out is ISO; the rows it is compared against are written
+  // by CURRENT_TIMESTAMP and so are naked UTC. Compared as strings, 'T' sorts
+  // above ' ', so an ISO cursor used verbatim is greater than every naked row
+  // stamped that same day — the client would sync once and then see nothing.
+  describe('the cursor it hands out is comparable to the rows it stores', () => {
+    it('finds a row written after an ISO cursor from the same day', () => {
+      db.execute(
+        `INSERT INTO comics (id, title, updated_at) VALUES (1, 'Before', '2026-09-16 01:00:00')`
+      );
+      const first = db.getSyncChangesSince(null);
+      assert.strictEqual(first.comics.length, 1);
+
+      // A change lands after the client's cursor, on the same date.
+      db.execute(
+        `INSERT INTO comics (id, title, updated_at) VALUES (2, 'After', '2026-09-16 23:59:59')`
+      );
+
+      const second = db.getSyncChangesSince(first.now);
+      const titles = second.comics.map((c) => (c as { title: string }).title);
+      assert.deepStrictEqual(titles, ['After']);
+    });
+
+    // The cursor is taken to the millisecond; CURRENT_TIMESTAMP only records
+    // whole seconds. A row written later in the cursor's own second stores a
+    // value equal to the floored cursor, and a strict `>` would lose it.
+    it('does not lose a row written in the same second as the cursor', () => {
+      const first = db.getSyncChangesSince(null);
+
+      // `now` is mid-second; this row lands in that same second.
+      const sameSecond = first.now.slice(0, 19).replace('T', ' ');
+      db.execute(
+        `INSERT INTO comics (id, title, updated_at) VALUES (1, 'Raced', ?)`,
+        [sameSecond]
+      );
+
+      const second = db.getSyncChangesSince(first.now);
+      const titles = second.comics.map((c) => (c as { title: string }).title);
+      assert.deepStrictEqual(titles, ['Raced']);
+    });
+
+    it('still accepts a cursor already in the stored format', () => {
+      db.execute(
+        `INSERT INTO comics (id, title, updated_at) VALUES (1, 'Old', '2026-09-16 01:00:00')`
+      );
+      db.execute(
+        `INSERT INTO comics (id, title, updated_at) VALUES (2, 'New', '2026-09-16 02:00:00')`
+      );
+
+      const changes = db.getSyncChangesSince('2026-09-16 01:30:00');
+      const titles = changes.comics.map((c) => (c as { title: string }).title);
+      assert.deepStrictEqual(titles, ['New']);
+    });
+  });
 });

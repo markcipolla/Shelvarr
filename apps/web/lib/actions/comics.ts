@@ -11,6 +11,7 @@ import {
   listComicVolumes,
   type InProgressComic,
   type ComicIssueProgress,
+  sqlTimeToIso,
 } from '@/lib/db';
 import type { ComicVolumeSummary, ComicVolumeDetail } from '@shelvarr/types';
 import { getReadingUserId } from '@/lib/auth';
@@ -331,7 +332,7 @@ export async function getComicDownloadQueue(): Promise<DownloadQueueView> {
       fileTitle: entry.file_title,
       host: entry.host,
       success: entry.success === 1,
-      downloadedAt: entry.downloaded_at,
+      downloadedAt: sqlTimeToIso(entry.downloaded_at),
     })),
     blocklist: getComicBlocklist(50).map((entry) => ({
       id: entry.id,

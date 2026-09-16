@@ -9,7 +9,7 @@
 
 import { statSync } from 'fs';
 
-import { getSetting, query, queryOne } from '@shelvarr/db';
+import { getSetting, query, queryOne, sqlTimeToIso } from '@shelvarr/db';
 
 import { APP_NAME, APP_VERSION } from '../constants';
 import { getServiceConfig } from '../config';
@@ -348,7 +348,11 @@ export function listComicDownloads(options: { state?: string; limit?: number } =
   const where = options.state ? 'WHERE cd.state = ?' : '';
   const params = options.state ? [options.state, limit] : [limit];
 
-  return query(
+  const rows = query<Record<string, unknown> & {
+    heartbeatAt: string | null;
+    createdAt: string | null;
+    completedAt: string | null;
+  }>(
     `SELECT cd.id, cd.volume_id AS volumeId, c.title AS volumeTitle, cd.issue_id AS issueId,
             cd.host, cd.state, cd.progress, cd.size, cd.attempts, cd.error,
             cd.web_title AS webTitle, cd.heartbeat_at AS heartbeatAt,
@@ -360,4 +364,13 @@ export function listComicDownloads(options: { state?: string; limit?: number } =
        LIMIT ?`,
     params
   );
+
+  // This reads the columns directly rather than going through
+  // `rowToComicDownload`, so it has to mark the timestamps itself.
+  return rows.map((row) => ({
+    ...row,
+    heartbeatAt: sqlTimeToIso(row.heartbeatAt),
+    createdAt: sqlTimeToIso(row.createdAt),
+    completedAt: sqlTimeToIso(row.completedAt),
+  }));
 }

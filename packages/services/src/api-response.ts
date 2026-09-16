@@ -4,7 +4,7 @@
 
 import type * as Api from '@shelvarr/types/api';
 import type { ReadProgressRow, EpubProgressionRow } from '@shelvarr/db';
-import { getEpubProgression, getHardcoverStatusId, hardcoverStatusLabel } from '@shelvarr/db';
+import { getEpubProgression, getHardcoverStatusId, hardcoverStatusLabel, sqlTimeToIso } from '@shelvarr/db';
 
 interface DbBook {
   id: number;
@@ -97,8 +97,10 @@ function formatReadProgress(
 ): Api.ReadProgress | null {
   if (!progress && !epub) return null;
   const completed = progress?.completed === 1 || (epub ? epub.progression >= 0.98 : false);
-  const lastModified = epub?.updated_at ?? progress?.updated_at ?? new Date().toISOString();
-  const created = progress?.created_at ?? epub?.created_at ?? lastModified;
+  // Either branch may supply a stored timestamp or the ISO fallback, so both
+  // go through `sqlTimeToIso` — it only touches values in SQLite's shape.
+  const lastModified = sqlTimeToIso(epub?.updated_at ?? progress?.updated_at ?? new Date().toISOString());
+  const created = sqlTimeToIso(progress?.created_at ?? epub?.created_at ?? lastModified);
   return {
     page: progress?.page ?? 0,
     completed,
@@ -204,7 +206,7 @@ export function toEpubProgression(row: EpubProgressionRow | null) {
     deviceId: row.device_id,
     locator: JSON.parse(row.locator),
     progression: row.progression,
-    created: row.created_at,
-    lastModified: row.updated_at,
+    created: sqlTimeToIso(row.created_at),
+    lastModified: sqlTimeToIso(row.updated_at),
   };
 }

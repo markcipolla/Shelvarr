@@ -12,6 +12,7 @@ import {
   setSelfSignup,
   testEmailSettings,
 } from '@/lib/actions/auth';
+import { formatRelativeTime } from '@/lib/utils/dates';
 
 interface UsersTabProps {
   users: User[];
@@ -189,7 +190,7 @@ export function UsersTab({
                   </p>
                   <p className="text-xs text-shelvarr-text-muted">
                     {user.name ? `${user.email} · ` : ''}
-                    {user.lastLoginAt ? `last seen ${user.lastLoginAt}` : 'never signed in'}
+                    {user.lastLoginAt ? `last seen ${formatRelativeTime(user.lastLoginAt)}` : 'never signed in'}
                     {sessions > 0 && ` · ${sessions} active ${sessions === 1 ? 'session' : 'sessions'}`}
                   </p>
                 </div>

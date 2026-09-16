@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import type { Task } from '@/lib/services/queue';
 import { cancelTask, retryTask, type ComicDownloadSubject } from '@/lib/actions/tasks';
 import { formatBytes } from '@/lib/utils/bytes';
+import { formatRelativeTime } from '@/lib/utils/dates';
 import { useToast } from '@/components/ui/Toast';
 
 interface TaskListProps {
@@ -137,8 +138,8 @@ function TaskRow({ task }: { task: Task }) {
           )}
           {organizeResult && <OrganizeResultSummary result={organizeResult} />}
           <div className="text-xs text-shelvarr-text-muted mt-1">
-            Created: {formatDate(task.createdAt)}
-            {task.completedAt && ` • Completed: ${formatDate(task.completedAt)}`}
+            Created: {formatRelativeTime(task.createdAt)}
+            {task.completedAt && ` • Completed: ${formatRelativeTime(task.completedAt)}`}
           </div>
         </div>
       </div>
@@ -351,16 +352,4 @@ function TaskIcon({ type }: { type: string }) {
         </div>
       );
   }
-}
-
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-
-  if (diff < 60000) return 'Just now';
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-
-  return date.toLocaleDateString();
 }
