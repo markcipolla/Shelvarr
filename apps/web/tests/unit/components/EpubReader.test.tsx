@@ -8,12 +8,19 @@
  * while turning pages, and flushed immediately when the reader closes so a
  * quick close-after-turn doesn't lose the debounce window's worth of
  * progress.
+ *
+ * Also covers the offline book cache (E3-6): a cache hit renders instantly
+ * and still refreshes from the network in the background; a cache miss
+ * falls back to the network as before when online; and a cache miss with no
+ * network shows a clear message instead of a spinner that never resolves.
  */
 
 import { describe, it, mock, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
+import 'fake-indexeddb/auto';
 import '../../../tests/setup-react.js';
 import { render, waitFor, cleanup } from '@testing-library/react';
+import { putCachedBlob, epubCacheKey } from '../../../lib/offline/bookCache.js';
 
 let capturedProps: { location: string | number; locationChanged: (cfi: string) => void } | null = null;
 
@@ -192,5 +199,101 @@ describe('EpubReader Component', () => {
       assert.ok(put, 'expected the close button to flush the pending save');
     });
     assert.strictEqual(onClose.mock.callCount(), 1);
+  });
+});
+
+/**
+ * Flips navigator.onLine for the duration of an (async) callback, then
+ * restores it. Awaits the callback before restoring — otherwise the restore
+ * would run before the callback's own awaited work (rendering, waitFor)
+ * ever observes the flipped value.
+ */
+async function withOnlineState<T>(online: boolean, fn: () => T | Promise<T>): Promise<T> {
+  const original = Object.getOwnPropertyDescriptor(globalThis.navigator, 'onLine');
+  Object.defineProperty(globalThis.navigator, 'onLine', { value: online, configurable: true });
+  try {
+    return await fn();
+  } finally {
+    if (original) Object.defineProperty(globalThis.navigator, 'onLine', original);
+  }
+}
+
+describe('EpubReader offline caching', () => {
+  beforeEach(() => {
+    capturedProps = null;
+    fetchCalls = [];
+    progressionResponse = { ok: true, body: null };
+    installFetchMock();
+  });
+
+  afterEach(() => {
+    cleanup();
+    globalThis.fetch = originalFetch;
+    mock.timers.reset();
+  });
+
+  it('renders instantly from a cached copy, and still refreshes from the network in the background', async () => {
+    const cachedBook = { ...book, id: 101 };
+    await putCachedBlob(
+      epubCacheKey(101),
+      new Blob(['cached epub bytes'], { type: 'application/epub+zip' })
+    );
+
+    let releaseFetch: () => void = () => {};
+    const fetchGate = new Promise<void>((resolve) => {
+      releaseFetch = resolve;
+    });
+
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      fetchCalls.push({ url, init });
+      if (url.includes('/file')) {
+        // Block the network response so the test can prove the cached copy
+        // rendered before this ever resolves.
+        await fetchGate;
+        return { ok: true, arrayBuffer: async () => new ArrayBuffer(4) } as unknown as Response;
+      }
+      if (url.includes('/progression')) {
+        const method = init?.method ?? 'GET';
+        return { ok: true, json: async () => (method === 'GET' ? null : null) } as Response;
+      }
+      return { ok: true, json: async () => ({}) } as Response;
+    }) as typeof fetch;
+
+    render(<EpubReader book={cachedBook} onClose={() => {}} />);
+
+    // The cached copy renders without waiting on the (still-blocked) network call.
+    await waitFor(() => assert.ok(capturedProps));
+
+    // The background refresh fetch was still made.
+    await waitFor(() => {
+      assert.ok(fetchCalls.some((c) => c.url === '/api/books/101/file'));
+    });
+
+    releaseFetch();
+  });
+
+  it('falls back to a fresh network fetch when there is no cached copy and the browser is online', async () => {
+    const freshBook = { ...book, id: 102 };
+    render(<EpubReader book={freshBook} onClose={() => {}} />);
+
+    await waitFor(() => assert.ok(capturedProps));
+    assert.ok(fetchCalls.some((c) => c.url === '/api/books/102/file'));
+  });
+
+  it('shows a clear message instead of a spinner when there is no cached copy and no network', async () => {
+    const offlineBook = { ...book, id: 103 };
+
+    await withOnlineState(false, async () => {
+      const { getByText, queryByText } = render(<EpubReader book={offlineBook} onClose={() => {}} />);
+
+      await waitFor(() => {
+        assert.ok(getByText(/isn.t available offline/i));
+      });
+
+      // Never falls back to a network fetch while offline.
+      assert.ok(!fetchCalls.some((c) => c.url === '/api/books/103/file'));
+      // And doesn't get stuck showing the loading spinner.
+      assert.strictEqual(queryByText('Loading book...'), null);
+    });
   });
 });

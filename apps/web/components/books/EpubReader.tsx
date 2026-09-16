@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { ReactReader } from 'react-reader';
 import type { Book } from '@/types';
 import { formatAuthors } from '@/lib/utils/authors';
+import { getCachedBlob, putCachedBlob, epubCacheKey, isOffline } from '@/lib/offline/bookCache';
 
 interface EpubReaderProps {
   book: Book;
@@ -26,25 +27,69 @@ export function EpubReader({ book, onClose }: EpubReaderProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch epub as ArrayBuffer
+  // Fetch epub as ArrayBuffer, checking the offline cache first so a book
+  // that's already been opened once opens instantly and works with no
+  // network at all. Whether or not there's a cache hit, a network fetch
+  // still runs in the background (unless we're offline) so a re-download or
+  // re-scan on the server doesn't leave the cached copy stale forever — it
+  // just doesn't block the initial render when a cached copy exists.
   useEffect(() => {
-    const fetchEpub = async () => {
+    let cancelled = false;
+    const cacheKey = epubCacheKey(book.id);
+
+    const loadFromCache = async () => {
+      const cached = await getCachedBlob(cacheKey);
+      if (cancelled || !cached) return false;
+      const buffer = await cached.arrayBuffer();
+      if (cancelled) return false;
+      setEpubData(buffer);
+      setLoading(false);
+      return true;
+    };
+
+    const fetchAndCache = async (hadCache: boolean) => {
       try {
         const response = await fetch(`/api/books/${book.id}/file`);
         if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.error || 'Failed to load book');
+          const data = await response.json().catch(() => null);
+          throw new Error(data?.error || 'Failed to load book');
         }
         const arrayBuffer = await response.arrayBuffer();
+        if (cancelled) return;
         setEpubData(arrayBuffer);
+        setError(null);
+        putCachedBlob(cacheKey, new Blob([arrayBuffer])).catch(() => {
+          // Non-critical: see bookCache.ts.
+        });
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load book');
+        if (cancelled) return;
+        // A cached copy is already on screen — a failed background refresh
+        // (offline or otherwise) shouldn't interrupt that with an error.
+        if (!hadCache) {
+          setError(err instanceof Error ? err.message : 'Failed to load book');
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
-    fetchEpub();
+    (async () => {
+      const hadCache = await loadFromCache();
+
+      if (isOffline()) {
+        if (!hadCache && !cancelled) {
+          setError('This book isn’t available offline yet. Connect to the internet to open it once, and it will be available offline after that.');
+          setLoading(false);
+        }
+        return;
+      }
+
+      await fetchAndCache(hadCache);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [book.id]);
 
   // Restore reading position from the last-saved progression across this
