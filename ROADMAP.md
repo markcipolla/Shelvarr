@@ -411,6 +411,8 @@ and `downloadHandler`'s extension handling pick it up for free (both already
 read from the scanner's list rather than hardcoding their own — verify that
 holds rather than assuming it).
 
+**Shipped 2026-09-16.**
+
 ### E4-5 · Download from Anna's Archive and Z-Library, not just LibGen
 **Size L. Renumbered from E2-7 2026-09-16** (moved into this epic — it's
 acquisition, not the download-pipeline plumbing E2 was about, and E2 is now
@@ -435,6 +437,19 @@ detection from E1-2/E1-3 rather than treating a bot-check page as "download
 failed." Ship them one at a time.
 
 **Depends on:** E1-1, E1-2, E1-3, E1-6, E2-2.
+
+**Shipped 2026-09-16**, against E1-2/E1-3/E2-2 as built rather than waiting on
+E1-1 or E1-6: `resolveAnnasDownload` prefers the member `fast_download.json`
+API when a key is configured (Settings gained a field for it), falling back
+to the scraped free path otherwise; `resolveZlibraryDownload` authenticates
+(or reuses a cached session) and scrapes the book's detail page for its real
+link. Both feed the same mirror-fallback loop LibGen's download already used
+— pulled out of `downloadHandler` into `downloadBookWithFallback` so all
+three sources share it — and use the existing task-level
+`DownloadLimitReachedError` retry rather than a new per-source daily quota.
+Still open, deliberately: E1-1's proper mirror table (both sources still use
+the same hardcoded-domain-list shape LibGen does) and E1-6's daily-quota
+deferral.
 
 ---
 
@@ -503,10 +518,9 @@ warnings rather than guessed at. Resolve them deliberately.
 
 ## Suggested order
 
-**Status as of 2026-09-16: 28 of 32 original cards shipped.** E2 and E6 are
-done. E3 is done except E3-5 (reader polish) and E3-6 (redefined above —
-offline caching, not streaming). E4 is done except E4-4 and E4-5 (both added
-2026-09-16). E5 is done except E5-2.
+**Status as of 2026-09-16: 30 of 32 original cards shipped.** E2, E4 and E6
+are done. E3 is done except E3-5 (reader polish) and E3-6 (redefined above —
+offline caching, not streaming). E5 is done except E5-2.
 
 **E1 is not fully done, despite an earlier version of this section claiming
 otherwise** — that was wrong, corrected 2026-09-16. Shipped: E1-2, E1-3,
@@ -517,12 +531,9 @@ files still aren't md5-verified), **E1-6** (no daily-quota deferral —
 `DownloadLimitReachedError` triggers mirror fallback within one download,
 per E2-3, but there's no per-source backoff across the whole queue), and
 **E1-7** (no proxy setting; `download_source_config.credentials` is still
-plaintext). None of these block anything already shipped, but E4-5 (below)
-will be more fragile without at least E1-6.
+plaintext). None of these block anything already shipped — E4-5 shipped
+without them, on the task-level retry E2-3 already had, and is more fragile
+for it, most visibly around E1-6.
 
-**What's left:** E1-1, E1-5, E1-6, E1-7, E4-4 (comic archives in a book
-library — small), E4-5 (Anna's Archive/Z-Library downloads — the largest
-remaining piece, and the one most worth reviewing carefully given it's
-anti-bot/auth-flow code that's hard to verify outside a live run), E3-5,
-E3-6, E5-2. None block each other, except E4-5 is stronger with E1-6 done
-first.
+**What's left:** E1-1, E1-5, E1-6, E1-7, E3-5, E3-6, E5-2. None block each
+other.
