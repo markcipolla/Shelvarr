@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   applyLibraryImportAction,
+  rescanLibraryImportAction,
   type LibraryImportRun,
   type ImportProposalView,
 } from '@/lib/actions/comics';
@@ -46,11 +47,11 @@ function isImportable(proposal: ImportProposalView): boolean {
 function failureNote(proposal: ImportProposalView): string {
   switch (proposal.failure) {
     case 'rate-limited':
-      return 'ComicVine cut us off here — its hourly request limit ran out. Re-run the scan later to search this folder.';
+      return 'ComicVine cut us off here — its hourly request limit ran out. Scanning again in an hour picks this folder up.';
     case 'not-searched':
-      return 'Not searched — the scan had already hit ComicVine’s hourly limit. Re-run the scan later.';
+      return 'Not searched — the scan had already hit ComicVine’s hourly limit. Scanning again in an hour picks this folder up.';
     case 'error':
-      return `ComicVine search failed${proposal.failureMessage ? `: ${proposal.failureMessage}` : ''}. Re-run the scan to try again.`;
+      return `ComicVine search failed${proposal.failureMessage ? `: ${proposal.failureMessage}` : ''}. Scanning again retries it.`;
     default:
       return 'ComicVine had no match. Add this one by hand from the Add Comic page.';
   }
@@ -89,6 +90,7 @@ export function LibraryImportReview({
   });
 
   const [applying, setApplying] = useState(false);
+  const [rescanning, setRescanning] = useState(false);
   const [rootFolderId, setRootFolderId] = useState(rootFolders[0]?.id);
   const [result, setResult] = useState<{
     imported: number;
@@ -125,6 +127,19 @@ export function LibraryImportReview({
   const throttled = unsearched.filter(
     (proposal) => proposal.failure === 'rate-limited' || proposal.failure === 'not-searched'
   ).length;
+
+  const handleRescan = async () => {
+    setRescanning(true);
+    setError(null);
+
+    const response = await rescanLibraryImportAction(run?.path ?? '');
+    if (response.success) {
+      router.refresh();
+    } else {
+      setError(response.error ?? 'Could not start the scan');
+    }
+    setRescanning(false);
+  };
 
   const handleApply = async (selection: typeof selected) => {
     setApplying(true);
@@ -167,7 +182,8 @@ export function LibraryImportReview({
         <p className="text-white">Scanning {run.path ?? 'the library'}…</p>
         <p className="text-shelvarr-text-muted text-sm">
           {run.total ? `${run.progress} of ${run.total} folders` : 'Listing folders'} — one
-          ComicVine search per folder, so this takes a few minutes.
+          ComicVine search per folder it has not already matched, so this takes a few
+          minutes and stops early if ComicVine’s hourly limit runs out.
         </p>
         <button
           type="button"
@@ -254,15 +270,25 @@ export function LibraryImportReview({
                 <em>not</em> folders ComicVine has no match for.
               </p>
               <p className="mt-1 text-yellow-300/80">
-                Import what matched, then re-run the scan in an hour to pick up the rest.
+                Import what matched, then scan again in an hour. Folders already matched
+                keep their match, so the next scan spends the whole hour’s quota on the{' '}
+                {unsearched.length} still waiting.
               </p>
             </>
           ) : (
             <p>
               {unsearched.length} folder{unsearched.length === 1 ? '' : 's'} could not be
-              searched — re-run the scan to try again.
+              searched. Scanning again retries just those.
             </p>
           )}
+          <button
+            type="button"
+            onClick={handleRescan}
+            disabled={rescanning || !run.path}
+            className="mt-3 px-3 py-1.5 text-sm rounded-lg border border-yellow-500/50 text-yellow-200 hover:border-yellow-400 disabled:opacity-50"
+          >
+            {rescanning ? 'Starting…' : `Scan the remaining ${unsearched.length} again`}
+          </button>
         </div>
       )}
 

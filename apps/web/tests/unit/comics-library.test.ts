@@ -661,6 +661,157 @@ describe('Comic library', () => {
         db.setSetting('comicvine_api_key', '');
       }
     });
+
+    describe('resuming a throttled scan', () => {
+      /** A folder tree of `names`, and the groups found in it. */
+      async function seedTree(treeName: string, names: string[]) {
+        const tree = join(root, treeName);
+        for (const name of names) {
+          mkdirSync(join(tree, name), { recursive: true });
+          writeFileSync(join(tree, name, `${name} (2012) Issue 001.cbz`), 'x');
+        }
+        const groups = await importLibrary.findImportGroups(tree);
+        return { tree, groups: [...groups].sort((a, b) => a.folder.localeCompare(b.folder)) };
+      }
+
+      /** What a previous scan would have stored for `group`. */
+      function stored(
+        group: { folder: string; info: { series: string; year: number | null }; files: string[] },
+        overrides: Partial<{
+          failure: 'rate-limited' | 'not-searched' | 'error' | null;
+          suggestedComicvineId: number | null;
+          candidates: Array<{ comicvineId: number }>;
+        }> = {}
+      ) {
+        return {
+          folder: group.folder,
+          series: group.info.series,
+          year: group.info.year,
+          fileCount: group.files.length,
+          suggestedComicvineId: null,
+          alreadyAdded: null,
+          failure: null,
+          failureMessage: null,
+          candidates: [],
+          ...overrides,
+        } as Parameters<typeof importLibrary.planLibraryImportScan>[1][number];
+      }
+
+      it('searches only the folders the last scan never answered for', async () => {
+        const { groups } = await seedTree('resume-basic', ['Alpha', 'Beta', 'Gamma']);
+        const [alpha, beta, gamma] = groups as [typeof groups[0], typeof groups[0], typeof groups[0]];
+
+        const plan = importLibrary.planLibraryImportScan(groups, [
+          // Answered: ComicVine had a match.
+          stored(alpha, {
+            suggestedComicvineId: 4050,
+            candidates: [{ comicvineId: 4050 }],
+          }),
+          // Also answered — "no match" is an answer, so it is not re-asked.
+          stored(beta),
+          // Never answered: the scan ran out of quota here.
+          stored(gamma, { failure: 'rate-limited' }),
+        ]);
+
+        assert.deepStrictEqual(
+          plan.toSearch.map((group) => group.folder),
+          [gamma.folder]
+        );
+        assert.deepStrictEqual(
+          plan.carried.map((proposal) => proposal.folder).sort(),
+          [alpha.folder, beta.folder].sort()
+        );
+        // The carried answer keeps its candidates, so re-picking a match still
+        // costs no ComicVine searches.
+        const carriedAlpha = plan.carried.find((p) => p.folder === alpha.folder)!;
+        assert.strictEqual(carriedAlpha.suggestedComicvineId, 4050);
+        assert.strictEqual(carriedAlpha.candidates.length, 1);
+        assert.strictEqual(carriedAlpha.failure, null);
+      });
+
+      it('searches a folder that has appeared since, and forgets one that is gone', async () => {
+        const { groups } = await seedTree('resume-changed', ['Alpha', 'Beta']);
+        const [alpha, beta] = groups as [typeof groups[0], typeof groups[0]];
+
+        const plan = importLibrary.planLibraryImportScan(groups, [
+          stored(alpha),
+          // A folder the last scan saw that is no longer on disk.
+          { ...stored(alpha), folder: join(root, 'resume-changed', 'Deleted') },
+        ]);
+
+        // Beta is new, so it gets searched; Deleted is simply not carried.
+        assert.deepStrictEqual(
+          plan.toSearch.map((group) => group.folder),
+          [beta.folder]
+        );
+        assert.deepStrictEqual(
+          plan.carried.map((proposal) => proposal.folder),
+          [alpha.folder]
+        );
+      });
+
+      it('re-reads the folder rather than trusting the stored file count', async () => {
+        const { tree, groups } = await seedTree('resume-restat', ['Alpha']);
+        const alpha = groups[0]!;
+        writeFileSync(join(tree, 'Alpha', 'Alpha (2012) Issue 002.cbz'), 'x');
+
+        const [regrouped] = await importLibrary.findImportGroups(tree);
+        const plan = importLibrary.planLibraryImportScan(
+          [regrouped!],
+          [stored(alpha, { suggestedComicvineId: 4050 })]
+        );
+
+        assert.strictEqual(plan.carried[0]!.fileCount, 2);
+      });
+
+      it('merges carried and freshly searched proposals back into folder order', async () => {
+        const { groups } = await seedTree('resume-merge', ['Alpha', 'Beta', 'Gamma']);
+        const [alpha, beta, gamma] = groups as [typeof groups[0], typeof groups[0], typeof groups[0]];
+
+        const plan = importLibrary.planLibraryImportScan(groups, [
+          stored(alpha, { suggestedComicvineId: 4050 }),
+          stored(gamma, { failure: 'not-searched' }),
+        ]);
+
+        // Only Beta was actually searched this time round; Gamma was in
+        // toSearch but the run was cancelled before reaching it.
+        const searched = await (async () => {
+          db.setSetting('comicvine_api_key', 'test-key');
+          const originalFetch = global.fetch;
+          global.fetch = mock.fn(async () =>
+            new Response(
+              JSON.stringify({
+                status_code: 1,
+                error: 'OK',
+                number_of_total_results: 0,
+                results: [],
+              }),
+              { status: 200 }
+            )
+          ) as typeof fetch;
+          try {
+            return await importLibrary.proposeLibraryImport(
+              plan.toSearch.filter((group) => group.folder === beta.folder)
+            );
+          } finally {
+            global.fetch = originalFetch;
+            db.setSetting('comicvine_api_key', '');
+          }
+        })();
+
+        const merged = importLibrary.mergeScanResults(groups, plan, searched);
+
+        assert.deepStrictEqual(
+          merged.map((proposal) => proposal.folder),
+          [alpha.folder, beta.folder, gamma.folder]
+        );
+        assert.strictEqual(merged[0]!.failure, null, 'carried answer survives');
+        assert.strictEqual(merged[1]!.failure, null, 'freshly searched');
+        // Gamma was never reached, so it stays in the list as unsearched
+        // rather than vanishing from the review.
+        assert.strictEqual(merged[2]!.failure, 'not-searched');
+      });
+    });
   });
 });
 
