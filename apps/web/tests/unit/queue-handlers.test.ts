@@ -34,8 +34,11 @@ if (canRunTests) {
     runTask,
     getTask,
     createTask,
+    startTask,
+    completeTask,
     failTask,
     cancelTask,
+    failOrphanedRunningTasks,
   } = await import('../../lib/services/queue/index.js');
 
   describe('Queue Service - Advanced Features', () => {
@@ -299,6 +302,46 @@ if (canRunTests) {
 
         // No assertions needed - just checking it doesn't throw
         assert.ok(true);
+      });
+    });
+
+    describe('failOrphanedRunningTasks', () => {
+      it('fails only running tasks, leaving pending and completed ones alone', () => {
+        const runningTask = createTask('scan');
+        startTask(runningTask.id);
+
+        const pendingTask = createTask('metadata');
+
+        const completedTask = createTask('organize');
+        startTask(completedTask.id);
+        completeTask(completedTask.id, { success: true });
+
+        const failedCount = failOrphanedRunningTasks();
+
+        assert.strictEqual(failedCount, 1);
+
+        const updatedRunning = getTask(runningTask.id);
+        assert.ok(updatedRunning);
+        assert.strictEqual(updatedRunning.status, 'failed');
+        assert.strictEqual(updatedRunning.error, 'Interrupted by a server restart');
+        assert.ok(updatedRunning.completedAt);
+
+        const updatedPending = getTask(pendingTask.id);
+        assert.ok(updatedPending);
+        assert.strictEqual(updatedPending.status, 'pending');
+        assert.strictEqual(updatedPending.error, null);
+
+        const updatedCompleted = getTask(completedTask.id);
+        assert.ok(updatedCompleted);
+        assert.strictEqual(updatedCompleted.status, 'completed');
+      });
+
+      it('returns 0 when nothing is running', () => {
+        createTask('metadata');
+
+        const failedCount = failOrphanedRunningTasks();
+
+        assert.strictEqual(failedCount, 0);
       });
     });
   });

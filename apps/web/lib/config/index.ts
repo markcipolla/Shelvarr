@@ -1,7 +1,10 @@
 import { join } from 'path';
 import { initDatabase } from '@shelvarr/db';
 import { initServiceConfig, loadConfigFromEnv, scheduler } from '@shelvarr/services';
-import { configureLogFile } from '@shelvarr/services/utils/logger';
+import { failOrphanedRunningTasks } from '@shelvarr/services/queue/index';
+import { configureLogFile, createLogger } from '@shelvarr/services/utils/logger';
+
+const log = createLogger('config');
 
 const config = loadConfigFromEnv();
 
@@ -21,6 +24,30 @@ if (!logFileDisabled) configureLogFile(logFile);
 // Initialize shared packages
 initDatabase(config.dbPath);
 initServiceConfig(config);
+
+// A task left at `running` when the process died has nothing left to finish
+// it: the in-memory bookkeeping that would otherwise notice died with the
+// process. Reconcile those before the scheduler can queue anything new, so a
+// stale "running" scan doesn't race a freshly scheduled one.
+//
+// Skipped during `next build`, which imports every module to collect page
+// data and must not touch the database, and in tests, which drive the queue
+// directly.
+const orphanRecoveryDisabled =
+  process.env['NODE_ENV'] === 'test' ||
+  process.env['NEXT_PHASE'] === 'phase-production-build';
+
+if (!orphanRecoveryDisabled) {
+  try {
+    const failedCount = failOrphanedRunningTasks();
+    if (failedCount > 0) {
+      log.info('Failed orphaned running tasks left over from a server restart', { count: failedCount });
+    }
+  } catch (error) {
+    // A broken recovery pass must not stop the app from serving.
+    console.error('Failed to reconcile orphaned running tasks:', error);
+  }
+}
 
 // Recurring jobs (metadata refresh, and optionally the GetComics sweep).
 //
