@@ -102,8 +102,13 @@ export {
   claimStalledBookDownloads,
   switchBookDownloadLink,
   addBookDownloadHistory,
+  getBookDownloadHistory,
+  resetBookDownloadForRetry,
+  deleteBookDownload,
   addToBookBlocklist,
   bookBlocklistContains,
+  getBookBlocklist,
+  removeFromBookBlocklist,
   // Comic library ownership
   getComicRootFolders,
   getComicRootFolder,
@@ -168,6 +173,7 @@ export type {
   WantedBook,
   DownloadSourceConfig,
   SourceStatusCache,
+  BookBlocklistEntry,
 } from '@shelvarr/types';
 
 // Backwards-compatible wrapper: reads DB_PATH from env when no arg given

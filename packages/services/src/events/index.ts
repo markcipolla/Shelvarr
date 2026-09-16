@@ -14,7 +14,7 @@
  * only carry it forward from there.
  */
 
-import type { ComicDownloadState } from '@shelvarr/types';
+import type { ComicDownloadState, BookDownloadState } from '@shelvarr/types';
 import type { TaskStatus, TaskType } from '../queue/index';
 
 /** Something happened to a background task. */
@@ -35,14 +35,26 @@ export interface TaskEvent {
   error?: string | null;
 }
 
-/** Something happened to a comic download. */
+/** Something happened to a comic or book download. */
 export interface DownloadEvent {
   kind: 'download';
   /** `removed` is the one where the row is gone and the page must drop it. */
   event: 'progress' | 'state' | 'removed';
   id: number;
+  /**
+   * Which download queue this row belongs to — `comic_downloads` or
+   * `book_downloads`. The two are separate id spaces, so a book download and
+   * a comic download can share the same `id`; a consumer watching one
+   * specific row must check this too, not just `id`.
+   *
+   * Every comic call site predates this field and never sets it, so it is
+   * optional and `undefined` there means 'comic' — nothing already publishing
+   * or consuming a comic download event needs to change.
+   */
+  mediaType?: 'comic' | 'book';
+  /** Only comics have a volume; always null for a book download event. */
   volumeId: number | null;
-  state: ComicDownloadState;
+  state: ComicDownloadState | BookDownloadState;
   progress: number;
   size: number | null;
   error?: string | null;

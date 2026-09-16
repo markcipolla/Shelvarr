@@ -21,7 +21,15 @@ export default function WantedLayout({ children }: { children: React.ReactNode }
             Track books you want to acquire
           </p>
         </div>
-        <AddWantedBookButton />
+        <div className="flex items-center gap-3">
+          <Link
+            href="/downloads"
+            className="px-3 py-1.5 text-sm rounded-lg border border-shelvarr-border text-white hover:border-blue-500"
+          >
+            Downloads
+          </Link>
+          <AddWantedBookButton />
+        </div>
       </div>
 
       {/* Tabs */}
