@@ -5,7 +5,7 @@
  * Uses the cached source statuses (see source-status.ts) to check availability.
  */
 
-import { getSourceStatusCache } from '@shelvarr/db';
+import { getSourceStatusCache, getDownloadSourceConfig } from '@shelvarr/db';
 import {
   detectChallenge,
   SourceBlockedError,
@@ -13,6 +13,16 @@ import {
   recordParseSuccess,
   recordParseFailure,
 } from './challenge';
+import {
+  LinkBrokenError,
+  fetchProbe,
+  buildResolvedDownload,
+  type ResolvedDownload,
+} from '../utils/streaming-download';
+
+// Re-exported so callers (and tests) can reach the download surface through
+// this one module boundary, the same way they already do for search.
+export { LinkBrokenError, type ResolvedDownload };
 
 // Cheap, best-effort signals that a response is *some* Anna's Archive
 // results page — with or without matches — rather than unrecognised markup.
@@ -278,8 +288,131 @@ export async function getAnnasDownloadLinks(md5: string): Promise<string[]> {
   return links;
 }
 
+/** Anna's Archive credentials as stored in `download_source_config.credentials`. */
+export interface AnnasConfig {
+  /** Member API key — see https://annas-archive.org/faq#api. */
+  apiKey?: string;
+}
+
+function getAnnasCredentials(): AnnasConfig | null {
+  const config = getDownloadSourceConfig('annas');
+  if (!config?.credentials) return null;
+  try {
+    return JSON.parse(config.credentials) as AnnasConfig;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Probe one candidate download URL, distinguishing a bot-check page from an
+ * ordinary dead link before deciding which error to raise — unlike the
+ * generic `probeDownloadUrl` (used by LibGen, which has no notion of a
+ * challenge page), an HTML response here is inspected with `detectChallenge`
+ * rather than treated as broken outright.
+ *
+ * @throws SourceBlockedError when the response looks like a Cloudflare (or
+ * similar) challenge page.
+ * @throws LinkBrokenError when it's HTML but not a challenge — a dead link,
+ * an error page, a login wall.
+ */
+async function probeAnnasCandidate(url: string, md5: string): Promise<ResolvedDownload | null> {
+  const response = await fetchProbe(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+  });
+  if (!response) return null;
+
+  const contentType = response.headers.get('content-type');
+  if (contentType?.includes('text/html')) {
+    const html = await response.text().catch(() => '');
+    if (detectChallenge(html, response)) {
+      throw new SourceBlockedError('annas', `${getAnnasDomain()} is behind a bot check right now`);
+    }
+    throw new LinkBrokenError(url, 'Candidate served HTML instead of a file');
+  }
+
+  await response.arrayBuffer().catch(() => undefined);
+  return buildResolvedDownload(response, url, `${md5}.epub`);
+}
+
+/**
+ * Resolve a book's real download link(s) via Anna's Archive.
+ *
+ * Anna's Archive's member "fast download" API
+ * (`/dyn/api/fast_download.json`) is the reliable, not-Cloudflare-gated path
+ * once an operator has configured an API key in Settings — it hands back a
+ * direct file URL with no scraping at all. Without a key (the default),
+ * this falls back to `getAnnasDownloadLinks`, which scrapes the free detail
+ * page for anything that looks like a download link: noisier, more likely
+ * to hit a Cloudflare challenge, but usable with no account.
+ *
+ * Every candidate this finds — from either path — is still only probed for
+ * headers, never its file body, and every one that resolves is returned (not
+ * just the first) so a caller can fall through the list on a later
+ * mid-stream failure, the same shape `resolveLibgenDownloads` already gives
+ * LibGen.
+ */
+export async function resolveAnnasDownload(md5: string): Promise<ResolvedDownload[]> {
+  const resolved: ResolvedDownload[] = [];
+  const credentials = getAnnasCredentials();
+
+  if (credentials?.apiKey) {
+    try {
+      const domain = getAnnasDomain();
+      const apiUrl = `https://${domain}/dyn/api/fast_download.json?md5=${md5}&key=${encodeURIComponent(credentials.apiKey)}`;
+      const response = await fetch(apiUrl, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (response.ok) {
+        const body = (await response.json().catch(() => null)) as
+          | { download_url?: string; error?: string }
+          | null;
+
+        if (body?.download_url) {
+          const candidate = await probeAnnasCandidate(body.download_url, md5);
+          if (candidate) resolved.push(candidate);
+        } else if (body?.error) {
+          console.warn(`Anna's Archive fast_download API error for ${md5}: ${body.error}`);
+        }
+      } else {
+        console.warn(`Anna's Archive fast_download API failed: ${response.status}`);
+      }
+    } catch (error) {
+      console.error(`Anna's Archive fast_download API error for ${md5}:`, error);
+    }
+  }
+
+  if (resolved.length > 0) return resolved;
+
+  // Free path: scrape the detail page for candidate links (noisy,
+  // unfiltered — see getAnnasDownloadLinks) and probe each one. A
+  // SourceBlockedError from either the detail-page scrape or a candidate
+  // probe is allowed to propagate — a bot check on this domain isn't "this
+  // one link didn't work", it's "nothing here will work right now".
+  const candidates = await getAnnasDownloadLinks(md5);
+  for (const link of candidates) {
+    try {
+      const candidate = await probeAnnasCandidate(link, md5);
+      if (candidate) resolved.push(candidate);
+    } catch (error) {
+      if (error instanceof SourceBlockedError) throw error;
+      if (error instanceof LinkBrokenError) {
+        console.warn(`Anna's Archive candidate link broken for ${md5}: ${error.message}`);
+        continue;
+      }
+      console.error(`Error probing Anna's Archive candidate for ${md5}:`, error);
+    }
+  }
+
+  if (resolved.length === 0) console.error("Could not resolve an Anna's Archive download for", md5);
+  return resolved;
+}
+
 export default {
   searchAnnas,
   getAnnasSearchUrl,
   getAnnasDownloadLinks,
+  resolveAnnasDownload,
 };

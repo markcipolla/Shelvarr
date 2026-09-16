@@ -141,7 +141,7 @@ export async function getDownloadConfig(source: string): Promise<DownloadSourceC
 export async function updateDownloadConfig(
   source: string,
   enabled: boolean,
-  credentials?: { email?: string; password?: string }
+  credentials?: Record<string, string>
 ): Promise<{ success: boolean; error?: string }> {
   try {
     upsertDownloadSourceConfig(source, enabled, credentials);
@@ -237,6 +237,40 @@ export async function clearZLibraryCredentials(): Promise<{ success: boolean }> 
     return { success: true };
   } catch (error) {
     console.error('Error clearing Z-Library credentials:', error);
+    return { success: false };
+  }
+}
+
+/**
+ * Save Anna's Archive's member API key (Settings -> Download Sources).
+ *
+ * Unlike Z-Library, Anna's Archive works with no credentials at all — the
+ * free, scraped path (`getAnnasDownloadLinks`) — so this doesn't attempt any
+ * authentication the way `saveZLibraryCredentials` does; it just stores the
+ * key for `resolveAnnasDownload` to prefer over that scraped fallback.
+ */
+export async function saveAnnasApiKey(apiKey: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    upsertDownloadSourceConfig('annas', true, { apiKey });
+    revalidatePath('/settings');
+    return { success: true };
+  } catch (error) {
+    console.error("Error saving Anna's Archive API key:", error);
+    return { success: false, error: 'Failed to save API key' };
+  }
+}
+
+/**
+ * Clear Anna's Archive's member API key. Anna's stays usable afterwards via
+ * the free scraped path — clearing the key doesn't disable the source.
+ */
+export async function clearAnnasApiKey(): Promise<{ success: boolean }> {
+  try {
+    upsertDownloadSourceConfig('annas', true, undefined);
+    revalidatePath('/settings');
+    return { success: true };
+  } catch (error) {
+    console.error("Error clearing Anna's Archive API key:", error);
     return { success: false };
   }
 }

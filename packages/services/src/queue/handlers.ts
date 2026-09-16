@@ -58,6 +58,9 @@ import {
   LinkBrokenError,
   DownloadLimitReachedError,
 } from '../downloads/libgen';
+import { resolveAnnasDownload } from '../downloads/annas';
+import { resolveZlibraryDownload } from '../downloads/zlibrary';
+import type { ResolvedDownload } from '../utils/streaming-download';
 import { searchAllSources } from '../downloads/index';
 import { getSourceStatuses, refreshSourceStatuses } from '../downloads/source-status';
 import { applyReorganization, moveFile, generateNewPath, resolveTargetCollision } from '../organizer';
@@ -544,6 +547,193 @@ async function organizeNewBook(
   return { finalPath, organized };
 }
 
+/** Human-readable name for a download source, for error messages and blocklist entries. */
+function sourceLabel(source: 'libgen' | 'annas' | 'zlibrary'): string {
+  switch (source) {
+    case 'libgen': return 'LibGen';
+    case 'annas': return "Anna's Archive";
+    case 'zlibrary': return 'Z-Library';
+  }
+}
+
+/**
+ * Resolve a source's download candidates, stream the first working one to
+ * disk, and fall through the rest on a broken link or host rate limit —
+ * blocklisting a dead link (and, once every candidate is exhausted, the
+ * book itself) exactly as the original LibGen-only version of this code did.
+ *
+ * Every book source resolves to the same shape — a list of
+ * `ResolvedDownload` candidates, best first — so only *how* that list gets
+ * produced differs between them (LibGen's own mirrors, Anna's Archive's
+ * member API or scraped candidates, Z-Library's single detail-page link),
+ * which is exactly what `resolveCandidates` abstracts. Filename generation,
+ * dedup-suffix handling, the scratch-then-move path, the progress-persist
+ * throttle and the mirror-fallback loop itself are unchanged from the
+ * libgen-only implementation this replaced.
+ */
+async function downloadBookWithFallback(params: {
+  source: 'libgen' | 'annas' | 'zlibrary';
+  resolveCandidates: () => Promise<ResolvedDownload[]>;
+  bookDownloadId: number;
+  bookTitle: string;
+  bookAuthor: string | null;
+  libraryPath: string;
+  extension: string | undefined;
+  wantedBookId?: number;
+  libraryId: number;
+  /** The source-scoped identifier (`${source}:${md5}`) blocklisted once every candidate fails. */
+  downloadUrl: string;
+  signal: AbortSignal;
+}): Promise<{ filename: string; contentType: string; size: number; targetPath: string }> {
+  const {
+    source,
+    resolveCandidates,
+    bookDownloadId,
+    bookTitle,
+    bookAuthor,
+    libraryPath,
+    extension,
+    wantedBookId,
+    libraryId,
+    downloadUrl,
+    signal,
+  } = params;
+
+  const resolvedCandidates = (await resolveCandidates()).filter(
+    (candidate) => !bookBlocklistContains(candidate.url)
+  );
+  if (resolvedCandidates.length === 0) {
+    throw new Error('Failed to download file');
+  }
+
+  let candidate = resolvedCandidates[0]!;
+  const alternates = resolvedCandidates.slice(1);
+  if (alternates.length > 0) {
+    switchBookDownloadLink(bookDownloadId, alternates);
+  }
+
+  const ext = extension || path.extname(candidate.filename).replace('.', '') || 'epub';
+  const authorPart = bookAuthor && bookAuthor !== 'Unknown' ? `${sanitizeFilename(bookAuthor)} - ` : '';
+  const titlePart = sanitizeFilename(bookTitle || 'Unknown');
+  const newFilename = `${authorPart}${titlePart}.${ext}`;
+
+  // Ensure library directory exists
+  if (!fs.existsSync(libraryPath)) {
+    fs.mkdirSync(libraryPath, { recursive: true });
+  }
+
+  // Check if file already exists — pick a numbered suffix instead of overwriting it
+  let targetPath = path.join(libraryPath, newFilename);
+  if (fs.existsSync(targetPath)) {
+    let counter = 1;
+    let altPath = targetPath;
+    while (fs.existsSync(altPath)) {
+      altPath = path.join(libraryPath, `${authorPart}${titlePart} (${counter}).${ext}`);
+      counter++;
+    }
+    targetPath = altPath;
+  }
+
+  // Stream to a scratch file alongside the destination — never straight
+  // to `targetPath` — so a failed or cancelled download can't leave a
+  // half-written file sitting in the library.
+  const partialPath = `${targetPath}.partial`;
+
+  // Throttle book_downloads writes to roughly once per megabyte, matching
+  // the byte-delta throttle comicDownloadHandler already uses for the
+  // same reason: a stream fires onProgress per chunk, which for a multi-MB
+  // file is thousands of events, and each one would otherwise be a SQLite
+  // write.
+  const PROGRESS_PERSIST_BYTES = 1_000_000;
+  let lastPersisted = 0;
+
+  // Try the chosen mirror, falling through to the next resolved candidate on
+  // a broken link or a host rate-limit — both come back as bytes never
+  // arrived, so there is nothing to resume, just a fresh mirror to try. Any
+  // other error (disk full, task cancelled, a bug) fails the download
+  // outright: another mirror would not help.
+  for (;;) {
+    try {
+      await downloadToFile(candidate, partialPath, {
+        signal,
+        onProgress: (bytes, total) => {
+          if (bytes - lastPersisted < PROGRESS_PERSIST_BYTES) return;
+          lastPersisted = bytes;
+          updateBookDownloadProgress(bookDownloadId, bytes, total);
+        },
+      });
+      break;
+    } catch (err) {
+      try { fs.unlinkSync(partialPath); } catch { /* ignore */ }
+
+      if (signal.aborted) throw new Error('Task cancelled');
+
+      const fallbackWorthy =
+        err instanceof LinkBrokenError || err instanceof DownloadLimitReachedError;
+      if (!fallbackWorthy) throw err;
+
+      const message = err instanceof Error ? err.message : String(err);
+
+      if (err instanceof LinkBrokenError) {
+        addToBookBlocklist({
+          downloadUrl: candidate.url,
+          reason: 'link-broken',
+          wantedBookId: wantedBookId ?? null,
+          libraryId,
+          title: bookTitle,
+          author: bookAuthor,
+          source,
+        });
+      }
+
+      const next = alternates.shift();
+      if (!next) {
+        // Every mirror this resolve found is now dead or rate-limited.
+        // Blocklist the book itself (by its source-scoped identifier, not
+        // any one mirror) so auto-search doesn't queue the same md5 again
+        // — mirrors createDownloadsFromPost blocklisting the article's
+        // webLink once every one of its links has failed.
+        addToBookBlocklist({
+          downloadUrl,
+          reason: 'no-working-links',
+          wantedBookId: wantedBookId ?? null,
+          libraryId,
+          title: bookTitle,
+          author: bookAuthor,
+          source,
+        });
+        throw new Error(`All ${sourceLabel(source)} mirrors failed: ${message}`);
+      }
+
+      console.warn(
+        `[book-download] ${candidate.url} failed (${message}); trying ${next.url}`
+      );
+      switchBookDownloadLink(bookDownloadId, alternates);
+      candidate = next;
+      lastPersisted = 0;
+    }
+  }
+
+  if (signal.aborted) {
+    try { fs.unlinkSync(partialPath); } catch { /* ignore */ }
+    throw new Error('Task cancelled');
+  }
+
+  // Only now, with the stream finished cleanly, does the file become
+  // part of the library.
+  moveFile(partialPath, targetPath);
+
+  const fileSize = fs.statSync(targetPath).size;
+  updateBookDownloadProgress(bookDownloadId, fileSize, fileSize);
+
+  return {
+    filename: candidate.filename,
+    contentType: candidate.contentType ?? 'application/octet-stream',
+    size: fileSize,
+    targetPath,
+  };
+}
+
 /**
  * Download task handler
  * Downloads a file from a source and saves it to a library
@@ -675,151 +865,46 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
     // a `.partial` sibling of where the book will actually live, and moving
     // it into place on success is a same-directory rename rather than a
     // cross-directory one.
-    let fileData: { filename: string; contentType: string; size: number } | null = null;
-    let targetPath: string;
-
-    if (data.source === 'libgen') {
-      // Resolve every mirror that actually serves the file, not just the
-      // first (E2-3), so a mid-stream failure below can fall through the
-      // rest without re-scraping every mirror from scratch. A mirror already
-      // known dead is skipped up front, the same way findWorkingLink skips a
-      // blocklisted comic link before ever trying it.
-      const resolvedCandidates = (await resolveLibgenDownloads(data.md5)).filter(
-        (candidate) => !bookBlocklistContains(candidate.url)
-      );
-      if (resolvedCandidates.length === 0) {
-        throw new Error('Failed to download file');
-      }
-
-      let candidate = resolvedCandidates[0]!;
-      const alternates = resolvedCandidates.slice(1);
-      if (alternates.length > 0) {
-        switchBookDownloadLink(bookDownload.id, alternates);
-      }
-
-      const ext = data.extension || path.extname(candidate.filename).replace('.', '') || 'epub';
-      const authorPart = bookAuthor && bookAuthor !== 'Unknown' ? `${sanitizeFilename(bookAuthor)} - ` : '';
-      const titlePart = sanitizeFilename(bookTitle || 'Unknown');
-      const newFilename = `${authorPart}${titlePart}.${ext}`;
-
-      // Ensure library directory exists
-      if (!fs.existsSync(library.path)) {
-        fs.mkdirSync(library.path, { recursive: true });
-      }
-
-      // Check if file already exists — pick a numbered suffix instead of overwriting it
-      targetPath = path.join(library.path, newFilename);
-      if (fs.existsSync(targetPath)) {
-        let counter = 1;
-        let altPath = targetPath;
-        while (fs.existsSync(altPath)) {
-          altPath = path.join(library.path, `${authorPart}${titlePart} (${counter}).${ext}`);
-          counter++;
-        }
-        targetPath = altPath;
-      }
-
-      // Stream to a scratch file alongside the destination — never straight
-      // to `targetPath` — so a failed or cancelled download can't leave a
-      // half-written file sitting in the library.
-      const partialPath = `${targetPath}.partial`;
-
-      // Throttle book_downloads writes to roughly once per megabyte, matching
-      // the byte-delta throttle comicDownloadHandler already uses for the
-      // same reason (fetchLink in this file): a stream fires onProgress per
-      // chunk, which for a multi-MB file is thousands of events, and each one
-      // would otherwise be a SQLite write.
-      const PROGRESS_PERSIST_BYTES = 1_000_000;
-      let lastPersisted = 0;
-
-      // Try the chosen mirror, falling through to the next resolved
-      // candidate on a broken link or a host rate-limit — both come back as
-      // bytes never arrived, so there is nothing to resume, just a fresh
-      // mirror to try. Any other error (disk full, task cancelled, a bug)
-      // fails the download outright: another mirror would not help.
-      for (;;) {
-        try {
-          await downloadToFile(candidate, partialPath, {
-            signal,
-            onProgress: (bytes, total) => {
-              if (bytes - lastPersisted < PROGRESS_PERSIST_BYTES) return;
-              lastPersisted = bytes;
-              updateBookDownloadProgress(bookDownload.id, bytes, total);
-            },
-          });
-          break;
-        } catch (err) {
-          try { fs.unlinkSync(partialPath); } catch { /* ignore */ }
-
-          if (signal.aborted) throw new Error('Task cancelled');
-
-          const fallbackWorthy =
-            err instanceof LinkBrokenError || err instanceof DownloadLimitReachedError;
-          if (!fallbackWorthy) throw err;
-
-          const message = err instanceof Error ? err.message : String(err);
-
-          if (err instanceof LinkBrokenError) {
-            addToBookBlocklist({
-              downloadUrl: candidate.url,
-              reason: 'link-broken',
-              wantedBookId: data.wantedBookId ?? null,
-              libraryId: data.libraryId,
-              title: bookTitle,
-              author: bookAuthor,
-              source: data.source,
-            });
-          }
-
-          const next = alternates.shift();
-          if (!next) {
-            // Every mirror this resolve found is now dead or rate-limited.
-            // Blocklist the book itself (by its source-scoped identifier, not
-            // any one mirror) so auto-search doesn't queue the same md5 again
-            // — mirrors createDownloadsFromPost blocklisting the article's
-            // webLink once every one of its links has failed.
-            addToBookBlocklist({
-              downloadUrl,
-              reason: 'no-working-links',
-              wantedBookId: data.wantedBookId ?? null,
-              libraryId: data.libraryId,
-              title: bookTitle,
-              author: bookAuthor,
-              source: data.source,
-            });
-            throw new Error(`All LibGen mirrors failed: ${message}`);
-          }
-
-          console.warn(
-            `[book-download] ${candidate.url} failed (${message}); trying ${next.url}`
-          );
-          switchBookDownloadLink(bookDownload.id, alternates);
-          candidate = next;
-          lastPersisted = 0;
-        }
-      }
-
-      if (signal.aborted) {
-        try { fs.unlinkSync(partialPath); } catch { /* ignore */ }
-        throw new Error('Task cancelled');
-      }
-
-      // Only now, with the stream finished cleanly, does the file become
-      // part of the library.
-      moveFile(partialPath, targetPath);
-
-      const fileSize = fs.statSync(targetPath).size;
-      updateBookDownloadProgress(bookDownload.id, fileSize, fileSize);
-
-      fileData = {
-        filename: candidate.filename,
-        contentType: candidate.contentType ?? 'application/octet-stream',
-        size: fileSize,
-      };
-    } else {
-      // TODO: Add support for other sources
-      throw new Error(`Download from ${data.source} not yet supported`);
+    // Resolve every candidate that actually serves the file, not just the
+    // first (E2-3), so a mid-stream failure below can fall through the rest
+    // without re-resolving from scratch. A candidate already known dead is
+    // skipped up front, the same way findWorkingLink skips a blocklisted
+    // comic link before ever trying it. Only *how* candidates are resolved
+    // differs between sources — LibGen's own mirrors, Anna's Archive's
+    // member API or scraped links, Z-Library's single detail-page link —
+    // which is exactly what downloadBookWithFallback's resolveCandidates
+    // parameter abstracts.
+    let resolveCandidates: () => Promise<ResolvedDownload[]>;
+    switch (data.source) {
+      case 'libgen':
+        resolveCandidates = () => resolveLibgenDownloads(data.md5);
+        break;
+      case 'annas':
+        resolveCandidates = () => resolveAnnasDownload(data.md5);
+        break;
+      case 'zlibrary':
+        resolveCandidates = () => resolveZlibraryDownload(data.md5);
+        break;
+      default:
+        throw new Error(`Download from ${data.source} not yet supported`);
     }
+
+    const downloaded = await downloadBookWithFallback({
+      source: data.source,
+      resolveCandidates,
+      bookDownloadId: bookDownload.id,
+      bookTitle,
+      bookAuthor,
+      libraryPath: library.path,
+      extension: data.extension,
+      wantedBookId: data.wantedBookId,
+      libraryId: data.libraryId,
+      downloadUrl,
+      signal,
+    });
+
+    const targetPath = downloaded.targetPath;
+    const fileData: { filename: string; contentType: string; size: number } = downloaded;
 
     if (signal.aborted) {
       try { fs.unlinkSync(targetPath); } catch { /* ignore */ }

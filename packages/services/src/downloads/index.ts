@@ -25,7 +25,14 @@ export interface DownloadResult {
   downloadUrl?: string;
   searchUrl: string;
   sourceStatus?: 'up' | 'down' | 'degraded' | 'unknown';
-  md5?: string; // LibGen uses MD5 for downloads
+  /**
+   * The raw identifier `queueDownload` needs to actually fetch this result —
+   * LibGen and Anna's Archive's real md5 hash, or Z-Library's numeric book
+   * id. Named `md5` for historical reasons (LibGen was first); `id` above is
+   * this same value with a source prefix (`libgen-`/`annas-`/`zlib-`) added
+   * for React keys and UI lookups, not something a download call can use.
+   */
+  md5?: string;
 }
 
 export interface SearchLinks {
@@ -150,6 +157,11 @@ export async function searchAllSources(
               downloadUrl: r.downloadUrl,
               searchUrl: r.searchUrl,
               sourceStatus: statusMap.get('zlibrary') as DownloadResult['sourceStatus'],
+              // Not actually an MD5 for Z-Library — this field is reused
+              // across sources as "the identifier a download needs", the
+              // same way LibGen's own md5 is below. resolveZlibraryDownload
+              // takes this raw book id, not the `zlib-` prefixed result id.
+              md5: r.id,
             });
           }
         })
@@ -182,6 +194,11 @@ export async function searchAllSources(
               downloadUrl: r.downloadUrl,
               searchUrl: r.searchUrl,
               sourceStatus: statusMap.get('annas') as DownloadResult['sourceStatus'],
+              // r.id is already the book's real md5 (see AnnasResult) —
+              // carried through under this field the same way LibGen's is,
+              // so resolveAnnasDownload gets the raw hash, not the
+              // `annas-` prefixed result id.
+              md5: r.id,
             });
           }
         })
