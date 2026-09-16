@@ -15,6 +15,11 @@ import {
   sqlTimeToIso,
 } from '@/lib/db';
 import type { ComicVolumeSummary, ComicVolumeDetail } from '@shelvarr/types';
+import type {
+  ImportSearchFailure,
+  StoredImportCandidate,
+  StoredImportProposal,
+} from '@shelvarr/services';
 import { getReadingUserId } from '@/lib/auth';
 import { withComicReadState } from '@/lib/comics/readState';
 
@@ -434,22 +439,17 @@ export async function unblockComicLink(id: number): Promise<{ success: boolean }
 // Library import review
 // ---------------------------------------------------------------------------
 
-export interface ImportCandidateView {
-  comicvineId: number;
-  title: string;
-  year: number | null;
-  volumeNumber: number;
-  publisher: string | null;
-  issueCount: number;
-}
+export type ImportCandidateView = StoredImportCandidate;
 
-export interface ImportProposalView {
-  folder: string;
-  series: string;
-  year: number | null;
-  fileCount: number;
-  suggestedComicvineId: number | null;
-  alreadyAdded: number | null;
+/**
+ * A stored proposal plus the bits resolved at read time.
+ *
+ * `failure` and `failureMessage` are optional here rather than required as the
+ * scan writes them: a result recorded before the scan tracked why a search came
+ * back empty has neither, and an absent reason reads as "ComicVine answered".
+ */
+export interface ImportProposalView
+  extends Omit<StoredImportProposal, 'failure' | 'failureMessage'> {
   /** Slug of `alreadyAdded`, so the review can link straight at the volume. */
   alreadyAddedSlug?: string | null;
   /**
@@ -458,7 +458,13 @@ export interface ImportProposalView {
    * review offers it rather than skipping it.
    */
   alreadyAddedManaged?: boolean;
-  candidates: ImportCandidateView[];
+  /**
+   * Why `candidates` is empty, when the reason is not "ComicVine had no
+   * match". Absent on results recorded before the scan tracked this.
+   */
+  failure?: ImportSearchFailure | null;
+  /** The message behind `failure: 'error'`. */
+  failureMessage?: string | null;
 }
 
 export interface LibraryImportRun {
@@ -576,4 +582,28 @@ export async function applyLibraryImportAction(
       error: error instanceof Error ? error.message : 'Library import failed',
     };
   }
+}
+
+/**
+ * Run the scan again over the same folder tree.
+ *
+ * Folders the last scan already answered for keep their answer, so this costs
+ * ComicVine searches only for the ones it never reached — which is what makes a
+ * library larger than ComicVine's hourly quota finishable, an hour at a time.
+ */
+export async function rescanLibraryImportAction(
+  path: string
+): Promise<{ success: boolean; taskId?: number; error?: string }> {
+  const { comicLibrary, queue } = await import('@shelvarr/services');
+  const { revalidatePath } = await import('next/cache');
+
+  if (!path) return { success: false, error: 'No folder to scan' };
+
+  if (!(await comicLibrary.isComicVineConfigured())) {
+    return { success: false, error: 'Add a ComicVine API key in Settings → Metadata first' };
+  }
+
+  const task = queue.enqueueTask('comic_library_import', { path });
+  revalidatePath('/comics/import');
+  return { success: true, taskId: task.id };
 }
