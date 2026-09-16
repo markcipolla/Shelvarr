@@ -3,7 +3,7 @@
  * Manages async tasks like library scans, metadata fetches, and file reorganization
  */
 
-import { query, queryOne, execute, insertReturning, sqlTimeToIso } from '@shelvarr/db';
+import { query, queryOne, execute, insertReturning, sqlTimeToIso, isoToSqlTime } from '@shelvarr/db';
 import { createLogger } from '../utils/logger';
 import { listenerCount, publish } from '../events/index';
 import type { TaskEvent } from '../events/index';
@@ -43,6 +43,7 @@ interface TaskRow {
   error: string | null;
   created_at: string;
   completed_at: string | null;
+  not_before: string | null;
 }
 
 function rowToTask(row: TaskRow): Task {
@@ -114,6 +115,11 @@ function rateLimitDelay(error: unknown, message: string): number | null {
   return message.includes('429') ? RETRY_DELAY_MS : null;
 }
 
+/** Epoch ms -> the naked-UTC timestamp shape every other timestamp column uses. */
+function msToSqlTime(ms: number): string | null {
+  return isoToSqlTime(new Date(ms).toISOString());
+}
+
 const sleep = (ms: number): Promise<void> =>
   new Promise(resolve => {
     const timer = setTimeout(resolve, ms);
@@ -146,6 +152,11 @@ async function processRetryQueue(): Promise<void> {
         taskId: entry.taskId,
         status: task?.status,
       });
+      // Given up on this entry: whatever moved the task off `pending` should
+      // already have cleared `not_before` itself, but a manual status change
+      // (a test, or a hand edit) wouldn't have — clear it here too so a later
+      // `rebuildRetryQueueFromDatabase()` doesn't resurrect it.
+      clearNotBefore(entry.taskId);
       continue;
     }
 
@@ -153,6 +164,12 @@ async function processRetryQueue(): Promise<void> {
       taskId: entry.taskId,
       queueLength: retryQueue.length,
     });
+
+    // The entry is about to be handed to `runTask`, which starts it running
+    // (or calls `scheduleRetry` again if it hits another rate limit). Either
+    // way this stale `not_before` must go now, so a restart in between
+    // doesn't rebuild an entry that's already been picked up.
+    clearNotBefore(entry.taskId);
 
     try {
       await runTask(entry.taskId);
@@ -171,6 +188,17 @@ async function processRetryQueue(): Promise<void> {
 }
 
 /**
+ * Clear the persisted retry marker on a task's row.
+ *
+ * Called everywhere the in-memory `retryQueue` drops an entry, so a task that
+ * is no longer actually pending-for-retry can't be picked back up by a later
+ * `rebuildRetryQueueFromDatabase()` call after a second restart.
+ */
+function clearNotBefore(taskId: number): void {
+  execute('UPDATE tasks SET not_before = NULL WHERE id = ?', [taskId]);
+}
+
+/**
  * Forget a task's place in the retry queue.
  *
  * Used when something else takes the task over — a cancellation, or the user
@@ -181,16 +209,24 @@ function dropFromRetryQueue(taskId: number): void {
   if (index !== -1) {
     retryQueue.splice(index, 1);
   }
+  clearNotBefore(taskId);
 }
 
 function scheduleRetry(taskId: number, delayMs: number = RETRY_DELAY_MS): void {
+  const notBefore = Date.now() + delayMs;
+
   const existing = retryQueue.find(entry => entry.taskId === taskId);
   if (existing) {
-    existing.notBefore = Date.now() + delayMs;
+    existing.notBefore = notBefore;
   } else {
-    retryQueue.push({ taskId, notBefore: Date.now() + delayMs });
+    retryQueue.push({ taskId, notBefore });
     log.info('Task added to retry queue', { taskId, delayMs, queueLength: retryQueue.length });
   }
+
+  // Persisted alongside the in-memory entry so a server restart can rebuild
+  // the queue from the database instead of losing the task at `pending`
+  // forever — see `rebuildRetryQueueFromDatabase`.
+  execute('UPDATE tasks SET not_before = ? WHERE id = ?', [msToSqlTime(notBefore), taskId]);
 
   // Start processor if not running; it waits for the entry to come due itself.
   if (!retryProcessorRunning) {
@@ -199,6 +235,51 @@ function scheduleRetry(taskId: number, delayMs: number = RETRY_DELAY_MS): void {
       retryProcessorRunning = false;
     });
   }
+}
+
+/**
+ * Rebuild the in-memory retry queue from what was persisted before a restart.
+ *
+ * `scheduleRetry` writes `not_before` onto a task's row as well as into the
+ * in-memory `retryQueue`; the array doesn't survive a restart, but the column
+ * does. Called once at boot (see `failOrphanedRunningTasks`, wired in the same
+ * place), this reads every `pending` task that still carries a `not_before`
+ * and re-queues it, so a rate-limited task left mid-backoff gets picked up
+ * again instead of sitting at `pending` until a human notices.
+ *
+ * A `not_before` already in the past is clamped to "now" rather than skipped,
+ * so an old backoff fires promptly instead of vanishing silently.
+ *
+ * Returns how many tasks were re-queued, for a log line.
+ */
+export function rebuildRetryQueueFromDatabase(): number {
+  const rows = query<TaskRow>(
+    "SELECT * FROM tasks WHERE status = 'pending' AND not_before IS NOT NULL",
+    []
+  );
+
+  const now = Date.now();
+  for (const row of rows) {
+    const persisted = Date.parse(sqlTimeToIso(row.not_before!));
+    const notBefore = Number.isNaN(persisted) ? now : Math.max(persisted, now);
+
+    if (!retryQueue.some(entry => entry.taskId === row.id)) {
+      retryQueue.push({ taskId: row.id, notBefore });
+    }
+  }
+
+  if (rows.length > 0) {
+    log.info('Rebuilt retry queue from database', { count: rows.length });
+  }
+
+  if (retryQueue.length > 0 && !retryProcessorRunning) {
+    processRetryQueue().catch(err => {
+      log.error('Retry processor error', { error: err });
+      retryProcessorRunning = false;
+    });
+  }
+
+  return rows.length;
 }
 
 export interface TaskHandler {
@@ -720,6 +801,7 @@ export default {
   completeTask,
   failTask,
   failOrphanedRunningTasks,
+  rebuildRetryQueueFromDatabase,
   cancelTask,
   cleanupOldTasks,
   runTask,
