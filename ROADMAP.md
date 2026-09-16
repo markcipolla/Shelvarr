@@ -271,27 +271,6 @@ template set in Settings → Organize, and skips the EXDEV-safe mover at
 **Acceptance:** a downloaded book lands at the same path the organize preview
 predicts for it.
 
-### E2-7 · Download from Anna's Archive and Z-Library, not just LibGen
-**Size L.** `downloadHandler` throws `Download from ${source} not yet
-supported` for both, while `isSourceEnabled` defaults them on, so they appear
-in every search. `DownloadSourcesModal.tsx:103` papers over it by opening a
-browser tab.
-
-- **Anna's Archive:** `getAnnasDownloadLinks(md5)` already exists and is unused.
-  The free path is `/slow_download/<md5>/0/0` behind a countdown and a
-  Cloudflare gate; the reliable path is the member API
-  (`/dyn/api/fast_download.json`) with a key. Support the key path properly and
-  treat the free path as best-effort, deferring on a waitlist rather than
-  failing (E1-6).
-- **Z-Library:** `authenticateZLibrary` exists and returns `remix_userid` /
-  `remix_userkey` cookies; nothing consumes them. Z-Library also issues a
-  per-account personal domain after login, which the hardcoded domain list
-  can't represent — another reason for E1-1.
-
-Ship them one at a time, behind E1-2/E1-3 so failures are legible.
-
-**Depends on:** E1-1, E1-2, E1-3, E1-6, E2-1, E2-2.
-
 ---
 
 ## E3 — Reading
@@ -363,10 +342,26 @@ Settings persist per user, so they follow you between devices — and per the
 existing brand notes, no serif fonts in the chrome, though the *book* should
 absolutely offer one.
 
-### E3-6 · Start reading before the whole book has downloaded
-**Size S.** The reader fetches the entire EPUB as an `ArrayBuffer` before
-rendering anything, with a spinner and no indication of how long. Stream it,
-or at minimum show real progress.
+### E3-6 · Make an opened book available offline
+**Size M. Redefined 2026-09-16** — this was "start reading before the whole
+book has downloaded" (progressive/streaming loading). Decided against: the
+reader already downloads the whole file before rendering, and that's staying
+— always download first, then cache, rather than streaming. What's missing
+is the cache half. Once fetched, an EPUB isn't kept anywhere durable: closing
+the reader and reopening later re-fetches the whole file, and there's no way
+to read a book you've already opened once without a network connection.
+
+Cache a book's bytes client-side (IndexedDB, not the HTTP cache — it isn't
+durable enough to promise offline access) keyed by book id, checked before
+the network fetch, refreshed in the background when online. This is
+web-reader-only: it needs no server changes, and doesn't attempt full PWA
+offline navigation (a service worker caching the app shell so `/books/:id`
+loads from a cold, offline start) — this app has no PWA infrastructure at all
+today (no manifest, no service worker), and that's a materially larger,
+separate undertaking than caching one reader's content. Note that as a
+follow-up if it's ever wanted. Extending the same cache utility to
+`BookPageReader`/`ComicReader`'s page images is a natural, low-risk addition
+once the EPUB case works — worth doing in the same pass if it stays simple.
 
 ---
 
@@ -402,6 +397,44 @@ the codebase — everything is scan-on-demand or scan-on-schedule.
 A drop target on the book and wanted pages, plus an optional watched folder
 that imports, matches and files what appears in it. A watched folder also
 closes the loop for anyone running a separate downloader.
+
+**Shipped 2026-09-16** as a wanted-list upload (`POST /api/wanted/:id/import`)
+— the watched-folder half is still open, noted below as E4-4.
+
+### E4-4 · Let a book library hold comic archives too
+**Size S. Added 2026-09-16.** E4-3's upload only accepts what the book
+scanner already recognises — epub/pdf/mobi/azw/azw3 — so a CBZ/CBR can't be
+manually imported into a book library, even though `BookPageReader` (E3-4)
+can already read one once it's there by some other means. Add `cbz`/`cbr` to
+the book scanner's recognised extensions, and confirm the manual-import route
+and `downloadHandler`'s extension handling pick it up for free (both already
+read from the scanner's list rather than hardcoding their own — verify that
+holds rather than assuming it).
+
+### E4-5 · Download from Anna's Archive and Z-Library, not just LibGen
+**Size L. Renumbered from E2-7 2026-09-16** (moved into this epic — it's
+acquisition, not the download-pipeline plumbing E2 was about, and E2 is now
+otherwise complete). `downloadHandler` throws `Download from ${source} not
+yet supported` for both, while `isSourceEnabled` defaults them off (E1-8) so
+they only run once an operator opts in.
+
+- **Anna's Archive:** `getAnnasDownloadLinks(md5)` already exists and is
+  unused. The free path is `/slow_download/<md5>/0/0` behind a countdown and
+  a Cloudflare gate; the reliable path is the member API
+  (`/dyn/api/fast_download.json`) with a key. Support the key path properly
+  and treat the free path as best-effort, deferring on a waitlist rather than
+  failing (E1-6).
+- **Z-Library:** `authenticateZLibrary` exists and returns `remix_userid` /
+  `remix_userkey` cookies; nothing consumes them. Z-Library also issues a
+  per-account personal domain after login, which the hardcoded mirror list
+  can't represent — another reason for E1-1.
+
+Wire both through the shared streaming downloader (`streaming-download.ts`,
+from E2-2) the same way LibGen already is, reusing the challenge/parse-failure
+detection from E1-2/E1-3 rather than treating a bot-check page as "download
+failed." Ship them one at a time.
+
+**Depends on:** E1-1, E1-2, E1-3, E1-6, E2-2.
 
 ---
 
@@ -470,19 +503,12 @@ warnings rather than guessed at. Resolve them deliberately.
 
 ## Suggested order
 
-**Now — bugs and untruths.** E2-0 (silent data loss), E3-1 (a README claim
-that isn't true), E6-1 (stuck tasks). All small, all high-signal.
+**Status as of 2026-09-16: 28 of 32 original cards shipped.** Everything in
+E1, E2 and E6 is done. E3 is done except E3-5 (reader polish) and E3-6
+(redefined above — offline caching, not streaming). E4 is done except E4-4
+and E4-5 (both added 2026-09-16). E5 is done except E5-2.
 
-**Next — stop lying about the sources.** E1-2, E1-3, E1-8, E1-4. Until a
-failure is distinguishable from an empty shelf, nothing built on top of these
-sources can be trusted, and no bug report about them is actionable.
-
-**Then — the book pipeline.** E2-1 → E2-2 → E2-3/E2-4/E2-5/E2-6, with E1-1,
-E1-5 and E1-6 folded in as they become relevant. This is the biggest block of
-work and the one that makes books feel like the same product as comics.
-
-**Then — reading.** E3-2 first (it fixes a live server stall regardless), then
-E3-3 and E3-4 on top of it, then E3-5.
-
-**Then — the rest.** E2-7, E4-1, E4-2, E4-3, E5-1, E5-2, E6-2, E6-3, E6-4,
-E6-5.
+**What's left:** E4-4 (comic archives in a book library — small), E4-5
+(Anna's Archive/Z-Library downloads — the largest remaining piece, and the
+one most worth reviewing carefully given it's anti-bot/auth-flow code that's
+hard to verify outside a live run), E3-5, E3-6, E5-2. None block each other.
