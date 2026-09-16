@@ -4,6 +4,22 @@ import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync, readFileSync
 import { join } from 'path';
 import { tmpdir } from 'os';
 
+// The download handler's static import of the LibGen client must be mocked
+// before that module is ever loaded (a dynamic `import()` further down still
+// counts as "loaded" the first time it runs), so this has to sit at the top
+// of the file, before any `it()` body gets a chance to run.
+const mockDownloadFile = mock.fn(async (_md5: string) => ({
+  buffer: Buffer.from('new downloaded content'),
+  filename: 'source-name-is-ignored.epub',
+  contentType: 'application/epub+zip',
+}));
+
+mock.module('@shelvarr/services/downloads/libgen', {
+  namedExports: {
+    downloadFile: mockDownloadFile,
+  },
+});
+
 // Check if we can use native modules by actually trying to create a database
 let canRunTests = true;
 const checkDir = mkdtempSync(join(tmpdir(), 'shelvarr-check-'));
@@ -636,6 +652,58 @@ if (canRunTests) {
         assert.ok(updated);
         assert.strictEqual(updated.status, 'failed');
         assert.ok(updated.error?.includes('not yet supported'));
+      });
+
+      it('should not overwrite a book you already have — it saves the new download under a numbered suffix', async () => {
+        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+        registerAllHandlers();
+
+        // This is the exact filename the handler generates for this
+        // author/title/extension: "{author} - {title}.{ext}".
+        const existingPath = join(testLibPath, 'Test Author - Test Book.epub');
+        writeFileSync(existingPath, 'existing content — the book you already have');
+
+        // Sit a plain file where the organizer would want to create the
+        // author folder, so its later rename fails and is swallowed by the
+        // handler's own "keep original location" fallback. That isolates
+        // this test to the Step 3 dedup logic under test, without it being
+        // masked by Step 6 successfully relocating the file afterwards.
+        // Cleaned up below — later tests in this file use "Test Author" as
+        // a real author folder name.
+        const blockingPath = join(testLibPath, 'Test Author');
+        writeFileSync(blockingPath, 'not a directory');
+
+        try {
+          const task = createTask('download', {
+            source: 'libgen',
+            md5: 'abc123',
+            title: 'Test Book',
+            author: 'Test Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(task.id);
+
+          const updated = getTask(task.id);
+          assert.ok(updated);
+          assert.strictEqual(updated.status, 'completed');
+
+          // The book you already had is untouched.
+          assert.strictEqual(
+            readFileSync(existingPath, 'utf8'),
+            'existing content — the book you already have'
+          );
+
+          // The new download landed at a numbered-suffix path instead.
+          const dedupedPath = join(testLibPath, 'Test Author - Test Book (1).epub');
+          assert.ok(existsSync(dedupedPath));
+          assert.strictEqual(readFileSync(dedupedPath, 'utf8'), 'new downloaded content');
+
+          const data = updated.data as { filePath: string };
+          assert.strictEqual(data.filePath, dedupedPath);
+        } finally {
+          rmSync(blockingPath, { force: true });
+        }
       });
     });
 
