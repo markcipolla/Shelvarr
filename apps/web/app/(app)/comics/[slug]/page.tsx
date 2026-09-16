@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { getComic, getComicProgress, isComicRead, resolveComicRef } from '@/lib/actions/comics';
-import { MarkIssueReadButton } from '@/components/comics/MarkIssueReadButton';
+import { ComicIssueRow } from '@/components/comics/ComicIssueRow';
 import { VolumeActions } from '@/components/comics/VolumeActions';
 import { BookCover } from '@/components/ui/BookCover';
 import { CheckIcon } from '@/components/ui/Icons';
@@ -115,66 +115,14 @@ export default async function ComicDetailPage({ params }: PageProps) {
         <div>
           <h2 className="text-lg font-semibold text-white mb-3">Issues</h2>
           <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg divide-y divide-shelvarr-border">
-            {volume.issues.map((issue) => {
-              const progress = progressByIssue.get(issue.id);
-              return (
-              <div key={issue.id} className="flex items-center justify-between p-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-3">
-                    <span className="text-shelvarr-text-muted text-sm font-mono w-10 flex-shrink-0">
-                      #{issue.issue_number}
-                    </span>
-                    {issue.title && (
-                      <span className="text-white truncate">
-                        {issue.title}
-                      </span>
-                    )}
-                  </div>
-                  {issue.date && (
-                    <p className="text-xs text-shelvarr-text-muted mt-1" style={{ paddingLeft: '3.25rem' }}>
-                      {issue.date}
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 text-xs">
-                  {(() => {
-                    if (progress?.completed) {
-                      return (
-                        <span className="bg-blue-600/20 text-blue-400 px-2 py-1 rounded">
-                          Read
-                        </span>
-                      );
-                    }
-                    if (progress && progress.page > 0) {
-                      const label = progress.total
-                        ? `Reading ${progress.page}/${progress.total}`
-                        : `Reading p.${progress.page}`;
-                      return (
-                        <span className="bg-amber-600/20 text-amber-400 px-2 py-1 rounded">
-                          {label}
-                        </span>
-                      );
-                    }
-                    if (issue.files.length > 0) {
-                      return (
-                        <span className="bg-green-600/20 text-green-400 px-2 py-1 rounded">
-                          Downloaded
-                        </span>
-                      );
-                    }
-                    return (
-                      <span className="bg-shelvarr-bg text-shelvarr-text-muted px-2 py-1 rounded">
-                        Missing
-                      </span>
-                    );
-                  })()}
-                  {!progress?.completed && issue.files.length > 0 && (
-                    <MarkIssueReadButton issueId={issue.id} total={progress?.total} />
-                  )}
-                </div>
-              </div>
-              );
-            })}
+            {volume.issues.map((issue) => (
+              <ComicIssueRow
+                key={issue.id}
+                issue={issue}
+                volumeTitle={volume.title}
+                progress={progressByIssue.get(issue.id)}
+              />
+            ))}
           </div>
         </div>
       )}
