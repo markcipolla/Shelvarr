@@ -66,13 +66,6 @@ export default function WantedListScreen(_props: Props) {
           >
             <Text style={styles.headerButtonText}>＋</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Settings')}
-            style={styles.headerButton}
-            accessibilityLabel="Settings"
-          >
-            <Text style={styles.headerSettingsText}>⚙</Text>
-          </TouchableOpacity>
         </View>
       ),
     });
@@ -243,7 +236,6 @@ const styles = StyleSheet.create({
   headerButtons: { flexDirection: 'row' },
   headerButton: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
   headerButtonText: { color: '#8b5e3c', fontSize: 30, fontWeight: '600', marginTop: -2 },
-  headerSettingsText: { color: '#222', fontSize: 24 },
   list: { padding: 12 },
   row: {
     flexDirection: 'row',

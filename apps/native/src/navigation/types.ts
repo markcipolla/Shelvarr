@@ -6,6 +6,7 @@ export type MainTabParamList = {
   Books: undefined;
   Comics: undefined;
   Wanted: undefined;
+  Settings: undefined;
 };
 
 export type RootStackParamList = {
