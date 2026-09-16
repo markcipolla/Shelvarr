@@ -130,6 +130,13 @@ mock.module('@shelvarr/services/downloads/libgen', {
     downloadToFile: mockDownloadToFile,
     LinkBrokenError: MockLinkBrokenError,
     DownloadLimitReachedError: MockDownloadLimitReachedError,
+    // Not used by any test in this file, but `downloads/index.ts` (E4-2 pulled
+    // in via handlers.ts's `searchAllSources` import) re-exports these from
+    // this same module, so a full mock of the module has to provide them too
+    // or that re-export fails to link.
+    searchLibGen: mock.fn(async () => []),
+    getLibGenSearchUrl: mock.fn((query: string) => `https://libgen.example/search?q=${query}`),
+    getLibGenDownloadUrl: mock.fn((md5: string) => `https://libgen.example/get.php?md5=${md5}`),
   },
 });
 
@@ -159,6 +166,7 @@ if (canRunTests) {
     initDatabase,
     closeDatabase,
     execute,
+    queryOne,
     getBookDownloads,
     getBookDownload,
     addBookDownload,
@@ -805,6 +813,69 @@ if (canRunTests) {
         assert.strictEqual(downloads.length, 1);
         assert.strictEqual(downloads[0]!.state, 'failed');
         assert.ok(downloads[0]!.error?.includes('not yet supported'));
+      });
+
+      it('reverts a "searching" wanted book back to "wanted" when its queued download fails (E4-2)', async () => {
+        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+        registerAllHandlers();
+
+        execute(
+          'INSERT INTO wanted_books (id, title, author, status) VALUES (?, ?, ?, ?)',
+          [1, 'Wanted Book', 'Author', 'searching']
+        );
+
+        // 'annas' isn't a supported download source yet, so this fails fast
+        // and deterministically without touching the (mocked) libgen client.
+        const task = createTask('download', {
+          source: 'annas',
+          md5: 'abc123',
+          title: 'Wanted Book',
+          author: 'Author',
+          extension: 'epub',
+          libraryId: 1,
+          wantedBookId: 1,
+        });
+        await runTask(task.id);
+
+        assert.strictEqual(getTask(task.id)?.status, 'failed');
+
+        const wanted = queryOne<{ status: string }>(
+          'SELECT status FROM wanted_books WHERE id = ?',
+          [1]
+        );
+        assert.strictEqual(wanted?.status, 'wanted');
+      });
+
+      it('does not stomp a wanted book that was never "searching" when its download fails', async () => {
+        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+        registerAllHandlers();
+
+        // A manual one-off download queued straight from the download modal
+        // never sets 'searching' — the wanted book stays at whatever it was
+        // (here, already 'acquired' by some other means) throughout.
+        execute(
+          'INSERT INTO wanted_books (id, title, author, status) VALUES (?, ?, ?, ?)',
+          [1, 'Wanted Book', 'Author', 'acquired']
+        );
+
+        const task = createTask('download', {
+          source: 'annas',
+          md5: 'abc123',
+          title: 'Wanted Book',
+          author: 'Author',
+          extension: 'epub',
+          libraryId: 1,
+          wantedBookId: 1,
+        });
+        await runTask(task.id);
+
+        assert.strictEqual(getTask(task.id)?.status, 'failed');
+
+        const wanted = queryOne<{ status: string }>(
+          'SELECT status FROM wanted_books WHERE id = ?',
+          [1]
+        );
+        assert.strictEqual(wanted?.status, 'acquired');
       });
 
       it('should not overwrite a book you already have — it saves the new download under a numbered suffix', async () => {

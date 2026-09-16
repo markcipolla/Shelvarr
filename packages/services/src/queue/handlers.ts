@@ -12,6 +12,8 @@ import {
   queryOne,
   execute,
   markWantedBookAsAcquired,
+  getWantedBooks,
+  updateWantedBook,
   addComicDownloadHistory,
   addToComicBlocklist,
   claimStalledComicDownloads,
@@ -56,6 +58,7 @@ import {
   LinkBrokenError,
   DownloadLimitReachedError,
 } from '../downloads/libgen';
+import { searchAllSources } from '../downloads/index';
 import { getSourceStatuses, refreshSourceStatuses } from '../downloads/source-status';
 import { applyReorganization, moveFile, generateNewPath, resolveTargetCollision } from '../organizer';
 import { getOrCreateAuthor, fetchAuthorMetadata, getAuthorByName } from '../authors';
@@ -484,6 +487,24 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
       downloadUrl,
       success: false,
     });
+
+    // bookSearchAllHandler (E4-2) moves a wanted book to 'searching' before
+    // queuing this task, so a later sweep doesn't queue the same book again
+    // while a download is already in flight. If that download then fails —
+    // or is cancelled — nothing else ever puts it back to 'wanted', which
+    // would otherwise leave it stuck at 'searching' forever, invisible to
+    // every future sweep. The status check guards against clobbering
+    // 'acquired' (an unrelated metadata match that landed first) or any
+    // other status a person set by hand; a manual one-off download (started
+    // straight from the download modal, which never sets 'searching') is
+    // also left alone by this same check, since its status is still
+    // 'wanted' and the UPDATE simply matches no rows.
+    if (data.wantedBookId) {
+      execute(
+        "UPDATE wanted_books SET status = 'wanted' WHERE id = ? AND status = 'searching'",
+        [data.wantedBookId]
+      );
+    }
   };
 
   try {
@@ -1596,6 +1617,94 @@ const comicSearchAllHandler: TaskHandler = async (taskId, onProgress, signal) =>
 };
 
 /**
+ * The library a book auto-search downloads into.
+ *
+ * A wanted book isn't tied to any library — unlike a comic volume, which is
+ * already filed under a root folder by the time auto-search runs — so this
+ * picks the first library configured to hold books (`libraries.type =
+ * 'book'`, ordered by id). If several exist, always landing on the same one
+ * is a documented limitation rather than a real choice: a "default download
+ * library" setting would be the proper fix, but that's a separate card.
+ */
+function getDefaultBookLibrary(): { id: number; name: string } | null {
+  return queryOne<{ id: number; name: string }>(
+    "SELECT id, name FROM libraries WHERE type = 'book' ORDER BY id ASC LIMIT 1"
+  );
+}
+
+/**
+ * Auto-search every still-wanted book, queueing a download for whatever the
+ * search turns up. This is the book equivalent of comicSearchAllHandler —
+ * the scheduled sweep for E4-2 — except a book on the wanted list sits there
+ * unsearched today, with nothing but a person opening the download modal by
+ * hand to ever move it along.
+ *
+ * A book moves to 'searching' as soon as a result is found and its download
+ * is queued, so a later sweep doesn't queue the same book a second time
+ * while that download is still in flight. A book with no results is left at
+ * 'wanted' — there's nothing to queue, and the next sweep should try again.
+ * `downloadHandler`'s failure path (see `recordFailure` above) is what moves
+ * a book back from 'searching' to 'wanted' if its queued download doesn't
+ * pan out.
+ */
+const bookSearchAllHandler: TaskHandler = async (taskId, onProgress, signal) => {
+  const data = comicTaskData<{ limit?: number }>(taskId, 'book search configuration');
+
+  const library = getDefaultBookLibrary();
+  if (!library) {
+    return {
+      searched: 0,
+      queued: 0,
+      failed: [],
+      reason: 'No book library configured — add one before auto-search can download anything.',
+    };
+  }
+
+  const wantedBooks = getWantedBooks('wanted').slice(0, data.limit ?? 100);
+  onProgress(0, wantedBooks.length);
+
+  let queued = 0;
+  const failed: Array<{ wantedBookId: number; error: string }> = [];
+
+  for (const [index, book] of wantedBooks.entries()) {
+    if (signal.aborted) break;
+    try {
+      // Same query shape the manual download modal builds from a wanted
+      // book (title + author, see DownloadSourcesModal.tsx), so auto-search
+      // finds what a person searching by hand would find.
+      const searchQuery = `${book.title} ${book.author || ''}`.trim();
+      const { results } = await searchAllSources(searchQuery, { isbn: book.isbn || undefined });
+
+      if (results.length > 0) {
+        // The sort in searchAllSources already puts the best-status,
+        // best-format-preference, best-title-match result first — no
+        // second ranking pass here.
+        const best = results[0]!;
+        updateWantedBook(book.id, { status: 'searching' });
+        enqueueTask('download', {
+          source: best.source,
+          md5: best.md5,
+          title: best.title,
+          author: best.author,
+          extension: best.extension,
+          libraryId: library.id,
+          wantedBookId: book.id,
+        });
+        queued += 1;
+      }
+    } catch (error) {
+      failed.push({
+        wantedBookId: book.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    onProgress(index + 1, wantedBooks.length);
+  }
+
+  return { searched: wantedBooks.length, queued, failed, libraryId: library.id };
+};
+
+/**
  * Walk a folder tree and work out which ComicVine volume each folder is.
  *
  * Proposals are returned rather than applied — adopting the wrong series would
@@ -1670,6 +1779,7 @@ export function registerAllHandlers(): void {
   registerTaskHandler('book_scan_all', bookScanAllHandler);
   registerTaskHandler('book_organize_all', bookOrganizeAllHandler);
   registerTaskHandler('book_resume', bookResumeHandler);
+  registerTaskHandler('book_search_all', bookSearchAllHandler);
 
   // Comic acquisition: search GetComics, then fetch and import what it found.
   registerTaskHandler('comic_search', comicSearchHandler);

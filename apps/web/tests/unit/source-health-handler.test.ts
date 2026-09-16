@@ -27,6 +27,11 @@ mock.module('@shelvarr/services/downloads/source-status', {
   namedExports: {
     refreshSourceStatuses: () => refreshSourceStatusesMock(),
     getSourceStatuses: () => getSourceStatusesMock(),
+    // Not used by this file's tests, but `downloads/index.ts` (E4-2 pulled it
+    // in via handlers.ts's `searchAllSources` import) re-exports this from
+    // the same module, so a full mock has to provide it too or that
+    // re-export fails to link.
+    checkSourceHealth: () => Promise.resolve({ status: 'unknown' }),
   },
 });
 

@@ -50,11 +50,24 @@ describe('Scheduler', () => {
     assert.strictEqual(scheduler.getSchedule('comic_update_all')!.enabled, true);
     // Downloading things unprompted should be opt-in.
     assert.strictEqual(scheduler.getSchedule('comic_search_all')!.enabled, false);
+    // Same reasoning applies to the book equivalent (E4-2).
+    assert.strictEqual(scheduler.getSchedule('book_search_all')!.enabled, false);
     // Finishing a download that was already asked for is not unprompted, so
     // the resume sweep runs by default.
     assert.strictEqual(scheduler.getSchedule('comic_resume')!.enabled, true);
     // Same reasoning applies on the book side.
     assert.strictEqual(scheduler.getSchedule('book_resume')!.enabled, true);
+  });
+
+  it('runs the book search sweep once a day with the same limit as comics (E4-2)', () => {
+    scheduler.ensureDefaultSchedules();
+
+    const schedule = scheduler.getSchedule('book_search_all')!;
+    assert.strictEqual(schedule.taskType, 'book_search_all');
+    assert.strictEqual(schedule.intervalSeconds, 24 * 60 * 60);
+    assert.strictEqual(schedule.category, 'books');
+    assert.deepStrictEqual(schedule.payload, { limit: 100 });
+    assert.strictEqual(schedule.enabled, false);
   });
 
   it('resumes interrupted book downloads every 15 minutes, matching the comic sweep', () => {

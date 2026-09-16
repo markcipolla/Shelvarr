@@ -81,6 +81,17 @@ export const DEFAULT_SCHEDULES: ScheduleDefinition[] = [
     enabledByDefault: true,
   },
   {
+    name: 'book_search_all',
+    taskType: 'book_search_all',
+    intervalSeconds: 24 * HOUR,
+    description: 'Search for wanted books on shadow-library sources and download them',
+    category: 'books',
+    payload: { limit: 100 },
+    // Mirrors comic_search_all: this hits external, unofficial sources, so it
+    // is an explicit opt-in rather than something that runs unprompted.
+    enabledByDefault: false,
+  },
+  {
     name: 'comic_update_all',
     taskType: 'comic_update_all',
     intervalSeconds: 24 * HOUR,
