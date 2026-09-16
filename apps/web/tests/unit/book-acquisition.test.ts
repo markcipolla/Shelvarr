@@ -245,6 +245,27 @@ describe('Book acquisition', () => {
       const row = db.getDb().prepare('SELECT reason FROM book_blocklist WHERE download_url = ?').get('libgen:dupe') as { reason: string };
       assert.strictEqual(row.reason, 'added-by-user');
     });
+
+    it('lists blocklist entries newest-first (E2-5)', () => {
+      db.addToBookBlocklist({ downloadUrl: 'libgen:one', reason: 'link-broken', title: 'One' });
+      db.addToBookBlocklist({ downloadUrl: 'libgen:two', reason: 'no-working-links', title: 'Two' });
+
+      const entries = db.getBookBlocklist();
+      assert.strictEqual(entries.length, 2);
+      assert.strictEqual(entries[0]!.downloadUrl, 'libgen:two');
+      assert.strictEqual(entries[0]!.title, 'Two');
+      assert.strictEqual(entries[1]!.downloadUrl, 'libgen:one');
+    });
+
+    it('removes one entry, leaving the rest (E2-5)', () => {
+      db.addToBookBlocklist({ downloadUrl: 'libgen:one', reason: 'link-broken' });
+      db.addToBookBlocklist({ downloadUrl: 'libgen:two', reason: 'link-broken' });
+
+      const [first] = db.getBookBlocklist().sort((a, b) => a.id - b.id);
+      assert.ok(db.removeFromBookBlocklist(first!.id));
+      assert.strictEqual(db.getBookBlocklist().length, 1);
+      assert.strictEqual(db.removeFromBookBlocklist(999999), false);
+    });
   });
 
   describe('history', () => {
@@ -269,6 +290,73 @@ describe('Book acquisition', () => {
       assert.strictEqual(rows.length, 2);
       assert.strictEqual(rows[0]!.success, 1);
       assert.strictEqual(rows[1]!.success, 0);
+    });
+
+    it('filters by library, newest first (E2-5)', () => {
+      db.getDb()
+        .prepare('INSERT INTO libraries (id, name, path, type) VALUES (?, ?, ?, ?)')
+        .run(702, 'Other Library', '/other-source', 'book');
+
+      db.addBookDownloadHistory({
+        libraryId: 701,
+        source: 'libgen',
+        title: 'Library 701 Book',
+        downloadUrl: 'libgen:l1',
+        success: true,
+      });
+      db.addBookDownloadHistory({
+        libraryId: 702,
+        source: 'libgen',
+        title: 'Library 702 Book',
+        downloadUrl: 'libgen:l2',
+        success: true,
+      });
+
+      const history = db.getBookDownloadHistory(10, 701) as Array<{ title: string }>;
+      assert.strictEqual(history.length, 1);
+      assert.strictEqual(history[0]!.title, 'Library 701 Book');
+      assert.strictEqual(db.getBookDownloadHistory(10, 999999).length, 0);
+    });
+  });
+
+  describe('retry and deletion (E2-5)', () => {
+    it('resetBookDownloadForRetry clears progress, attempts and error, and re-queues', () => {
+      const created = db.addBookDownload({
+        libraryId: 701,
+        source: 'libgen',
+        title: 'A Book',
+        author: null,
+        extension: 'epub',
+        downloadUrl: 'libgen:retry',
+        md5: 'retry',
+      });
+      db.updateBookDownloadProgress(created.id, 500, 1000);
+      db.setBookDownloadState(created.id, 'failed', { error: 'All LibGen mirrors failed' });
+
+      db.resetBookDownloadForRetry(created.id);
+
+      const row = db.getBookDownload(created.id)!;
+      assert.strictEqual(row.state, 'queued');
+      assert.strictEqual(row.progress, 0);
+      assert.strictEqual(row.attempts, 0);
+      assert.strictEqual(row.error, null);
+      assert.strictEqual(row.filePath, null);
+      assert.strictEqual(row.completedAt, null);
+    });
+
+    it('deleteBookDownload removes the row', () => {
+      const created = db.addBookDownload({
+        libraryId: 701,
+        source: 'libgen',
+        title: 'A Book',
+        author: null,
+        extension: 'epub',
+        downloadUrl: 'libgen:del',
+        md5: 'del',
+      });
+      assert.ok(db.deleteBookDownload(created.id));
+      assert.strictEqual(db.getBookDownload(created.id), null);
+      assert.strictEqual(db.deleteBookDownload(created.id), false);
     });
   });
 });

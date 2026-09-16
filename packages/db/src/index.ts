@@ -22,6 +22,7 @@ import type {
   BookDownloadLink,
   BookDownloadState,
   BookDownloadSource,
+  BookBlocklistEntry,
   ComicFile,
   ComicIssueMetadata,
   ComicRootFolder,
@@ -2637,6 +2638,16 @@ export function addBookDownloadHistory(entry: BookDownloadHistoryEntry): void {
   );
 }
 
+/** Mirrors `getComicDownloadHistory`, filtered by library instead of volume. */
+export function getBookDownloadHistory(limit = 50, libraryId?: number): Array<Record<string, unknown>> {
+  const where = libraryId !== undefined ? 'WHERE library_id = ?' : '';
+  const params: unknown[] = libraryId !== undefined ? [libraryId, limit] : [limit];
+  return query(
+    `SELECT * FROM book_download_history ${where} ORDER BY downloaded_at DESC, id DESC LIMIT ?`,
+    params
+  );
+}
+
 /**
  * Claim book downloads that were left mid-flight when a process stopped.
  *
@@ -2673,6 +2684,24 @@ export function claimStalledBookDownloads(
     .all(`-${staleMinutes} minutes`, limit) as BookDownloadRow[];
 
   return rows.map(rowToBookDownload);
+}
+
+/**
+ * Put a download back to the start: state, progress and attempts cleared, so
+ * it can be driven again from scratch. Mirrors `resetComicDownloadForRetry`.
+ */
+export function resetBookDownloadForRetry(id: number): void {
+  execute(
+    `UPDATE book_downloads
+        SET state = 'queued', progress = 0, attempts = 0, error = NULL,
+            file_path = NULL, completed_at = NULL, heartbeat_at = CURRENT_TIMESTAMP
+      WHERE id = ?`,
+    [id]
+  );
+}
+
+export function deleteBookDownload(id: number): boolean {
+  return execute('DELETE FROM book_downloads WHERE id = ?', [id]).rowCount > 0;
 }
 
 export interface AddBookBlocklistInput {
@@ -2712,6 +2741,43 @@ export function bookBlocklistContains(downloadUrl: string): boolean {
     [downloadUrl]
   );
   return (row?.count ?? 0) > 0;
+}
+
+interface BookBlocklistRow {
+  id: number;
+  wanted_book_id: number | null;
+  library_id: number | null;
+  title: string | null;
+  author: string | null;
+  source: string | null;
+  download_url: string;
+  reason: string;
+  added_at: string;
+}
+
+function rowToBookBlocklistEntry(row: BookBlocklistRow): BookBlocklistEntry {
+  return {
+    id: row.id,
+    downloadUrl: row.download_url,
+    reason: row.reason as BlocklistReason,
+    wantedBookId: row.wanted_book_id,
+    libraryId: row.library_id,
+    title: row.title,
+    author: row.author,
+    source: row.source as BookDownloadSource | null,
+    addedAt: sqlTimeToIso(row.added_at),
+  };
+}
+
+export function getBookBlocklist(limit = 100): BookBlocklistEntry[] {
+  return query<BookBlocklistRow>(
+    'SELECT * FROM book_blocklist ORDER BY added_at DESC, id DESC LIMIT ?',
+    [limit]
+  ).map(rowToBookBlocklistEntry);
+}
+
+export function removeFromBookBlocklist(id: number): boolean {
+  return execute('DELETE FROM book_blocklist WHERE id = ?', [id]).rowCount > 0;
 }
 
 /**

@@ -21,8 +21,6 @@ import {
   startComicDownloadAttempt,
   addBookDownload,
   getBookDownload,
-  setBookDownloadState,
-  updateBookDownloadProgress,
   addBookDownloadHistory,
   claimStalledBookDownloads,
   addToBookBlocklist,
@@ -35,6 +33,13 @@ import {
   setDownloadState,
   switchDownloadLink,
 } from '../comics/download-events';
+import {
+  // Aliased to the names of the plain DB functions they replace, so every
+  // existing call site below (state changes, throttled progress updates from
+  // E2-2) picks up the live-event publish for free without being rewritten.
+  setDownloadState as setBookDownloadState,
+  setDownloadProgress as updateBookDownloadProgress,
+} from '../downloads/download-events';
 import type { ComicDownloadLink } from '@shelvarr/types';
 import * as getcomics from '../comics/getcomics/index';
 import * as comicLibrary from '../comics/library';

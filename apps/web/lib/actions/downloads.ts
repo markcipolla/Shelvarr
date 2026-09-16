@@ -277,3 +277,186 @@ export async function queueDownload(data: {
     return { success: false, error: 'Failed to queue download' };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Download queue (E2-5)
+//
+// The book equivalent of getComicDownloadQueue/cancelComicDownload/
+// retryComicDownload/unblockComicLink in lib/actions/comics.ts, backing
+// /downloads the way those back /comics/downloads.
+// ---------------------------------------------------------------------------
+
+export interface BookDownloadQueueView {
+  downloads: Array<{
+    id: number;
+    title: string;
+    author: string | null;
+    source: string;
+    state: string;
+    progress: number;
+    size: number | null;
+    attempts: number;
+    /** Fallback mirrors left to try if the current one dies. */
+    alternates: number;
+    error: string | null;
+    createdAt: string;
+    libraryId: number;
+    libraryName: string | null;
+  }>;
+  history: Array<{
+    id: number;
+    title: string | null;
+    author: string | null;
+    source: string | null;
+    success: boolean;
+    downloadedAt: string;
+  }>;
+  blocklist: Array<{
+    id: number;
+    downloadUrl: string;
+    title: string | null;
+    reason: string;
+    addedAt: string;
+  }>;
+}
+
+/** The book download queue, recent history, and the blocklist. */
+export async function getBookDownloadQueue(): Promise<BookDownloadQueueView> {
+  const {
+    getBookBlocklist,
+    getBookDownloadHistory,
+    getBookDownloads,
+    query: dbQuery,
+    sqlTimeToIso,
+  } = await import('@/lib/db');
+
+  const libraries = new Map(
+    dbQuery<{ id: number; name: string }>('SELECT id, name FROM libraries').map((row) => [
+      row.id,
+      row.name,
+    ])
+  );
+
+  return {
+    downloads: getBookDownloads({ limit: 200 }).map((download) => ({
+      id: download.id,
+      title: download.title,
+      author: download.author,
+      source: download.source,
+      state: download.state,
+      progress: download.progress,
+      size: download.size,
+      attempts: download.attempts,
+      alternates: download.alternateLinks.length,
+      error: download.error,
+      createdAt: download.createdAt,
+      libraryId: download.libraryId,
+      libraryName: libraries.get(download.libraryId) ?? null,
+    })),
+    history: (
+      getBookDownloadHistory(25) as Array<{
+        id: number;
+        title: string | null;
+        author: string | null;
+        source: string | null;
+        success: number;
+        downloaded_at: string;
+      }>
+    ).map((entry) => ({
+      id: entry.id,
+      title: entry.title,
+      author: entry.author,
+      source: entry.source,
+      success: entry.success === 1,
+      downloadedAt: sqlTimeToIso(entry.downloaded_at),
+    })),
+    blocklist: getBookBlocklist(50).map((entry) => ({
+      id: entry.id,
+      downloadUrl: entry.downloadUrl,
+      title: entry.title,
+      reason: entry.reason,
+      addedAt: entry.addedAt,
+    })),
+  };
+}
+
+/**
+ * Cancel a download, or clear a finished one out of the queue.
+ *
+ * Mirrors `cancelComicDownload`: a download that is still running is marked
+ * cancelled rather than deleted, so the running task notices at its next
+ * progress checkpoint and stops.
+ */
+export async function cancelBookDownload(
+  id: number
+): Promise<{ success: boolean; error?: string }> {
+  const { getBookDownload } = await import('@/lib/db');
+  const { bookDownloadEvents } = await import('@shelvarr/services');
+
+  const download = getBookDownload(id);
+  if (!download) return { success: false, error: 'Download not found' };
+
+  if (
+    download.state === 'queued' ||
+    download.state === 'downloading' ||
+    download.state === 'importing'
+  ) {
+    bookDownloadEvents.setDownloadState(id, 'cancelled');
+  } else {
+    bookDownloadEvents.removeDownload(id);
+  }
+
+  revalidatePath('/downloads');
+  return { success: true };
+}
+
+/**
+ * Drive a download again from the top: attempts and progress cleared, state
+ * back to queued, and a fresh task started.
+ *
+ * Mirrors `retryComicDownload`, re-enqueuing the same `download` task shape
+ * `bookResumeHandler` uses to resume an interrupted download — carrying
+ * `bookDownloadId` plus the row's own stored fields, so the task drives this
+ * row (and its `.partial` file on disk) instead of starting a new one.
+ */
+export async function retryBookDownload(
+  id: number
+): Promise<{ success: boolean; error?: string }> {
+  const { getBookDownload } = await import('@/lib/db');
+  const { bookDownloadEvents, queue } = await import('@shelvarr/services');
+
+  const download = getBookDownload(id);
+  if (!download) return { success: false, error: 'Download not found' };
+
+  if (
+    download.state === 'downloading' ||
+    download.state === 'importing' ||
+    download.state === 'queued'
+  ) {
+    return { success: false, error: `Download is already ${download.state}` };
+  }
+
+  bookDownloadEvents.resetDownloadForRetry(id);
+  queue.enqueueTask('download', {
+    bookDownloadId: id,
+    source: download.source,
+    md5: download.md5,
+    title: download.title,
+    author: download.author,
+    extension: download.extension,
+    libraryId: download.libraryId,
+    wantedBookId: download.wantedBookId ?? undefined,
+  });
+
+  revalidatePath('/downloads');
+  return { success: true };
+}
+
+/** Let a previously-dead link be tried again. */
+export async function unblockBookLink(id: number): Promise<{ success: boolean }> {
+  const { removeFromBookBlocklist } = await import('@/lib/db');
+
+  removeFromBookBlocklist(id);
+  revalidatePath('/downloads');
+  return { success: true };
+}

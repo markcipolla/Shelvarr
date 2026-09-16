@@ -32,6 +32,7 @@ export * as queueHandlers from './queue/handlers';
 export * as scheduler from './queue/scheduler';
 export * as downloads from './downloads/index';
 export * as sourceStatus from './downloads/source-status';
+export * as bookDownloadEvents from './downloads/download-events';
 
 // API response adapters
 export * as apiResponse from './api-response';
