@@ -359,9 +359,16 @@ offline navigation (a service worker caching the app shell so `/books/:id`
 loads from a cold, offline start) — this app has no PWA infrastructure at all
 today (no manifest, no service worker), and that's a materially larger,
 separate undertaking than caching one reader's content. Note that as a
-follow-up if it's ever wanted. Extending the same cache utility to
-`BookPageReader`/`ComicReader`'s page images is a natural, low-risk addition
-once the EPUB case works — worth doing in the same pass if it stays simple.
+follow-up if it's ever wanted.
+
+**Shipped 2026-09-16** as `apps/web/lib/offline/bookCache.ts` (IndexedDB),
+wired into `EpubReader` only — a cache hit renders instantly and works
+offline, a miss still fetches and populates the cache, and progress saves
+already failed silently when offline. Extending the same cache to
+`BookPageReader`/`ComicReader`'s page images was left as a follow-up: their
+plain `<img src>` fetches aren't cache-interceptable without converting them
+to fetch-and-blob-URL management, which is real component surgery rather
+than a small addition.
 
 ---
 
@@ -518,9 +525,9 @@ warnings rather than guessed at. Resolve them deliberately.
 
 ## Suggested order
 
-**Status as of 2026-09-16: 30 of 32 original cards shipped.** E2, E4 and E6
-are done. E3 is done except E3-5 (reader polish) and E3-6 (redefined above —
-offline caching, not streaming). E5 is done except E5-2.
+**Status as of 2026-09-16: 31 of 32 original cards shipped.** E2, E4 and E6
+are done. E3 is done except E3-5 (reader polish) — E3-6 (redefined above as
+offline caching, not streaming) shipped too. E5 is done except E5-2.
 
 **E1 is not fully done, despite an earlier version of this section claiming
 otherwise** — that was wrong, corrected 2026-09-16. Shipped: E1-2, E1-3,
@@ -535,5 +542,4 @@ plaintext). None of these block anything already shipped — E4-5 shipped
 without them, on the task-level retry E2-3 already had, and is more fragile
 for it, most visibly around E1-6.
 
-**What's left:** E1-1, E1-5, E1-6, E1-7, E3-5, E3-6, E5-2. None block each
-other.
+**What's left:** E1-1, E1-5, E1-6, E1-7, E3-5, E5-2. None block each other.
