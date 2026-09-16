@@ -1,5 +1,5 @@
 /**
- * Extract-once page cache for comics.
+ * Extract-once page cache for comics and CBZ/CBR books alike.
  *
  * `openComicArchive` (archive.ts) does the whole job in one call: for a CBR
  * it synchronously reads the whole file, unrars every entry, and re-zips them
@@ -8,10 +8,17 @@
  * is paid on *every* open, by *every* reader, because nothing is kept
  * between requests.
  *
- * This module pays it once. The first request for an issue's pages (through
+ * This module pays it once. The first request for an item's pages (through
  * either `/pages` or `/pages/:n`) extracts every image to its own file under
- * a per-issue cache directory; every later request for that issue just reads
+ * a per-item cache directory; every later request for that item just reads
  * a file off disk.
+ *
+ * Nothing here is actually comic-specific — a CBZ/CBR shelved as a "book" is
+ * the same archive format, extracted the same way. Callers distinguish their
+ * cache entries with `EnsurePagesOptions.namespace` ('comic', the default, or
+ * 'book'), which only changes which cache-root subdirectory an entry lands
+ * in, so a comic issue and a book never collide even if both happened to
+ * reuse the same id number.
  *
  * PDF decision: a PDF has no independent "page image" the way a CBZ/CBR
  * does — its pages are rendered from PDF content streams, not stored as
@@ -66,32 +73,37 @@ export class PdfNotPaginatedError extends Error {
   }
 }
 
+/** Which cache-root subdirectory an entry belongs to; see the module doc comment. */
+export type PageCacheNamespace = 'comic' | 'book';
+
 export interface EnsurePagesOptions {
   /** Same meaning as {@link OpenComicArchiveOptions.remap} in archive.ts. */
   remap?: boolean;
+  /** Defaults to 'comic'. */
+  namespace?: PageCacheNamespace;
 }
 
 export interface IssuePages {
-  /** Absolute path to this issue's cache directory. */
+  /** Absolute path to this item's cache directory. */
   dir: string;
   /** Cached page filenames, already in reading order — index 0 is page 1. */
   files: string[];
 }
 
-function cacheRoot(): string {
-  return join(getServiceConfig().dataDir, 'comic-pages-cache');
+function cacheRoot(namespace: PageCacheNamespace): string {
+  return join(getServiceConfig().dataDir, `${namespace}-pages-cache`);
 }
 
 /**
  * Key a cache directory off the file actually on disk (path + size + mtime),
- * not just the issue id, so a file replaced on disk — a re-download, a
+ * not just the id, so a file replaced on disk — a re-download, a
  * higher-quality re-scan — earns a fresh extraction instead of serving pages
  * from whatever used to be at that path. A hash keeps the directory name
  * short and filesystem-safe regardless of what the source path looks like.
  */
-function cacheKey(issueId: number, real: string, size: number, mtimeMs: number): string {
+function cacheKey(namespace: PageCacheNamespace, id: number, real: string, size: number, mtimeMs: number): string {
   const hash = createHash('sha1').update(`${real}:${size}:${mtimeMs}`).digest('hex').slice(0, 16);
-  return `issue-${issueId}-${hash}`;
+  return `${namespace}-${id}-${hash}`;
 }
 
 /** Existing cached page filenames for a cache directory, in reading order. */
@@ -107,8 +119,7 @@ function readCachedPageFiles(dir: string): string[] {
  * process cannot remove (permissions, a concurrent reader) is logged and left
  * for next time rather than failing the request that triggered it.
  */
-function evictStaleCacheDirs(keep: string): void {
-  const root = cacheRoot();
+function evictStaleCacheDirs(root: string, keep: string): void {
   if (!existsSync(root)) return;
 
   const now = Date.now();
@@ -136,10 +147,11 @@ function evictStaleCacheDirs(keep: string): void {
  * once per distinct file, ever.
  */
 export async function ensureIssuePagesExtracted(
-  issueId: number,
+  id: number,
   filepath: string,
   options: EnsurePagesOptions = {}
 ): Promise<IssuePages> {
+  const namespace = options.namespace ?? 'comic';
   const real = options.remap === false ? filepath : remapComicPath(filepath);
 
   // Verify the file exists (throws ENOENT otherwise, which callers map to 404).
@@ -148,8 +160,9 @@ export async function ensureIssuePagesExtracted(
   const ext = extname(real).toLowerCase().replace('.', '');
   if (ext === 'pdf') throw new PdfNotPaginatedError();
 
-  const key = cacheKey(issueId, real, stat.size, stat.mtimeMs);
-  const dir = join(cacheRoot(), key);
+  const root = cacheRoot(namespace);
+  const key = cacheKey(namespace, id, real, stat.size, stat.mtimeMs);
+  const dir = join(root, key);
 
   if (existsSync(dir)) {
     return { dir, files: readCachedPageFiles(dir) };
@@ -166,19 +179,19 @@ export async function ensureIssuePagesExtracted(
     files.push(filename);
   });
 
-  evictStaleCacheDirs(key);
+  evictStaleCacheDirs(root, key);
 
   return { dir, files };
 }
 
 /** The absolute path to a cached page's file, extracting first if needed. */
 export async function getIssuePagePath(
-  issueId: number,
+  id: number,
   filepath: string,
   pageNumber: number,
   options: EnsurePagesOptions = {}
 ): Promise<string | null> {
-  const { dir, files } = await ensureIssuePagesExtracted(issueId, filepath, options);
+  const { dir, files } = await ensureIssuePagesExtracted(id, filepath, options);
   if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > files.length) return null;
   const filename = files[pageNumber - 1];
   if (!filename) return null;

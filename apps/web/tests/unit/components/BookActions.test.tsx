@@ -37,8 +37,34 @@ mock.module('../../../components/books/MetadataSearchModal.js', {
   namedExports: { MetadataSearchModal: () => null },
 });
 
+let capturedEpubProps: Record<string, unknown> | null = null;
 mock.module('../../../components/books/EpubReader.js', {
-  namedExports: { EpubReader: () => null },
+  namedExports: {
+    EpubReader: (props: any) => {
+      capturedEpubProps = props;
+      return <div data-testid="epub-reader" />;
+    },
+  },
+});
+
+let capturedPageReaderProps: Record<string, unknown> | null = null;
+mock.module('../../../components/books/BookPageReader.js', {
+  namedExports: {
+    BookPageReader: (props: any) => {
+      capturedPageReaderProps = props;
+      return <div data-testid="book-page-reader" />;
+    },
+  },
+});
+
+let capturedPdfReaderProps: Record<string, unknown> | null = null;
+mock.module('../../../components/books/PdfReader.js', {
+  namedExports: {
+    PdfReader: (props: any) => {
+      capturedPdfReaderProps = props;
+      return <div data-testid="pdf-reader" />;
+    },
+  },
 });
 
 mock.module('../../../components/ui/Toast.js', {
@@ -68,6 +94,9 @@ describe('BookActions Component', () => {
     mockRefresh.mock.resetCalls();
     mockToastSuccess.mock.resetCalls();
     mockToastError.mock.resetCalls();
+    capturedEpubProps = null;
+    capturedPageReaderProps = null;
+    capturedPdfReaderProps = null;
     globalThis.fetch = (async (url: string, init: RequestInit) => {
       fetchCalls.push({ url, init });
       return {
@@ -145,5 +174,85 @@ describe('BookActions Component', () => {
     assert.strictEqual(mockToastError.mock.calls[0]?.arguments[0], 'Book not found');
     assert.ok(screen.getByRole('button', { name: 'Mark as incomplete' }));
     assert.strictEqual(mockRefresh.mock.callCount(), 0);
+  });
+});
+
+describe('BookActions reader selection', () => {
+  beforeEach(() => {
+    fetchCalls = [];
+    fetchResponse = { ok: true, body: {} };
+    capturedEpubProps = null;
+    capturedPageReaderProps = null;
+    capturedPdfReaderProps = null;
+    globalThis.fetch = (async (url: string, init: RequestInit) => {
+      fetchCalls.push({ url, init });
+      return {
+        ok: fetchResponse.ok,
+        json: async () => fetchResponse.body,
+      } as Response;
+    }) as typeof fetch;
+  });
+
+  afterEach(() => {
+    cleanup();
+    globalThis.fetch = originalFetch;
+  });
+
+  it('opens EpubReader for a .epub file', async () => {
+    const epubBook = { id: 1, title: 'A Novel', filePath: '/books/a-novel.epub', metadataSource: null } as any;
+    const user = userEvent.setup();
+    render(<BookActions book={epubBook} readProgress={{ page: 0, completed: false }} />);
+
+    await user.click(screen.getByRole('button', { name: /Read/ }));
+
+    assert.ok(screen.getByTestId('epub-reader'));
+    assert.strictEqual(screen.queryByTestId('book-page-reader'), null);
+    assert.strictEqual(screen.queryByTestId('pdf-reader'), null);
+    assert.strictEqual(capturedEpubProps?.book, epubBook);
+  });
+
+  it('opens BookPageReader for a .cbz file, passing readProgress through', async () => {
+    const cbzBook = { id: 2, title: 'Sandman Vol. 1', filePath: '/books/sandman-01.cbz', metadataSource: null } as any;
+    const progress = { page: 4, completed: false };
+    const user = userEvent.setup();
+    render(<BookActions book={cbzBook} readProgress={progress} />);
+
+    await user.click(screen.getByRole('button', { name: /Read/ }));
+
+    assert.ok(screen.getByTestId('book-page-reader'));
+    assert.strictEqual(screen.queryByTestId('epub-reader'), null);
+    assert.strictEqual(screen.queryByTestId('pdf-reader'), null);
+    assert.strictEqual(capturedPageReaderProps?.book, cbzBook);
+    assert.deepStrictEqual(capturedPageReaderProps?.readProgress, progress);
+  });
+
+  it('opens BookPageReader for a .cbr file', async () => {
+    const cbrBook = { id: 3, title: 'Sandman Vol. 2', filePath: '/books/sandman-02.cbr', metadataSource: null } as any;
+    const user = userEvent.setup();
+    render(<BookActions book={cbrBook} />);
+
+    await user.click(screen.getByRole('button', { name: /Read/ }));
+
+    assert.ok(screen.getByTestId('book-page-reader'));
+  });
+
+  it('opens PdfReader for a .pdf file', async () => {
+    const pdfBook = { id: 4, title: 'The Mistborn Codex', filePath: '/books/mistborn-codex.pdf', metadataSource: null } as any;
+    const user = userEvent.setup();
+    render(<BookActions book={pdfBook} />);
+
+    await user.click(screen.getByRole('button', { name: /Read/ }));
+
+    assert.ok(screen.getByTestId('pdf-reader'));
+    assert.strictEqual(screen.queryByTestId('epub-reader'), null);
+    assert.strictEqual(screen.queryByTestId('book-page-reader'), null);
+    assert.strictEqual(capturedPdfReaderProps?.book, pdfBook);
+  });
+
+  it('shows no Read button for an unsupported extension', () => {
+    const mobiBook = { id: 5, title: 'Old Format', filePath: '/books/old-format.mobi', metadataSource: null } as any;
+    render(<BookActions book={mobiBook} />);
+
+    assert.strictEqual(screen.queryByRole('button', { name: /Read/ }), null);
   });
 });
