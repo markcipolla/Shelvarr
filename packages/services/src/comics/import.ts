@@ -13,6 +13,7 @@ import { dirname, extname, join, parse, sep } from 'path';
 import { getComicRootFolder, getComicRootFolders } from '@shelvarr/db';
 import type { ComicDownload } from '@shelvarr/types';
 
+import { getServiceConfig } from '../config';
 import { describeWriteFailure } from '../utils/fs-errors';
 import { createLogger } from '../utils/logger';
 import { remapComicPath } from './archive';
@@ -76,13 +77,36 @@ function nearestExistingAncestor(directory: string): string {
   return candidate;
 }
 
-function missingMount(directory: string): Error {
+/**
+ * Explain a destination that is not on any mount, naming what would fix it.
+ *
+ * Nobody keeps a comic library in the filesystem root, so a path with nothing
+ * on disk above it is either a mount that is not there, or a folder recorded
+ * under another machine's mount for COMIC_PATH_MAP to translate.
+ */
+function missingMount(volume: ImportVolume, directory: string): Error {
   const { root } = parse(directory);
   const topLevel = root + directory.slice(root.length).split(sep)[0];
+
+  if (!volume.folder) {
+    return new Error(
+      `Cannot file into ${directory}: ${topLevel} does not exist here. Mount your comic ` +
+        'library there, or point the root folder in Settings → Comics at where it is mounted.'
+    );
+  }
+
+  // The recorded folder is worth naming: it is what COMIC_PATH_MAP translates,
+  // and after a remap the path that failed is no longer the one on record.
+  const { pathMap } = getServiceConfig().comicPaths;
+  const recorded = directory === volume.folder ? '' : ` (remapped from ${volume.folder})`;
+  const current = pathMap
+    ? ` COMIC_PATH_MAP is currently ${pathMap}.`
+    : ' COMIC_PATH_MAP is not set.';
+
   return new Error(
-    `Cannot file into ${directory}: ${topLevel} does not exist here. Mount the comic ` +
-      'library at that path, or, if the path was recorded under a different mount, set ' +
-      'COMIC_PATH_MAP to translate it.'
+    `Cannot file into ${directory}${recorded}: ${topLevel} does not exist here. Mount the ` +
+      `comic library at ${topLevel}, or set COMIC_PATH_MAP=${topLevel}:<where it is mounted> ` +
+      `to translate the recorded folder.${current}`
   );
 }
 
@@ -96,17 +120,22 @@ function missingMount(directory: string): Error {
 export async function ensureImportable(volume: ImportVolume): Promise<string> {
   const directory = resolveImportDirectory(volume);
 
+  // Nothing along the path exists, so it is not on any mount. Checked before
+  // the mkdir rather than on its failure: running as root the mkdir would
+  // succeed, filling the container's own filesystem with comics that vanish
+  // with it, and running as anyone else it fails on `/`, whose permissions are
+  // not the fix.
+  if (nearestExistingAncestor(directory) === parse(directory).root) {
+    throw missingMount(volume, directory);
+  }
+
   try {
     await mkdir(directory, { recursive: true });
   } catch (error) {
-    const ancestor = nearestExistingAncestor(directory);
-    // Nothing along the path exists, so it isn't on any mount. The filesystem
-    // root is what refused the mkdir, but write access to `/` is not the fix.
-    if (ancestor === parse(directory).root) throw missingMount(directory);
     // A new volume's folder does not exist yet, so it is the library root that
     // denied us. Naming the folder we failed to create would send someone off
     // to `chown` a path that isn't there.
-    throw describeWriteFailure(ancestor, error, 'create a folder in');
+    throw describeWriteFailure(nearestExistingAncestor(directory), error, 'create a folder in');
   }
 
   try {
