@@ -4,20 +4,34 @@ name: Release Native App
 # release. The native app polls that release to offer itself an update, so the
 # asset must be named `*.apk` and signed with a stable key — see
 # apps/native/plugins/withReleaseSigning.js.
+#
+# Pushing a `v*` tag by hand runs this. Patch releases are cut automatically by
+# release-native-patch.yml, which calls this workflow directly: a tag pushed
+# with GITHUB_TOKEN raises no `push` event, so it could not trigger this one.
 
 on:
   push:
     tags:
       - 'v*'
+  workflow_call:
+    inputs:
+      tag:
+        description: The version tag to build, e.g. v1.2.1
+        required: true
+        type: string
 
 jobs:
   build-apk:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -47,8 +61,8 @@ jobs:
             exit 1
           fi
 
-      - name: Match the tag to the app version
-        run: node apps/native/scripts/prepare-release.mjs "${GITHUB_REF_NAME}"
+      - name: Stamp the tag's version into the app
+        run: node apps/native/scripts/prepare-release.mjs "$TAG"
 
       - name: Decode the release keystore
         env:
@@ -74,7 +88,7 @@ jobs:
       - name: Name the APK after the release
         id: apk
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${TAG#v}"
           SRC=apps/native/android/app/build/outputs/apk/release/app-release.apk
           DEST="$RUNNER_TEMP/shelvarr-$VERSION.apk"
           cp "$SRC" "$DEST"
@@ -86,9 +100,9 @@ jobs:
           APK: ${{ steps.apk.outputs.path }}
         run: |
           # The tag may have been pushed without a release; create one if so.
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
-            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
-          gh release upload "$GITHUB_REF_NAME" "$APK" --clobber
+          gh release view "$TAG" >/dev/null 2>&1 ||
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          gh release upload "$TAG" "$APK" --clobber
 
       - name: Remove the keystore
         if: always()

@@ -2,16 +2,22 @@
 // Prepares app.json for a tagged release build.
 //
 // The tag is the source of truth for what gets published, and app.json is the
-// version the running app compares against GitHub, so the two must agree or the
-// updater will offer a build the user already has. This also stamps the Android
-// versionCode, which has to increase monotonically for the package installer to
-// accept an update over an existing install.
+// version the running app compares against GitHub, so this writes the tag's
+// version into app.json before the APK is built — otherwise the updater would
+// keep offering a build the user already has. Patch releases are tagged
+// automatically and never touch the committed app.json, so the checked-in
+// version is only ever a floor; see scripts/next-release.mjs and RELEASING.md.
+//
+// This also stamps the Android versionCode, which has to increase monotonically
+// for the package installer to accept an update over an existing install.
 //
 // Usage: node scripts/prepare-release.mjs v1.2.0
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { MAX_FIELD, MAX_MAJOR, parseVersion, versionCode } from './version.mjs';
 
 const appJsonPath = join(dirname(dirname(fileURLToPath(import.meta.url))), 'app.json');
 
@@ -23,29 +29,27 @@ function fail(message) {
 const tag = process.argv[2];
 if (!tag) fail('expected a release tag argument, e.g. v1.2.0');
 
-const tagVersion = tag.replace(/^v/, '');
-if (!/^\d+\.\d+\.\d+$/.test(tagVersion)) {
-  fail(`tag "${tag}" is not a three-part version like v1.2.0`);
-}
+const version = tag.replace(/^v/, '');
+const parsed = parseVersion(version);
+if (!parsed) fail(`tag "${tag}" is not a three-part version like v1.2.0`);
 
-const appJson = JSON.parse(readFileSync(appJsonPath, 'utf8'));
-const appVersion = appJson.expo.version;
-if (appVersion !== tagVersion) {
+const [major, minor, patch] = parsed;
+if (major > MAX_MAJOR) {
+  fail(`major must stay at or below ${MAX_MAJOR} to keep versionCode a 32-bit int (got ${version})`);
+}
+if (minor > MAX_FIELD || patch > MAX_FIELD) {
   fail(
-    `tag "${tag}" does not match expo.version "${appVersion}" in app.json.\n` +
-      'Bump the version in app.json and commit it before tagging the release.'
+    `minor and patch must each stay at or below ${MAX_FIELD} to keep versionCode ordered (got ${version})`
   );
 }
 
-const [major, minor, patch] = tagVersion.split('.').map(Number);
-if (minor > 99 || patch > 99) {
-  fail(`minor and patch must each stay below 100 to keep versionCode ordered (got ${tagVersion})`);
-}
+const code = versionCode(version);
+const appJson = JSON.parse(readFileSync(appJsonPath, 'utf8'));
 
-const versionCode = major * 10000 + minor * 100 + patch;
-if (appJson.expo.android.versionCode !== versionCode) {
-  appJson.expo.android.versionCode = versionCode;
+if (appJson.expo.version !== version || appJson.expo.android.versionCode !== code) {
+  appJson.expo.version = version;
+  appJson.expo.android.versionCode = code;
   writeFileSync(appJsonPath, `${JSON.stringify(appJson, null, 2)}\n`);
 }
 
-console.log(`prepare-release: ${tagVersion} (versionCode ${versionCode})`);
+console.log(`prepare-release: ${version} (versionCode ${code})`);

@@ -10,9 +10,6 @@ on:
     branches: [main, master]
     types:
       - completed
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
 env:
@@ -23,7 +20,6 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     if: >
-      github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     permissions:
@@ -49,8 +45,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Always the commit, never the tag: v* tags belong to the native app's
+      # Always the commit, never a version: v* tags belong to the native app's
       # release train, so "v1.2.0" would name a version the web app isn't on.
+      # That is also why no tag event triggers this workflow.
       - name: Resolve build version
         id: build_version
         run: |
@@ -64,9 +61,6 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-web
           tags: |
             type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
             type=sha,prefix=
             type=raw,value=latest,enable={{is_default_branch}}
 
