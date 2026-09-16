@@ -10,13 +10,13 @@
  */
 
 import {
-  addComicDownload,
   addToComicBlocklist,
   comicBlocklistContains,
   getComicVolumeForMatching,
   isComicDownloadActive,
   isSourceEnabled,
 } from '@shelvarr/db';
+import { addDownload } from '../download-events';
 import type {
   ComicDownload,
   ComicDownloadLink,
@@ -282,7 +282,7 @@ export async function createDownloadsFromPost(
     return working
       .filter((entry) => !isComicDownloadActive(entry.link))
       .map((entry) =>
-        addComicDownload({
+        addDownload({
           volumeId,
           issueId: resolveIssueId(loaded, entry.group, issueId),
           coveredIssues: entry.group.info.issueNumber,

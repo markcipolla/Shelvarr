@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getComics } from '@/lib/actions/comics';
 import { ComicGrid, ComicEmptyState } from '@/components/comics/ComicGrid';
+import { LiveRefresh } from '@/components/live/LiveRefresh';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +19,16 @@ export default async function ComicsPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6">
+      {/* Volumes arrive from an import and fill up from downloads and scans. */}
+      <LiveRefresh
+        taskTypes={[
+          'comic_library_import',
+          'comic_scan',
+          'comic_download',
+          'comic_refresh',
+          'comic_update_all',
+        ]}
+      />
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-white">Comics</h1>
         <div className="flex items-center gap-4">

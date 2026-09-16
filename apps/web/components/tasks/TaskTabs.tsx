@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
+import type { LiveEvent } from '@shelvarr/services';
 import type { Task } from '@/lib/services/queue';
+import { useLiveRefresh } from '@/components/live/LiveEvents';
 import { TaskList } from './TaskList';
 
 interface TaskTabsProps {
@@ -20,6 +22,14 @@ function getRetryQueuePosition(task: Task): number | null {
 
 export function TaskTabs({ queuedTasks, completedTasks, queuedTotal, completedTotal }: TaskTabsProps) {
   const [activeTab, setActiveTab] = useState<'queued' | 'completed'>('queued');
+
+  // Anything but progress moves a task between these two lists or changes the
+  // buttons on its row, so the page is re-rendered from the server. Progress
+  // itself is handled inside the row, which can redraw a bar without a
+  // round trip.
+  useLiveRefresh(
+    useCallback((event: LiveEvent) => event.kind === 'task' && event.event !== 'progress', [])
+  );
 
   // Sort queued tasks: running first, then by retry queue position, then by created date
   const sortedQueuedTasks = useMemo(() => {

@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
-import { validateApiAuth, queue } from '@shelvarr/services';
-import {
-  deleteComicDownload,
-  getComicDownload,
-  resetComicDownloadForRetry,
-  setComicDownloadState,
-} from '@/lib/db';
+import { validateApiAuth, queue, comicDownloadEvents } from '@shelvarr/services';
+import { getComicDownload } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,7 +40,7 @@ export async function POST(
     );
   }
 
-  resetComicDownloadForRetry(downloadId);
+  comicDownloadEvents.resetDownloadForRetry(downloadId);
   const task = queue.enqueueTask('comic_download', { comicDownloadId: downloadId });
 
   return NextResponse.json({ retried: true, taskId: task.id });
@@ -76,10 +71,10 @@ export async function DELETE(
   }
 
   if (download.state === 'queued' || download.state === 'downloading' || download.state === 'importing') {
-    setComicDownloadState(downloadId, 'cancelled');
+    comicDownloadEvents.setDownloadState(downloadId, 'cancelled');
     return NextResponse.json({ cancelled: true });
   }
 
-  deleteComicDownload(downloadId);
+  comicDownloadEvents.removeDownload(downloadId);
   return NextResponse.json({ deleted: true });
 }

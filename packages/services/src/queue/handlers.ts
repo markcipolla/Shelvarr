@@ -15,15 +15,17 @@ import {
   addComicDownloadHistory,
   addToComicBlocklist,
   claimStalledComicDownloads,
-  deferComicDownload,
   getComicDownload,
   getComicVolumesNeedingRefresh,
   getComicVolumesWithMissingIssues,
-  setComicDownloadState,
   startComicDownloadAttempt,
-  switchComicDownloadLink,
-  updateComicDownloadProgress,
 } from '@shelvarr/db';
+import {
+  deferDownload,
+  setDownloadProgress,
+  setDownloadState,
+  switchDownloadLink,
+} from '../comics/download-events';
 import type { ComicDownloadLink } from '@shelvarr/types';
 import * as getcomics from '../comics/getcomics/index';
 import * as comicLibrary from '../comics/library';
@@ -958,7 +960,7 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
   );
 
   const fail = (message: string): never => {
-    setComicDownloadState(download.id, 'failed', { error: message });
+    setDownloadState(download.id, 'failed', { error: message });
     addComicDownloadHistory({
       volumeId: download.volumeId,
       issueId: download.issueId,
@@ -1021,7 +1023,7 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
         if (bytes - lastPersist < 1_000_000) return;
 
         lastPersist = bytes;
-        updateComicDownloadProgress(download.id, bytes, total);
+        setDownloadProgress(download.id, bytes, total);
 
         if (getComicDownload(download.id)?.state === 'cancelled') {
           cancelledByUser = true;
@@ -1032,7 +1034,7 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
 
     if (cancelledByUser) throw new Error('Download cancelled');
 
-    updateComicDownloadProgress(download.id, result.bytes, resolved.size);
+    setDownloadProgress(download.id, result.bytes, resolved.size);
     return result;
   };
 
@@ -1066,7 +1068,7 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
       fetched = await fetchLink(candidate);
     } catch (error) {
       if (cancelled()) {
-        setComicDownloadState(download.id, 'cancelled');
+        setDownloadState(download.id, 'cancelled');
         clearScratch();
         throw error;
       }
@@ -1080,7 +1082,7 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
           return fail(`${message} — gave up after ${attempt} attempts`);
         }
         const retryAfterMs = rateLimitBackoff(attempt);
-        deferComicDownload(
+        deferDownload(
           download.id,
           `${message} — retrying in ${Math.round(retryAfterMs / 60_000)} min ` +
             `(attempt ${attempt} of ${MAX_DOWNLOAD_ATTEMPTS})`
@@ -1108,17 +1110,17 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
         `[comic-download] ${candidate.link} failed (${message}); trying ${next.link}`
       );
       clearScratch();
-      switchComicDownloadLink(download.id, next, alternates);
+      switchDownloadLink(download.id, next, alternates);
       candidate = next;
     }
   }
 
   try {
-    setComicDownloadState(download.id, 'importing');
+    setDownloadState(download.id, 'importing');
 
     const imported = await importComicDownload(download, fetched.path, namingVolume);
 
-    setComicDownloadState(download.id, 'completed', { filePath: imported.path });
+    setDownloadState(download.id, 'completed', { filePath: imported.path });
     addComicDownloadHistory({
       volumeId: download.volumeId,
       issueId: download.issueId,
@@ -1140,7 +1142,7 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
     };
   } catch (error) {
     if (cancelled()) {
-      setComicDownloadState(download.id, 'cancelled');
+      setDownloadState(download.id, 'cancelled');
       clearScratch();
       throw error;
     }

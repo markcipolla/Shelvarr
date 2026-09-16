@@ -353,7 +353,8 @@ export async function getComicDownloadQueue(): Promise<DownloadQueueView> {
 export async function cancelComicDownload(
   id: number
 ): Promise<{ success: boolean; error?: string }> {
-  const { deleteComicDownload, getComicDownload, setComicDownloadState } = await import('@/lib/db');
+  const { getComicDownload } = await import('@/lib/db');
+  const { comicDownloadEvents } = await import('@shelvarr/services');
   const { revalidatePath } = await import('next/cache');
 
   const download = getComicDownload(id);
@@ -364,9 +365,9 @@ export async function cancelComicDownload(
     download.state === 'downloading' ||
     download.state === 'importing'
   ) {
-    setComicDownloadState(id, 'cancelled');
+    comicDownloadEvents.setDownloadState(id, 'cancelled');
   } else {
-    deleteComicDownload(id);
+    comicDownloadEvents.removeDownload(id);
   }
 
   revalidatePath('/comics/downloads');
@@ -383,8 +384,8 @@ export async function cancelComicDownload(
 export async function retryComicDownload(
   id: number
 ): Promise<{ success: boolean; error?: string }> {
-  const { getComicDownload, resetComicDownloadForRetry } = await import('@/lib/db');
-  const { queue } = await import('@shelvarr/services');
+  const { getComicDownload } = await import('@/lib/db');
+  const { comicDownloadEvents, queue } = await import('@shelvarr/services');
   const { revalidatePath } = await import('next/cache');
 
   const download = getComicDownload(id);
@@ -398,7 +399,7 @@ export async function retryComicDownload(
     return { success: false, error: `Download is already ${download.state}` };
   }
 
-  resetComicDownloadForRetry(id);
+  comicDownloadEvents.resetDownloadForRetry(id);
   queue.enqueueTask('comic_download', { comicDownloadId: id });
 
   revalidatePath('/comics/downloads');

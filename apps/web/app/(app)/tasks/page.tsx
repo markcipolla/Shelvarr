@@ -2,6 +2,7 @@ import { getTasks } from '@/lib/actions/tasks';
 import { TaskTabs } from '@/components/tasks/TaskTabs';
 import { CleanupButton } from '@/components/tasks/CleanupButton';
 import { CancelAllButton } from '@/components/tasks/CancelAllButton';
+import { LiveIndicator } from '@/components/live/LiveIndicator';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,7 @@ export default async function TasksPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <LiveIndicator />
           <CancelAllButton queuedCount={queuedResult.total} />
           <CleanupButton />
         </div>
