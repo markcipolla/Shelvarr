@@ -8,7 +8,7 @@ import { searchZLibrary, getZLibrarySearchUrl, type ZLibraryResult } from './zli
 import { searchAnnas, getAnnasSearchUrl, type AnnasResult } from './annas';
 import { searchLibGen, getLibGenSearchUrl, type LibGenResult } from './libgen';
 import { getSourceStatuses } from './source-status';
-import { SourceBlockedError } from './challenge';
+import { SourceBlockedError, SourceParseError } from './challenge';
 import { isSourceEnabled, getDownloadSourceConfig } from '@shelvarr/db';
 
 export type DownloadSource = 'zlibrary' | 'annas' | 'libgen';
@@ -37,6 +37,12 @@ export interface SearchLinks {
 export interface BlockedSource {
   source: DownloadSource;
   message: string;
+  // 'blocked' = the source answered with a bot-protection challenge page
+  // (SourceBlockedError). 'parse-error' = it answered normally but the body
+  // didn't match any recognisable results structure (SourceParseError) — a
+  // sign the source's markup changed and its parser needs updating, not
+  // that the search legitimately came back empty.
+  reason: 'blocked' | 'parse-error';
 }
 
 export interface SearchAllSourcesResult {
@@ -100,7 +106,11 @@ export async function searchAllSources(
         })
         .catch((err) => {
           if (err instanceof SourceBlockedError) {
-            blockedSources.push({ source: 'zlibrary', message: err.message });
+            blockedSources.push({ source: 'zlibrary', message: err.message, reason: 'blocked' });
+            return;
+          }
+          if (err instanceof SourceParseError) {
+            blockedSources.push({ source: 'zlibrary', message: err.message, reason: 'parse-error' });
             return;
           }
           console.error('Z-Library search failed:', err);
@@ -128,7 +138,11 @@ export async function searchAllSources(
         })
         .catch((err) => {
           if (err instanceof SourceBlockedError) {
-            blockedSources.push({ source: 'annas', message: err.message });
+            blockedSources.push({ source: 'annas', message: err.message, reason: 'blocked' });
+            return;
+          }
+          if (err instanceof SourceParseError) {
+            blockedSources.push({ source: 'annas', message: err.message, reason: 'parse-error' });
             return;
           }
           console.error("Anna's Archive search failed:", err);
@@ -159,7 +173,11 @@ export async function searchAllSources(
         })
         .catch((err) => {
           if (err instanceof SourceBlockedError) {
-            blockedSources.push({ source: 'libgen', message: err.message });
+            blockedSources.push({ source: 'libgen', message: err.message, reason: 'blocked' });
+            return;
+          }
+          if (err instanceof SourceParseError) {
+            blockedSources.push({ source: 'libgen', message: err.message, reason: 'parse-error' });
             return;
           }
           console.error('LibGen search failed:', err);
@@ -211,12 +229,13 @@ export { searchZLibrary, getZLibrarySearchUrl } from './zlibrary';
 export { searchAnnas, getAnnasSearchUrl, getAnnasDownloadLinks } from './annas';
 export { searchLibGen, getLibGenSearchUrl, getLibGenDownloadUrl } from './libgen';
 export { getSourceStatuses, refreshSourceStatuses, checkSourceHealth } from './source-status';
-export { detectChallenge, SourceBlockedError } from './challenge';
+export { detectChallenge, SourceBlockedError, SourceParseError, getParserHealth } from './challenge';
 
 export type { ZLibraryResult } from './zlibrary';
 export type { AnnasResult } from './annas';
 export type { LibGenResult } from './libgen';
 export type { SourceStatus } from './source-status';
+export type { ParserHealth } from './challenge';
 
 export default {
   searchAllSources,

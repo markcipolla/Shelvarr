@@ -7,7 +7,20 @@
 
 import { getSourceStatusCache } from '@shelvarr/db';
 import { pace } from '../utils/pacing';
-import { detectChallenge, SourceBlockedError } from './challenge';
+import {
+  detectChallenge,
+  SourceBlockedError,
+  SourceParseError,
+  recordParseSuccess,
+  recordParseFailure,
+} from './challenge';
+
+// LibGen's results page is a plain HTML table. Its presence — even with zero
+// rows carrying an md5 — means the page had a fair shot at matching the row
+// parser below; its absence means the markup isn't what we expect at all.
+function looksLikeLibGenResultsPage(html: string): boolean {
+  return /<table[\s>]/i.test(html);
+}
 
 export interface LibGenResult {
   id: string;
@@ -228,8 +241,18 @@ export async function searchLibGen(
 
       if (results.length >= 15) break;
     }
+
+    if (results.length === 0 && !looksLikeLibGenResultsPage(html)) {
+      recordParseFailure('libgen');
+      throw new SourceParseError(
+        'libgen',
+        `${domain}'s page structure wasn't recognised — the LibGen parser may need updating`
+      );
+    }
+
+    recordParseSuccess('libgen');
   } catch (error) {
-    if (error instanceof SourceBlockedError) throw error;
+    if (error instanceof SourceBlockedError || error instanceof SourceParseError) throw error;
     console.error('LibGen search error:', error);
   }
 

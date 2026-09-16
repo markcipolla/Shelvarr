@@ -7,7 +7,21 @@
  */
 
 import { getSourceStatusCache } from '@shelvarr/db';
-import { detectChallenge, SourceBlockedError } from './challenge';
+import {
+  detectChallenge,
+  SourceBlockedError,
+  SourceParseError,
+  recordParseSuccess,
+  recordParseFailure,
+} from './challenge';
+
+// A `<z-bookcard>` element (structured results) or a `/book/` link (the
+// fallback pattern's target) means the page had a fair shot at matching one
+// of the two parsers below. Neither present at all means the markup isn't
+// what we expect — not that the search came back empty.
+function looksLikeZLibraryResultsPage(html: string): boolean {
+  return /<z-bookcard\b/i.test(html) || /href="\/book\//i.test(html);
+}
 
 export interface ZLibraryConfig {
   email?: string;
@@ -160,8 +174,18 @@ export async function searchZLibrary(
         if (results.length >= 10) break;
       }
     }
+
+    if (results.length === 0 && !looksLikeZLibraryResultsPage(html)) {
+      recordParseFailure('zlibrary');
+      throw new SourceParseError(
+        'zlibrary',
+        `${domain}'s page structure wasn't recognised — the Z-Library parser may need updating`
+      );
+    }
+
+    recordParseSuccess('zlibrary');
   } catch (error) {
-    if (error instanceof SourceBlockedError) throw error;
+    if (error instanceof SourceBlockedError || error instanceof SourceParseError) throw error;
     console.error('Z-Library search error:', error);
   }
 

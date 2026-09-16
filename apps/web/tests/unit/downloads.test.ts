@@ -14,7 +14,15 @@ describe('Download Services', () => {
   });
 
   describe('Challenge detection', async () => {
-    const { detectChallenge, SourceBlockedError } = await import('../../lib/services/downloads/challenge.js');
+    const {
+      detectChallenge,
+      SourceBlockedError,
+      SourceParseError,
+      recordParseSuccess,
+      recordParseFailure,
+      getParserHealth,
+      PARSE_FAILURE_SUSPECT_THRESHOLD,
+    } = await import('../../lib/services/downloads/challenge.js');
 
     it('should not flag a normal search results page', () => {
       const html = `
@@ -58,11 +66,56 @@ describe('Download Services', () => {
       assert.strictEqual(error.message, 'annas-archive.li is behind a bot check right now');
       assert.ok(error instanceof Error);
     });
+
+    it('SourceParseError carries the source name and a readable message', () => {
+      const error = new SourceParseError('libgen', "libgen.vg's page structure wasn't recognised");
+      assert.strictEqual(error.source, 'libgen');
+      assert.strictEqual(error.message, "libgen.vg's page structure wasn't recognised");
+      assert.ok(error instanceof Error);
+    });
+  });
+
+  describe('Parser health tracking', async () => {
+    const { recordParseSuccess, recordParseFailure, getParserHealth, PARSE_FAILURE_SUSPECT_THRESHOLD } =
+      await import('../../lib/services/downloads/challenge.js');
+
+    it('is not suspect before reaching the failure threshold', () => {
+      const source = `health-test-below-${Math.random()}`;
+      recordParseFailure(source);
+      recordParseFailure(source);
+
+      const health = getParserHealth().find((h: { source: string }) => h.source === source);
+      assert.strictEqual(health?.consecutiveFailures, 2);
+      assert.strictEqual(health?.suspect, false);
+    });
+
+    it('becomes suspect once consecutive failures reach the threshold', () => {
+      const source = `health-test-at-${Math.random()}`;
+      for (let i = 0; i < PARSE_FAILURE_SUSPECT_THRESHOLD; i++) {
+        recordParseFailure(source);
+      }
+
+      const health = getParserHealth().find((h: { source: string }) => h.source === source);
+      assert.strictEqual(health?.consecutiveFailures, PARSE_FAILURE_SUSPECT_THRESHOLD);
+      assert.strictEqual(health?.suspect, true);
+    });
+
+    it('resets the streak on a successful parse', () => {
+      const source = `health-test-reset-${Math.random()}`;
+      for (let i = 0; i < PARSE_FAILURE_SUSPECT_THRESHOLD; i++) {
+        recordParseFailure(source);
+      }
+      recordParseSuccess(source);
+
+      const health = getParserHealth().find((h: { source: string }) => h.source === source);
+      assert.strictEqual(health?.consecutiveFailures, 0);
+      assert.strictEqual(health?.suspect, false);
+    });
   });
 
   describe('Anna\'s Archive Service', async () => {
     const annas = await import('../../lib/services/downloads/annas.js');
-    const { SourceBlockedError } = await import('../../lib/services/downloads/challenge.js');
+    const { SourceBlockedError, SourceParseError } = await import('../../lib/services/downloads/challenge.js');
 
     describe('getAnnasDomain', () => {
       it('should return a valid domain', () => {
@@ -161,7 +214,7 @@ describe('Download Services', () => {
 
       it('should include file type in search params when provided', async () => {
         mockFetch.mock.mockImplementationOnce(async () =>
-          new Response('', { status: 200 })
+          new Response('<div class="search-results"></div>', { status: 200 })
         );
 
         await annas.searchAnnas('test', { fileType: 'epub' });
@@ -171,7 +224,7 @@ describe('Download Services', () => {
 
       it('should include language in search params when provided', async () => {
         mockFetch.mock.mockImplementationOnce(async () =>
-          new Response('', { status: 200 })
+          new Response('<div class="search-results"></div>', { status: 200 })
         );
 
         await annas.searchAnnas('test', { language: 'en' });
@@ -228,6 +281,33 @@ describe('Download Services', () => {
 
         const results = await annas.searchAnnas('test');
         assert.strictEqual(results.length, 0);
+      });
+
+      it('should throw SourceParseError when the page has no recognisable results structure', async () => {
+        // Neither an /md5/ link, a data-md5 attribute, nor a search-results
+        // container — this isn't "zero matches", it's markup we don't
+        // recognise at all.
+        const html = '<html><body><div class="totally-different-layout">Nothing we know</div></body></html>';
+        mockFetch.mock.mockImplementationOnce(async () =>
+          new Response(html, { status: 200 })
+        );
+
+        await assert.rejects(
+          () => annas.searchAnnas('test'),
+          (err: unknown) => err instanceof SourceParseError
+        );
+      });
+
+      it('should classify a challenge page as SourceBlockedError, not SourceParseError, even though its markup also fails structural checks', async () => {
+        const html = '<html><head><title>Just a moment...</title></head><body><div class="cf-turnstile"></div></body></html>';
+        mockFetch.mock.mockImplementationOnce(async () =>
+          new Response(html, { status: 200 })
+        );
+
+        await assert.rejects(
+          () => annas.searchAnnas('test'),
+          (err: unknown) => err instanceof SourceBlockedError && !(err instanceof SourceParseError)
+        );
       });
 
       it('should skip results without valid md5', async () => {
@@ -336,7 +416,7 @@ describe('Download Services', () => {
 
   describe('LibGen Service', async () => {
     const libgen = await import('../../lib/services/downloads/libgen.js');
-    const { SourceBlockedError } = await import('../../lib/services/downloads/challenge.js');
+    const { SourceBlockedError, SourceParseError } = await import('../../lib/services/downloads/challenge.js');
 
     describe('getLibGenDomain', () => {
       it('should return a valid domain', () => {
@@ -395,6 +475,30 @@ describe('Download Services', () => {
         assert.strictEqual(results.length, 0);
       });
 
+      it('should throw SourceParseError when the page has no recognisable results table', async () => {
+        const html = '<html><body><div class="totally-different-layout">Nothing we know</div></body></html>';
+        mockFetch.mock.mockImplementationOnce(async () =>
+          new Response(html, { status: 200 })
+        );
+
+        await assert.rejects(
+          () => libgen.searchLibGen('test'),
+          (err: unknown) => err instanceof SourceParseError
+        );
+      });
+
+      it('should classify a challenge page as SourceBlockedError, not SourceParseError, even though its markup also fails structural checks', async () => {
+        const html = '<html><head><title>Just a moment...</title></head><body><div class="cf-turnstile"></div></body></html>';
+        mockFetch.mock.mockImplementationOnce(async () =>
+          new Response(html, { status: 200 })
+        );
+
+        await assert.rejects(
+          () => libgen.searchLibGen('test'),
+          (err: unknown) => err instanceof SourceBlockedError && !(err instanceof SourceParseError)
+        );
+      });
+
       it('should parse search results from HTML table rows', async () => {
         const html = `
           <table>
@@ -425,7 +529,7 @@ describe('Download Services', () => {
 
       it('should search by ISBN when provided', async () => {
         mockFetch.mock.mockImplementationOnce(async () =>
-          new Response('', { status: 200 })
+          new Response('<table></table>', { status: 200 })
         );
 
         await libgen.searchLibGen('test', { isbn: '978-0-123456-78-9' });
@@ -821,7 +925,7 @@ describe('Download Services', () => {
 
   describe('Z-Library Service', async () => {
     const zlib = await import('../../lib/services/downloads/zlibrary.js');
-    const { SourceBlockedError } = await import('../../lib/services/downloads/challenge.js');
+    const { SourceBlockedError, SourceParseError } = await import('../../lib/services/downloads/challenge.js');
 
     describe('getZLibraryDomain', () => {
       it('should return a valid domain', () => {
@@ -872,12 +976,39 @@ describe('Download Services', () => {
       });
 
       it('should still return an empty array for a normal empty-results page', async () => {
+        // A z-bookcard element with no matching data-id/title/author is a
+        // page that had a fair shot at matching — genuinely zero results,
+        // not unrecognised markup.
         mockFetch.mock.mockImplementationOnce(async () =>
-          new Response('<div></div>', { status: 200 })
+          new Response('<z-bookcard></z-bookcard>', { status: 200 })
         );
 
         const results = await zlib.searchZLibrary('test');
         assert.strictEqual(results.length, 0);
+      });
+
+      it('should throw SourceParseError when the page has no recognisable book cards or links', async () => {
+        const html = '<html><body><div class="totally-different-layout">Nothing we know</div></body></html>';
+        mockFetch.mock.mockImplementationOnce(async () =>
+          new Response(html, { status: 200 })
+        );
+
+        await assert.rejects(
+          () => zlib.searchZLibrary('test'),
+          (err: unknown) => err instanceof SourceParseError
+        );
+      });
+
+      it('should classify a challenge page as SourceBlockedError, not SourceParseError, even though its markup also fails structural checks', async () => {
+        const html = '<html><head><title>Just a moment...</title></head><body><div class="cf-turnstile"></div></body></html>';
+        mockFetch.mock.mockImplementationOnce(async () =>
+          new Response(html, { status: 200 })
+        );
+
+        await assert.rejects(
+          () => zlib.searchZLibrary('test'),
+          (err: unknown) => err instanceof SourceBlockedError && !(err instanceof SourceParseError)
+        );
       });
 
       it('should parse search results from z-bookcard elements', async () => {
@@ -901,7 +1032,7 @@ describe('Download Services', () => {
 
       it('should include auth cookies when credentials provided', async () => {
         mockFetch.mock.mockImplementationOnce(async () =>
-          new Response('', { status: 200 })
+          new Response('<z-bookcard></z-bookcard>', { status: 200 })
         );
 
         const config = {

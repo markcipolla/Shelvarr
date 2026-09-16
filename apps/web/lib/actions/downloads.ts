@@ -8,10 +8,12 @@ import {
   getSourceStatuses,
   refreshSourceStatuses,
   checkSourceHealth,
+  getParserHealth,
   type DownloadResult,
   type DownloadSource,
   type SourceStatus,
   type BlockedSource,
+  type ParserHealth,
 } from '@/lib/services/downloads';
 import {
   getDownloadSourceConfigs,
@@ -108,6 +110,15 @@ export async function checkDownloadSourceHealth(source: string): Promise<SourceS
   const status = await checkSourceHealth(source);
   revalidatePath('/settings');
   return status;
+}
+
+/**
+ * Get each shadow-library source's consecutive structural-parse-failure
+ * streak (in-memory, process-local — see `getParserHealth`). Used to flag a
+ * source whose parser may need updating for a markup change.
+ */
+export async function getDownloadParserHealth(): Promise<ParserHealth[]> {
+  return getParserHealth();
 }
 
 /**
