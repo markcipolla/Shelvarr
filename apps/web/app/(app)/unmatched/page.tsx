@@ -4,6 +4,7 @@ import { BookGrid } from '@/components/books/BookGrid';
 import { BooksFilter } from '@/components/books/BooksFilter';
 import { Pagination } from '@/components/books/Pagination';
 import { RefreshUnmatchedButton } from '@/components/books/RefreshUnmatchedButton';
+import { LiveRefresh } from '@/components/live/LiveRefresh';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +29,9 @@ export default async function UnmatchedPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6">
+      {/* A book drops off this list as soon as a scan or a metadata fetch
+          matches it. */}
+      <LiveRefresh taskTypes={['scan', 'book_scan_all', 'metadata', 'book_metadata']} />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Unmatched Books</h1>

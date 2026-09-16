@@ -5,6 +5,8 @@
 
 import { query, queryOne, execute, insertReturning } from '@shelvarr/db';
 import { createLogger } from '../utils/logger';
+import { listenerCount, publish } from '../events/index';
+import type { TaskEvent } from '../events/index';
 
 const log = createLogger('queue');
 
@@ -65,8 +67,10 @@ function rowToTask(row: TaskRow): Task {
   };
 }
 
-// In-memory queue for running tasks
-const runningTasks = new Map<number, { cancel: () => void }>();
+// In-memory queue for running tasks. The type is carried alongside the
+// canceller so the live-event helpers can name the task without going back to
+// the database on every progress tick.
+const runningTasks = new Map<number, { cancel: () => void; type: TaskType }>();
 
 // Rate limit retry queue - processes one task at a time with delays
 interface RetryEntry {
@@ -238,7 +242,9 @@ export function createTask(type: TaskType, initialData?: Record<string, unknown>
     throw new Error('Failed to create task');
   }
 
-  return rowToTask(row);
+  const task = rowToTask(row);
+  emitTaskChange('created', task.id);
+  return task;
 }
 
 /**
@@ -319,6 +325,58 @@ export function getRunningTasks(): Task[] {
 }
 
 /**
+ * Tell anything watching the live stream that a task changed.
+ *
+ * The row is read back after the update rather than assembled from the
+ * arguments, so a page is told the status the database actually holds — which
+ * matters for the updates that are conditional, like cancelling a task that
+ * finished a moment earlier. These fire on status changes only, so the extra
+ * read is a handful per task rather than one per tick.
+ */
+function emitTaskChange(event: Exclude<TaskEvent['event'], 'progress'>, id: number): void {
+  if (listenerCount() === 0) return;
+
+  const task = getTask(id);
+  if (!task) return;
+
+  publish({
+    kind: 'task',
+    event,
+    id,
+    taskType: task.type,
+    status: task.status,
+    progress: task.progress,
+    total: task.total,
+    error: task.error,
+  });
+}
+
+/**
+ * The same, for progress, which is the one that fires in a hot loop.
+ *
+ * The counts are already in hand and the type comes from `runningTasks`, so a
+ * tick costs nothing but a map lookup. A task progressing outside a tracked
+ * run has no type to report and is skipped: the bus coalesces these anyway,
+ * and the status change that follows carries the final numbers.
+ */
+function emitTaskProgress(id: number, progress: number, total: number): void {
+  if (listenerCount() === 0) return;
+
+  const type = runningTasks.get(id)?.type;
+  if (!type) return;
+
+  publish({
+    kind: 'task',
+    event: 'progress',
+    id,
+    taskType: type,
+    status: 'running',
+    progress,
+    total,
+  });
+}
+
+/**
  * Update task progress
  */
 export function updateTaskProgress(id: number, progress: number, total: number): void {
@@ -326,6 +384,7 @@ export function updateTaskProgress(id: number, progress: number, total: number):
     'UPDATE tasks SET progress = ?, total = ? WHERE id = ?',
     [progress, total, id]
   );
+  emitTaskProgress(id, progress, total);
 }
 
 /**
@@ -336,6 +395,7 @@ export function startTask(id: number): void {
     "UPDATE tasks SET status = 'running' WHERE id = ?",
     [id]
   );
+  emitTaskChange('started', id);
 }
 
 /**
@@ -347,6 +407,7 @@ export function completeTask(id: number, result: Record<string, unknown>): void 
     [JSON.stringify(result), id]
   );
   runningTasks.delete(id);
+  emitTaskChange('completed', id);
 }
 
 /**
@@ -358,6 +419,7 @@ export function failTask(id: number, error: string): void {
     [error, id]
   );
   runningTasks.delete(id);
+  emitTaskChange('failed', id);
 }
 
 /**
@@ -376,6 +438,8 @@ export function cancelTask(id: number): boolean {
     "UPDATE tasks SET status = 'cancelled', completed_at = CURRENT_TIMESTAMP WHERE id = ? AND status IN ('pending', 'running')",
     [id]
   );
+
+  emitTaskChange('cancelled', id);
 
   return true;
 }
@@ -415,6 +479,7 @@ export async function runTask(taskId: number): Promise<void> {
   const abortController = new AbortController();
   runningTasks.set(taskId, {
     cancel: () => abortController.abort(),
+    type: task.type,
   });
 
   try {
@@ -454,6 +519,7 @@ export async function runTask(taskId: number): Promise<void> {
         [taskId]
       );
       runningTasks.delete(taskId);
+      emitTaskChange('cancelled', taskId);
     } else {
       const message = error instanceof Error ? error.message : 'Unknown error';
       const retryAfterMs = rateLimitDelay(error, message);
@@ -469,6 +535,7 @@ export async function runTask(taskId: number): Promise<void> {
           [`Rate limited - queued for retry (#${queuePosition})`, taskId]
         );
         runningTasks.delete(taskId);
+        emitTaskChange('deferred', taskId);
 
         // Add to serial retry queue
         scheduleRetry(taskId, retryAfterMs);
@@ -534,6 +601,7 @@ export function retryTask(taskId: number): Task | null {
     // Take it off the retry queue first so the processor doesn't also run it.
     dropFromRetryQueue(taskId);
     execute('UPDATE tasks SET error = NULL WHERE id = ?', [taskId]);
+    emitTaskChange('created', taskId);
 
     runTask(taskId).catch(err => {
       log.error('Manual retry failed', { taskId, error: err });

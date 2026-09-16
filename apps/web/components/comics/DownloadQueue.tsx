@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import type { LiveEvent } from '@shelvarr/services';
 import {
   cancelComicDownload,
   retryComicDownload,
@@ -10,6 +11,8 @@ import {
   type DownloadQueueView,
 } from '@/lib/actions/comics';
 import { formatByteProgress } from '@/lib/utils/bytes';
+import { useLiveRefresh } from '@/components/live/LiveEvents';
+import { useLiveDownloadProgress } from '@/components/live/useLiveProgress';
 
 const STATE_STYLES: Record<string, string> = {
   queued: 'bg-shelvarr-surface text-shelvarr-text-muted border-shelvarr-border',
@@ -23,6 +26,23 @@ const STATE_STYLES: Record<string, string> = {
 export function DownloadQueue({ data }: { data: DownloadQueueView }) {
   const router = useRouter();
   const [busy, setBusy] = useState<number | null>(null);
+
+  // A download changing state moves it between the queue and the finished
+  // list, and finishing one adds a history row, so those come from the server.
+  // Bytes transferred are patched into the bar below without a round trip.
+  //
+  // Comic download tasks are watched too: the task is what fails when a host
+  // will not answer at all, and the row's error comes from that.
+  useLiveRefresh(
+    useCallback(
+      (event: LiveEvent) =>
+        (event.kind === 'download' && event.event !== 'progress') ||
+        (event.kind === 'task' &&
+          event.event !== 'progress' &&
+          event.taskType === 'comic_download'),
+      []
+    )
+  );
 
   const handleCancel = async (id: number) => {
     setBusy(id);
@@ -66,55 +86,12 @@ export function DownloadQueue({ data }: { data: DownloadQueueView }) {
         ) : (
           <ul className="bg-shelvarr-surface border border-shelvarr-border rounded-lg divide-y divide-shelvarr-border">
             {active.map((download) => (
-              <li key={download.id} className="p-3 flex items-center justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded border ${STATE_STYLES[download.state]}`}
-                    >
-                      {download.state}
-                    </span>
-                    <Link
-                      href={`/comics/${download.volumeSlug}`}
-                      className="text-white truncate hover:underline"
-                    >
-                      {download.volumeTitle ?? `Volume ${download.volumeId}`}
-                    </Link>
-                  </div>
-                  <p className="text-xs text-shelvarr-text-muted mt-1 truncate">
-                    {download.webSubTitle ?? download.webTitle ?? ''}
-                    {' · '}
-                    {download.host}
-                    {formatByteProgress(download.progress, download.size) &&
-                      ` · ${formatByteProgress(download.progress, download.size)}`}
-                    {download.attempts > 1 && ` · attempt ${download.attempts}`}
-                    {download.alternates > 0 &&
-                      ` · ${download.alternates} fallback${download.alternates === 1 ? '' : 's'}`}
-                  </p>
-                  {download.state === 'queued' && download.error && (
-                    <p className="text-xs text-amber-400 mt-1 truncate">{download.error}</p>
-                  )}
-                  {download.size ? (
-                    <div className="mt-2 h-1 bg-shelvarr-bg rounded overflow-hidden">
-                      <div
-                        className="h-full bg-blue-500"
-                        style={{
-                          width: `${Math.min(100, (download.progress / download.size) * 100)}%`,
-                        }}
-                      />
-                    </div>
-                  ) : null}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleCancel(download.id)}
-                  disabled={busy === download.id}
-                  className="text-sm text-red-400 hover:text-red-300 disabled:opacity-40 whitespace-nowrap"
-                >
-                  Cancel
-                </button>
-              </li>
+              <ActiveDownloadRow
+                key={download.id}
+                download={download}
+                busy={busy === download.id}
+                onCancel={() => handleCancel(download.id)}
+              />
             ))}
           </ul>
         )}
@@ -232,5 +209,77 @@ export function DownloadQueue({ data }: { data: DownloadQueueView }) {
         )}
       </section>
     </div>
+  );
+}
+
+/**
+ * A download still in flight.
+ *
+ * Its own component so the live byte count has somewhere to live: a hook
+ * cannot be called inside the `map` that renders the queue, and keeping the
+ * state per row means a transfer redrawing its bar does not re-render the
+ * rest of the page.
+ */
+function ActiveDownloadRow({
+  download,
+  busy,
+  onCancel,
+}: {
+  download: DownloadQueueView['downloads'][number];
+  busy: boolean;
+  onCancel: () => void;
+}) {
+  const { progress, size } = useLiveDownloadProgress(download.id, {
+    progress: download.progress,
+    size: download.size,
+  });
+
+  const label = formatByteProgress(progress, size);
+
+  return (
+    <li className="p-3 flex items-center justify-between gap-4">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className={`text-xs px-2 py-0.5 rounded border ${STATE_STYLES[download.state]}`}>
+            {download.state}
+          </span>
+          <Link
+            href={`/comics/${download.volumeSlug}`}
+            className="text-white truncate hover:underline"
+          >
+            {download.volumeTitle ?? `Volume ${download.volumeId}`}
+          </Link>
+        </div>
+        <p className="text-xs text-shelvarr-text-muted mt-1 truncate">
+          {download.webSubTitle ?? download.webTitle ?? ''}
+          {' · '}
+          {download.host}
+          {label && ` · ${label}`}
+          {download.attempts > 1 && ` · attempt ${download.attempts}`}
+          {download.alternates > 0 &&
+            ` · ${download.alternates} fallback${download.alternates === 1 ? '' : 's'}`}
+        </p>
+        {download.state === 'queued' && download.error && (
+          <p className="text-xs text-amber-400 mt-1 truncate">{download.error}</p>
+        )}
+        {size ? (
+          <div className="mt-2 h-1 bg-shelvarr-bg rounded overflow-hidden">
+            <div
+              className="h-full bg-blue-500 transition-all"
+              style={{ width: `${Math.min(100, (progress / size) * 100)}%` }}
+            />
+          </div>
+        ) : null}
+      </div>
+
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={busy}
+        className="text-sm text-red-400 hover:text-red-300 disabled:opacity-40 whitespace-nowrap"
+      >
+        Cancel
+      </button>
+    </li>
   );
 }

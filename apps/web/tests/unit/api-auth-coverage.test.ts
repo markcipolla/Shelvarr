@@ -63,10 +63,12 @@ describe('API authentication coverage', () => {
       const source = readFileSync(route, 'utf-8');
       // `authoriseAdminRequest` is the diagnostics gate: a stricter one than
       // `validateApiAuth`, since it also demands the feature be switched on
-      // and the caller be an admin.
+      // and the caller be an admin. `requireSessionUser` is the cookie gate,
+      // for the routes a browser opens itself and so cannot send a key header
+      // on — the live event stream is the one that needs it.
       assert.match(
         source,
-        /validateApiAuth\(|authenticateRequest\(|authoriseAdminRequest\(/,
+        /validateApiAuth\(|authenticateRequest\(|authoriseAdminRequest\(|requireSessionUser\(/,
         `${name} serves requests without checking who is asking. Add a ` +
           'validateApiAuth guard, or list it in PUBLIC_ROUTES with a reason.'
       );
