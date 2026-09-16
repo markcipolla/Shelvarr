@@ -3150,8 +3150,27 @@ export const initDatabaseAsync = initDatabase;
 // comparison against CURRENT_TIMESTAMP is a correct chronological one.
 // ---------------------------------------------------------------------------
 
-/** Turn a stored timestamp into an ISO-8601 instant for API responses. */
-export function sqlTimeToIso(value: string): string {
+/** SQLite's CURRENT_TIMESTAMP shape: "YYYY-MM-DD HH:MM:SS", UTC, no zone. */
+const SQLITE_TIMESTAMP = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/;
+
+/**
+ * Turn a stored timestamp into an ISO-8601 instant for API responses.
+ *
+ * SQLite writes CURRENT_TIMESTAMP as "YYYY-MM-DD HH:MM:SS" in UTC with nothing
+ * on it to say so, and `new Date()` reads a string in that shape as local time.
+ * A browser in AEST therefore places every row ten hours further into the past
+ * than it really is. Stamping the zone on the way out is the only place to fix
+ * that: the stored format has to stay as it is, because expiry is compared
+ * lexicographically against CURRENT_TIMESTAMP in SQL.
+ *
+ * Anything that isn't in SQLite's shape — a value already written from
+ * JavaScript as ISO, or an empty placeholder — is passed through untouched, so
+ * this is safe to apply to columns that are written from both sides.
+ */
+export function sqlTimeToIso(value: string): string;
+export function sqlTimeToIso(value: string | null): string | null;
+export function sqlTimeToIso(value: string | null): string | null {
+  if (value === null || !SQLITE_TIMESTAMP.test(value)) return value;
   return `${value.replace(' ', 'T')}Z`;
 }
 

@@ -3,7 +3,7 @@
  * Manages async tasks like library scans, metadata fetches, and file reorganization
  */
 
-import { query, queryOne, execute, insertReturning } from '@shelvarr/db';
+import { query, queryOne, execute, insertReturning, sqlTimeToIso } from '@shelvarr/db';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('queue');
@@ -23,7 +23,9 @@ export interface Task {
   total: number | null;
   result: string | null;
   error: string | null;
+  /** ISO-8601 instant, zone included — see `sqlTimeToIso`. */
   createdAt: string;
+  /** ISO-8601 instant, zone included — see `sqlTimeToIso`. */
   completedAt: string | null;
   // Parsed data
   data?: Record<string, unknown>;
@@ -59,8 +61,8 @@ function rowToTask(row: TaskRow): Task {
     total: row.total,
     result: row.result,
     error: row.error,
-    createdAt: row.created_at,
-    completedAt: row.completed_at,
+    createdAt: sqlTimeToIso(row.created_at),
+    completedAt: sqlTimeToIso(row.completed_at),
     data,
   };
 }
