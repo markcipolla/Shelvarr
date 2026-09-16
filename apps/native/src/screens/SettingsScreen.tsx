@@ -44,7 +44,10 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     loadSettings();
-  }, []);
+    // `loadSettings` is defined once in the zustand store factory and never
+    // reassigned, so this selector is referentially stable — adding it here
+    // doesn't change when the effect runs.
+  }, [loadSettings]);
 
   useEffect(() => {
     setShelvarrUrlInput(shelvarrUrl);

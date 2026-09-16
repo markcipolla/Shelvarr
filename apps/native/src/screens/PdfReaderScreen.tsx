@@ -26,6 +26,13 @@ export default function PdfReaderScreen({ route, navigation }: Props) {
       NavigationBar.setVisibilityAsync('visible');
       onReaderExit();
     };
+    // Route params identify a single book for the lifetime of this screen
+    // instance, so they can't meaningfully change here. `onReaderExit`'s
+    // identity, though, changes whenever the download store updates for this
+    // book (e.g. a background download finishing) — depending on it would
+    // tear this setup down and rebuild it mid-read, firing the stale
+    // onReaderExit early instead of only on unmount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
