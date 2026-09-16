@@ -212,7 +212,13 @@ export class ComicVine {
       });
     } catch (error) {
       if (this.signal?.aborted) throw error;
-      throw new ComicVineRateLimitError();
+      // A transport failure is not a throttle. Calling it one tells the caller
+      // to back off for an hour over what may be a momentary blip — and callers
+      // that stop work on a rate limit, like the library import scan, would
+      // abandon the rest of the run because of it.
+      throw new Error(
+        `ComicVine request failed: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
 
     if (response.status === 420 || response.status === 429) {

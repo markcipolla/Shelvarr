@@ -190,6 +190,17 @@ describe('ComicVine client', () => {
       );
     });
 
+    it('does not mistake a network failure for a rate limit', async () => {
+      global.fetch = mock.fn(async () => {
+        throw new TypeError('fetch failed');
+      }) as unknown as typeof fetch;
+
+      await assert.rejects(() => new cv.ComicVine({ apiKey: 'key' }).searchVolumes('hulk'), {
+        name: 'Error',
+        message: /ComicVine request failed: fetch failed/,
+      });
+    });
+
     it('refuses to construct without a key', () => {
       assert.throws(() => new cv.ComicVine({ apiKey: '' }), cv.InvalidComicVineApiKeyError);
     });
@@ -604,6 +615,51 @@ describe('Comic library', () => {
         () => importLibrary.findImportGroups(join(root, 'nope')),
         /No such folder/
       );
+    });
+
+    it('stops at ComicVine’s rate limit instead of reporting "no match"', async () => {
+      const tree = join(root, 'adopt-throttled');
+      for (const name of ['Alpha', 'Beta', 'Gamma']) {
+        mkdirSync(join(tree, name), { recursive: true });
+        writeFileSync(join(tree, name, `${name} (2012) Issue 001.cbz`), 'x');
+      }
+
+      db.setSetting('comicvine_api_key', 'test-key');
+      const originalFetch = global.fetch;
+      let calls = 0;
+      global.fetch = mock.fn(async () => {
+        calls += 1;
+        // The first folder gets a real answer of "nothing found"; the second
+        // trips ComicVine's throttle, which it serves as a 200 with its own
+        // status code inside.
+        const body =
+          calls === 1
+            ? { status_code: 1, error: 'OK', number_of_total_results: 0, results: [] }
+            : { status_code: 107, error: 'Rate Limit Exceeded', results: [] };
+        return new Response(JSON.stringify(body), { status: 200 });
+      }) as typeof fetch;
+
+      try {
+        const groups = await importLibrary.findImportGroups(tree);
+        assert.strictEqual(groups.length, 3);
+
+        const proposals = await importLibrary.proposeLibraryImport(groups);
+        const failures = proposals.map((proposal) => proposal.failure);
+
+        // One genuine "ComicVine has never heard of it", one folder that hit
+        // the limit, and one the scan never got to.
+        assert.strictEqual(failures.filter((failure) => failure === null).length, 1);
+        assert.strictEqual(failures.filter((failure) => failure === 'rate-limited').length, 1);
+        assert.strictEqual(failures.filter((failure) => failure === 'not-searched').length, 1);
+        // Every proposal has an empty candidate list, so the reason is the only
+        // thing telling them apart.
+        assert.ok(proposals.every((proposal) => proposal.candidates.length === 0));
+        // Two requests, not three: once locked out, the scan stops asking.
+        assert.strictEqual(calls, 2);
+      } finally {
+        global.fetch = originalFetch;
+        db.setSetting('comicvine_api_key', '');
+      }
     });
   });
 });

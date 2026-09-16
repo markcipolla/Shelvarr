@@ -17,6 +17,7 @@ import { getComicVolumeByComicvineId } from '@shelvarr/db';
 import type { ComicVolumeMetadata, FilenameData } from '@shelvarr/types';
 
 import { createLogger } from '../utils/logger';
+import { ComicVineRateLimitError } from './comicvine';
 import { getComicVine } from './library';
 import { addVolume } from './library';
 import { extractFilenameData } from './getcomics/parse';
@@ -35,6 +36,22 @@ export interface ImportGroup {
   files: string[];
 }
 
+/**
+ * Why a folder has no candidates, when the reason is something other than
+ * ComicVine genuinely knowing nothing about it.
+ *
+ * `null` is the only value that means "ComicVine was asked and had no match" —
+ * everything else means we never got an answer, which is a different thing to
+ * tell the user.
+ */
+export type ImportSearchFailure =
+  /** ComicVine locked us out mid-scan; this folder's search is the one that hit it. */
+  | 'rate-limited'
+  /** The lockout was already in force, so this folder was never searched. */
+  | 'not-searched'
+  /** The search threw for some other reason (network, bad key, CV error). */
+  | 'error';
+
 /** A group with the ComicVine volumes it might be. */
 export interface ImportProposal extends ImportGroup {
   /** Candidate matches, best first. Empty when ComicVine had nothing. */
@@ -43,6 +60,10 @@ export interface ImportProposal extends ImportGroup {
   suggested: ComicVolumeMetadata | null;
   /** Local volume id when this folder is already in the library. */
   alreadyAdded: number | null;
+  /** Set when `candidates` is empty because the search never answered. */
+  failure: ImportSearchFailure | null;
+  /** The message behind `failure: 'error'`. */
+  failureMessage: string | null;
 }
 
 /**
@@ -156,6 +177,12 @@ function candidateRank(candidate: ComicVolumeMetadata, info: FilenameData): numb
  * One search per group, spaced by the client's own rate limiting — a library
  * of 200 volumes therefore takes a few minutes. That's why this runs as a
  * background task rather than inline in a request.
+ *
+ * ComicVine's hourly cap is low enough that a big library will hit it. When it
+ * does, the scan stops searching: every later request would fail the same way,
+ * and hammering a service that has just locked us out only lengthens the
+ * lockout. The remaining folders come back marked `not-searched` so the review
+ * can say so instead of pretending ComicVine had no match for them.
  */
 export async function proposeLibraryImport(
   groups: ImportGroup[],
@@ -166,19 +193,35 @@ export async function proposeLibraryImport(
 ): Promise<ImportProposal[]> {
   const client = await getComicVine(options.signal);
   const proposals: ImportProposal[] = [];
+  let rateLimited = false;
 
   for (const [index, group] of groups.entries()) {
     if (options.signal?.aborted) break;
 
     let candidates: ComicVolumeMetadata[] = [];
-    if (group.info.series) {
+    let failure: ImportSearchFailure | null = rateLimited ? 'not-searched' : null;
+    let failureMessage: string | null = null;
+
+    if (!rateLimited && group.info.series) {
       const query = group.info.year
         ? `${group.info.series} ${group.info.year}`
         : group.info.series;
       try {
         candidates = await client.searchVolumes(query);
       } catch (error) {
-        log.warn('ComicVine search failed for group', { folder: group.folder, error });
+        if (error instanceof ComicVineRateLimitError) {
+          rateLimited = true;
+          failure = 'rate-limited';
+          log.warn('ComicVine rate limit reached; leaving the rest of the scan unsearched', {
+            folder: group.folder,
+            searched: index,
+            total: groups.length,
+          });
+        } else {
+          failure = 'error';
+          failureMessage = error instanceof Error ? error.message : String(error);
+          log.warn('ComicVine search failed for group', { folder: group.folder, error });
+        }
       }
     }
 
@@ -198,6 +241,8 @@ export async function proposeLibraryImport(
       alreadyAdded: suggested
         ? getComicVolumeByComicvineId(suggested.comicvineId)?.id ?? null
         : null,
+      failure,
+      failureMessage,
     });
 
     options.onProgress?.(index + 1, groups.length);

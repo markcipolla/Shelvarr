@@ -15,6 +15,7 @@ import {
   sqlTimeToIso,
 } from '@/lib/db';
 import type { ComicVolumeSummary, ComicVolumeDetail } from '@shelvarr/types';
+import type { ImportSearchFailure } from '@shelvarr/services';
 import { getReadingUserId } from '@/lib/auth';
 import { withComicReadState } from '@/lib/comics/readState';
 
@@ -459,6 +460,13 @@ export interface ImportProposalView {
    */
   alreadyAddedManaged?: boolean;
   candidates: ImportCandidateView[];
+  /**
+   * Why `candidates` is empty, when the reason is not "ComicVine had no
+   * match". Absent on results recorded before the scan tracked this.
+   */
+  failure?: ImportSearchFailure | null;
+  /** The message behind `failure: 'error'`. */
+  failureMessage?: string | null;
 }
 
 export interface LibraryImportRun {

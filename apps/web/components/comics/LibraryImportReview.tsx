@@ -35,6 +35,27 @@ function isImportable(proposal: ImportProposalView): boolean {
   return bestGuess(proposal) !== null;
 }
 
+/**
+ * What to say about a folder with no candidates.
+ *
+ * Only a folder that ComicVine actually answered about gets "no match" — a
+ * search that never completed is a different problem with a different fix, and
+ * telling someone to add 300 volumes by hand because ComicVine throttled us
+ * would be a lie with consequences.
+ */
+function failureNote(proposal: ImportProposalView): string {
+  switch (proposal.failure) {
+    case 'rate-limited':
+      return 'ComicVine cut us off here — its hourly request limit ran out. Re-run the scan later to search this folder.';
+    case 'not-searched':
+      return 'Not searched — the scan had already hit ComicVine’s hourly limit. Re-run the scan later.';
+    case 'error':
+      return `ComicVine search failed${proposal.failureMessage ? `: ${proposal.failureMessage}` : ''}. Re-run the scan to try again.`;
+    default:
+      return 'ComicVine had no match. Add this one by hand from the Add Comic page.';
+  }
+}
+
 function candidateLabel(candidate: ImportProposalView['candidates'][number]): string {
   return [
     candidate.title,
@@ -94,6 +115,16 @@ export function LibraryImportReview({
       })),
     [run]
   );
+
+  // Folders the scan never got an answer for. Almost always ComicVine's hourly
+  // limit running out partway through a big library.
+  const unsearched = useMemo(
+    () => (run?.proposals ?? []).filter((proposal) => Boolean(proposal.failure)),
+    [run]
+  );
+  const throttled = unsearched.filter(
+    (proposal) => proposal.failure === 'rate-limited' || proposal.failure === 'not-searched'
+  ).length;
 
   const handleApply = async (selection: typeof selected) => {
     setApplying(true);
@@ -213,6 +244,28 @@ export function LibraryImportReview({
         Nothing is moved or renamed — each volume keeps the folder it is in.
       </p>
 
+      {unsearched.length > 0 && (
+        <div className="bg-yellow-600/10 border border-yellow-500/40 rounded-lg p-4 text-sm text-yellow-300">
+          {throttled > 0 ? (
+            <>
+              <p>
+                ComicVine’s hourly request limit ran out partway through, leaving{' '}
+                {throttled} folder{throttled === 1 ? '' : 's'} unsearched — those are{' '}
+                <em>not</em> folders ComicVine has no match for.
+              </p>
+              <p className="mt-1 text-yellow-300/80">
+                Import what matched, then re-run the scan in an hour to pick up the rest.
+              </p>
+            </>
+          ) : (
+            <p>
+              {unsearched.length} folder{unsearched.length === 1 ? '' : 's'} could not be
+              searched — re-run the scan to try again.
+            </p>
+          )}
+        </div>
+      )}
+
       {error && (
         <div className="bg-red-600/20 text-red-400 border border-red-500/40 rounded-lg p-4">
           {error}
@@ -279,9 +332,7 @@ export function LibraryImportReview({
                     </Link>
                   </p>
                 ) : proposal.candidates.length === 0 ? (
-                  <p className="text-xs text-yellow-400 mt-2">
-                    ComicVine had no match. Add this one by hand from the Add Comic page.
-                  </p>
+                  <p className="text-xs text-yellow-400 mt-2">{failureNote(proposal)}</p>
                 ) : (
                   <>
                     {proposal.alreadyAdded !== null && (

@@ -2025,6 +2025,10 @@ const comicLibraryImportHandler: TaskHandler = async (taskId, onProgress, signal
   // dropped: they are by far the largest field and the UI does not use them.
   return {
     path: data.path,
+    // A folder with no candidates because ComicVine stopped answering is not
+    // the same as one ComicVine has never heard of, so the reason travels with
+    // the proposal rather than being flattened into an empty candidate list.
+    unsearched: proposals.filter((proposal) => proposal.failure !== null).length,
     proposals: proposals.map((proposal) => ({
       folder: proposal.folder,
       series: proposal.info.series,
@@ -2032,6 +2036,8 @@ const comicLibraryImportHandler: TaskHandler = async (taskId, onProgress, signal
       fileCount: proposal.files.length,
       suggestedComicvineId: proposal.suggested?.comicvineId ?? null,
       alreadyAdded: proposal.alreadyAdded,
+      failure: proposal.failure,
+      failureMessage: proposal.failureMessage,
       candidates: proposal.candidates.map((candidate) => ({
         comicvineId: candidate.comicvineId,
         title: candidate.title,
