@@ -99,22 +99,6 @@ CREATE TABLE IF NOT EXISTS author_works (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
--- Download queue
-CREATE TABLE IF NOT EXISTS downloads (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  title TEXT NOT NULL,
-  author TEXT,
-  isbn TEXT,
-  source TEXT,
-  source_url TEXT,
-  status TEXT DEFAULT 'pending',
-  target_library_id INTEGER REFERENCES libraries(id) ON DELETE SET NULL,
-  file_path TEXT,
-  error TEXT,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  completed_at TEXT
-);
-
 -- Wanted books (standalone, not tied to author_works)
 CREATE TABLE IF NOT EXISTS wanted_books (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -267,7 +251,6 @@ CREATE INDEX IF NOT EXISTS idx_books_series ON books(series_name);
 CREATE INDEX IF NOT EXISTS idx_author_works_author ON author_works(author_id);
 CREATE INDEX IF NOT EXISTS idx_author_works_owned ON author_works(owned);
 CREATE INDEX IF NOT EXISTS idx_author_works_wanted ON author_works(wanted);
-CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_wanted_books_status ON wanted_books(status);
 CREATE INDEX IF NOT EXISTS idx_wanted_books_title ON wanted_books(title);
@@ -404,6 +387,72 @@ CREATE INDEX IF NOT EXISTS idx_comic_downloads_state ON comic_downloads(state);
 CREATE INDEX IF NOT EXISTS idx_comic_downloads_volume ON comic_downloads(volume_id);
 CREATE INDEX IF NOT EXISTS idx_comic_download_history_volume ON comic_download_history(volume_id);
 CREATE INDEX IF NOT EXISTS idx_comic_blocklist_link ON comic_blocklist(download_link);
+
+-- Book acquisition (LibGen/Anna's Archive/Z-Library sourcing)
+-- Mirrors the comic_downloads/comic_download_history/comic_blocklist trio
+-- above, shaped for a single-file book download instead of a comic volume's
+-- issues. Replaces the old `downloads` table, which nothing ever read or
+-- wrote (see the migration that drops it).
+CREATE TABLE IF NOT EXISTS book_downloads (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  -- Null until the download has landed: the book row is only created partway
+  -- through the handler, once the file is on disk.
+  book_id INTEGER REFERENCES books(id) ON DELETE SET NULL,
+  wanted_book_id INTEGER REFERENCES wanted_books(id) ON DELETE SET NULL,
+  library_id INTEGER NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+  source TEXT NOT NULL, -- libgen|annas|zlibrary
+  title TEXT NOT NULL,
+  author TEXT,
+  extension TEXT NOT NULL,
+  download_url TEXT NOT NULL,
+  md5 TEXT, -- only libgen/annas identify a file by hash
+  state TEXT NOT NULL DEFAULT 'queued', -- queued|downloading|importing|completed|failed|cancelled
+  progress INTEGER NOT NULL DEFAULT 0,  -- bytes downloaded
+  size INTEGER,                          -- total bytes, when known
+  attempts INTEGER NOT NULL DEFAULT 0,
+  file_path TEXT,                        -- final resting place once written
+  error TEXT,
+  -- Last sign of life, same convention as comic_downloads.heartbeat_at: a
+  -- non-terminal row whose heartbeat has gone cold was orphaned by a process
+  -- that stopped. (Nothing sweeps stalled book downloads yet — that is a
+  -- later card; this column just gives it somewhere to read from.)
+  heartbeat_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  completed_at TEXT
+);
+
+-- What we've downloaded before, so the UI can show history and auto-search
+-- can avoid re-fetching.
+CREATE TABLE IF NOT EXISTS book_download_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  wanted_book_id INTEGER REFERENCES wanted_books(id) ON DELETE SET NULL,
+  library_id INTEGER REFERENCES libraries(id) ON DELETE SET NULL,
+  source TEXT,
+  title TEXT,
+  author TEXT,
+  download_url TEXT,
+  success INTEGER NOT NULL DEFAULT 1,
+  downloaded_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Links that turned out to be dead or unusable. Checked before enqueuing so
+-- the same broken link isn't retried every search.
+CREATE TABLE IF NOT EXISTS book_blocklist (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  wanted_book_id INTEGER REFERENCES wanted_books(id) ON DELETE SET NULL,
+  library_id INTEGER REFERENCES libraries(id) ON DELETE SET NULL,
+  title TEXT,
+  author TEXT,
+  source TEXT,
+  download_url TEXT NOT NULL UNIQUE,
+  reason TEXT NOT NULL, -- link-broken|no-working-links|added-by-user
+  added_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_book_downloads_state ON book_downloads(state);
+CREATE INDEX IF NOT EXISTS idx_book_downloads_heartbeat ON book_downloads(state, heartbeat_at);
+CREATE INDEX IF NOT EXISTS idx_book_download_history_library ON book_download_history(library_id);
+CREATE INDEX IF NOT EXISTS idx_book_blocklist_link ON book_blocklist(download_url);
 
 -- Comic library ownership
 -- Directories Shelvarr stores comics in. A volume's folder lives under one.

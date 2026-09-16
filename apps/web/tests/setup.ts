@@ -39,7 +39,7 @@ export async function cleanupTestDatabase(): Promise<void> {
 
   // Delete all data in reverse dependency order
   db.exec(`
-    DELETE FROM downloads;
+    DELETE FROM book_downloads;
     DELETE FROM author_works;
     DELETE FROM authors;
     DELETE FROM book_series;

@@ -19,6 +19,10 @@ import {
   getComicVolumesNeedingRefresh,
   getComicVolumesWithMissingIssues,
   startComicDownloadAttempt,
+  addBookDownload,
+  setBookDownloadState,
+  updateBookDownloadProgress,
+  addBookDownloadHistory,
 } from '@shelvarr/db';
 import {
   deferDownload,
@@ -413,209 +417,266 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
   if (signal.aborted) throw new Error('Task cancelled');
   onProgress(1, 6);
 
-  // Step 2: Download the file
-  let fileData: { buffer: Buffer; filename: string; contentType: string } | null = null;
-
-  if (data.source === 'libgen') {
-    fileData = await downloadFromLibgen(data.md5);
-  } else {
-    // TODO: Add support for other sources
-    throw new Error(`Download from ${data.source} not yet supported`);
-  }
-
-  if (!fileData) {
-    throw new Error('Failed to download file');
-  }
-
-  if (signal.aborted) throw new Error('Task cancelled');
-  onProgress(2, 6);
-
-  // Step 3: Generate filename and save (using clean data from wanted book if available)
-  const ext = data.extension || path.extname(fileData.filename).replace('.', '') || 'epub';
-  const authorPart = bookAuthor && bookAuthor !== 'Unknown' ? `${sanitizeFilename(bookAuthor)} - ` : '';
-  const titlePart = sanitizeFilename(bookTitle || 'Unknown');
-  const newFilename = `${authorPart}${titlePart}.${ext}`;
-
-  let targetPath = path.join(library.path, newFilename);
-
-  // Check if file already exists — pick a numbered suffix instead of overwriting it
-  if (fs.existsSync(targetPath)) {
-    let counter = 1;
-    let altPath = targetPath;
-    while (fs.existsSync(altPath)) {
-      altPath = path.join(library.path, `${authorPart}${titlePart} (${counter}).${ext}`);
-      counter++;
-    }
-    targetPath = altPath;
-  }
-
-  // Ensure library directory exists
-  if (!fs.existsSync(library.path)) {
-    fs.mkdirSync(library.path, { recursive: true });
-  }
-
-  // Write file
-  fs.writeFileSync(targetPath, fileData.buffer);
-
-  if (signal.aborted) {
-    // Clean up if cancelled
-    try { fs.unlinkSync(targetPath); } catch { /* ignore */ }
-    throw new Error('Task cancelled');
-  }
-  onProgress(3, 6);
-
-  // Step 4: Add book to database (using clean data from wanted book if available)
-  const bookId = await addBook({
+  // Give this download a row of its own before anything is fetched, so it
+  // has an identity beyond this task (E2-1). There is no single stable URL
+  // to record yet — libgen resolves the actual file mirror deep inside
+  // downloadFromLibgen below, and other sources aren't wired up at all — so
+  // this is a source-scoped identifier rather than a fetchable link.
+  // Switching to an alternate link on failure is a later card (E2-3), as is
+  // sweeping a download whose heartbeat has gone cold after a restart
+  // (E2-4), so neither is wired up here.
+  const downloadUrl = `${data.source}:${data.md5}`;
+  const bookDownload = addBookDownload({
+    wantedBookId: data.wantedBookId ?? null,
     libraryId: data.libraryId,
-    filePath: targetPath,
+    source: data.source,
     title: bookTitle,
-    authors: bookAuthor ? JSON.stringify([bookAuthor]) : null,
-    extension: ext,
-    fileSize: fileData.buffer.length,
+    author: bookAuthor,
+    extension: data.extension || 'epub',
+    downloadUrl,
+    md5: data.md5,
   });
+  setBookDownloadState(bookDownload.id, 'downloading');
 
-  // Update wanted book status if this was from wanted list
-  if (data.wantedBookId) {
-    execute(
-      "UPDATE wanted_books SET status = 'acquired' WHERE id = ?",
-      [data.wantedBookId]
-    );
-  }
-
-  if (signal.aborted) throw new Error('Task cancelled');
-  onProgress(4, 6);
-
-  // Step 5: Fetch metadata and update book
-  let finalPath = targetPath;
-  let finalTitle = bookTitle;
-  let finalAuthor = bookAuthor;
-  let metadataFound = false;
+  const recordFailure = (error: string): void => {
+    setBookDownloadState(bookDownload.id, error === 'Task cancelled' ? 'cancelled' : 'failed', { error });
+    addBookDownloadHistory({
+      wantedBookId: data.wantedBookId ?? null,
+      libraryId: data.libraryId,
+      source: data.source,
+      title: bookTitle,
+      author: bookAuthor,
+      downloadUrl,
+      success: false,
+    });
+  };
 
   try {
-    // If we have a hardcover_id from the wanted book, fetch directly instead of searching
-    let metadata = null;
-    if (wantedBook?.hardcover_id) {
-      metadata = await metadataService.getBookBySourceId('hardcover', wantedBook.hardcover_id);
-    }
-    // Fall back to search if no hardcover_id or direct fetch failed
-    if (!metadata) {
-      metadata = await metadataService.autoMatch(bookTitle, bookAuthor || undefined);
-    }
+    // Step 2: Download the file
+    let fileData: { buffer: Buffer; filename: string; contentType: string } | null = null;
 
-    if (metadata) {
-      metadataFound = true;
-      finalTitle = metadata.title;
-
-      // Parse authors from metadata
-      if (metadata.authors) {
-        try {
-          const authorsArr = JSON.parse(metadata.authors);
-          if (Array.isArray(authorsArr) && authorsArr.length > 0) {
-            finalAuthor = authorsArr[0];
-          }
-        } catch {
-          finalAuthor = metadata.authors;
-        }
-      }
-
-      // Update book with metadata
-      await updateBook(bookId, {
-        title: metadata.title,
-        authors: metadata.authors,
-        publisher: metadata.publisher,
-        publishDate: metadata.publishDate,
-        description: metadata.description,
-        isbn: metadata.isbn,
-        coverUrl: metadata.coverUrl,
-        metadataSource: metadata.source,
-        metadataId: metadata.sourceId,
-      });
-
-      // Handle series if present
-      if (metadata.series && metadata.series.length > 0) {
-        const primarySeries = metadata.series[0];
-        if (primarySeries) {
-          execute(
-            'UPDATE books SET series = ?, series_name = ?, series_number = ? WHERE id = ?',
-            [JSON.stringify(metadata.series), primarySeries[0], primarySeries[1], bookId]
-          );
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('Metadata fetch failed, continuing without metadata:', err);
-  }
-
-  if (signal.aborted) throw new Error('Task cancelled');
-  onProgress(5, 6);
-
-  // Step 6: Rename/organize file based on metadata
-  try {
-    const cleanAuthor = sanitizeFilename(finalAuthor || 'Unknown');
-    const cleanTitle = sanitizeFilename(finalTitle || 'Unknown');
-
-    // Create author folder for organization
-    const authorDir = path.join(library.path, cleanAuthor);
-    if (!fs.existsSync(authorDir)) {
-      fs.mkdirSync(authorDir, { recursive: true });
+    if (data.source === 'libgen') {
+      fileData = await downloadFromLibgen(data.md5);
+    } else {
+      // TODO: Add support for other sources
+      throw new Error(`Download from ${data.source} not yet supported`);
     }
 
-    // Build filename: "Title - Series Book N" or just "Title" if no series
-    // Get series info from the book record we just updated
-    const bookRecord = queryOne<{ series_name: string | null; series_number: number | null }>(
-      'SELECT series_name, series_number FROM books WHERE id = ?',
-      [bookId]
-    );
-
-    let organizedFilename = cleanTitle;
-    if (bookRecord?.series_name) {
-      const cleanSeries = sanitizeFilename(bookRecord.series_name);
-      if (bookRecord.series_number) {
-        organizedFilename = `${cleanTitle} - ${cleanSeries} Book ${bookRecord.series_number}`;
-      } else {
-        organizedFilename = `${cleanTitle} - ${cleanSeries}`;
-      }
+    if (!fileData) {
+      throw new Error('Failed to download file');
     }
 
-    let organizedPath = path.join(authorDir, `${organizedFilename}.${ext}`);
+    // Byte progress stays coarse for this card — the whole buffer is only
+    // known once the download finishes, since streaming is a separate card
+    // (E2-2). This just records the final size once it's in hand.
+    updateBookDownloadProgress(bookDownload.id, fileData.buffer.length, fileData.buffer.length);
 
-    // Handle duplicates
-    if (fs.existsSync(organizedPath) && organizedPath !== targetPath) {
+    if (signal.aborted) throw new Error('Task cancelled');
+    onProgress(2, 6);
+
+    // Step 3: Generate filename and save (using clean data from wanted book if available)
+    const ext = data.extension || path.extname(fileData.filename).replace('.', '') || 'epub';
+    const authorPart = bookAuthor && bookAuthor !== 'Unknown' ? `${sanitizeFilename(bookAuthor)} - ` : '';
+    const titlePart = sanitizeFilename(bookTitle || 'Unknown');
+    const newFilename = `${authorPart}${titlePart}.${ext}`;
+
+    let targetPath = path.join(library.path, newFilename);
+
+    // Check if file already exists — pick a numbered suffix instead of overwriting it
+    if (fs.existsSync(targetPath)) {
       let counter = 1;
-      while (fs.existsSync(organizedPath)) {
-        organizedPath = path.join(authorDir, `${organizedFilename} (${counter}).${ext}`);
+      let altPath = targetPath;
+      while (fs.existsSync(altPath)) {
+        altPath = path.join(library.path, `${authorPart}${titlePart} (${counter}).${ext}`);
         counter++;
       }
+      targetPath = altPath;
     }
 
-    // Move file if path changed
-    if (organizedPath !== targetPath) {
-      fs.renameSync(targetPath, organizedPath);
-      finalPath = organizedPath;
+    // Ensure library directory exists
+    if (!fs.existsSync(library.path)) {
+      fs.mkdirSync(library.path, { recursive: true });
+    }
 
-      // Update book record with new path
+    // Write file
+    fs.writeFileSync(targetPath, fileData.buffer);
+
+    if (signal.aborted) {
+      // Clean up if cancelled
+      try { fs.unlinkSync(targetPath); } catch { /* ignore */ }
+      throw new Error('Task cancelled');
+    }
+    onProgress(3, 6);
+
+    // Step 4: Add book to database (using clean data from wanted book if available)
+    const bookId = await addBook({
+      libraryId: data.libraryId,
+      filePath: targetPath,
+      title: bookTitle,
+      authors: bookAuthor ? JSON.stringify([bookAuthor]) : null,
+      extension: ext,
+      fileSize: fileData.buffer.length,
+    });
+
+    setBookDownloadState(bookDownload.id, 'importing', { filePath: targetPath, bookId });
+
+    // Update wanted book status if this was from wanted list
+    if (data.wantedBookId) {
       execute(
-        'UPDATE books SET file_path = ? WHERE id = ?',
-        [organizedPath, bookId]
+        "UPDATE wanted_books SET status = 'acquired' WHERE id = ?",
+        [data.wantedBookId]
       );
     }
+
+    if (signal.aborted) throw new Error('Task cancelled');
+    onProgress(4, 6);
+
+    // Step 5: Fetch metadata and update book
+    let finalPath = targetPath;
+    let finalTitle = bookTitle;
+    let finalAuthor = bookAuthor;
+    let metadataFound = false;
+
+    try {
+      // If we have a hardcover_id from the wanted book, fetch directly instead of searching
+      let metadata = null;
+      if (wantedBook?.hardcover_id) {
+        metadata = await metadataService.getBookBySourceId('hardcover', wantedBook.hardcover_id);
+      }
+      // Fall back to search if no hardcover_id or direct fetch failed
+      if (!metadata) {
+        metadata = await metadataService.autoMatch(bookTitle, bookAuthor || undefined);
+      }
+
+      if (metadata) {
+        metadataFound = true;
+        finalTitle = metadata.title;
+
+        // Parse authors from metadata
+        if (metadata.authors) {
+          try {
+            const authorsArr = JSON.parse(metadata.authors);
+            if (Array.isArray(authorsArr) && authorsArr.length > 0) {
+              finalAuthor = authorsArr[0];
+            }
+          } catch {
+            finalAuthor = metadata.authors;
+          }
+        }
+
+        // Update book with metadata
+        await updateBook(bookId, {
+          title: metadata.title,
+          authors: metadata.authors,
+          publisher: metadata.publisher,
+          publishDate: metadata.publishDate,
+          description: metadata.description,
+          isbn: metadata.isbn,
+          coverUrl: metadata.coverUrl,
+          metadataSource: metadata.source,
+          metadataId: metadata.sourceId,
+        });
+
+        // Handle series if present
+        if (metadata.series && metadata.series.length > 0) {
+          const primarySeries = metadata.series[0];
+          if (primarySeries) {
+            execute(
+              'UPDATE books SET series = ?, series_name = ?, series_number = ? WHERE id = ?',
+              [JSON.stringify(metadata.series), primarySeries[0], primarySeries[1], bookId]
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Metadata fetch failed, continuing without metadata:', err);
+    }
+
+    if (signal.aborted) throw new Error('Task cancelled');
+    onProgress(5, 6);
+
+    // Step 6: Rename/organize file based on metadata
+    try {
+      const cleanAuthor = sanitizeFilename(finalAuthor || 'Unknown');
+      const cleanTitle = sanitizeFilename(finalTitle || 'Unknown');
+
+      // Create author folder for organization
+      const authorDir = path.join(library.path, cleanAuthor);
+      if (!fs.existsSync(authorDir)) {
+        fs.mkdirSync(authorDir, { recursive: true });
+      }
+
+      // Build filename: "Title - Series Book N" or just "Title" if no series
+      // Get series info from the book record we just updated
+      const bookRecord = queryOne<{ series_name: string | null; series_number: number | null }>(
+        'SELECT series_name, series_number FROM books WHERE id = ?',
+        [bookId]
+      );
+
+      let organizedFilename = cleanTitle;
+      if (bookRecord?.series_name) {
+        const cleanSeries = sanitizeFilename(bookRecord.series_name);
+        if (bookRecord.series_number) {
+          organizedFilename = `${cleanTitle} - ${cleanSeries} Book ${bookRecord.series_number}`;
+        } else {
+          organizedFilename = `${cleanTitle} - ${cleanSeries}`;
+        }
+      }
+
+      let organizedPath = path.join(authorDir, `${organizedFilename}.${ext}`);
+
+      // Handle duplicates
+      if (fs.existsSync(organizedPath) && organizedPath !== targetPath) {
+        let counter = 1;
+        while (fs.existsSync(organizedPath)) {
+          organizedPath = path.join(authorDir, `${organizedFilename} (${counter}).${ext}`);
+          counter++;
+        }
+      }
+
+      // Move file if path changed
+      if (organizedPath !== targetPath) {
+        fs.renameSync(targetPath, organizedPath);
+        finalPath = organizedPath;
+
+        // Update book record with new path
+        execute(
+          'UPDATE books SET file_path = ? WHERE id = ?',
+          [organizedPath, bookId]
+        );
+      }
+    } catch (err) {
+      console.warn('File organization failed, keeping original location:', err);
+    }
+
+    onProgress(6, 6);
+
+    setBookDownloadState(bookDownload.id, 'completed', { filePath: finalPath, bookId });
+    addBookDownloadHistory({
+      wantedBookId: data.wantedBookId ?? null,
+      libraryId: data.libraryId,
+      source: data.source,
+      title: finalTitle,
+      author: finalAuthor,
+      downloadUrl,
+      success: true,
+    });
+
+    return {
+      success: true,
+      bookId,
+      filePath: finalPath,
+      filename: path.basename(finalPath),
+      fileSize: fileData.buffer.length,
+      source: data.source,
+      wantedBookId: data.wantedBookId,
+      metadataFound,
+      organized: finalPath !== targetPath,
+    };
   } catch (err) {
-    console.warn('File organization failed, keeping original location:', err);
+    recordFailure(err instanceof Error ? err.message : String(err));
+    throw err;
   }
-
-  onProgress(6, 6);
-
-  return {
-    success: true,
-    bookId,
-    filePath: finalPath,
-    filename: path.basename(finalPath),
-    fileSize: fileData.buffer.length,
-    source: data.source,
-    wantedBookId: data.wantedBookId,
-    metadataFound,
-    organized: finalPath !== targetPath,
-  };
 };
 
 /**
