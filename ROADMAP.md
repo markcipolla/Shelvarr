@@ -503,12 +503,26 @@ warnings rather than guessed at. Resolve them deliberately.
 
 ## Suggested order
 
-**Status as of 2026-09-16: 28 of 32 original cards shipped.** Everything in
-E1, E2 and E6 is done. E3 is done except E3-5 (reader polish) and E3-6
-(redefined above — offline caching, not streaming). E4 is done except E4-4
-and E4-5 (both added 2026-09-16). E5 is done except E5-2.
+**Status as of 2026-09-16: 28 of 32 original cards shipped.** E2 and E6 are
+done. E3 is done except E3-5 (reader polish) and E3-6 (redefined above —
+offline caching, not streaming). E4 is done except E4-4 and E4-5 (both added
+2026-09-16). E5 is done except E5-2.
 
-**What's left:** E4-4 (comic archives in a book library — small), E4-5
-(Anna's Archive/Z-Library downloads — the largest remaining piece, and the
-one most worth reviewing carefully given it's anti-bot/auth-flow code that's
-hard to verify outside a live run), E3-5, E3-6, E5-2. None block each other.
+**E1 is not fully done, despite an earlier version of this section claiming
+otherwise** — that was wrong, corrected 2026-09-16. Shipped: E1-2, E1-3,
+E1-4, E1-8 (challenge/parse-failure detection, scheduled health probes,
+shadow sources off by default). Still open: **E1-1** (mirror lists are still
+hardcoded constants, not a `source_mirrors` table), **E1-5** (downloaded
+files still aren't md5-verified), **E1-6** (no daily-quota deferral —
+`DownloadLimitReachedError` triggers mirror fallback within one download,
+per E2-3, but there's no per-source backoff across the whole queue), and
+**E1-7** (no proxy setting; `download_source_config.credentials` is still
+plaintext). None of these block anything already shipped, but E4-5 (below)
+will be more fragile without at least E1-6.
+
+**What's left:** E1-1, E1-5, E1-6, E1-7, E4-4 (comic archives in a book
+library — small), E4-5 (Anna's Archive/Z-Library downloads — the largest
+remaining piece, and the one most worth reviewing carefully given it's
+anti-bot/auth-flow code that's hard to verify outside a live run), E3-5,
+E3-6, E5-2. None block each other, except E4-5 is stronger with E1-6 done
+first.
