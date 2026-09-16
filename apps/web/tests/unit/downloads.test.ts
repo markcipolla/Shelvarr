@@ -883,6 +883,71 @@ describe('Download Services', () => {
       });
     });
 
+    describe('resolveLibgenDownloads', () => {
+      // E2-3: unlike resolveLibgenDownload (singular), which stops at the
+      // first working mirror, this walks every mirror and returns all of
+      // them — so a caller can store the whole candidate list and fall
+      // through it later without re-scraping from scratch.
+
+      it('should return every mirror that resolves, in mirror-preference order', async () => {
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          if (url.includes('ads.php')) {
+            return new Response('<a href="get.php?md5=abc123&key=xyz">Download</a>', { status: 200 });
+          }
+          // Every mirror's ranged probe succeeds.
+          return new Response('book', {
+            status: 200,
+            headers: new Headers({ 'content-type': 'application/epub+zip' }),
+          });
+        });
+
+        const domains = libgen.getLibGenDomains();
+        const results = await libgen.resolveLibgenDownloads('abc123');
+
+        assert.strictEqual(results.length, domains.length);
+        // Every resolved URL points at a distinct mirror domain, and the
+        // order matches getLibGenDomains' best-first ranking.
+        for (const [index, domain] of domains.entries()) {
+          assert.ok(
+            results[index]?.url.includes(domain),
+            `expected result ${index} to come from ${domain}`
+          );
+        }
+      });
+
+      it('should skip a mirror that errors and still return the rest', async () => {
+        const firstDomain = libgen.getLibGenDomains()[0];
+
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          if (url.includes('ads.php')) {
+            return new Response('<a href="get.php?md5=abc123&key=xyz">Download</a>', { status: 200 });
+          }
+          if (url.includes(firstDomain!)) {
+            return new Response('', { status: 500 });
+          }
+          return new Response('book', {
+            status: 200,
+            headers: new Headers({ 'content-type': 'application/epub+zip' }),
+          });
+        });
+
+        const domains = libgen.getLibGenDomains();
+        const results = await libgen.resolveLibgenDownloads('abc123');
+
+        // One fewer than the full mirror list — the down one is left out
+        // entirely rather than stopping the walk.
+        assert.strictEqual(results.length, domains.length - 1);
+        assert.ok(!results.some((r) => r.url.includes(firstDomain!)));
+      });
+
+      it('should return an empty array when every mirror fails to resolve a link', async () => {
+        mockFetch.mock.mockImplementation(async () => new Response('', { status: 404 }));
+
+        const results = await libgen.resolveLibgenDownloads('abc123');
+        assert.deepStrictEqual(results, []);
+      });
+    });
+
     describe('getLibGenDomains', () => {
       it('should list every mirror, best-first', () => {
         const domains = libgen.getLibGenDomains();

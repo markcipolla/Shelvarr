@@ -100,6 +100,7 @@ export {
   updateBookDownloadProgress,
   setBookDownloadState,
   claimStalledBookDownloads,
+  switchBookDownloadLink,
   addBookDownloadHistory,
   addToBookBlocklist,
   bookBlocklistContains,

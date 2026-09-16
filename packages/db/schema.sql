@@ -411,6 +411,11 @@ CREATE TABLE IF NOT EXISTS book_downloads (
   extension TEXT NOT NULL,
   download_url TEXT NOT NULL,
   md5 TEXT, -- only libgen/annas identify a file by hash
+  -- Other mirrors resolved for the same file, tried in order if the current
+  -- one dies mid-stream (E2-3). JSON array of {url, filename, size,
+  -- supportsRange, contentType} — a resolved, ready-to-stream link, unlike
+  -- comic_downloads.alternate_links' unresolved {host, link} pairs.
+  alternate_links TEXT,
   state TEXT NOT NULL DEFAULT 'queued', -- queued|downloading|importing|completed|failed|cancelled
   progress INTEGER NOT NULL DEFAULT 0,  -- bytes downloaded
   size INTEGER,                          -- total bytes, when known

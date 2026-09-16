@@ -141,10 +141,32 @@ export interface BookDownload {
   attempts: number;
   filePath: string | null;
   error: string | null;
+  /**
+   * Other mirrors resolved for the same file, tried in order if the current
+   * one dies mid-stream (E2-3). Unlike `ComicDownloadLink` — an unresolved
+   * page link — each entry here is already a `BookDownloadLink`: a book
+   * mirror is resolved to an actual streamable URL up front, so there is
+   * nothing left to probe when falling back to the next one.
+   */
+  alternateLinks: BookDownloadLink[];
   /** Last sign of life, used to spot downloads orphaned by a restart. */
   heartbeatAt: string | null;
   createdAt: string;
   completedAt: string | null;
+}
+
+/**
+ * One resolved book mirror, ready to stream. Mirrors the shape the services
+ * layer's `resolveLibgenDownload`/`ResolvedDownload` already returns, so a
+ * candidate can be stored and later handed straight to `downloadToFile`
+ * without re-resolving it.
+ */
+export interface BookDownloadLink {
+  url: string;
+  filename: string;
+  size: number | null;
+  supportsRange: boolean;
+  contentType: string | null;
 }
 
 export interface BookBlocklistEntry {
