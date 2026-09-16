@@ -48,10 +48,6 @@ jest.mock('../../src/screens/ComicReaderScreen', () => {
   const { Text } = require('react-native');
   return function MockComicReaderScreen() { return <Text>ComicReaderScreen</Text>; };
 });
-jest.mock('../../src/screens/SettingsScreen', () => {
-  const { Text } = require('react-native');
-  return function MockSettingsScreen() { return <Text>SettingsScreen</Text>; };
-});
 jest.mock('../../src/screens/LoginScreen', () => {
   const { Text } = require('react-native');
   return function MockLoginScreen() { return <Text>LoginScreen</Text>; };
@@ -73,7 +69,13 @@ describe('RootNavigator', () => {
     expect(getByTestId('screen-EpubReader')).toBeTruthy();
     expect(getByTestId('screen-PdfReader')).toBeTruthy();
     expect(getByTestId('screen-ComicReader')).toBeTruthy();
-    expect(getByTestId('screen-Settings')).toBeTruthy();
+  });
+
+  it('leaves Settings to the tab bar', () => {
+    // Settings is a tab now, so the stack must not also register it: two
+    // copies would mean two different headers for the same screen.
+    const { queryByTestId } = render(<RootNavigator />);
+    expect(queryByTestId('screen-Settings')).toBeNull();
   });
 
   it('keeps signing in reachable from inside the app', () => {

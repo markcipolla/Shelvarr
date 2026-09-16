@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, Switch, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { View, Text, TextInput, Switch, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, ScrollView } from 'react-native';
+import { useNavigation, CompositeNavigationProp } from '@react-navigation/native';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../navigation/types';
+import { MainTabParamList, RootStackParamList } from '../navigation/types';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { cleanAllDownloads } from '../services/fileManager';
 import { useDownloadStore } from '../stores/useDownloadStore';
@@ -12,8 +13,15 @@ import { APP_VERSION, BUILD_VERSION, DOWNLOAD_RETENTION_DAYS } from '../utils/co
 import { testShelvarrConnection } from '../services/api/shelvarr';
 import { useAuthStore } from '../stores/useAuthStore';
 
+// Settings is a tab, so logging in means handing the action up to the stack
+// the tabs sit in.
+type SettingsNav = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'Settings'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
+
 export default function SettingsScreen() {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<SettingsNav>();
   const autoDelete = useSettingsStore((s) => s.autoDeleteOldDownloads);
   const setAutoDelete = useSettingsStore((s) => s.setAutoDelete);
   const shelvarrUrl = useSettingsStore((s) => s.shelvarrUrl);
@@ -80,7 +88,9 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    // Scrollable now that the tab bar takes a bite out of the bottom: the
+    // About rows fall off a short screen otherwise.
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.sectionTitle}>Server</Text>
       <TextInput
         style={styles.input}
@@ -202,12 +212,13 @@ export default function SettingsScreen() {
         <Text style={styles.label}>Build</Text>
         <Text style={styles.aboutValueMono}>{BUILD_VERSION}</Text>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f1eb', padding: 16 },
+  container: { flex: 1, backgroundColor: '#f5f1eb' },
+  content: { padding: 16, paddingBottom: 32 },
   sectionTitle: { fontSize: 16, fontWeight: '600', color: '#777', marginTop: 24, marginBottom: 12 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   rowText: { flex: 1, marginRight: 12 },

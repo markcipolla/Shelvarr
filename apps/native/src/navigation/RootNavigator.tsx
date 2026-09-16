@@ -11,7 +11,6 @@ import IssueDetailScreen from '../screens/IssueDetailScreen';
 import EpubReaderScreen from '../screens/EpubReaderScreen';
 import PdfReaderScreen from '../screens/PdfReaderScreen';
 import ComicReaderScreen from '../screens/ComicReaderScreen';
-import SettingsScreen from '../screens/SettingsScreen';
 import WantedSearchScreen from '../screens/WantedSearchScreen';
 import DownloadSearchScreen from '../screens/DownloadSearchScreen';
 import LoginScreen from '../screens/LoginScreen';
@@ -76,11 +75,6 @@ export default function RootNavigator() {
         name="DownloadSearch"
         component={DownloadSearchScreen}
         options={{ title: 'Find Downloads' }}
-      />
-      <Stack.Screen
-        name="Settings"
-        component={SettingsScreen}
-        options={{ title: 'Settings' }}
       />
       <Stack.Screen
         name="Login"

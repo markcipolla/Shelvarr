@@ -1,27 +1,14 @@
 import React from 'react';
-import { Text, TouchableOpacity } from 'react-native';
+import { Text } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { MainTabParamList, RootStackParamList } from './types';
+import { MainTabParamList } from './types';
 import HomeScreen from '../screens/HomeScreen';
 import BooksScreen from '../screens/BooksScreen';
 import ComicsScreen from '../screens/ComicsScreen';
 import WantedListScreen from '../screens/WantedListScreen';
+import SettingsScreen from '../screens/SettingsScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
-
-function SettingsButton() {
-  const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  return (
-    <TouchableOpacity
-      onPress={() => nav.navigate('Settings')}
-      style={{ width: 48, height: 48, justifyContent: 'center', alignItems: 'center' }}
-    >
-      <Text style={{ color: '#222', fontSize: 26 }}>⚙</Text>
-    </TouchableOpacity>
-  );
-}
 
 export default function MainTabs() {
   return (
@@ -30,7 +17,6 @@ export default function MainTabs() {
         headerStyle: { backgroundColor: '#e8e4de' },
         headerTintColor: '#222',
         headerTitleStyle: { fontWeight: '600' },
-        headerRight: () => <SettingsButton />,
         tabBarActiveTintColor: '#8b5e3c',
         tabBarInactiveTintColor: '#888',
         tabBarStyle: {
@@ -70,6 +56,14 @@ export default function MainTabs() {
         options={{
           title: 'Wanted',
           tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>✨</Text>,
+        }}
+      />
+      <Tab.Screen
+        name="Settings"
+        component={SettingsScreen as any}
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>⚙️</Text>,
         }}
       />
     </Tab.Navigator>
