@@ -263,6 +263,32 @@ export function moveFile(source: string, target: string): void {
 }
 
 /**
+ * Resolve a collision at `targetPath` by appending " (N)" before the
+ * extension until a free path is found. A no-op if nothing is there yet, or
+ * if what's there is the file being moved (`currentPath`) rather than some
+ * other book.
+ *
+ * Extracted from applyReorganization's own collision handling so any other
+ * caller that computes a path via `generateNewPath` and wants the same
+ * "don't clobber, number it instead" behaviour doesn't need its own copy.
+ */
+export function resolveTargetCollision(targetPath: string, currentPath?: string): string {
+  if (!existsSync(targetPath) || targetPath === currentPath) {
+    return targetPath;
+  }
+
+  const ext = extname(targetPath);
+  const base = targetPath.slice(0, targetPath.length - ext.length);
+  let counter = 1;
+  let finalPath = targetPath;
+  while (existsSync(finalPath)) {
+    finalPath = `${base} (${counter})${ext}`;
+    counter++;
+  }
+  return finalPath;
+}
+
+/**
  * Generate a new path for a book using the configured naming template.
  * DB metadata wins over path parsing; falls back to parsePathInfo when missing.
  */
@@ -555,17 +581,8 @@ export async function applyReorganization(
         }
 
         // Resolve target collisions by appending " (N)" before the extension.
-        let finalPath = item.newPath;
-        if (existsSync(finalPath) && finalPath !== item.currentPath) {
-          const ext = extname(finalPath);
-          const base = finalPath.slice(0, finalPath.length - ext.length);
-          let counter = 1;
-          while (existsSync(finalPath)) {
-            finalPath = `${base} (${counter})${ext}`;
-            counter++;
-          }
-          item.newPath = finalPath;
-        }
+        const finalPath = resolveTargetCollision(item.newPath, item.currentPath);
+        item.newPath = finalPath;
 
         moveFile(item.currentPath, finalPath);
 
@@ -904,6 +921,7 @@ export default {
   sanitizePathComponent,
   applyTemplate,
   generateNewPath,
+  resolveTargetCollision,
   moveFile,
   previewReorganization,
   applyReorganization,

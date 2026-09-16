@@ -4,7 +4,7 @@
  */
 
 import { registerTaskHandler, enqueueTask, RateLimitedError, type TaskHandler } from './index';
-import { scanLibrary, updateBook, addBook } from '../scanner';
+import { scanLibrary, updateBook, addBook, getBookById } from '../scanner';
 import { getAllLibraries, getLibraryById } from '../library';
 import { pruneExpired } from '../auth/sessions';
 import {
@@ -42,7 +42,7 @@ import { getServiceConfig } from '../config';
 import * as metadataService from '../metadata';
 import { resolveLibgenDownload, downloadToFile } from '../downloads/libgen';
 import { getSourceStatuses, refreshSourceStatuses } from '../downloads/source-status';
-import { applyReorganization, moveFile } from '../organizer';
+import { applyReorganization, moveFile, generateNewPath, resolveTargetCollision } from '../organizer';
 import { getOrCreateAuthor, fetchAuthorMetadata, getAuthorByName } from '../authors';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -634,55 +634,62 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
     if (signal.aborted) throw new Error('Task cancelled');
     onProgress(5, 6);
 
-    // Step 6: Rename/organize file based on metadata
+    // Step 6: File the book using the same naming template every other book
+    // in the library is organized with (E2-6). This used to reimplement
+    // "Author/Title - Series Book N" inline — its own sanitization, its own
+    // numbered-suffix collision loop, a plain fs.renameSync — and ignored
+    // whatever the user actually configured in Settings -> Organize.
+    // generateNewPath/moveFile/resolveTargetCollision are the same functions
+    // the organize-preview page and the `organize` task use, so a downloaded
+    // book lands exactly where reorganizing the library would put it.
+    //
+    // This intentionally does NOT check `organize_auto_run`. That setting
+    // gates bulk re-organizing of a library someone may have filed by hand;
+    // it has no bearing here because a just-downloaded file has never been
+    // filed anywhere yet — there is no existing layout of the user's to
+    // leave alone. Skipping this step when auto-run is off would just mean
+    // every download lands under its raw download filename in the library
+    // root, which reads as a bug rather than a respected preference.
     try {
-      const cleanAuthor = sanitizeFilename(finalAuthor || 'Unknown');
-      const cleanTitle = sanitizeFilename(finalTitle || 'Unknown');
-
-      // Create author folder for organization
-      const authorDir = path.join(library.path, cleanAuthor);
-      if (!fs.existsSync(authorDir)) {
-        fs.mkdirSync(authorDir, { recursive: true });
-      }
-
-      // Build filename: "Title - Series Book N" or just "Title" if no series
-      // Get series info from the book record we just updated
-      const bookRecord = queryOne<{ series_name: string | null; series_number: number | null }>(
-        'SELECT series_name, series_number FROM books WHERE id = ?',
-        [bookId]
-      );
-
-      let organizedFilename = cleanTitle;
-      if (bookRecord?.series_name) {
-        const cleanSeries = sanitizeFilename(bookRecord.series_name);
-        if (bookRecord.series_number) {
-          organizedFilename = `${cleanTitle} - ${cleanSeries} Book ${bookRecord.series_number}`;
-        } else {
-          organizedFilename = `${cleanTitle} - ${cleanSeries}`;
-        }
-      }
-
-      let organizedPath = path.join(authorDir, `${organizedFilename}.${ext}`);
-
-      // Handle duplicates
-      if (fs.existsSync(organizedPath) && organizedPath !== targetPath) {
-        let counter = 1;
-        while (fs.existsSync(organizedPath)) {
-          organizedPath = path.join(authorDir, `${organizedFilename} (${counter}).${ext}`);
-          counter++;
-        }
-      }
-
-      // Move file if path changed
-      if (organizedPath !== targetPath) {
-        fs.renameSync(targetPath, organizedPath);
-        finalPath = organizedPath;
-
-        // Update book record with new path
-        execute(
-          'UPDATE books SET file_path = ? WHERE id = ?',
-          [organizedPath, bookId]
+      const freshBook = await getBookById(bookId);
+      if (freshBook) {
+        // generateNewPath only defaults to DEFAULT_ORGANIZE_TEMPLATE — it
+        // doesn't read settings itself, that's on the caller (organizeHandler
+        // does the same lookup, just merged with an explicit task-level
+        // override that doesn't apply here since a download never carries
+        // one).
+        let organizeTemplate: string | undefined;
+        const templateRow = queryOne<{ value: string }>(
+          'SELECT value FROM settings WHERE key = ?',
+          ['organize_template'],
         );
+        if (templateRow?.value) {
+          try {
+            const parsed = JSON.parse(templateRow.value);
+            if (typeof parsed === 'string' && parsed.length > 0) {
+              organizeTemplate = parsed;
+            }
+          } catch {
+            organizeTemplate = templateRow.value;
+          }
+        }
+
+        const wantedPath = generateNewPath(freshBook, library.path, organizeTemplate);
+        if (wantedPath !== targetPath) {
+          const organizedPath = resolveTargetCollision(wantedPath, targetPath);
+          const organizedDir = path.dirname(organizedPath);
+          if (!fs.existsSync(organizedDir)) {
+            fs.mkdirSync(organizedDir, { recursive: true });
+          }
+
+          moveFile(targetPath, organizedPath);
+          finalPath = organizedPath;
+
+          execute(
+            'UPDATE books SET file_path = ? WHERE id = ?',
+            [organizedPath, bookId]
+          );
+        }
       }
     } catch (err) {
       console.warn('File organization failed, keeping original location:', err);
