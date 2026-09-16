@@ -40,9 +40,9 @@ import { applyVolumeRename } from '../comics/rename';
 import { findImportGroups, proposeLibraryImport } from '../comics/import-library';
 import { getServiceConfig } from '../config';
 import * as metadataService from '../metadata';
-import { downloadFile as downloadFromLibgen } from '../downloads/libgen';
+import { resolveLibgenDownload, downloadToFile } from '../downloads/libgen';
 import { getSourceStatuses, refreshSourceStatuses } from '../downloads/source-status';
-import { applyReorganization } from '../organizer';
+import { applyReorganization, moveFile } from '../organizer';
 import { getOrCreateAuthor, fetchAuthorMetadata, getAuthorByName } from '../authors';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -420,8 +420,8 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
   // Give this download a row of its own before anything is fetched, so it
   // has an identity beyond this task (E2-1). There is no single stable URL
   // to record yet — libgen resolves the actual file mirror deep inside
-  // downloadFromLibgen below, and other sources aren't wired up at all — so
-  // this is a source-scoped identifier rather than a fetchable link.
+  // resolveLibgenDownload below, and other sources aren't wired up at all —
+  // so this is a source-scoped identifier rather than a fetchable link.
   // Switching to an alternate link on failure is a later card (E2-3), as is
   // sweeping a download whose heartbeat has gone cold after a restart
   // (E2-4), so neither is wired up here.
@@ -452,70 +452,109 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
   };
 
   try {
-    // Step 2: Download the file
-    let fileData: { buffer: Buffer; filename: string; contentType: string } | null = null;
+    // Step 2: Resolve a mirror and stream the file. The final path is worked
+    // out before any bytes move (this used to be Step 3, done after a full
+    // in-memory buffer was already in hand) so the stream can go straight to
+    // a `.partial` sibling of where the book will actually live, and moving
+    // it into place on success is a same-directory rename rather than a
+    // cross-directory one.
+    let fileData: { filename: string; contentType: string; size: number } | null = null;
+    let targetPath: string;
 
     if (data.source === 'libgen') {
-      fileData = await downloadFromLibgen(data.md5);
+      const resolved = await resolveLibgenDownload(data.md5);
+      if (!resolved) {
+        throw new Error('Failed to download file');
+      }
+
+      const ext = data.extension || path.extname(resolved.filename).replace('.', '') || 'epub';
+      const authorPart = bookAuthor && bookAuthor !== 'Unknown' ? `${sanitizeFilename(bookAuthor)} - ` : '';
+      const titlePart = sanitizeFilename(bookTitle || 'Unknown');
+      const newFilename = `${authorPart}${titlePart}.${ext}`;
+
+      // Ensure library directory exists
+      if (!fs.existsSync(library.path)) {
+        fs.mkdirSync(library.path, { recursive: true });
+      }
+
+      // Check if file already exists — pick a numbered suffix instead of overwriting it
+      targetPath = path.join(library.path, newFilename);
+      if (fs.existsSync(targetPath)) {
+        let counter = 1;
+        let altPath = targetPath;
+        while (fs.existsSync(altPath)) {
+          altPath = path.join(library.path, `${authorPart}${titlePart} (${counter}).${ext}`);
+          counter++;
+        }
+        targetPath = altPath;
+      }
+
+      // Stream to a scratch file alongside the destination — never straight
+      // to `targetPath` — so a failed or cancelled download can't leave a
+      // half-written file sitting in the library.
+      const partialPath = `${targetPath}.partial`;
+
+      // Throttle book_downloads writes to roughly once per megabyte, matching
+      // the byte-delta throttle comicDownloadHandler already uses for the
+      // same reason (fetchLink in this file): a stream fires onProgress per
+      // chunk, which for a multi-MB file is thousands of events, and each one
+      // would otherwise be a SQLite write.
+      const PROGRESS_PERSIST_BYTES = 1_000_000;
+      let lastPersisted = 0;
+
+      try {
+        await downloadToFile(resolved, partialPath, {
+          signal,
+          onProgress: (bytes, total) => {
+            if (bytes - lastPersisted < PROGRESS_PERSIST_BYTES) return;
+            lastPersisted = bytes;
+            updateBookDownloadProgress(bookDownload.id, bytes, total);
+          },
+        });
+      } catch (err) {
+        try { fs.unlinkSync(partialPath); } catch { /* ignore */ }
+        throw err;
+      }
+
+      if (signal.aborted) {
+        try { fs.unlinkSync(partialPath); } catch { /* ignore */ }
+        throw new Error('Task cancelled');
+      }
+
+      // Only now, with the stream finished cleanly, does the file become
+      // part of the library.
+      moveFile(partialPath, targetPath);
+
+      const fileSize = fs.statSync(targetPath).size;
+      updateBookDownloadProgress(bookDownload.id, fileSize, fileSize);
+
+      fileData = {
+        filename: resolved.filename,
+        contentType: resolved.contentType ?? 'application/octet-stream',
+        size: fileSize,
+      };
     } else {
       // TODO: Add support for other sources
       throw new Error(`Download from ${data.source} not yet supported`);
     }
 
-    if (!fileData) {
-      throw new Error('Failed to download file');
-    }
-
-    // Byte progress stays coarse for this card — the whole buffer is only
-    // known once the download finishes, since streaming is a separate card
-    // (E2-2). This just records the final size once it's in hand.
-    updateBookDownloadProgress(bookDownload.id, fileData.buffer.length, fileData.buffer.length);
-
-    if (signal.aborted) throw new Error('Task cancelled');
-    onProgress(2, 6);
-
-    // Step 3: Generate filename and save (using clean data from wanted book if available)
-    const ext = data.extension || path.extname(fileData.filename).replace('.', '') || 'epub';
-    const authorPart = bookAuthor && bookAuthor !== 'Unknown' ? `${sanitizeFilename(bookAuthor)} - ` : '';
-    const titlePart = sanitizeFilename(bookTitle || 'Unknown');
-    const newFilename = `${authorPart}${titlePart}.${ext}`;
-
-    let targetPath = path.join(library.path, newFilename);
-
-    // Check if file already exists — pick a numbered suffix instead of overwriting it
-    if (fs.existsSync(targetPath)) {
-      let counter = 1;
-      let altPath = targetPath;
-      while (fs.existsSync(altPath)) {
-        altPath = path.join(library.path, `${authorPart}${titlePart} (${counter}).${ext}`);
-        counter++;
-      }
-      targetPath = altPath;
-    }
-
-    // Ensure library directory exists
-    if (!fs.existsSync(library.path)) {
-      fs.mkdirSync(library.path, { recursive: true });
-    }
-
-    // Write file
-    fs.writeFileSync(targetPath, fileData.buffer);
-
     if (signal.aborted) {
-      // Clean up if cancelled
       try { fs.unlinkSync(targetPath); } catch { /* ignore */ }
       throw new Error('Task cancelled');
     }
+    // Steps 2 (download) and 3 (save) are now one streaming pass, so there is
+    // no separate "downloaded, about to save" checkpoint to report.
     onProgress(3, 6);
 
     // Step 4: Add book to database (using clean data from wanted book if available)
+    const ext = path.extname(targetPath).replace('.', '') || data.extension || 'epub';
     const bookId = await addBook({
       libraryId: data.libraryId,
       filePath: targetPath,
       title: bookTitle,
       authors: bookAuthor ? JSON.stringify([bookAuthor]) : null,
       extension: ext,
-      fileSize: fileData.buffer.length,
+      fileSize: fileData.size,
     });
 
     setBookDownloadState(bookDownload.id, 'importing', { filePath: targetPath, bookId });
@@ -667,7 +706,7 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
       bookId,
       filePath: finalPath,
       filename: path.basename(finalPath),
-      fileSize: fileData.buffer.length,
+      fileSize: fileData.size,
       source: data.source,
       wantedBookId: data.wantedBookId,
       metadataFound,
