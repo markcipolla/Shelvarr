@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   toggleDownloadSource,
@@ -8,9 +8,10 @@ import {
   clearZLibraryCredentials,
   testDownloadSource,
   refreshDownloadSourceStatuses,
+  getDownloadParserHealth,
 } from '@/lib/actions/downloads';
 import type { DownloadSourceConfig } from '@/lib/db';
-import type { SourceStatus } from '@/lib/services/downloads';
+import type { SourceStatus, ParserHealth } from '@/lib/services/downloads';
 import { SourceStatusBadge } from '@/components/wanted/SourceStatusBadge';
 import { useToast } from '@/components/ui/Toast';
 
@@ -84,6 +85,11 @@ const SOURCES: SourceInfo[] = [
 export function DownloadSourcesTab({ configs, statuses }: DownloadSourcesTabProps) {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const [parserHealth, setParserHealth] = useState<ParserHealth[]>([]);
+
+  useEffect(() => {
+    getDownloadParserHealth().then(setParserHealth).catch(() => {});
+  }, []);
 
   const handleRefreshStatuses = async () => {
     setRefreshing(true);
@@ -94,6 +100,7 @@ export function DownloadSourcesTab({ configs, statuses }: DownloadSourcesTabProp
 
   const getConfig = (source: string) => configs.find((c) => c.source === source);
   const getStatus = (source: string) => statuses.find((s) => s.name === source);
+  const getParserHealthFor = (source: string) => parserHealth.find((p) => p.source === source);
 
   return (
     <div className="space-y-6">
@@ -135,6 +142,7 @@ export function DownloadSourcesTab({ configs, statuses }: DownloadSourcesTabProp
                   source={source}
                   config={getConfig(source.name)}
                   status={getStatus(source.name)}
+                  parserHealth={getParserHealthFor(source.name)}
                 />
               ))}
             </div>
@@ -149,10 +157,12 @@ function SourceCard({
   source,
   config,
   status,
+  parserHealth,
 }: {
   source: SourceInfo;
   config?: DownloadSourceConfig;
   status?: SourceStatus;
+  parserHealth?: ParserHealth;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -241,6 +251,13 @@ function SourceCard({
               )}
             </div>
             <p className="text-sm text-shelvarr-text-muted">{source.description}</p>
+            {parserHealth?.suspect && (
+              <p className="flex items-center gap-1 text-xs text-amber-400 mt-1">
+                <WarningIcon />
+                Parser may be broken — {parserHealth.consecutiveFailures} searches in a row
+                didn&apos;t match this source&apos;s expected page structure.
+              </p>
+            )}
           </div>
         </div>
 
@@ -326,6 +343,19 @@ function SourceCard({
         </div>
       )}
     </div>
+  );
+}
+
+function WarningIcon() {
+  return (
+    <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"
+      />
+    </svg>
   );
 }
 

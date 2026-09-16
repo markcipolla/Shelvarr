@@ -6,7 +6,28 @@
  */
 
 import { getSourceStatusCache } from '@shelvarr/db';
-import { detectChallenge, SourceBlockedError } from './challenge';
+import {
+  detectChallenge,
+  SourceBlockedError,
+  SourceParseError,
+  recordParseSuccess,
+  recordParseFailure,
+} from './challenge';
+
+// Cheap, best-effort signals that a response is *some* Anna's Archive
+// results page — with or without matches — rather than unrecognised markup.
+// Anything found here means the primary/alternative patterns below had a
+// fair shot at matching; if they still found nothing, that's a genuine empty
+// result set, not a broken parser.
+const ANNAS_STRUCTURE_MARKERS = [
+  /href="\/md5\//i,
+  /data-md5="/i,
+  /class="[^"]*search-results[^"]*"/i,
+];
+
+function looksLikeAnnasResultsPage(html: string): boolean {
+  return ANNAS_STRUCTURE_MARKERS.some((marker) => marker.test(html));
+}
 
 export interface AnnasResult {
   id: string;
@@ -196,8 +217,18 @@ export async function searchAnnas(
         if (results.length >= 15) break;
       }
     }
+
+    if (results.length === 0 && !looksLikeAnnasResultsPage(html)) {
+      recordParseFailure('annas');
+      throw new SourceParseError(
+        'annas',
+        `${domain}'s page structure wasn't recognised — the Anna's Archive parser may need updating`
+      );
+    }
+
+    recordParseSuccess('annas');
   } catch (error) {
-    if (error instanceof SourceBlockedError) throw error;
+    if (error instanceof SourceBlockedError || error instanceof SourceParseError) throw error;
     console.error("Anna's Archive search error:", error);
   }
 
