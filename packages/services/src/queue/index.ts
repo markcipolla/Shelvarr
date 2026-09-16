@@ -425,6 +425,26 @@ export function failTask(id: number, error: string): void {
 }
 
 /**
+ * Fail every task still marked `running`.
+ *
+ * Nothing reconciles a `running` row when the process dies mid-task — the
+ * in-memory `runningTasks` map that would otherwise know to clean it up dies
+ * with it. Left alone, the task sits at `running` forever: `isRetriable`
+ * refuses to retry a running task, so it can never be picked up from the UI
+ * either. Called once at boot, before the scheduler starts, so a task this
+ * marks failed cannot race a freshly scheduled run of the same kind.
+ *
+ * Returns how many tasks were failed, for a log line.
+ */
+export function failOrphanedRunningTasks(): number {
+  const orphaned = query<TaskRow>("SELECT * FROM tasks WHERE status = 'running'", []);
+  for (const row of orphaned) {
+    failTask(row.id, 'Interrupted by a server restart');
+  }
+  return orphaned.length;
+}
+
+/**
  * Cancel a task
  */
 export function cancelTask(id: number): boolean {
@@ -699,6 +719,7 @@ export default {
   startTask,
   completeTask,
   failTask,
+  failOrphanedRunningTasks,
   cancelTask,
   cleanupOldTasks,
   runTask,
