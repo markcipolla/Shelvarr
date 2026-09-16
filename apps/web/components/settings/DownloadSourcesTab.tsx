@@ -43,6 +43,9 @@ const CATEGORIES: { id: SourceCategory; label: string; description: string }[] =
   },
 ];
 
+// Kept in sync with SHADOW_LIBRARY_SOURCES in packages/db/src/index.ts.
+const SHADOW_LIBRARY_SOURCES = new Set(['zlibrary', 'annas', 'libgen']);
+
 const SOURCES: SourceInfo[] = [
   {
     name: 'zlibrary',
@@ -160,7 +163,10 @@ function SourceCard({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  const isEnabled = config?.enabled !== 0;
+  // Mirrors isSourceEnabled: no config row means shadow libraries
+  // (zlibrary, annas, libgen) default off; other sources default on.
+  const isEnabled =
+    config != null ? config.enabled === 1 : !SHADOW_LIBRARY_SOURCES.has(source.name);
   const hasCredentials = config?.credentials != null;
 
   const handleToggle = async () => {

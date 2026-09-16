@@ -763,9 +763,16 @@ export function upsertDownloadSourceConfig(source: string, enabled: boolean, cre
   );
 }
 
+// zlibrary, annas and libgen are shadow libraries: searching them is an
+// opt-in the operator makes in Settings, not a default a fresh install
+// should assume. GetComics isn't a shadow library, so it keeps the
+// historical default-enabled behaviour when it has never been configured.
+const SHADOW_LIBRARY_SOURCES = new Set(['zlibrary', 'annas', 'libgen']);
+
 export function isSourceEnabled(source: string): boolean {
   const sourceConfig = getDownloadSourceConfig(source);
-  return sourceConfig ? sourceConfig.enabled === 1 : true;
+  if (sourceConfig) return sourceConfig.enabled === 1;
+  return !SHADOW_LIBRARY_SOURCES.has(source);
 }
 
 // ============ Source Status Cache Functions ============

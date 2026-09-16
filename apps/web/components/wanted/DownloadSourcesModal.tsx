@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import type { WantedBook } from '@/lib/db';
 import {
   searchDownloads,
   getDownloadSearchLinks,
   getDownloadSourceStatuses,
+  getDownloadConfigs,
   queueDownload,
 } from '@/lib/actions/downloads';
 import { getLibraries } from '@/lib/actions/libraries';
@@ -13,6 +15,10 @@ import type { DownloadResult, SourceStatus } from '@/lib/services/downloads';
 import { SourceStatusBadge } from './SourceStatusBadge';
 import { useToast } from '@/components/ui/Toast';
 import { LoadingSpinner } from '@/components/ui/Icons';
+
+// These are external, unofficial book sources (shadow libraries) — they are
+// off by default and only searched once an operator opts in from Settings.
+const SHADOW_LIBRARY_SOURCES = ['zlibrary', 'annas', 'libgen'] as const;
 
 interface Library {
   id: number;
@@ -42,11 +48,13 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [selectedLibraryId, setSelectedLibraryId] = useState<number | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [noSourcesEnabled, setNoSourcesEnabled] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       setError(null);
+      setNoSourcesEnabled(false);
 
       try {
         // Get libraries for download target selection
@@ -65,6 +73,19 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
         // Get source statuses
         const sourceStatuses = await getDownloadSourceStatuses();
         setStatuses(sourceStatuses);
+
+        // These sources are opt-in shadow libraries; if none are enabled
+        // there's nothing to search, so ask rather than assuming.
+        const configs = await getDownloadConfigs();
+        const anyEnabled = SHADOW_LIBRARY_SOURCES.some(
+          (source) => configs.find((c) => c.source === source)?.enabled === 1
+        );
+
+        if (!anyEnabled) {
+          setNoSourcesEnabled(true);
+          setResults([]);
+          return;
+        }
 
         // Search all sources
         const query = `${book.title} ${book.author || ''}`.trim();
@@ -246,7 +267,27 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
             <div className="p-8 text-center text-shelvarr-text-muted">{error}</div>
           )}
 
-          {!loading && !error && filteredResults.length === 0 && (
+          {!loading && !error && noSourcesEnabled && (
+            <div className="p-8 text-center text-shelvarr-text-muted">
+              <p>
+                LibGen, Anna&apos;s Archive and Z-Library are external, unofficial
+                book sources. None are enabled yet, so nothing was searched.
+              </p>
+              <p className="mt-2">
+                Turn them on under{' '}
+                <Link
+                  href="/settings/downloads"
+                  className="text-shelvarr-primary hover:underline"
+                  onClick={onClose}
+                >
+                  Settings → Download Sources
+                </Link>
+                .
+              </p>
+            </div>
+          )}
+
+          {!loading && !error && !noSourcesEnabled && filteredResults.length === 0 && (
             <div className="p-8 text-center text-shelvarr-text-muted">
               No results found. Try the quick search links above.
             </div>
