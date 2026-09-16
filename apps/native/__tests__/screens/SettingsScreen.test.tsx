@@ -6,6 +6,8 @@ import { useSettingsStore } from '../../src/stores/useSettingsStore';
 import { useUpdateStore } from '../../src/stores/useUpdateStore';
 import { useAuthStore } from '../../src/stores/useAuthStore';
 import { cleanAllDownloads } from '../../src/services/fileManager';
+import { useDownloadStore } from '../../src/stores/useDownloadStore';
+import { useComicDownloadStore } from '../../src/stores/useComicDownloadStore';
 import { APP_VERSION, BUILD_VERSION } from '../../src/utils/constants';
 import { testShelvarrConnection } from '../../src/services/api/shelvarr';
 
@@ -83,7 +85,7 @@ describe('SettingsScreen', () => {
 
     mockUseSettingsStore.mockImplementation((selector: any) =>
       selector({
-        autoDeleteAfterReading: true,
+        autoDeleteOldDownloads: true,
         setAutoDelete: mockSetAutoDelete,
         shelvarrUrl: 'http://shelvarr:3000',
         setShelvarrUrl: mockSetShelvarrUrl,
@@ -97,7 +99,10 @@ describe('SettingsScreen', () => {
     const { getByText } = render(<SettingsScreen />);
     expect(getByText('Server')).toBeTruthy();
     expect(getByText('Reading')).toBeTruthy();
-    expect(getByText('Auto-delete after reading')).toBeTruthy();
+    expect(getByText('Free up space automatically')).toBeTruthy();
+    expect(
+      getByText("Delete files you opened but didn't download, once they've gone 14 days unread")
+    ).toBeTruthy();
     expect(getByText('Storage')).toBeTruthy();
     expect(getByText('Updates')).toBeTruthy();
   });
@@ -238,6 +243,12 @@ describe('SettingsScreen', () => {
   });
 
   it('executes clear downloads action', async () => {
+    useDownloadStore.setState({
+      downloads: { 'book-1': { bookId: 'book-1', filePath: '/f', format: 'epub', downloadedAt: 1 } },
+    });
+    useComicDownloadStore.setState({
+      downloads: { 7: { issueId: 7, volumeId: 1, kind: 'pdf', downloadedAt: 1 } },
+    });
     const { getByText } = render(<SettingsScreen />);
     fireEvent.press(getByText('Clear all downloads'));
 
@@ -246,6 +257,10 @@ describe('SettingsScreen', () => {
     await deleteButton.onPress();
 
     expect(mockCleanAllDownloads).toHaveBeenCalled();
+    // The manifests go too: entries pointing at deleted files would show as
+    // downloads the app can no longer open.
+    expect(useDownloadStore.getState().downloads).toEqual({});
+    expect(useComicDownloadStore.getState().downloads).toEqual({});
   });
 
   it('toggles auto-delete switch', () => {
@@ -291,7 +306,7 @@ describe('SettingsScreen updates section', () => {
     jest.spyOn(Alert, 'alert').mockImplementation(jest.fn());
     mockUseSettingsStore.mockImplementation((selector: any) =>
       selector({
-        autoDeleteAfterReading: true,
+        autoDeleteOldDownloads: true,
         setAutoDelete: mockSetAutoDelete,
         shelvarrUrl: '',
         setShelvarrUrl: mockSetShelvarrUrl,

@@ -12,6 +12,7 @@ import { useNextUpStore } from './src/stores/useNextUpStore';
 import { useComicDownloadStore } from './src/stores/useComicDownloadStore';
 import { useUpdateStore } from './src/stores/useUpdateStore';
 import { retryOfflineQueue } from './src/services/progressSync';
+import { sweepExpiredDownloads } from './src/services/downloadCache';
 import UpdateBanner from './src/components/UpdateBanner';
 
 export default function App() {
@@ -22,13 +23,17 @@ export default function App() {
 
   useEffect(() => {
     // Settings first: the auth check needs the server URL to know where to ask.
-    useSettingsStore
-      .getState()
-      .loadSettings()
-      .then(() => useAuthStore.getState().loadAuth());
-    useDownloadStore.getState().loadDownloads();
+    const settingsReady = useSettingsStore.getState().loadSettings();
+    settingsReady.then(() => useAuthStore.getState().loadAuth());
+    const manifestsReady = Promise.all([
+      useDownloadStore.getState().loadDownloads(),
+      useComicDownloadStore.getState().loadDownloads(),
+    ]);
     useNextUpStore.getState().loadDismissed();
-    useComicDownloadStore.getState().loadDownloads();
+    // Only once the setting and both manifests are in: sweeping against an
+    // empty manifest would find nothing, and sweeping before the setting loads
+    // could delete for someone who has cleanup switched off.
+    Promise.all([settingsReady, manifestsReady]).then(() => sweepExpiredDownloads());
     retryOfflineQueue();
     // Look for a newer release once per cold start. Failures are swallowed by
     // the store, so this is a no-op when the phone is offline.

@@ -9,6 +9,13 @@ export const BUILD_VERSION: string = process.env.EXPO_PUBLIC_BUILD_VERSION || 'd
 export const DOWNLOADS_DIR = 'shelvarr-downloads';
 export const EXTRACTED_DIR = 'shelvarr-extracted';
 
+// Files cached by reading (rather than by an explicit download) are swept
+// this long after they were last read. Long enough that picking a book back up
+// next week doesn't re-download it, short enough that the phone isn't hoarding
+// a library you've finished with.
+export const DOWNLOAD_RETENTION_DAYS = 14;
+export const DOWNLOAD_RETENTION_MS = DOWNLOAD_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
 export const PROGRESS_SYNC_DEBOUNCE_MS = 3000;
 export const PAGE_SIZE = 20;
 

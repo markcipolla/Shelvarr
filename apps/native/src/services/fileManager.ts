@@ -2,6 +2,7 @@ import {
   getInfoAsync,
   makeDirectoryAsync,
   deleteAsync,
+  moveAsync,
   readDirectoryAsync,
   createDownloadResumable,
   readAsStringAsync,
@@ -10,6 +11,13 @@ import {
 } from 'expo-file-system/legacy';
 import JSZip from 'jszip';
 import { getDownloadsDir, getExtractedDir, getBookDownloadPath, getBookExtractDir } from '../utils/paths';
+
+/**
+ * Written into an extracted comic directory once every page is on disk, so a
+ * directory left behind by an interrupted extraction is never mistaken for a
+ * complete one. Not an image, so it never shows up as a page.
+ */
+const PAGE_COUNT_FILE = 'pages.json';
 
 /** Thrown when a file download completes with a non-2xx HTTP status. */
 export class DownloadHttpError extends Error {
@@ -42,10 +50,15 @@ export async function downloadBookFile(
 ): Promise<string> {
   await ensureDirectories();
   const filePath = getBookDownloadPath(bookId, extension);
+  // Download to a sidecar and move it into place only once every byte has
+  // arrived. A download cut off halfway must not leave a truncated file where
+  // the cache check would later find it and call it a finished download.
+  const partPath = `${filePath}.part`;
+  await deleteAsync(partPath, { idempotent: true }).catch(() => {});
 
   const downloadResumable = createDownloadResumable(
     downloadUrl,
-    filePath,
+    partPath,
     { headers },
     (downloadProgress) => {
       const { totalBytesWritten, totalBytesExpectedToWrite } = downloadProgress;
@@ -60,8 +73,17 @@ export async function downloadBookFile(
     }
   );
 
-  const result = await downloadResumable.downloadAsync();
-  if (!result) throw new Error('Download failed');
+  let result;
+  try {
+    result = await downloadResumable.downloadAsync();
+  } catch (err) {
+    await deleteAsync(partPath, { idempotent: true }).catch(() => {});
+    throw err;
+  }
+  if (!result) {
+    await deleteAsync(partPath, { idempotent: true }).catch(() => {});
+    throw new Error('Download failed');
+  }
 
   // createDownloadResumable resolves even on HTTP errors, writing the error
   // response body to the file. Detect non-2xx and surface the server's message
@@ -83,12 +105,16 @@ export async function downloadBookFile(
     throw new DownloadHttpError(result.status, detail.trim().slice(0, 300));
   }
 
-  return result.uri;
+  await deleteAsync(filePath, { idempotent: true }).catch(() => {});
+  await moveAsync({ from: result.uri, to: filePath });
+  return filePath;
 }
 
 export async function deleteBookFiles(bookId: string, extension: string): Promise<void> {
   const filePath = getBookDownloadPath(bookId, extension);
   const extractDir = getBookExtractDir(bookId);
+
+  await deleteAsync(`${filePath}.part`, { idempotent: true }).catch(() => {});
 
   try {
     const fileInfo = await getInfoAsync(filePath);
@@ -143,11 +169,11 @@ export async function extractComicArchive(
     a.name.localeCompare(b.name, undefined, { numeric: true })
   );
 
+  // Start from an empty directory so pages left over from a previous, larger
+  // archive can't pad out the count this extraction is about to record.
   const dir = getBookExtractDir(key);
-  const dirInfo = await getInfoAsync(dir);
-  if (!dirInfo.exists) {
-    await makeDirectoryAsync(dir, { intermediates: true });
-  }
+  await deleteAsync(dir, { idempotent: true }).catch(() => {});
+  await makeDirectoryAsync(dir, { intermediates: true });
 
   for (let i = 0; i < imageEntries.length; i++) {
     const entry = imageEntries[i];
@@ -158,5 +184,28 @@ export async function extractComicArchive(
     await writeAsStringAsync(destPath, imgBase64, { encoding: EncodingType.Base64 });
   }
 
+  await writeAsStringAsync(
+    `${dir}${PAGE_COUNT_FILE}`,
+    JSON.stringify({ pages: imageEntries.length })
+  );
+
   return { dir, pageCount: imageEntries.length };
+}
+
+/**
+ * Pages in an extracted comic on disk, or null when nothing complete is there.
+ * Only a directory carrying the marker written at the end of extraction
+ * counts, so a half-extracted archive reads as absent and gets redone.
+ */
+export async function readExtractedPageCount(key: string): Promise<number | null> {
+  const markerPath = `${getBookExtractDir(key)}${PAGE_COUNT_FILE}`;
+  try {
+    const info = await getInfoAsync(markerPath);
+    if (!info.exists) return null;
+    const parsed = JSON.parse(await readAsStringAsync(markerPath));
+    return typeof parsed?.pages === 'number' && parsed.pages > 0 ? parsed.pages : null;
+  } catch {
+    // An unreadable or malformed marker means we can't vouch for the pages.
+    return null;
+  }
 }

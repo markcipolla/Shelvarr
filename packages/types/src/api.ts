@@ -102,6 +102,8 @@ export interface DownloadedBook {
   format: MediaFormat;
   extractedDir?: string;
   downloadedAt: number;
+  /** Last time the reader was closed on this book; drives cache expiry. */
+  lastReadAt?: number;
   persisted?: boolean;
   book?: Book;
 }

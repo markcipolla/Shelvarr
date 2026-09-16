@@ -3,7 +3,13 @@ import * as SecureStore from 'expo-secure-store';
 import { resetApiClient } from '../services/api/client';
 
 interface SettingsState {
-  autoDeleteAfterReading: boolean;
+  /**
+   * Sweep files that were cached by reading once they have gone
+   * `DOWNLOAD_RETENTION_DAYS` unread. Explicit downloads are never swept.
+   * Stored under the old `settings_autoDelete` key: installs that had
+   * delete-on-close switched off keep it switched off.
+   */
+  autoDeleteOldDownloads: boolean;
   shelvarrUrl: string;
   /** False until the first-run wizard has been finished or skipped. */
   onboardingComplete: boolean;
@@ -16,12 +22,12 @@ interface SettingsState {
 }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
-  autoDeleteAfterReading: true,
+  autoDeleteOldDownloads: true,
   shelvarrUrl: '',
   onboardingComplete: false,
   loaded: false,
   setAutoDelete: (value) => {
-    set({ autoDeleteAfterReading: value });
+    set({ autoDeleteOldDownloads: value });
     SecureStore.setItemAsync('settings_autoDelete', JSON.stringify(value));
   },
   setShelvarrUrl: (value) => {
@@ -39,7 +45,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     const shelvarrUrl = await SecureStore.getItemAsync('settings_shelvarrUrl');
     const onboardingComplete = await SecureStore.getItemAsync('settings_onboardingComplete');
     set({
-      autoDeleteAfterReading: autoDelete ? JSON.parse(autoDelete) : true,
+      autoDeleteOldDownloads: autoDelete ? JSON.parse(autoDelete) : true,
       shelvarrUrl: shelvarrUrl || '',
       // Installs that predate the wizard already have a server address, and
       // sending them back through setup would be a step backwards.
