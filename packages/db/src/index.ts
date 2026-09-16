@@ -18,6 +18,9 @@ import type {
   ComicDownloadState,
   DownloadHost,
   IssueNumber,
+  BookDownload,
+  BookDownloadState,
+  BookDownloadSource,
   ComicFile,
   ComicIssueMetadata,
   ComicRootFolder,
@@ -358,6 +361,18 @@ function runMigrations(database: Database.Database): void {
   if (hasLoginTokens) {
     console.log('Running migration: replacing login_tokens with login_codes');
     database.exec('DROP TABLE login_tokens');
+  }
+
+  // Book downloads got a real queue (book_downloads/book_download_history/
+  // book_blocklist, mirroring the comic acquisition tables). The old
+  // `downloads` table was never read or written by anything, so there is no
+  // data to carry over — just the table itself to retire.
+  const hasOldDownloads = database
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'downloads'")
+    .get();
+  if (hasOldDownloads) {
+    console.log('Running migration: dropping unused downloads table (replaced by book_downloads)');
+    database.exec('DROP TABLE downloads');
   }
 
   const comicsFtsCount = database.prepare('SELECT COUNT(*) AS c FROM comics_fts').get() as { c: number };
@@ -2406,6 +2421,219 @@ export function removeFromComicBlocklist(id: number): boolean {
 
 export function clearComicBlocklist(): number {
   return execute('DELETE FROM comic_blocklist', []).rowCount;
+}
+
+// ---------------------------------------------------------------------------
+// Book acquisition: download queue, history, blocklist
+//
+// Mirrors the comic acquisition helpers above, shaped for a single-file book
+// download instead of a comic volume's issues. Deliberately a smaller set
+// than the comic side: no alternate-link switching or stalled-download
+// sweeping yet (those are later cards) — just enough to give a book download
+// a persistent row instead of living only inside one task's memory.
+// ---------------------------------------------------------------------------
+
+interface BookDownloadRow {
+  id: number;
+  book_id: number | null;
+  wanted_book_id: number | null;
+  library_id: number;
+  source: string;
+  title: string;
+  author: string | null;
+  extension: string;
+  download_url: string;
+  md5: string | null;
+  state: string;
+  progress: number;
+  size: number | null;
+  attempts: number;
+  file_path: string | null;
+  error: string | null;
+  heartbeat_at: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+function rowToBookDownload(row: BookDownloadRow): BookDownload {
+  return {
+    id: row.id,
+    bookId: row.book_id,
+    wantedBookId: row.wanted_book_id,
+    libraryId: row.library_id,
+    source: row.source as BookDownloadSource,
+    title: row.title,
+    author: row.author,
+    extension: row.extension,
+    downloadUrl: row.download_url,
+    md5: row.md5,
+    state: row.state as BookDownloadState,
+    progress: row.progress,
+    size: row.size,
+    attempts: row.attempts ?? 0,
+    filePath: row.file_path,
+    error: row.error,
+    heartbeatAt: sqlTimeToIso(row.heartbeat_at),
+    createdAt: sqlTimeToIso(row.created_at),
+    completedAt: sqlTimeToIso(row.completed_at),
+  };
+}
+
+export interface AddBookDownloadInput {
+  wantedBookId?: number | null;
+  libraryId: number;
+  source: BookDownloadSource;
+  title: string;
+  author?: string | null;
+  extension: string;
+  downloadUrl: string;
+  /** Only libgen/annas identify a file by hash. */
+  md5?: string | null;
+}
+
+/** Queue a download. Returns the created row. */
+export function addBookDownload(input: AddBookDownloadInput): BookDownload {
+  const row = insertReturning<BookDownloadRow>(
+    `INSERT INTO book_downloads
+       (wanted_book_id, library_id, source, title, author, extension, download_url, md5, state)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued')
+     RETURNING *`,
+    [
+      input.wantedBookId ?? null,
+      input.libraryId,
+      input.source,
+      input.title,
+      input.author ?? null,
+      input.extension,
+      input.downloadUrl,
+      input.md5 ?? null,
+    ]
+  );
+  if (!row) throw new Error('Failed to create book download');
+  return rowToBookDownload(row);
+}
+
+export function getBookDownload(id: number): BookDownload | null {
+  const row = queryOne<BookDownloadRow>('SELECT * FROM book_downloads WHERE id = ?', [id]);
+  return row ? rowToBookDownload(row) : null;
+}
+
+export function getBookDownloads(
+  options: { state?: BookDownloadState; libraryId?: number; limit?: number } = {}
+): BookDownload[] {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (options.state) {
+    conditions.push('state = ?');
+    params.push(options.state);
+  }
+  if (options.libraryId !== undefined) {
+    conditions.push('library_id = ?');
+    params.push(options.libraryId);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  params.push(options.limit ?? 100);
+
+  return query<BookDownloadRow>(
+    `SELECT * FROM book_downloads ${where} ORDER BY id ASC LIMIT ?`,
+    params
+  ).map(rowToBookDownload);
+}
+
+export function updateBookDownloadProgress(id: number, progress: number, size: number | null): void {
+  execute(
+    `UPDATE book_downloads
+        SET progress = ?, size = COALESCE(?, size), heartbeat_at = CURRENT_TIMESTAMP
+      WHERE id = ?`,
+    [progress, size, id]
+  );
+}
+
+export function setBookDownloadState(
+  id: number,
+  state: BookDownloadState,
+  extra: { error?: string | null; filePath?: string | null; bookId?: number | null } = {}
+): void {
+  const terminal = state === 'completed' || state === 'failed' || state === 'cancelled';
+  execute(
+    `UPDATE book_downloads
+        SET state = ?,
+            error = COALESCE(?, error),
+            file_path = COALESCE(?, file_path),
+            book_id = COALESCE(?, book_id),
+            heartbeat_at = CURRENT_TIMESTAMP,
+            completed_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE completed_at END
+      WHERE id = ?`,
+    [state, extra.error ?? null, extra.filePath ?? null, extra.bookId ?? null, terminal ? 1 : 0, id]
+  );
+}
+
+export interface BookDownloadHistoryEntry {
+  wantedBookId?: number | null;
+  libraryId?: number | null;
+  source?: BookDownloadSource | null;
+  title?: string | null;
+  author?: string | null;
+  downloadUrl?: string | null;
+  success: boolean;
+}
+
+export function addBookDownloadHistory(entry: BookDownloadHistoryEntry): void {
+  execute(
+    `INSERT INTO book_download_history
+       (wanted_book_id, library_id, source, title, author, download_url, success)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      entry.wantedBookId ?? null,
+      entry.libraryId ?? null,
+      entry.source ?? null,
+      entry.title ?? null,
+      entry.author ?? null,
+      entry.downloadUrl ?? null,
+      entry.success ? 1 : 0,
+    ]
+  );
+}
+
+export interface AddBookBlocklistInput {
+  downloadUrl: string;
+  reason: BlocklistReason;
+  wantedBookId?: number | null;
+  libraryId?: number | null;
+  title?: string | null;
+  author?: string | null;
+  source?: BookDownloadSource | null;
+}
+
+/** Blocklist a link. Re-blocklisting an existing link refreshes its reason. */
+export function addToBookBlocklist(input: AddBookBlocklistInput): void {
+  execute(
+    `INSERT INTO book_blocklist
+       (wanted_book_id, library_id, title, author, source, download_url, reason)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(download_url) DO UPDATE SET
+       reason = excluded.reason,
+       added_at = CURRENT_TIMESTAMP`,
+    [
+      input.wantedBookId ?? null,
+      input.libraryId ?? null,
+      input.title ?? null,
+      input.author ?? null,
+      input.source ?? null,
+      input.downloadUrl,
+      input.reason,
+    ]
+  );
+}
+
+export function bookBlocklistContains(downloadUrl: string): boolean {
+  const row = queryOne<{ count: number }>(
+    'SELECT COUNT(*) as count FROM book_blocklist WHERE download_url = ?',
+    [downloadUrl]
+  );
+  return (row?.count ?? 0) > 0;
 }
 
 /**

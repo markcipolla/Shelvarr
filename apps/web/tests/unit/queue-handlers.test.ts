@@ -42,7 +42,7 @@ if (canRunTests) {
   process.env['DB_PATH'] = join(testDir, 'test.db');
 
   // Dynamic imports only when tests can run
-  const { initDatabase, closeDatabase, execute } = await import('../../lib/db/index.js');
+  const { initDatabase, closeDatabase, execute, getBookDownloads } = await import('../../lib/db/index.js');
   const {
     registerTaskHandler,
     enqueueTask,
@@ -434,6 +434,8 @@ if (canRunTests) {
       execute('DELETE FROM libraries', []);
       execute('DELETE FROM wanted_books', []);
       execute('DELETE FROM authors', []);
+      execute('DELETE FROM book_downloads', []);
+      execute('DELETE FROM book_download_history', []);
 
       // Create test library
       testLibPath = join(testDir, 'test-lib');
@@ -652,6 +654,13 @@ if (canRunTests) {
         assert.ok(updated);
         assert.strictEqual(updated.status, 'failed');
         assert.ok(updated.error?.includes('not yet supported'));
+
+        // E2-1: the download queue is a real row, not just this task —
+        // the failure is recorded there too, and nothing crashes doing it.
+        const downloads = getBookDownloads({ libraryId: 1 });
+        assert.strictEqual(downloads.length, 1);
+        assert.strictEqual(downloads[0]!.state, 'failed');
+        assert.ok(downloads[0]!.error?.includes('not yet supported'));
       });
 
       it('should not overwrite a book you already have — it saves the new download under a numbered suffix', async () => {
@@ -701,6 +710,16 @@ if (canRunTests) {
 
           const data = updated.data as { filePath: string };
           assert.strictEqual(data.filePath, dedupedPath);
+
+          // E2-1: the download has a row of its own, and it reflects where
+          // the file actually ended up — including the E2-0 dedup path
+          // above — not just the task's transient result.
+          const downloads = getBookDownloads({ libraryId: 1 });
+          assert.strictEqual(downloads.length, 1);
+          assert.strictEqual(downloads[0]!.state, 'completed');
+          assert.strictEqual(downloads[0]!.filePath, dedupedPath);
+          assert.ok(downloads[0]!.bookId);
+          assert.ok(downloads[0]!.completedAt);
         } finally {
           rmSync(blockingPath, { force: true });
         }

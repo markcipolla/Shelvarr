@@ -160,7 +160,7 @@ function getDownloadCounts(): DownloadCounts {
       'SELECT state as label, COUNT(*) as count FROM comic_downloads GROUP BY state'
     ),
     books: countByGroup(
-      'SELECT status as label, COUNT(*) as count FROM downloads GROUP BY status'
+      'SELECT state as label, COUNT(*) as count FROM book_downloads GROUP BY state'
     ),
     comicsStalled: count(
       `SELECT COUNT(*) as count FROM comic_downloads

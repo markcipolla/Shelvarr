@@ -1,5 +1,7 @@
 // Core domain types for Shelvarr
 
+import type { BlocklistReason } from './comics';
+
 export interface Library {
   id: number;
   name: string;
@@ -96,23 +98,67 @@ export interface AuthorWork {
   createdAt: string;
 }
 
-export interface Download {
+/**
+ * Book acquisition domain types.
+ *
+ * Mirrors the shape of `ComicDownload`/`ComicDownloadState` in `./comics`,
+ * adjusted for a single-file book download instead of a comic volume's
+ * issues. Replaces the old `Download`/`DownloadSource`/`DownloadStatus`
+ * trio, which described the vestigial `downloads` table that nothing ever
+ * read or wrote — see `book_downloads` in schema.sql.
+ */
+export type BookDownloadSource = 'libgen' | 'annas' | 'zlibrary';
+
+export type BookDownloadState =
+  | 'queued'
+  | 'downloading'
+  | 'importing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+/** A queued or in-flight book download. */
+export interface BookDownload {
   id: number;
+  /** Set once the book row exists — null until the download has landed. */
+  bookId: number | null;
+  /** The wanted-list entry this satisfies, if it came from one. */
+  wantedBookId: number | null;
+  libraryId: number;
+  source: BookDownloadSource;
   title: string;
   author: string | null;
-  isbn: string | null;
-  source: DownloadSource;
-  sourceUrl: string | null;
-  status: DownloadStatus;
-  targetLibraryId: number | null;
+  extension: string;
+  downloadUrl: string;
+  /** Only libgen/annas identify a file by hash. */
+  md5: string | null;
+  state: BookDownloadState;
+  /** Bytes downloaded so far. */
+  progress: number;
+  /** Total bytes, or null if the server didn't say. */
+  size: number | null;
+  /** How many times this download has been attempted. */
+  attempts: number;
   filePath: string | null;
   error: string | null;
+  /** Last sign of life, used to spot downloads orphaned by a restart. */
+  heartbeatAt: string | null;
   createdAt: string;
   completedAt: string | null;
 }
 
-export type DownloadSource = 'zlibrary' | 'annas' | 'libgen';
-export type DownloadStatus = 'pending' | 'downloading' | 'completed' | 'failed';
+export interface BookBlocklistEntry {
+  id: number;
+  downloadUrl: string;
+  /** Mirrors comic_blocklist's vocabulary; 'source-not-supported' does not apply here. */
+  reason: BlocklistReason;
+  wantedBookId: number | null;
+  libraryId: number | null;
+  title: string | null;
+  author: string | null;
+  source: BookDownloadSource | null;
+  addedAt: string;
+}
 
 // API response types
 export interface ApiResponse<T> {
