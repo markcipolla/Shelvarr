@@ -9,17 +9,25 @@ import {
   ActivityIndicator,
   RefreshControl,
   ScrollView,
+  Alert,
   useWindowDimensions,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { Book } from '../types/api';
-import { searchBooks, fetchInProgressBooks, fetchNextUpBooks, fetchRecentlyAdded } from '../services/api/books';
+import {
+  searchBooks,
+  fetchInProgressBooks,
+  fetchNextUpBooks,
+  fetchRecentlyAdded,
+  updateReadProgress,
+} from '../services/api/books';
 import {
   fetchComics,
   fetchRecentComics,
   fetchInProgressComics,
   fetchNextUpComics,
+  updateComicProgress,
   ComicVolumeListItem,
   InProgressComic,
   NextUpComic,
@@ -131,6 +139,37 @@ export default function HomeScreen({ navigation }: Props) {
       loadData();
     }, [loadData])
   );
+
+  // A book finished away from this app — on paper, on another device — never
+  // reaches its last page here, so it sits on the In Progress shelf forever.
+  // The "×" marks it read on the server; the shelf clears straight away and the
+  // book goes back if the server never heard about it.
+  const markInProgressRead = useCallback(async (book: Book) => {
+    setInProgress((prev) => prev.filter((b) => b.id !== book.id));
+    try {
+      await updateReadProgress(book.id, book.readProgress?.page ?? 0, true);
+    } catch (err) {
+      console.error('Failed to mark book as read:', err);
+      setInProgress((prev) => (prev.some((b) => b.id === book.id) ? prev : [book, ...prev]));
+      Alert.alert('Error', 'Failed to mark as read');
+    }
+  }, []);
+
+  // The same for a comic, which is on the shelf because of one part-read issue:
+  // finishing that issue is what takes the volume off. The volume usually moves
+  // on to Next Up Comics, pointing at the issue after it.
+  const markInProgressComicRead = useCallback(async (item: InProgressComic) => {
+    setInProgressComics((prev) => prev.filter((c) => c.volume.id !== item.volume.id));
+    try {
+      await updateComicProgress(item.issueId, item.page, true, item.total ?? undefined);
+    } catch (err) {
+      console.error('Failed to mark comic issue as read:', err);
+      setInProgressComics((prev) =>
+        prev.some((c) => c.volume.id === item.volume.id) ? prev : [item, ...prev]
+      );
+      Alert.alert('Error', 'Failed to mark as read');
+    }
+  }, []);
 
   const performSearch = useCallback(async (query: string, page: number) => {
     /* istanbul ignore next -- useEffect handles empty queries before calling performSearch */
@@ -413,6 +452,8 @@ export default function HomeScreen({ navigation }: Props) {
                     book={item}
                     fill
                     onPress={() => navigation.navigate('BookDetail', { bookId: item.id })}
+                    onRemove={() => markInProgressRead(item)}
+                    removeLabel="Finished — remove from In Progress"
                   />
                 </View>
               )}
@@ -437,6 +478,8 @@ export default function HomeScreen({ navigation }: Props) {
                     fill
                     progressLabel={inProgressComicLabel(item)}
                     onPress={() => navigation.navigate('ComicDetail', { volumeId: item.volume.id })}
+                    onRemove={() => markInProgressComicRead(item)}
+                    removeLabel="Finished — remove from In Progress"
                   />
                 </View>
               )}

@@ -14,11 +14,21 @@ interface Props {
   placeholder?: boolean;
   /** Optional badge shown at the bottom-left, e.g. resume point for in-progress comics. */
   progressLabel?: string;
-  /** When provided, shows a "×" button to remove this comic from Next Up. */
+  /** When provided, shows a "×" button that takes this comic off the shelf it is on. */
   onRemove?: () => void;
+  /** What that "×" does, for screen readers — it differs by shelf. */
+  removeLabel?: string;
 }
 
-export default function ComicCard({ volume, onPress, fill, placeholder, progressLabel, onRemove }: Props) {
+export default function ComicCard({
+  volume,
+  onPress,
+  fill,
+  placeholder,
+  progressLabel,
+  onRemove,
+  removeLabel = 'Remove from Next Up',
+}: Props) {
   // Covers are served by the same protected API as everything else, so the
   // image loader needs the session token too.
   const headers = useAuthHeaders();
@@ -51,7 +61,7 @@ export default function ComicCard({ volume, onPress, fill, placeholder, progress
               onPress={onRemove}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"
-              accessibilityLabel="Remove from Next Up"
+              accessibilityLabel={removeLabel}
             >
               <Text style={styles.removeButtonText}>×</Text>
             </TouchableOpacity>

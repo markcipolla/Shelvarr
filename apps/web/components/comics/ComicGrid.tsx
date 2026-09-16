@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import type { ComicVolumeSummary } from '@shelvarr/types';
 import { BookIcon, CheckIcon } from '@/components/ui/Icons';
 import { BookCover } from '@/components/ui/BookCover';
@@ -26,16 +27,18 @@ interface ComicCardProps {
   volume: ComicVolumeCardData;
   /** Optional badge shown at the bottom-left, e.g. resume point for in-progress comics. */
   progressLabel?: string;
+  /** Controls laid over the cover — a shelf's own actions, e.g. taking a volume off it. */
+  overlay?: ReactNode;
 }
 
-export function ComicCard({ volume, progressLabel }: ComicCardProps) {
+export function ComicCard({ volume, progressLabel, overlay }: ComicCardProps) {
   const title = volume.title;
   const subtitle = [volume.publisher, volume.year].filter(Boolean).join(' · ');
   const coverSrc = `/api/comics/${volume.id}/cover`;
 
   return (
     <Link href={`/comics/${volume.slug}`} className="book-cover-trigger group block">
-      <BookCover variant="comic" src={coverSrc} title={title} author={subtitle}>
+      <BookCover variant="comic" src={coverSrc} title={title} author={subtitle} overlay={overlay}>
         {volume.read && (
           <div
             className="absolute top-2 left-2 bg-green-600 text-white rounded-full p-1 shadow-md ring-1 ring-black/20"

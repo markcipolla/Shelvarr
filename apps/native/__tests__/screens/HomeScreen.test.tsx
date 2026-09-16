@@ -1,13 +1,20 @@
 import React from 'react';
 import { render, waitFor, fireEvent, act } from '@testing-library/react-native';
-import { FlatList } from 'react-native';
+import { Alert, FlatList } from 'react-native';
 import HomeScreen from '../../src/screens/HomeScreen';
-import { searchBooks, fetchInProgressBooks, fetchNextUpBooks, fetchRecentlyAdded } from '../../src/services/api/books';
+import {
+  searchBooks,
+  fetchInProgressBooks,
+  fetchNextUpBooks,
+  fetchRecentlyAdded,
+  updateReadProgress,
+} from '../../src/services/api/books';
 import {
   fetchComics,
   fetchRecentComics,
   fetchInProgressComics,
   fetchNextUpComics,
+  updateComicProgress,
 } from '../../src/services/api/comics';
 import { useColumns } from '../../src/hooks/useColumns';
 import { useSettingsStore } from '../../src/stores/useSettingsStore';
@@ -77,11 +84,13 @@ jest.mock('../../src/utils/gridHelpers', () => ({
 
 const mockSearchBooks = searchBooks as jest.Mock;
 const mockFetchInProgress = fetchInProgressBooks as jest.Mock;
+const mockUpdateReadProgress = updateReadProgress as jest.Mock;
 const mockFetchNextUpBooks = fetchNextUpBooks as jest.Mock;
 const mockFetchRecent = fetchRecentlyAdded as jest.Mock;
 const mockFetchRecentComics = fetchRecentComics as jest.Mock;
 const mockFetchComics = fetchComics as jest.Mock;
 const mockFetchInProgressComics = fetchInProgressComics as jest.Mock;
+const mockUpdateComicProgress = updateComicProgress as jest.Mock;
 const mockFetchNextUpComics = fetchNextUpComics as jest.Mock;
 const mockUseColumns = useColumns as jest.Mock;
 const mockUseSettingsStore = useSettingsStore as unknown as jest.Mock;
@@ -339,6 +348,106 @@ describe('HomeScreen', () => {
       expect(queryByText('Dune Messiah')).toBeNull();
     });
     expect(useNextUpStore.getState().dismissedBooks['b7']).toBe(true);
+  });
+
+  it('marks an In Progress book read and takes it off the shelf', async () => {
+    setupLoadedState();
+    const book = makeBook('b9', 'Piranesi');
+    book.readProgress = { page: 137, completed: false } as any;
+    mockFetchInProgress.mockResolvedValue({ content: [book] });
+    mockUpdateReadProgress.mockResolvedValue(undefined);
+
+    const { getByText, getByTestId, queryByText } = render(
+      <HomeScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    await waitFor(() => expect(getByText('In Progress')).toBeTruthy());
+
+    act(() => {
+      fireEvent.press(getByTestId('book-remove-b9'));
+    });
+
+    await waitFor(() => {
+      expect(queryByText('In Progress')).toBeNull();
+      expect(queryByText('Piranesi')).toBeNull();
+    });
+    // The page travels with it, so marking it unread again reopens it in place.
+    expect(mockUpdateReadProgress).toHaveBeenCalledWith('b9', 137, true);
+  });
+
+  it('puts the book back when the server never took the mark', async () => {
+    setupLoadedState();
+    mockFetchInProgress.mockResolvedValue({ content: [makeBook('b9', 'Piranesi')] });
+    mockUpdateReadProgress.mockRejectedValue(new Error('offline'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { getByText, getByTestId } = render(
+      <HomeScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    await waitFor(() => expect(getByText('Piranesi')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(getByTestId('book-remove-b9'));
+    });
+
+    await waitFor(() => expect(getByText('Piranesi')).toBeTruthy());
+    expect(alertSpy).toHaveBeenCalledWith('Error', 'Failed to mark as read');
+
+    alertSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it('marks the part-read issue read and takes the comic off In Progress', async () => {
+    setupLoadedState();
+    mockFetchInProgressComics.mockResolvedValue([
+      { volume: makeVolume(31, 'Saga'), issueId: 88, issueNumber: '4', page: 7, total: 22, updatedAt: 'x' },
+    ]);
+    mockUpdateComicProgress.mockResolvedValue(undefined);
+
+    const { getByText, getByTestId, queryByText } = render(
+      <HomeScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    await waitFor(() => expect(getByText('In Progress Comics')).toBeTruthy());
+
+    act(() => {
+      fireEvent.press(getByTestId('comic-remove-31'));
+    });
+
+    await waitFor(() => {
+      expect(queryByText('In Progress Comics')).toBeNull();
+      expect(queryByText('Saga')).toBeNull();
+    });
+    expect(mockUpdateComicProgress).toHaveBeenCalledWith(88, 7, true, 22);
+  });
+
+  it('puts the comic back when the server never took the mark', async () => {
+    setupLoadedState();
+    mockFetchInProgressComics.mockResolvedValue([
+      { volume: makeVolume(31, 'Saga'), issueId: 88, issueNumber: '4', page: 7, total: null, updatedAt: 'x' },
+    ]);
+    mockUpdateComicProgress.mockRejectedValue(new Error('offline'));
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { getByText, getByTestId } = render(
+      <HomeScreen navigation={mockNavigation} route={mockRoute} />
+    );
+
+    await waitFor(() => expect(getByText('Saga')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(getByTestId('comic-remove-31'));
+    });
+
+    await waitFor(() => expect(getByText('Saga')).toBeTruthy());
+    expect(mockUpdateComicProgress).toHaveBeenCalledWith(88, 7, true, undefined);
+    expect(alertSpy).toHaveBeenCalledWith('Error', 'Failed to mark as read');
+
+    alertSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 
   it('removes a comic from Next Up when its remove button is pressed', async () => {

@@ -123,6 +123,21 @@ describe('ComicCard', () => {
     expect(onPress).not.toHaveBeenCalled();
   });
 
+  it('takes a label for shelves where the × means something else', () => {
+    const onRemove = jest.fn();
+    const { getByLabelText, queryByLabelText } = render(
+      <ComicCard
+        volume={makeVolume()}
+        onPress={jest.fn()}
+        onRemove={onRemove}
+        removeLabel="Finished — remove from In Progress"
+      />
+    );
+    expect(queryByLabelText('Remove from Next Up')).toBeNull();
+    fireEvent.press(getByLabelText('Finished — remove from In Progress'));
+    expect(onRemove).toHaveBeenCalled();
+  });
+
   it('omits the remove button when onRemove is not provided', () => {
     const { queryByLabelText } = render(<ComicCard volume={makeVolume()} onPress={jest.fn()} />);
     expect(queryByLabelText('Remove from Next Up')).toBeNull();

@@ -37,11 +37,20 @@ interface Props {
   onPress: () => void;
   fill?: boolean;
   placeholder?: boolean;
-  /** When provided, shows a "×" button to remove this book from Next Up. */
+  /** When provided, shows a "×" button that takes this book off the shelf it is on. */
   onRemove?: () => void;
+  /** What that "×" does, for screen readers — it differs by shelf. */
+  removeLabel?: string;
 }
 
-export default function BookCard({ book, onPress, fill, placeholder, onRemove }: Props) {
+export default function BookCard({
+  book,
+  onPress,
+  fill,
+  placeholder,
+  onRemove,
+  removeLabel = 'Remove from Next Up',
+}: Props) {
   const headers = useAuthHeaders();
   const online = useConnectivityStore((s) => s.online);
   const isDownloaded = useDownloadStore((s) => !!s.downloads[book?.id]);
@@ -96,7 +105,7 @@ export default function BookCard({ book, onPress, fill, placeholder, onRemove }:
               onPress={onRemove}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"
-              accessibilityLabel="Remove from Next Up"
+              accessibilityLabel={removeLabel}
             >
               <Text style={styles.removeButtonText}>×</Text>
             </TouchableOpacity>
