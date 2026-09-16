@@ -30,9 +30,6 @@ const HOST_TERMS: Record<DownloadHost, string[]> = {
   ],
 };
 
-/** Hosts we can actually fetch a file from. See NOTICE.md for why. */
-export const SUPPORTED_HOSTS: DownloadHost[] = ['getcomics', 'pixeldrain'];
-
 /** Default order to try hosts in. GetComics' own servers are fastest. */
 export const DEFAULT_HOST_PREFERENCE: DownloadHost[] = [
   'getcomics', 'pixeldrain', 'datanodes', 'vikingfile', 'terabox', 'mega', 'mediafire',
