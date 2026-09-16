@@ -1295,6 +1295,28 @@ describe('Download Services', () => {
       });
     });
 
+    describe('parseSizeToBytes', () => {
+      it('parses a KB size', () => {
+        assert.strictEqual(downloads.parseSizeToBytes('850 KB'), 850 * 1024);
+      });
+
+      it('parses a decimal MB size', () => {
+        assert.strictEqual(downloads.parseSizeToBytes('2.5 MB'), Math.round(2.5 * 1024 * 1024));
+      });
+
+      it('parses a decimal GB size', () => {
+        assert.strictEqual(downloads.parseSizeToBytes('1.2 GB'), Math.round(1.2 * 1024 * 1024 * 1024));
+      });
+
+      it('returns null (not zero) for "Unknown"', () => {
+        assert.strictEqual(downloads.parseSizeToBytes('Unknown'), null);
+      });
+
+      it('returns null for unrecognised text', () => {
+        assert.strictEqual(downloads.parseSizeToBytes('N/A'), null);
+      });
+    });
+
     describe('searchAllSources', () => {
       it('should return combined results from all sources', async () => {
         // Mock responses for each source
@@ -1352,6 +1374,106 @@ describe('Download Services', () => {
         assert.strictEqual(blockedSources.length, 1);
         assert.strictEqual(blockedSources[0]?.source, 'annas');
         assert.ok(blockedSources[0]?.message.length > 0);
+      });
+
+      it('drops a result below the size floor but keeps an Unknown-sized one', async () => {
+        // Z-Library never reports a real size (always "Unknown" — see
+        // zlibrary.ts), which makes it a convenient source for the
+        // "unknown survives" half of this test.
+        const db = await import('../../lib/db/index.js');
+        db.upsertDownloadSourceConfig('annas', true);
+        db.upsertDownloadSourceConfig('zlibrary', true);
+
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          if (typeof url === 'string' && url.includes('annas-archive')) {
+            return new Response(`
+              <a href="/md5/${'b'.repeat(32)}">
+                <h3>Tiny Stub</h3>
+              </a>
+              <div>by Author, pdf, 5 KB</div>
+            `, { status: 200 });
+          }
+          if (typeof url === 'string' && url.includes('z-lib')) {
+            return new Response(`
+              <z-bookcard data-id="99">
+                <div class="title">Unknown Size Book</div>
+                <div class="author">Author</div>
+              </z-bookcard>
+            `, { status: 200 });
+          }
+          return new Response('', { status: 200 });
+        });
+
+        const { results } = await downloads.searchAllSources('test', {
+          sources: ['annas', 'zlibrary'],
+        });
+
+        assert.ok(!results.some((r) => r.title === 'Tiny Stub'));
+        assert.ok(results.some((r) => r.title === 'Unknown Size Book'));
+      });
+
+      it('reorders tied results by format preference without disturbing status/title-match precedence', async () => {
+        const db = await import('../../lib/db/index.js');
+        db.upsertDownloadSourceConfig('annas', true);
+        db.upsertDownloadSourceConfig('libgen', true);
+
+        // Both results are "unknown" source status (no health check has run)
+        // and both titles match the query, so the only thing left to break
+        // the tie should be format preference: epub before pdf.
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          if (typeof url === 'string' && url.includes('annas-archive')) {
+            return new Response(`
+              <a href="/md5/${'c'.repeat(32)}">
+                <h3>Test Annas Book</h3>
+              </a>
+              <div>by Author, pdf, 3 MB</div>
+            `, { status: 200 });
+          }
+          if (typeof url === 'string' && url.includes('libgen')) {
+            return new Response(`
+              <table>
+                <tr>
+                  <td><b>Test Libgen Book</b></td>
+                  <td>Author</td>
+                  <td>Publisher</td>
+                  <td><nobr>2023</nobr></td>
+                  <td>English</td>
+                  <td>250</td>
+                  <td><nobr><a>3 MB</a></nobr></td>
+                  <td>epub</td>
+                  <td><a href="ads.php?md5=${'d'.repeat(32)}">Download</a></td>
+                </tr>
+              </table>
+            `, { status: 200 });
+          }
+          return new Response('', { status: 200 });
+        });
+
+        const { results } = await downloads.searchAllSources('test', {
+          sources: ['annas', 'libgen'],
+        });
+
+        const epubIndex = results.findIndex((r) => r.title === 'Test Libgen Book');
+        const pdfIndex = results.findIndex((r) => r.title === 'Test Annas Book');
+        assert.notStrictEqual(epubIndex, -1);
+        assert.notStrictEqual(pdfIndex, -1);
+        assert.ok(epubIndex < pdfIndex, 'expected the epub result to sort before the pdf result');
+      });
+
+      it('passes a language option through to Anna\'s Archive', async () => {
+        const db = await import('../../lib/db/index.js');
+        db.upsertDownloadSourceConfig('annas', true);
+
+        mockFetch.mock.mockImplementation(async () => new Response('', { status: 200 }));
+
+        await downloads.searchAllSources('test', { sources: ['annas'], language: 'en' });
+
+        const annasCall = mockFetch.mock.calls.find((call) => {
+          const url = call.arguments[0];
+          return typeof url === 'string' && url.includes('annas-archive');
+        });
+        assert.ok(annasCall, 'expected a fetch call to Anna\'s Archive');
+        assert.ok((annasCall!.arguments[0] as string).includes('lang=en'));
       });
     });
 
