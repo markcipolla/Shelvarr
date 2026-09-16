@@ -499,6 +499,7 @@ if (canRunTests) {
       execute('DELETE FROM authors', []);
       execute('DELETE FROM book_downloads', []);
       execute('DELETE FROM book_download_history', []);
+      execute('DELETE FROM settings', []);
 
       // Create test library
       testLibPath = join(testDir, 'test-lib');
@@ -890,6 +891,117 @@ if (canRunTests) {
         assert.strictEqual(downloads.length, 1);
         assert.strictEqual(downloads[0]!.state, 'failed');
         assert.ok(downloads[0]!.error?.includes('connection reset mid-stream'));
+      });
+
+      // E2-6: Step 6 used to reimplement "Author/Title - Series Book N" by
+      // hand — its own sanitizeFilename calls, its own numbered-suffix loop,
+      // a plain fs.renameSync — and ignored whatever naming template the user
+      // configured in Settings -> Organize. It now calls generateNewPath +
+      // moveFile, the same functions the organize-preview page and the
+      // `organize` task use, so a downloaded book is filed exactly the way
+      // reorganizing the library would file it.
+      it('files a downloaded book using generateNewPath, the same function the organize task uses', async () => {
+        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+        registerAllHandlers();
+
+        const task = createTask('download', {
+          source: 'libgen',
+          md5: 'organize-me',
+          title: 'Organized Title',
+          author: 'Organized Author',
+          extension: 'epub',
+          libraryId: 1,
+        });
+        await runTask(task.id);
+
+        const updated = getTask(task.id);
+        assert.ok(updated);
+        assert.strictEqual(updated.status, 'completed');
+
+        // Default template: {author}/{series}/Book {number} - {title}.{ext}.
+        // No series info comes back (metadata lookups are blocked in tests),
+        // so the {series}/{number} segment collapses — the same shape
+        // organizeHandler's own "should organize book with valid file" test
+        // asserts for generateNewPath with the default template.
+        const expectedPath = join(testLibPath, 'Organized Author', 'Book - Organized Title.epub');
+        assert.ok(existsSync(expectedPath), `expected file at ${expectedPath}`);
+
+        const data = updated.data as { filePath: string; organized: boolean };
+        assert.strictEqual(data.filePath, expectedPath);
+        assert.strictEqual(data.organized, true);
+
+        const downloads = getBookDownloads({ libraryId: 1 });
+        assert.strictEqual(downloads[0]!.filePath, expectedPath);
+      });
+
+      it('follows a custom organize_template setting, not just the default shape', async () => {
+        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+        registerAllHandlers();
+
+        // A flat, non-hierarchical template quite unlike the default —
+        // proves Step 6 reads the configured template rather than always
+        // producing the "Author/Book - Title.ext" default layout.
+        execute(
+          'INSERT INTO settings (key, value) VALUES (?, ?)',
+          ['organize_template', JSON.stringify('{title} by {author}.{ext}')]
+        );
+
+        const task = createTask('download', {
+          source: 'libgen',
+          md5: 'custom-template',
+          title: 'Custom Title',
+          author: 'Custom Author',
+          extension: 'epub',
+          libraryId: 1,
+        });
+        await runTask(task.id);
+
+        const updated = getTask(task.id);
+        assert.ok(updated);
+        assert.strictEqual(updated.status, 'completed');
+
+        const expectedPath = join(testLibPath, 'Custom Title by Custom Author.epub');
+        assert.ok(existsSync(expectedPath), `expected file at ${expectedPath}`);
+
+        const data = updated.data as { filePath: string };
+        assert.strictEqual(data.filePath, expectedPath);
+      });
+
+      it('files a downloaded book even when organize_auto_run is off', async () => {
+        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+        registerAllHandlers();
+
+        // organize_auto_run gates bulk re-organizing of a library someone
+        // may have filed by hand (see scanHandler/metadataHandler above). It
+        // does not apply here: a just-downloaded file has never been filed
+        // anywhere, so there is no existing layout of the user's to respect
+        // by leaving it alone. A download should always land where the
+        // template says, regardless of this setting.
+        execute(
+          'INSERT INTO settings (key, value) VALUES (?, ?)',
+          ['organize_auto_run', JSON.stringify(false)]
+        );
+
+        const task = createTask('download', {
+          source: 'libgen',
+          md5: 'auto-run-off',
+          title: 'Auto Run Off Title',
+          author: 'Auto Run Off Author',
+          extension: 'epub',
+          libraryId: 1,
+        });
+        await runTask(task.id);
+
+        const updated = getTask(task.id);
+        assert.ok(updated);
+        assert.strictEqual(updated.status, 'completed');
+
+        const expectedPath = join(testLibPath, 'Auto Run Off Author', 'Book - Auto Run Off Title.epub');
+        assert.ok(existsSync(expectedPath), `expected file at ${expectedPath}`);
+
+        const data = updated.data as { filePath: string; organized: boolean };
+        assert.strictEqual(data.filePath, expectedPath);
+        assert.strictEqual(data.organized, true);
       });
     });
 
