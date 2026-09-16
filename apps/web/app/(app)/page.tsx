@@ -7,6 +7,7 @@ import type { Book } from '@/types';
 import type { ComicVolumeSummary } from '@shelvarr/types';
 import type { InProgressComic } from '@/lib/db';
 import { getReadingUserId } from '@/lib/auth';
+import { LiveRefresh } from '@/components/live/LiveRefresh';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +35,20 @@ export default async function HomePage() {
   return (
     <div className="space-y-8">
       <h1 className="text-2xl font-bold text-white">Home</h1>
+      {/* Anything that adds to the library changes these rows. */}
+      <LiveRefresh
+        taskTypes={[
+          'scan',
+          'book_scan_all',
+          'organize',
+          'book_organize_all',
+          'metadata',
+          'book_metadata',
+          'comic_scan',
+          'comic_download',
+          'comic_library_import',
+        ]}
+      />
 
       <HomeSection
         title="Currently Reading"

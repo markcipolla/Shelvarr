@@ -4,6 +4,7 @@ import { getComic, getComicProgress, resolveComicRef } from '@/lib/actions/comic
 import { MarkIssueReadButton } from '@/components/comics/MarkIssueReadButton';
 import { VolumeActions } from '@/components/comics/VolumeActions';
 import { BookCover } from '@/components/ui/BookCover';
+import { LiveRefresh } from '@/components/live/LiveRefresh';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +35,19 @@ export default async function ComicDetailPage({ params }: PageProps) {
 
   return (
     <div className="space-y-6">
+      {/* This is the page someone sits on while a volume fills up, so it
+          follows downloads as well as the tasks behind them: an issue turns
+          from wanted to owned here without a reload. */}
+      <LiveRefresh
+        downloads
+        taskTypes={[
+          'comic_search',
+          'comic_download',
+          'comic_refresh',
+          'comic_scan',
+          'comic_rename',
+        ]}
+      />
       <Link href="/comics" className="text-shelvarr-text-muted hover:text-white text-sm inline-block">
         ← Back to Comics
       </Link>

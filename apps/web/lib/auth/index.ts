@@ -81,6 +81,23 @@ export async function requirePageUser(): Promise<User | null> {
   redirect(target && target !== '/' ? `/login?next=${encodeURIComponent(target)}` : '/login');
 }
 
+/**
+ * Gate an API route that the browser opens for itself.
+ *
+ * `validateApiAuth` checks an API key header, which is what the native app and
+ * scripts send. Some endpoints are opened by the page rather than by code that
+ * can set headers — `EventSource` is the reason this exists — and those are
+ * authenticated by the session cookie the browser already has.
+ *
+ * Returns the response to send back, or null when the caller may proceed.
+ */
+export async function requireSessionUser(): Promise<Response | null> {
+  if (!auth.isAuthEnabled()) return null;
+
+  const user = await getCurrentUser();
+  return user ? null : new Response('Unauthorized', { status: 401 });
+}
+
 /** Pages an admin may see. Anyone else gets sent home rather than a 403 page. */
 export async function requireAdmin(): Promise<User | null> {
   const user = await requirePageUser();
