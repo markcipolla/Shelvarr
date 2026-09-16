@@ -15,7 +15,7 @@ export function loadConfigFromEnv(): AppConfig {
     dataDir,
     dbPath: process.env['DB_PATH'] || join(dataDir, 'shelvarr.db'),
     libraryRoot: process.env['LIBRARY_ROOT'] || '/libraries',
-    supportedExtensions: ['.epub', '.pdf', '.mobi', '.azw', '.azw3'],
+    supportedExtensions: ['.epub', '.pdf', '.mobi', '.azw', '.azw3', '.cbz', '.cbr'],
     // Only for reading paths that were recorded under a different mount.
     comicPaths: {
       pathMap: process.env['COMIC_PATH_MAP'] || null,
