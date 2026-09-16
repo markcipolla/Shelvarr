@@ -435,17 +435,17 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
   const titlePart = sanitizeFilename(bookTitle || 'Unknown');
   const newFilename = `${authorPart}${titlePart}.${ext}`;
 
-  const targetPath = path.join(library.path, newFilename);
+  let targetPath = path.join(library.path, newFilename);
 
-  // Check if file already exists
+  // Check if file already exists — pick a numbered suffix instead of overwriting it
   if (fs.existsSync(targetPath)) {
-    // Add a number suffix
     let counter = 1;
     let altPath = targetPath;
     while (fs.existsSync(altPath)) {
       altPath = path.join(library.path, `${authorPart}${titlePart} (${counter}).${ext}`);
       counter++;
     }
+    targetPath = altPath;
   }
 
   // Ensure library directory exists
