@@ -8,6 +8,7 @@ import { searchZLibrary, getZLibrarySearchUrl, type ZLibraryResult } from './zli
 import { searchAnnas, getAnnasSearchUrl, type AnnasResult } from './annas';
 import { searchLibGen, getLibGenSearchUrl, type LibGenResult } from './libgen';
 import { getSourceStatuses } from './source-status';
+import { SourceBlockedError } from './challenge';
 import { isSourceEnabled, getDownloadSourceConfig } from '@shelvarr/db';
 
 export type DownloadSource = 'zlibrary' | 'annas' | 'libgen';
@@ -33,6 +34,16 @@ export interface SearchLinks {
   libgen: string;
 }
 
+export interface BlockedSource {
+  source: DownloadSource;
+  message: string;
+}
+
+export interface SearchAllSourcesResult {
+  results: DownloadResult[];
+  blockedSources: BlockedSource[];
+}
+
 /**
  * Get quick search links for all sources (no API calls)
  */
@@ -50,8 +61,9 @@ export function getSearchLinks(query: string): SearchLinks {
 export async function searchAllSources(
   query: string,
   options?: { isbn?: string; sources?: DownloadSource[] }
-): Promise<DownloadResult[]> {
+): Promise<SearchAllSourcesResult> {
   const results: DownloadResult[] = [];
+  const blockedSources: BlockedSource[] = [];
   const sourcesToSearch = options?.sources || (['zlibrary', 'annas', 'libgen'] as DownloadSource[]);
 
   // Get current source statuses
@@ -87,6 +99,10 @@ export async function searchAllSources(
           }
         })
         .catch((err) => {
+          if (err instanceof SourceBlockedError) {
+            blockedSources.push({ source: 'zlibrary', message: err.message });
+            return;
+          }
           console.error('Z-Library search failed:', err);
         })
     );
@@ -111,6 +127,10 @@ export async function searchAllSources(
           }
         })
         .catch((err) => {
+          if (err instanceof SourceBlockedError) {
+            blockedSources.push({ source: 'annas', message: err.message });
+            return;
+          }
           console.error("Anna's Archive search failed:", err);
         })
     );
@@ -138,6 +158,10 @@ export async function searchAllSources(
           }
         })
         .catch((err) => {
+          if (err instanceof SourceBlockedError) {
+            blockedSources.push({ source: 'libgen', message: err.message });
+            return;
+          }
           console.error('LibGen search failed:', err);
         })
     );
@@ -165,7 +189,7 @@ export async function searchAllSources(
     return aMatch - bMatch;
   });
 
-  return results;
+  return { results, blockedSources };
 }
 
 /**
@@ -175,7 +199,7 @@ export async function searchSource(
   source: DownloadSource,
   query: string,
   options?: { isbn?: string }
-): Promise<DownloadResult[]> {
+): Promise<SearchAllSourcesResult> {
   return searchAllSources(query, {
     ...options,
     sources: [source],
@@ -187,6 +211,7 @@ export { searchZLibrary, getZLibrarySearchUrl } from './zlibrary';
 export { searchAnnas, getAnnasSearchUrl, getAnnasDownloadLinks } from './annas';
 export { searchLibGen, getLibGenSearchUrl, getLibGenDownloadUrl } from './libgen';
 export { getSourceStatuses, refreshSourceStatuses, checkSourceHealth } from './source-status';
+export { detectChallenge, SourceBlockedError } from './challenge';
 
 export type { ZLibraryResult } from './zlibrary';
 export type { AnnasResult } from './annas';

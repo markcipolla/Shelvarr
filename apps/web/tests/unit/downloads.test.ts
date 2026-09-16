@@ -13,8 +13,56 @@ describe('Download Services', () => {
     global.fetch = mockFetch as typeof fetch;
   });
 
+  describe('Challenge detection', async () => {
+    const { detectChallenge, SourceBlockedError } = await import('../../lib/services/downloads/challenge.js');
+
+    it('should not flag a normal search results page', () => {
+      const html = `
+        <div class="search-results">
+          <a href="/md5/abcdef1234567890abcdef1234567890">
+            <h3>A Real Book Title</h3>
+          </a>
+          <div>by John Doe, epub, 2.5 MB</div>
+        </div>
+      `;
+      const response = new Response(html, { status: 200 });
+      assert.strictEqual(detectChallenge(html, response), false);
+    });
+
+    it('should flag a Cloudflare "Just a moment" interstitial', () => {
+      const html = `
+        <html>
+          <head><title>Just a moment...</title></head>
+          <body>
+            <div class="cf-turnstile" data-sitekey="x"></div>
+            <script>window.__cf_chl_opt = {};</script>
+          </body>
+        </html>
+      `;
+      const response = new Response(html, { status: 200 });
+      assert.strictEqual(detectChallenge(html, response), true);
+    });
+
+    it('should flag a response carrying a cf-ray header even with benign body', () => {
+      const html = '<html><body>Nothing interesting here.</body></html>';
+      const response = new Response(html, {
+        status: 200,
+        headers: new Headers({ 'cf-ray': '8a1b2c3d4e5f6789-SYD' }),
+      });
+      assert.strictEqual(detectChallenge(html, response), true);
+    });
+
+    it('SourceBlockedError carries the source name and a readable message', () => {
+      const error = new SourceBlockedError('annas', 'annas-archive.li is behind a bot check right now');
+      assert.strictEqual(error.source, 'annas');
+      assert.strictEqual(error.message, 'annas-archive.li is behind a bot check right now');
+      assert.ok(error instanceof Error);
+    });
+  });
+
   describe('Anna\'s Archive Service', async () => {
     const annas = await import('../../lib/services/downloads/annas.js');
+    const { SourceBlockedError } = await import('../../lib/services/downloads/challenge.js');
 
     describe('getAnnasDomain', () => {
       it('should return a valid domain', () => {
@@ -161,6 +209,27 @@ describe('Download Services', () => {
         assert.strictEqual(results.length, 0);
       });
 
+      it('should throw SourceBlockedError when the response is a bot-protection challenge', async () => {
+        const html = '<html><head><title>Just a moment...</title></head><body><div class="cf-turnstile"></div></body></html>';
+        mockFetch.mock.mockImplementationOnce(async () =>
+          new Response(html, { status: 200 })
+        );
+
+        await assert.rejects(
+          () => annas.searchAnnas('test'),
+          (err: unknown) => err instanceof SourceBlockedError
+        );
+      });
+
+      it('should still return an empty array for a normal empty-results page', async () => {
+        mockFetch.mock.mockImplementationOnce(async () =>
+          new Response('<div class="search-results"></div>', { status: 200 })
+        );
+
+        const results = await annas.searchAnnas('test');
+        assert.strictEqual(results.length, 0);
+      });
+
       it('should skip results without valid md5', async () => {
         const html = `
           <a href="/md5/">
@@ -267,6 +336,7 @@ describe('Download Services', () => {
 
   describe('LibGen Service', async () => {
     const libgen = await import('../../lib/services/downloads/libgen.js');
+    const { SourceBlockedError } = await import('../../lib/services/downloads/challenge.js');
 
     describe('getLibGenDomain', () => {
       it('should return a valid domain', () => {
@@ -298,6 +368,27 @@ describe('Download Services', () => {
       it('should return empty array when fetch fails', async () => {
         mockFetch.mock.mockImplementationOnce(async () =>
           new Response('', { status: 500 })
+        );
+
+        const results = await libgen.searchLibGen('test');
+        assert.strictEqual(results.length, 0);
+      });
+
+      it('should throw SourceBlockedError when the response is a bot-protection challenge', async () => {
+        const html = '<html><head><title>Just a moment...</title></head><body><div class="cf-turnstile"></div></body></html>';
+        mockFetch.mock.mockImplementationOnce(async () =>
+          new Response(html, { status: 200 })
+        );
+
+        await assert.rejects(
+          () => libgen.searchLibGen('test'),
+          (err: unknown) => err instanceof SourceBlockedError
+        );
+      });
+
+      it('should still return an empty array for a normal empty-results page', async () => {
+        mockFetch.mock.mockImplementationOnce(async () =>
+          new Response('<table></table>', { status: 200 })
         );
 
         const results = await libgen.searchLibGen('test');
@@ -730,6 +821,7 @@ describe('Download Services', () => {
 
   describe('Z-Library Service', async () => {
     const zlib = await import('../../lib/services/downloads/zlibrary.js');
+    const { SourceBlockedError } = await import('../../lib/services/downloads/challenge.js');
 
     describe('getZLibraryDomain', () => {
       it('should return a valid domain', () => {
@@ -761,6 +853,27 @@ describe('Download Services', () => {
       it('should return empty array when fetch fails', async () => {
         mockFetch.mock.mockImplementationOnce(async () =>
           new Response('', { status: 500 })
+        );
+
+        const results = await zlib.searchZLibrary('test');
+        assert.strictEqual(results.length, 0);
+      });
+
+      it('should throw SourceBlockedError when the response is a bot-protection challenge', async () => {
+        const html = '<html><head><title>Just a moment...</title></head><body><div class="cf-turnstile"></div></body></html>';
+        mockFetch.mock.mockImplementationOnce(async () =>
+          new Response(html, { status: 200 })
+        );
+
+        await assert.rejects(
+          () => zlib.searchZLibrary('test'),
+          (err: unknown) => err instanceof SourceBlockedError
+        );
+      });
+
+      it('should still return an empty array for a normal empty-results page', async () => {
+        mockFetch.mock.mockImplementationOnce(async () =>
+          new Response('<div></div>', { status: 200 })
         );
 
         const results = await zlib.searchZLibrary('test');
@@ -1105,8 +1218,9 @@ describe('Download Services', () => {
           return new Response('', { status: 200 });
         });
 
-        const results = await downloads.searchAllSources('test');
+        const { results, blockedSources } = await downloads.searchAllSources('test');
         assert.ok(Array.isArray(results));
+        assert.ok(Array.isArray(blockedSources));
       });
 
       it('should handle search errors gracefully', async () => {
@@ -1114,8 +1228,29 @@ describe('Download Services', () => {
           throw new Error('Network error');
         });
 
-        const results = await downloads.searchAllSources('test');
+        const { results, blockedSources } = await downloads.searchAllSources('test');
         assert.ok(Array.isArray(results));
+        assert.ok(Array.isArray(blockedSources));
+      });
+
+      it('should report a blocked source instead of silently returning no results', async () => {
+        // Shadow-library sources default to disabled with no config row
+        // (see E1-8) — enable annas explicitly so this test exercises the
+        // block-detection path rather than the "source not enabled" skip.
+        const db = await import('../../lib/db/index.js');
+        db.upsertDownloadSourceConfig('annas', true);
+
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          if (typeof url === 'string' && url.includes('annas-archive')) {
+            return new Response('<html><title>Just a moment...</title></html>', { status: 200 });
+          }
+          return new Response('', { status: 200 });
+        });
+
+        const { blockedSources } = await downloads.searchAllSources('test', { sources: ['annas'] });
+        assert.strictEqual(blockedSources.length, 1);
+        assert.strictEqual(blockedSources[0]?.source, 'annas');
+        assert.ok(blockedSources[0]?.message.length > 0);
       });
     });
 
@@ -1125,8 +1260,9 @@ describe('Download Services', () => {
           new Response('', { status: 200 })
         );
 
-        const results = await downloads.searchSource('annas', 'test');
+        const { results, blockedSources } = await downloads.searchSource('annas', 'test');
         assert.ok(Array.isArray(results));
+        assert.ok(Array.isArray(blockedSources));
       });
 
       it('should pass through options', async () => {
@@ -1134,8 +1270,9 @@ describe('Download Services', () => {
           new Response('', { status: 200 })
         );
 
-        const results = await downloads.searchSource('libgen', 'test', { isbn: '1234567890' });
+        const { results, blockedSources } = await downloads.searchSource('libgen', 'test', { isbn: '1234567890' });
         assert.ok(Array.isArray(results));
+        assert.ok(Array.isArray(blockedSources));
       });
     });
   });

@@ -11,6 +11,7 @@ import {
   type DownloadResult,
   type DownloadSource,
   type SourceStatus,
+  type BlockedSource,
 } from '@/lib/services/downloads';
 import {
   getDownloadSourceConfigs,
@@ -33,11 +34,12 @@ export async function searchDownloads(
 ): Promise<{
   success: boolean;
   results?: DownloadResult[];
+  blockedSources?: BlockedSource[];
   error?: string;
 }> {
   try {
-    const results = await searchAllSources(query, options);
-    return { success: true, results };
+    const { results, blockedSources } = await searchAllSources(query, options);
+    return { success: true, results, blockedSources };
   } catch (error) {
     console.error('Error searching downloads:', error);
     return { success: false, error: 'Search failed' };
@@ -54,11 +56,12 @@ export async function searchDownloadSource(
 ): Promise<{
   success: boolean;
   results?: DownloadResult[];
+  blockedSources?: BlockedSource[];
   error?: string;
 }> {
   try {
-    const results = await searchSource(source, query, options);
-    return { success: true, results };
+    const { results, blockedSources } = await searchSource(source, query, options);
+    return { success: true, results, blockedSources };
   } catch (error) {
     console.error(`Error searching ${source}:`, error);
     return { success: false, error: `Search on ${source} failed` };

@@ -7,6 +7,7 @@
 
 import { getSourceStatusCache } from '@shelvarr/db';
 import { pace } from '../utils/pacing';
+import { detectChallenge, SourceBlockedError } from './challenge';
 
 export interface LibGenResult {
   id: string;
@@ -91,7 +92,8 @@ export async function searchLibGen(
     const encoded = encodeURIComponent(searchQuery);
 
     // Get search results from the HTML search page
-    const searchPageUrl = `https://${getLibGenDomain()}/index.php?req=${encoded}&lg_topic=libgen&open=0&view=simple&res=25&phrase=1&column=def`;
+    const domain = getLibGenDomain();
+    const searchPageUrl = `https://${domain}/index.php?req=${encoded}&lg_topic=libgen&open=0&view=simple&res=25&phrase=1&column=def`;
 
     const response = await fetch(searchPageUrl, {
       headers: {
@@ -107,6 +109,10 @@ export async function searchLibGen(
     }
 
     const html = await response.text();
+
+    if (detectChallenge(html, response)) {
+      throw new SourceBlockedError('libgen', `${domain} is behind a bot check right now`);
+    }
 
     // LibGen+ table structure (first cell layout, 2026):
     //   <td>
@@ -223,6 +229,7 @@ export async function searchLibGen(
       if (results.length >= 15) break;
     }
   } catch (error) {
+    if (error instanceof SourceBlockedError) throw error;
     console.error('LibGen search error:', error);
   }
 
@@ -279,6 +286,10 @@ async function getDownloadUrlFromDomain(domain: string, md5: string): Promise<st
   if (!response) return null;
 
   const html = await response.text();
+
+  if (detectChallenge(html, response)) {
+    throw new SourceBlockedError('libgen', `${domain} is behind a bot check right now`);
+  }
 
   // Look for the GET link: href="get.php?md5=XXX&key=YYY"
   const getPattern = /href="(get\.php\?md5=[a-f0-9]+&key=[^"]+)"/i;

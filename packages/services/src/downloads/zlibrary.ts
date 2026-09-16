@@ -7,6 +7,7 @@
  */
 
 import { getSourceStatusCache } from '@shelvarr/db';
+import { detectChallenge, SourceBlockedError } from './challenge';
 
 export interface ZLibraryConfig {
   email?: string;
@@ -87,7 +88,8 @@ export async function searchZLibrary(
   const results: ZLibraryResult[] = [];
 
   try {
-    const searchUrl = `https://${getZLibraryDomain()}/s/${encodeURIComponent(query)}`;
+    const domain = getZLibraryDomain();
+    const searchUrl = `https://${domain}/s/${encodeURIComponent(query)}`;
 
     const headers: Record<string, string> = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -107,6 +109,10 @@ export async function searchZLibrary(
     }
 
     const html = await response.text();
+
+    if (detectChallenge(html, response)) {
+      throw new SourceBlockedError('zlibrary', `${domain} is behind a bot check right now`);
+    }
 
     // Parse search results from HTML
     // Z-Library uses a specific HTML structure for book items
@@ -155,6 +161,7 @@ export async function searchZLibrary(
       }
     }
   } catch (error) {
+    if (error instanceof SourceBlockedError) throw error;
     console.error('Z-Library search error:', error);
   }
 
