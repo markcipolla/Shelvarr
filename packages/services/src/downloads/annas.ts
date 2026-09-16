@@ -6,6 +6,7 @@
  */
 
 import { getSourceStatusCache } from '@shelvarr/db';
+import { detectChallenge, SourceBlockedError } from './challenge';
 
 export interface AnnasResult {
   id: string;
@@ -111,7 +112,8 @@ export async function searchAnnas(
       params.set('lang', options.language);
     }
 
-    const searchUrl = `https://${getAnnasDomain()}/search?${params.toString()}`;
+    const domain = getAnnasDomain();
+    const searchUrl = `https://${domain}/search?${params.toString()}`;
 
     const response = await fetch(searchUrl, {
       headers: {
@@ -127,6 +129,10 @@ export async function searchAnnas(
     }
 
     const html = await response.text();
+
+    if (detectChallenge(html, response)) {
+      throw new SourceBlockedError('annas', `${domain} is behind a bot check right now`);
+    }
 
     // Parse search results from HTML
     // Anna's Archive has a specific structure for results
@@ -191,6 +197,7 @@ export async function searchAnnas(
       }
     }
   } catch (error) {
+    if (error instanceof SourceBlockedError) throw error;
     console.error("Anna's Archive search error:", error);
   }
 
@@ -204,7 +211,8 @@ export async function getAnnasDownloadLinks(md5: string): Promise<string[]> {
   const links: string[] = [];
 
   try {
-    const detailUrl = `https://${getAnnasDomain()}/md5/${md5}`;
+    const domain = getAnnasDomain();
+    const detailUrl = `https://${domain}/md5/${md5}`;
 
     const response = await fetch(detailUrl, {
       headers: {
@@ -220,6 +228,10 @@ export async function getAnnasDownloadLinks(md5: string): Promise<string[]> {
 
     const html = await response.text();
 
+    if (detectChallenge(html, response)) {
+      throw new SourceBlockedError('annas', `${domain} is behind a bot check right now`);
+    }
+
     // Extract download links
     const linkPattern = /href="(https?:\/\/[^"]+(?:download|get)[^"]*)"/gi;
     let match;
@@ -228,6 +240,7 @@ export async function getAnnasDownloadLinks(md5: string): Promise<string[]> {
       if (link) links.push(link);
     }
   } catch (error) {
+    if (error instanceof SourceBlockedError) throw error;
     console.error("Anna's Archive download links error:", error);
   }
 

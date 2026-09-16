@@ -19,8 +19,8 @@ export async function GET(request: NextRequest) {
   const links = getSearchLinks(query);
 
   try {
-    const results = await searchAllSources(query, { isbn });
-    return NextResponse.json({ success: true, results, links });
+    const { results, blockedSources } = await searchAllSources(query, { isbn });
+    return NextResponse.json({ success: true, results, blockedSources, links });
   } catch (err) {
     return NextResponse.json({
       success: false,

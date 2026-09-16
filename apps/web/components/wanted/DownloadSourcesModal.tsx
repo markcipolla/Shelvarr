@@ -9,7 +9,7 @@ import {
   queueDownload,
 } from '@/lib/actions/downloads';
 import { getLibraries } from '@/lib/actions/libraries';
-import type { DownloadResult, SourceStatus } from '@/lib/services/downloads';
+import type { DownloadResult, SourceStatus, BlockedSource } from '@/lib/services/downloads';
 import { SourceStatusBadge } from './SourceStatusBadge';
 import { useToast } from '@/components/ui/Toast';
 import { LoadingSpinner } from '@/components/ui/Icons';
@@ -31,6 +31,7 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [results, setResults] = useState<DownloadResult[]>([]);
+  const [blockedSources, setBlockedSources] = useState<BlockedSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchLinks, setSearchLinks] = useState<{
@@ -72,6 +73,7 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
 
         if (response.success && response.results) {
           setResults(response.results);
+          setBlockedSources(response.blockedSources || []);
         } else {
           setError(response.error || 'Search failed');
         }
@@ -233,6 +235,19 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
             </button>
           ))}
         </div>
+
+        {/* Blocked source notices */}
+        {!loading && blockedSources.length > 0 && (
+          <div className="px-4 py-2 border-b border-shelvarr-border bg-shelvarr-bg/50 space-y-1">
+            {blockedSources
+              .filter((b) => activeTab === 'all' || b.source === activeTab)
+              .map((b) => (
+                <p key={b.source} className="text-xs text-amber-400">
+                  {b.message}
+                </p>
+              ))}
+          </div>
+        )}
 
         {/* Results */}
         <div className="overflow-y-auto max-h-[45vh]">

@@ -38,7 +38,10 @@ mock.module('@/lib/db', {
 });
 
 // --- @/lib/services/downloads ---
-const searchAllSourcesMock = mock.fn<(q: string, opts?: any) => Promise<any[]>>(async () => []);
+const searchAllSourcesMock = mock.fn<(q: string, opts?: any) => Promise<any>>(async () => ({
+  results: [],
+  blockedSources: [],
+}));
 const getSearchLinksMock = mock.fn<(q: string) => any>(() => ({
   zlibrary: 'z',
   annas: 'a',
@@ -96,7 +99,7 @@ beforeEach(() => {
   getWantedBooksMock.mock.mockImplementation(() => []);
   deleteWantedBookMock.mock.mockImplementation(() => true);
   updateWantedBookMock.mock.mockImplementation(() => true);
-  searchAllSourcesMock.mock.mockImplementation(async () => []);
+  searchAllSourcesMock.mock.mockImplementation(async () => ({ results: [], blockedSources: [] }));
   enqueueTaskMock.mock.mockImplementation(() => ({ id: 42 }));
 });
 
@@ -197,9 +200,10 @@ describe('GET /api/downloads/search', () => {
   });
 
   it('searches all sources and forwards the isbn', async () => {
-    searchAllSourcesMock.mock.mockImplementation(async () => [
-      { id: 'x', source: 'libgen', title: 'Dune' },
-    ]);
+    searchAllSourcesMock.mock.mockImplementation(async () => ({
+      results: [{ id: 'x', source: 'libgen', title: 'Dune' }],
+      blockedSources: [],
+    }));
     const res = await downloadsSearch(
       makeGet('http://h/api/downloads/search?q=dune&isbn=123')
     );
