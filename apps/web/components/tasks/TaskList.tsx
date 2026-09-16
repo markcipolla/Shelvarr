@@ -57,6 +57,7 @@ function TaskRow({ task }: { task: Task }) {
     book_scan_all: 'Scan All Libraries',
     book_organize_all: 'Organize All Libraries',
     book_resume: 'Resume Interrupted Downloads',
+    book_search_all: 'Search Wanted Books',
     comic_search: 'Comic Search',
     comic_download: 'Comic Download',
     comic_refresh: 'Comic Metadata Refresh',
