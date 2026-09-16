@@ -22,7 +22,7 @@ mock.module('@shelvarr/services', {
     validateApiAuth: () => authResult,
     getServiceConfig: () => ({
       dataDir: scratchRoot,
-      supportedExtensions: ['.epub', '.pdf', '.mobi', '.azw', '.azw3'],
+      supportedExtensions: ['.epub', '.pdf', '.mobi', '.azw', '.azw3', '.cbz', '.cbr'],
     }),
   },
 });
@@ -171,5 +171,23 @@ describe('POST /api/wanted/[id]/import', () => {
     const scratchDir = join(scratchRoot, 'import-scratch');
     assert.ok(existsSync(scratchDir));
     assert.ok(readdirSync(scratchDir).length > 0);
+  });
+
+  it('accepts a .cbz comic archive upload (E4-4)', async () => {
+    const formData = new FormData();
+    formData.append('file', new File(['cbz bytes'], 'My Comic.cbz'));
+    formData.append('libraryId', '3');
+
+    const res = await importPOST(makeRequest(formData), paramsFor('1'));
+    const body = await res.json();
+
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(body.success, true);
+
+    assert.strictEqual(enqueueTaskMock.mock.callCount(), 1);
+    const [type, data] = enqueueTaskMock.mock.calls[0].arguments;
+    assert.strictEqual(type, 'book_import');
+    assert.strictEqual(data.extension, 'cbz');
+    assert.strictEqual(data.originalFilename, 'My Comic.cbz');
   });
 });

@@ -296,6 +296,37 @@ describe('Scanner Service', () => {
       assert.strictEqual(result.total, 3);
     });
 
+    it('should pick up comic archives (.cbz/.cbr) in a book library (E4-4)', async () => {
+      // Create a test library
+      const testLibPath = testDataDir + '/test-library-comic-archives';
+      const fs = await import('fs');
+      fs.mkdirSync(testLibPath, { recursive: true });
+
+      // Create files with comic archive extensions alongside a regular ebook
+      fs.writeFileSync(testLibPath + '/book.epub', 'epub content');
+      fs.writeFileSync(testLibPath + '/comic.cbz', 'cbz content');
+      fs.writeFileSync(testLibPath + '/comic.cbr', 'cbr content');
+      fs.writeFileSync(testLibPath + '/book.txt', 'text content'); // Not supported
+
+      const libResult = await library.createLibrary({
+        name: 'Test Library Comic Archives',
+        path: testLibPath,
+      });
+
+      assert.ok(libResult.success);
+      assert.ok(libResult.library);
+
+      const result = await scanner.scanLibrary(libResult.library.id);
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.added, 3); // epub, cbz, cbr
+      assert.strictEqual(result.total, 3);
+
+      const books = await scanner.getBooks({ libraryId: libResult.library.id });
+      const extensions = books.books.map(b => b.extension).sort();
+      assert.deepStrictEqual(extensions, ['cbr', 'cbz', 'epub']);
+    });
+
     it('should call progress callback during scan', async () => {
       // Create a test library
       const testLibPath = testDataDir + '/test-library-progress';
