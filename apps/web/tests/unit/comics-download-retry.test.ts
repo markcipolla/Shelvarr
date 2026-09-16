@@ -12,6 +12,7 @@ import assert from 'node:assert';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { ComicVolumeDetail, ComicIssueSummary } from '@shelvarr/types';
+import { clearLogBuffer, readLogBuffer } from '../../lib/utils/logger.js';
 
 let db: typeof import('../../lib/db/index.js');
 let queue: typeof import('@shelvarr/services/queue/index');
@@ -345,6 +346,43 @@ describe('Comic download retries', () => {
     assert.strictEqual(created.length, 1);
     assert.strictEqual(created[0]!.downloadLink, LINK_A);
     assert.deepStrictEqual(created[0]!.alternateLinks, [{ host: 'getcomics', link: LINK_B }]);
+  });
+
+  it('logs the full host mix on a group, including hosts nothing can resolve', async () => {
+    // One release with a getcomics link (resolvable) alongside a mega and a
+    // mediafire link (recognised by identifyHost, but never resolved/
+    // downloaded — see NOTICE.md). The log line is the only record that those
+    // two hosts were even offered.
+    const megaLink = 'https://mega.nz/file/abc123';
+    const mediafireLink = 'https://www.mediafire.com/file/xyz789';
+    const post = {
+      id: 2,
+      title: 'Immortal Hulk #1',
+      link: 'https://getcomics.org/marvel/immortal-hulk-1-mixed/',
+      date: '2018-06-13T00:00:00',
+      contentHtml:
+        '<p style="text-align: center;"><strong>Immortal Hulk #1</strong><br />' +
+        '<strong>Language :</strong> English | <strong>Year :</strong> 2018</p>' +
+        `<p><div class="aio-button-center"><a href="${LINK_A}" title="DOWNLOAD NOW">DOWNLOAD NOW</a></div>` +
+        `<div class="aio-button-center"><a href="${megaLink}" title="MEGA">MEGA</a></div>` +
+        `<div class="aio-button-center"><a href="${mediafireLink}" title="MEDIAFIRE">MEDIAFIRE</a></div>` +
+        '<hr />',
+    };
+
+    stubFetch({ [LINK_A]: () => fileResponse('comic-bytes', LINK_A) });
+
+    clearLogBuffer();
+    const getcomics = await import('@shelvarr/services/comics/getcomics/index');
+    await getcomics.createDownloadsFromPost({ volumeId: 501, post });
+
+    const entry = readLogBuffer()
+      .filter((line) => line.context === 'getcomics' && line.message === 'Host coverage')
+      .at(-1);
+    assert.ok(entry, 'expected a "Host coverage" log line');
+    const data = JSON.parse(entry!.data!);
+    assert.deepStrictEqual(data.hostsOffered, { getcomics: 1, mega: 1, mediafire: 1 });
+    assert.deepStrictEqual(data.resolvable, ['getcomics']);
+    assert.strictEqual(data.chosen, 'getcomics');
   });
 
   it('resumes a download orphaned by a restart, and leaves live ones alone', async () => {

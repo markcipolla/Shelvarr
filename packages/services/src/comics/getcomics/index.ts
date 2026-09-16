@@ -176,6 +176,19 @@ interface WorkingLink {
 }
 
 /**
+ * Every host GetComics offered on this group, with a count per host — so the
+ * ones `isResolvable` throws away are still visible to the log rather than
+ * silently vanishing before we can measure how often that costs us.
+ */
+function countHostsOffered(group: DownloadGroup): Partial<Record<DownloadHost, number>> {
+  const counts: Partial<Record<DownloadHost, number>> = {};
+  for (const [host, links] of Object.entries(group.links) as Array<[DownloadHost, string[]]>) {
+    counts[host] = links.length;
+  }
+  return counts;
+}
+
+/**
  * Try each link in a group, in host-preference order, until one resolves.
  * Dead links are blocklisted so later searches skip them.
  */
@@ -184,11 +197,16 @@ async function findWorkingLink(
   context: { volumeId: number; issueId: number | null; webLink: string; webTitle: string | null },
   signal?: AbortSignal
 ): Promise<WorkingLink | null> {
+  const hostsOffered = countHostsOffered(group);
+  const resolvable = (Object.keys(hostsOffered) as DownloadHost[]).filter(isResolvable);
+
   const candidates: ComicDownloadLink[] = [];
   for (const [host, links] of Object.entries(group.links) as Array<[DownloadHost, string[]]>) {
     if (!isResolvable(host)) continue;
     for (const link of links) candidates.push({ host, link });
   }
+
+  let working: WorkingLink | null = null;
 
   for (const [index, { host, link }] of candidates.entries()) {
     if (comicBlocklistContains(link)) continue;
@@ -198,7 +216,8 @@ async function findWorkingLink(
       const alternates = candidates
         .slice(index + 1)
         .filter((candidate) => !comicBlocklistContains(candidate.link));
-      return { host, link, group, alternates };
+      working = { host, link, group, alternates };
+      break;
     } catch (error) {
       if (error instanceof LinkBrokenError) {
         log.info('Blocklisting broken link', { link, reason: error.message });
@@ -219,7 +238,9 @@ async function findWorkingLink(
     }
   }
 
-  return null;
+  log.info('Host coverage', { hostsOffered, resolvable, chosen: working?.host ?? null });
+
+  return working;
 }
 
 export interface CreateDownloadsOptions {
