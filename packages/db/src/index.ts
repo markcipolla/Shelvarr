@@ -19,6 +19,7 @@ import type {
   DownloadHost,
   IssueNumber,
   BookDownload,
+  BookDownloadLink,
   BookDownloadState,
   BookDownloadSource,
   ComicFile,
@@ -2428,9 +2429,10 @@ export function clearComicBlocklist(): number {
 //
 // Mirrors the comic acquisition helpers above, shaped for a single-file book
 // download instead of a comic volume's issues. Deliberately a smaller set
-// than the comic side: no alternate-link switching or stalled-download
-// sweeping yet (those are later cards) — just enough to give a book download
-// a persistent row instead of living only inside one task's memory.
+// than the comic side: no stalled-download sweeping yet (that is a later
+// card) — just enough to give a book download a persistent row instead of
+// living only inside one task's memory, plus (E2-3) a pool of alternate
+// mirrors to fall through on a mid-stream failure.
 // ---------------------------------------------------------------------------
 
 interface BookDownloadRow {
@@ -2444,6 +2446,7 @@ interface BookDownloadRow {
   extension: string;
   download_url: string;
   md5: string | null;
+  alternate_links: string | null;
   state: string;
   progress: number;
   size: number | null;
@@ -2456,6 +2459,16 @@ interface BookDownloadRow {
 }
 
 function rowToBookDownload(row: BookDownloadRow): BookDownload {
+  let alternateLinks: BookDownloadLink[] = [];
+  if (row.alternate_links) {
+    try {
+      const parsed = JSON.parse(row.alternate_links) as BookDownloadLink[];
+      if (Array.isArray(parsed)) alternateLinks = parsed;
+    } catch {
+      alternateLinks = [];
+    }
+  }
+
   return {
     id: row.id,
     bookId: row.book_id,
@@ -2467,6 +2480,7 @@ function rowToBookDownload(row: BookDownloadRow): BookDownload {
     extension: row.extension,
     downloadUrl: row.download_url,
     md5: row.md5,
+    alternateLinks,
     state: row.state as BookDownloadState,
     progress: row.progress,
     size: row.size,
@@ -2489,14 +2503,16 @@ export interface AddBookDownloadInput {
   downloadUrl: string;
   /** Only libgen/annas identify a file by hash. */
   md5?: string | null;
+  /** Other resolved mirrors for the same file, tried in order on failure. */
+  alternateLinks?: BookDownloadLink[];
 }
 
 /** Queue a download. Returns the created row. */
 export function addBookDownload(input: AddBookDownloadInput): BookDownload {
   const row = insertReturning<BookDownloadRow>(
     `INSERT INTO book_downloads
-       (wanted_book_id, library_id, source, title, author, extension, download_url, md5, state)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued')
+       (wanted_book_id, library_id, source, title, author, extension, download_url, md5, alternate_links, state)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued')
      RETURNING *`,
     [
       input.wantedBookId ?? null,
@@ -2507,6 +2523,7 @@ export function addBookDownload(input: AddBookDownloadInput): BookDownload {
       input.extension,
       input.downloadUrl,
       input.md5 ?? null,
+      input.alternateLinks?.length ? JSON.stringify(input.alternateLinks) : null,
     ]
   );
   if (!row) throw new Error('Failed to create book download');
@@ -2567,6 +2584,29 @@ export function setBookDownloadState(
             completed_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE completed_at END
       WHERE id = ?`,
     [state, extra.error ?? null, extra.filePath ?? null, extra.bookId ?? null, terminal ? 1 : 0, id]
+  );
+}
+
+/**
+ * Persist the pool of alternate mirrors left to try for a book download —
+ * called once up front with everything `resolveLibgenDownload` found besides
+ * the chosen link, and again each time a mid-stream failure moves on to the
+ * next one (E2-3).
+ *
+ * Progress and size reset because a different mirror is a different file
+ * transfer, even though it's the same book — same reasoning as
+ * `switchComicDownloadLink`. Unlike that function, there is no separate
+ * "current mirror" column to update: nothing yet reads which specific link a
+ * book download is on (that's the `/downloads` page, E2-5), so only the
+ * remaining pool is stored.
+ */
+export function switchBookDownloadLink(id: number, remaining: BookDownloadLink[]): void {
+  execute(
+    `UPDATE book_downloads
+        SET alternate_links = ?, progress = 0, size = NULL,
+            heartbeat_at = CURRENT_TIMESTAMP
+      WHERE id = ?`,
+    [remaining.length ? JSON.stringify(remaining) : null, id]
   );
 }
 

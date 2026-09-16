@@ -121,6 +121,82 @@ describe('Book acquisition', () => {
       assert.ok(row.completedAt);
     });
 
+    it('stores and round-trips alternate mirrors (E2-3)', () => {
+      const alternateLinks = [
+        {
+          url: 'https://libgen2.example/get.php?md5=abc123&key=two',
+          filename: 'the-fifth-season.epub',
+          size: 1024,
+          supportsRange: false,
+          contentType: 'application/epub+zip',
+        },
+        {
+          url: 'https://libgen3.example/get.php?md5=abc123&key=three',
+          filename: 'the-fifth-season.epub',
+          size: 1024,
+          supportsRange: false,
+          contentType: 'application/epub+zip',
+        },
+      ];
+      const created = db.addBookDownload({
+        libraryId: 701,
+        source: 'libgen',
+        title: 'The Fifth Season',
+        author: 'N.K. Jemisin',
+        extension: 'epub',
+        downloadUrl: 'libgen:abc123',
+        md5: 'abc123',
+        alternateLinks,
+      });
+
+      assert.deepStrictEqual(created.alternateLinks, alternateLinks);
+      assert.deepStrictEqual(db.getBookDownload(created.id)?.alternateLinks, alternateLinks);
+    });
+
+    it('defaults to no alternates when none are given', () => {
+      const created = db.addBookDownload({
+        libraryId: 701,
+        source: 'libgen',
+        title: 'A Book',
+        author: null,
+        extension: 'epub',
+        downloadUrl: 'libgen:noalts',
+        md5: 'noalts',
+      });
+      assert.deepStrictEqual(created.alternateLinks, []);
+    });
+
+    it('switchBookDownloadLink replaces the remaining alternates and resets progress/size', () => {
+      const alternateLinks = [
+        { url: 'https://libgen2.example/get.php?md5=x&key=two', filename: 'a.epub', size: 500, supportsRange: false, contentType: 'application/epub+zip' },
+        { url: 'https://libgen3.example/get.php?md5=x&key=three', filename: 'a.epub', size: 500, supportsRange: false, contentType: 'application/epub+zip' },
+      ];
+      const created = db.addBookDownload({
+        libraryId: 701,
+        source: 'libgen',
+        title: 'A Book',
+        author: null,
+        extension: 'epub',
+        downloadUrl: 'libgen:x',
+        md5: 'x',
+        alternateLinks,
+      });
+      db.updateBookDownloadProgress(created.id, 400, 500);
+
+      // The first mirror died; fall through to the second, dropping it from
+      // the remaining pool.
+      db.switchBookDownloadLink(created.id, [alternateLinks[1]!]);
+
+      const row = db.getBookDownload(created.id)!;
+      assert.deepStrictEqual(row.alternateLinks, [alternateLinks[1]]);
+      assert.strictEqual(row.progress, 0);
+      assert.strictEqual(row.size, null);
+
+      // Exhausting the pool clears the column rather than storing `[]`.
+      db.switchBookDownloadLink(created.id, []);
+      assert.deepStrictEqual(db.getBookDownload(created.id)?.alternateLinks, []);
+    });
+
     it('filters the queue by state and library', () => {
       const a = db.addBookDownload({
         libraryId: 701,

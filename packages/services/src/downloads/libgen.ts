@@ -451,12 +451,44 @@ export async function resolveLibgenDownload(md5: string): Promise<ResolvedDownlo
   return null;
 }
 
+/**
+ * Resolve every LibGen mirror that actually serves the file, in mirror-
+ * preference order — unlike `resolveLibgenDownload`, which stops at the
+ * first. Used so a caller (the download handler, E2-3) can store the whole
+ * candidate list up front and fall through it on a later mid-stream failure
+ * without re-scraping every mirror from scratch.
+ *
+ * Each mirror is still only probed for headers, never its file body, so
+ * walking the whole list costs one ranged request per mirror rather than
+ * downloading anything.
+ */
+export async function resolveLibgenDownloads(md5: string): Promise<ResolvedDownload[]> {
+  const resolved: ResolvedDownload[] = [];
+
+  for (const domain of getLibGenDomains()) {
+    try {
+      const candidate = await probeLibgenDomain(domain, md5);
+      if (candidate) resolved.push(candidate);
+    } catch (error) {
+      if (error instanceof LinkBrokenError) {
+        console.warn(`LibGen mirror ${domain} link broken for ${md5}: ${error.message}`);
+        continue;
+      }
+      console.error(`Error resolving ${md5} from ${domain}:`, error);
+    }
+  }
+
+  if (resolved.length === 0) console.error('Could not resolve a download for', md5);
+  return resolved;
+}
+
 export default {
   searchLibGen,
   getLibGenSearchUrl,
   getLibGenDownloadUrl,
   getActualDownloadUrl,
   resolveLibgenDownload,
+  resolveLibgenDownloads,
   downloadToFile,
   getLibGenDomain,
   getLibGenDomains,

@@ -12,26 +12,57 @@ import { tmpdir } from 'os';
 // E2-2 split the old buffer-everything `downloadFile` into a resolve step
 // (`resolveLibgenDownload`, returning a `ResolvedDownload` — just headers, no
 // bytes) and a streaming step (`downloadToFile`, shared with the comic
-// downloader). Both are mocked here so these tests can drive the handler's
-// own orchestration (the scratch-then-move path, the progress throttle)
-// without touching a network. `downloadToFile` itself — resume, range
-// headers, the real fetch — is covered directly against the real
-// implementation in streaming-download.test.ts.
+// downloader). E2-3 added `resolveLibgenDownloads` (plural), which the
+// handler now calls instead: it returns every mirror that resolved, not just
+// the first, so a mid-stream failure can fall through the rest. All three —
+// plus the two error classes the handler distinguishes when deciding whether
+// a failure is worth trying the next mirror for — are mocked here so these
+// tests can drive the handler's own orchestration (the scratch-then-move
+// path, the progress throttle, the mirror fallback) without touching a
+// network. `downloadToFile` itself — resume, range headers, the real fetch —
+// is covered directly against the real implementation in
+// streaming-download.test.ts.
 const DEFAULT_CONTENT = Buffer.from('new downloaded content');
 
-let resolvedDownload: {
+interface MockResolvedLink {
   url: string;
   filename: string;
   size: number | null;
   supportsRange: boolean;
   contentType: string | null;
-} | null = {
+}
+
+/** Same shape as the real `LinkBrokenError` from streaming-download.ts. */
+class MockLinkBrokenError extends Error {
+  constructor(readonly link: string, message?: string) {
+    super(message ?? `Download link is broken: ${link}`);
+    this.name = 'LinkBrokenError';
+  }
+}
+
+/** Same shape as the real `DownloadLimitReachedError` from streaming-download.ts. */
+class MockDownloadLimitReachedError extends Error {
+  constructor(readonly host: string) {
+    super(`Download limit reached for ${host}`);
+    this.name = 'DownloadLimitReachedError';
+  }
+}
+
+/**
+ * The single mirror most tests use. Wrapped in an array by the mocked
+ * `resolveLibgenDownloads` below unless a test sets `resolvedDownloadList`
+ * for one with several mirrors.
+ */
+let resolvedDownload: MockResolvedLink | null = {
   url: 'https://libgen.example/get.php?md5=test&key=abc',
   filename: 'source-name-is-ignored.epub',
   size: DEFAULT_CONTENT.length,
   supportsRange: false,
   contentType: 'application/epub+zip',
 };
+
+/** Overrides `resolvedDownload` when a test needs more than one mirror. */
+let resolvedDownloadList: MockResolvedLink[] | null = null;
 
 /** Content the mocked `downloadToFile` writes on its next call. */
 let downloadContent: Buffer = DEFAULT_CONTENT;
@@ -43,13 +74,26 @@ let downloadChunkSize = 4;
 let downloadFailure: Error | null = null;
 
 /**
+ * When set, `downloadFailure` is only thrown on the download's first attempt
+ * — later attempts (a fallback to the next mirror) stream to completion. Lets
+ * a test simulate "this mirror is dead, the next one works".
+ */
+let downloadFailOnlyFirstAttempt = false;
+
+/** How many times the mocked `downloadToFile` has been called this test. */
+let downloadAttemptCount = 0;
+
+/**
  * Fires on every chunk the mock writes, in addition to the handler's own
  * `onProgress` callback — lets a test observe what actually landed in
  * `book_downloads` after each chunk, to check the handler's throttle.
  */
 let onChunkWritten: (() => void) | null = null;
 
-const mockResolveLibgenDownload = mock.fn(async (_md5: string) => resolvedDownload);
+const mockResolveLibgenDownloads = mock.fn(async (_md5: string) => {
+  if (resolvedDownloadList) return resolvedDownloadList;
+  return resolvedDownload ? [resolvedDownload] : [];
+});
 
 const mockDownloadToFile = mock.fn(
   async (
@@ -57,6 +101,9 @@ const mockDownloadToFile = mock.fn(
     destination: string,
     options: { onProgress?: (bytes: number, total: number | null) => void } = {}
   ) => {
+    downloadAttemptCount += 1;
+    const isFirstAttempt = downloadAttemptCount === 1;
+
     mkdirSync(dirname(destination), { recursive: true });
 
     let written = 0;
@@ -67,7 +114,8 @@ const mockDownloadToFile = mock.fn(
       options.onProgress?.(written, resolved.size);
       onChunkWritten?.();
 
-      if (downloadFailure && written >= downloadContent.length / 2) {
+      const shouldFailThisAttempt = downloadFailOnlyFirstAttempt ? isFirstAttempt : true;
+      if (downloadFailure && shouldFailThisAttempt && written >= downloadContent.length / 2) {
         throw downloadFailure;
       }
     }
@@ -78,8 +126,10 @@ const mockDownloadToFile = mock.fn(
 
 mock.module('@shelvarr/services/downloads/libgen', {
   namedExports: {
-    resolveLibgenDownload: mockResolveLibgenDownload,
+    resolveLibgenDownloads: mockResolveLibgenDownloads,
     downloadToFile: mockDownloadToFile,
+    LinkBrokenError: MockLinkBrokenError,
+    DownloadLimitReachedError: MockDownloadLimitReachedError,
   },
 });
 
@@ -105,7 +155,17 @@ if (canRunTests) {
   process.env['DB_PATH'] = join(testDir, 'test.db');
 
   // Dynamic imports only when tests can run
-  const { initDatabase, closeDatabase, execute, getBookDownloads, getBookDownload, addBookDownload, claimStalledBookDownloads } = await import('../../lib/db/index.js');
+  const {
+    initDatabase,
+    closeDatabase,
+    execute,
+    getBookDownloads,
+    getBookDownload,
+    addBookDownload,
+    claimStalledBookDownloads,
+    bookBlocklistContains,
+    addToBookBlocklist,
+  } = await import('../../lib/db/index.js');
   const {
     registerTaskHandler,
     enqueueTask,
@@ -519,11 +579,15 @@ if (canRunTests) {
         supportsRange: false,
         contentType: 'application/epub+zip',
       };
+      resolvedDownloadList = null;
       downloadContent = DEFAULT_CONTENT;
       downloadChunkSize = 4;
       downloadFailure = null;
+      downloadFailOnlyFirstAttempt = false;
+      downloadAttemptCount = 0;
       onChunkWritten = null;
-      mockResolveLibgenDownload.mock.resetCalls();
+      execute('DELETE FROM book_blocklist', []);
+      mockResolveLibgenDownloads.mock.resetCalls();
       mockDownloadToFile.mock.resetCalls();
     });
 
@@ -1002,6 +1066,157 @@ if (canRunTests) {
         const data = updated.data as { filePath: string; organized: boolean };
         assert.strictEqual(data.filePath, expectedPath);
         assert.strictEqual(data.organized, true);
+      });
+
+      describe('mirror fallback (E2-3)', () => {
+        // Three resolved mirrors for the same md5, standing in for what
+        // `resolveLibgenDownloads` would return when several LibGen domains
+        // all serve the file.
+        const mirrors: MockResolvedLink[] = [
+          {
+            url: 'https://libgen.example/get.php?md5=multi&key=one',
+            filename: 'multi-mirror-book.epub',
+            size: DEFAULT_CONTENT.length,
+            supportsRange: false,
+            contentType: 'application/epub+zip',
+          },
+          {
+            url: 'https://libgen2.example/get.php?md5=multi&key=two',
+            filename: 'multi-mirror-book.epub',
+            size: DEFAULT_CONTENT.length,
+            supportsRange: false,
+            contentType: 'application/epub+zip',
+          },
+          {
+            url: 'https://libgen3.example/get.php?md5=multi&key=three',
+            filename: 'multi-mirror-book.epub',
+            size: DEFAULT_CONTENT.length,
+            supportsRange: false,
+            contentType: 'application/epub+zip',
+          },
+        ];
+
+        it('stores every mirror resolveLibgenDownloads found besides the chosen one as alternates', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          resolvedDownloadList = mirrors;
+
+          const task = createTask('download', {
+            source: 'libgen',
+            md5: 'multi',
+            title: 'Multi Mirror Book',
+            author: 'Multi Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(task.id);
+
+          assert.strictEqual(getTask(task.id)?.status, 'completed');
+
+          const download = getBookDownloads({ libraryId: 1 })[0]!;
+          assert.strictEqual(download.alternateLinks.length, 2);
+          assert.strictEqual(download.alternateLinks[0]!.url, mirrors[1]!.url);
+          assert.strictEqual(download.alternateLinks[1]!.url, mirrors[2]!.url);
+        });
+
+        it('falls through to the next mirror when the chosen one breaks mid-stream, and blocklists it', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          resolvedDownloadList = mirrors;
+          downloadFailure = new MockLinkBrokenError(mirrors[0]!.url, 'mirror went down mid-transfer');
+          downloadFailOnlyFirstAttempt = true;
+
+          const task = createTask('download', {
+            source: 'libgen',
+            md5: 'multi',
+            title: 'Multi Mirror Book',
+            author: 'Multi Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(task.id);
+
+          assert.strictEqual(getTask(task.id)?.status, 'completed');
+          assert.strictEqual(mockDownloadToFile.mock.calls.length, 2);
+
+          // The dead first mirror is blocklisted...
+          assert.ok(bookBlocklistContains(mirrors[0]!.url));
+          // ...and the row landed on the second, with the third still in reserve.
+          const download = getBookDownloads({ libraryId: 1 })[0]!;
+          assert.strictEqual(download.state, 'completed');
+          assert.strictEqual(download.alternateLinks.length, 1);
+          assert.strictEqual(download.alternateLinks[0]!.url, mirrors[2]!.url);
+
+          // Wherever Step 6 organized it, the content came through intact.
+          assert.strictEqual(readFileSync(download.filePath!, 'utf8'), 'new downloaded content');
+        });
+
+        it('fails the task cleanly, without crashing, once every mirror has failed — and blocklists the last one too', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          resolvedDownloadList = mirrors;
+          downloadFailure = new MockLinkBrokenError('unused', 'every mirror is dead');
+          downloadFailOnlyFirstAttempt = false;
+
+          const task = createTask('download', {
+            source: 'libgen',
+            md5: 'multi',
+            title: 'Multi Mirror Book',
+            author: 'Multi Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(task.id);
+
+          const updated = getTask(task.id);
+          assert.strictEqual(updated?.status, 'failed');
+          assert.strictEqual(mockDownloadToFile.mock.calls.length, 3);
+
+          // Every mirror tried is blocklisted, including the last.
+          for (const mirror of mirrors) {
+            assert.ok(bookBlocklistContains(mirror.url), `expected ${mirror.url} to be blocklisted`);
+          }
+          // The book itself is blocklisted too, so auto-search moves on.
+          assert.ok(bookBlocklistContains('libgen:multi'));
+
+          const download = getBookDownloads({ libraryId: 1 })[0]!;
+          assert.strictEqual(download.state, 'failed');
+        });
+
+        it('skips a mirror that is already blocklisted instead of retrying it', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          resolvedDownloadList = mirrors;
+          // The middle mirror was already found dead by an earlier attempt.
+          addToBookBlocklist({ downloadUrl: mirrors[1]!.url, reason: 'link-broken' });
+          // The first mirror also dies mid-stream this time, so the handler
+          // has to skip straight past the blocklisted second mirror to the third.
+          downloadFailure = new MockLinkBrokenError(mirrors[0]!.url, 'first mirror is dead too');
+          downloadFailOnlyFirstAttempt = true;
+
+          const task = createTask('download', {
+            source: 'libgen',
+            md5: 'multi',
+            title: 'Multi Mirror Book',
+            author: 'Multi Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(task.id);
+
+          assert.strictEqual(getTask(task.id)?.status, 'completed');
+          // Only two attempts: the dead first mirror, then straight to the
+          // third — the already-blocklisted second mirror was never tried.
+          assert.strictEqual(mockDownloadToFile.mock.calls.length, 2);
+          assert.strictEqual(
+            (mockDownloadToFile.mock.calls[1]!.arguments[0] as MockResolvedLink).url,
+            mirrors[2]!.url
+          );
+        });
       });
     });
 
