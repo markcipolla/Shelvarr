@@ -106,6 +106,14 @@ export const DEFAULT_SCHEDULES: ScheduleDefinition[] = [
     category: 'system',
     enabledByDefault: true,
   },
+  {
+    name: 'source_health',
+    taskType: 'source_health',
+    intervalSeconds: 15 * 60,
+    description: 'Check which book download sources are reachable',
+    category: 'books',
+    enabledByDefault: true,
+  },
 ];
 
 export interface Schedule {

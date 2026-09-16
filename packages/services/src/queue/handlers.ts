@@ -37,6 +37,7 @@ import { findImportGroups, proposeLibraryImport } from '../comics/import-library
 import { getServiceConfig } from '../config';
 import * as metadataService from '../metadata';
 import { downloadFile as downloadFromLibgen } from '../downloads/libgen';
+import { getSourceStatuses, refreshSourceStatuses } from '../downloads/source-status';
 import { applyReorganization } from '../organizer';
 import { getOrCreateAuthor, fetchAuthorMetadata, getAuthorByName } from '../authors';
 import * as fs from 'fs';
@@ -1423,6 +1424,16 @@ export function registerAllHandlers(): void {
   registerTaskHandler('author_sync', async (_taskId, onProgress) => {
     onProgress(1, 1);
     return { message: 'Author sync handler not yet implemented' };
+  });
+
+  // Probe download sources on a timer so mirror selection at download time
+  // has a fresh cache instead of whatever was last checked when a page
+  // happened to be opened.
+  registerTaskHandler('source_health', async (_taskId, onProgress) => {
+    await refreshSourceStatuses();
+    const statuses = await getSourceStatuses();
+    onProgress(statuses.length, statuses.length);
+    return { sourcesProbed: statuses.length };
   });
 
   // Housekeeping: drop timed-out sessions and sign-in codes. Sessions are
