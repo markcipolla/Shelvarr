@@ -34,6 +34,71 @@ export function remapComicPath(filepath: string): string {
   return filepath;
 }
 
+/** Image extensions recognized as comic pages, across both archive formats. */
+const IMAGE_RE = /\.(jpe?g|png|gif|webp)$/i;
+
+export interface ExtractedImage {
+  name: string;
+  data: Uint8Array;
+}
+
+/**
+ * Extract every image entry from a CBZ/ZIP or CBR/RAR archive, sorted into
+ * reading order.
+ *
+ * Shared by {@link openComicArchive} (which re-zips a CBR's images into a
+ * CBZ for the whole-file route) and the per-page cache in `comics/pages.ts`
+ * (which writes each image to its own file), so the format-specific
+ * unzip/unrar handling lives in exactly one place. `ext` is the lowercase
+ * extension without a leading dot, as already computed by callers.
+ */
+export async function extractComicImages(filepath: string, ext: string): Promise<ExtractedImage[]> {
+  if (ext === 'cbz' || ext === 'zip') {
+    const { unzipSync } = await import('fflate');
+    const data = readFileSync(filepath);
+    const entries = unzipSync(data);
+
+    const images: ExtractedImage[] = [];
+    for (const [name, bytes] of Object.entries(entries)) {
+      if (!IMAGE_RE.test(name)) continue;
+      images.push({ name, data: bytes });
+    }
+    images.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+    return images;
+  }
+
+  if (ext === 'cbr' || ext === 'rar') {
+    // Read the RAR file and extract images.
+    const rarData = readFileSync(filepath);
+
+    // node-unrar-js is kept external (serverExternalPackages in next.config),
+    // so let it self-load its bundled unrar.wasm via its own __dirname. Do NOT
+    // resolve the wasm path with require.resolve here: Next's bundler rewrites
+    // require.resolve to a numeric webpack module id, which then breaks (e.g.
+    // "<id>.lastIndexOf is not a function").
+    const { createExtractorFromData } = await import('node-unrar-js');
+    const extractor = await createExtractorFromData({
+      data: rarData.buffer as ArrayBuffer,
+    });
+
+    const { files } = extractor.extract();
+
+    const images: ExtractedImage[] = [];
+    for (const file of files) {
+      if (file.fileHeader.flags.directory) continue;
+      if (!IMAGE_RE.test(file.fileHeader.name)) continue;
+      if (!file.extraction) continue;
+      images.push({ name: file.fileHeader.name, data: file.extraction });
+    }
+
+    // Sort by name to maintain reading order
+    images.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+    return images;
+  }
+
+  throw new Error(`Unsupported comic format for page extraction: ${ext || 'unknown'}`);
+}
+
 /**
  * Open a comic archive and return the content to stream to the client.
  * - PDF → stream raw bytes, Content-Type: application/pdf
@@ -83,34 +148,13 @@ export async function openComicArchive(
   }
 
   if (ext === 'cbr' || ext === 'rar') {
-    // Read the RAR file and extract images, then re-zip as CBZ
-    const rarData = readFileSync(real);
-
     // node-unrar-js is kept external (serverExternalPackages in next.config),
     // so let it self-load its bundled unrar.wasm via its own __dirname. Do NOT
     // resolve the wasm path with require.resolve here: Next's bundler rewrites
     // require.resolve to a numeric webpack module id, which then breaks (e.g.
-    // "<id>.lastIndexOf is not a function").
-    const { createExtractorFromData } = await import('node-unrar-js');
-    const extractor = await createExtractorFromData({
-      data: rarData.buffer as ArrayBuffer,
-    });
-
-    const { files } = extractor.extract();
-
-    // Collect image files and sort by name (numeric ordering)
-    const IMAGE_RE = /\.(jpe?g|png|gif|webp)$/i;
-    const imageFiles: Array<{ name: string; data: Uint8Array }> = [];
-
-    for (const file of files) {
-      if (file.fileHeader.flags.directory) continue;
-      if (!IMAGE_RE.test(file.fileHeader.name)) continue;
-      if (!file.extraction) continue;
-      imageFiles.push({ name: file.fileHeader.name, data: file.extraction });
-    }
-
-    // Sort by name to maintain reading order
-    imageFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+    // "<id>.lastIndexOf is not a function"). extractComicImages carries this
+    // same caution forward for its own node-unrar-js import.
+    const imageFiles = await extractComicImages(real, ext);
 
     // Build a zip (CBZ) using fflate
     const { zipSync } = await import('fflate');
