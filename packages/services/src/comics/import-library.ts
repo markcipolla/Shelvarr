@@ -66,6 +66,81 @@ export interface ImportProposal extends ImportGroup {
   failureMessage: string | null;
 }
 
+// region Stored proposals
+/**
+ * A candidate as a scan writes it into its task result: the fields the review
+ * page shows, and no more. Descriptions in particular are dropped — they are by
+ * far the largest field and nothing reads them back.
+ */
+export interface StoredImportCandidate {
+  comicvineId: number;
+  title: string;
+  year: number | null;
+  volumeNumber: number;
+  publisher: string | null;
+  issueCount: number;
+}
+
+/**
+ * A proposal as a scan writes it into its task result.
+ *
+ * This is the only record a scan leaves behind, so it is also what the *next*
+ * scan reads to work out which folders it can skip. One definition, shared by
+ * the writer, the reader and the review page, keeps those three from drifting.
+ */
+export interface StoredImportProposal {
+  folder: string;
+  series: string;
+  year: number | null;
+  fileCount: number;
+  suggestedComicvineId: number | null;
+  alreadyAdded: number | null;
+  failure: ImportSearchFailure | null;
+  failureMessage: string | null;
+  candidates: StoredImportCandidate[];
+}
+
+/** Trim a freshly searched proposal down to what gets stored. */
+export function toStoredProposal(proposal: ImportProposal): StoredImportProposal {
+  return {
+    folder: proposal.folder,
+    series: proposal.info.series,
+    year: proposal.info.year,
+    fileCount: proposal.files.length,
+    suggestedComicvineId: proposal.suggested?.comicvineId ?? null,
+    alreadyAdded: proposal.alreadyAdded,
+    failure: proposal.failure,
+    failureMessage: proposal.failureMessage,
+    candidates: proposal.candidates.map((candidate) => ({
+      comicvineId: candidate.comicvineId,
+      title: candidate.title,
+      year: candidate.year,
+      volumeNumber: candidate.volumeNumber,
+      publisher: candidate.publisher,
+      issueCount: candidate.issueCount,
+    })),
+  };
+}
+
+/** What a folder looks like before anyone has searched for it. */
+function unsearchedProposal(
+  group: ImportGroup,
+  failure: ImportSearchFailure = 'not-searched'
+): StoredImportProposal {
+  return {
+    folder: group.folder,
+    series: group.info.series,
+    year: group.info.year,
+    fileCount: group.files.length,
+    suggestedComicvineId: null,
+    alreadyAdded: null,
+    failure,
+    failureMessage: null,
+    candidates: [],
+  };
+}
+// endregion
+
 /**
  * Group the files under `rootPath` by the folder that holds them.
  *
@@ -249,6 +324,92 @@ export async function proposeLibraryImport(
   }
 
   return proposals;
+}
+
+/** How a resumed scan splits the folders it found. */
+export interface ScanPlan {
+  /** Folders that still need a ComicVine search. */
+  toSearch: ImportGroup[];
+  /** Folders an earlier scan already answered for, rebuilt from what's on disk now. */
+  carried: StoredImportProposal[];
+}
+
+/**
+ * Work out what a re-run of the scan actually has to search.
+ *
+ * ComicVine's hourly cap is far below what a large library needs, so a scan of
+ * one gets throttled partway through every time. Starting from scratch on each
+ * re-run would spend the whole next hour's quota re-asking about the folders
+ * that already have an answer, and the scan would never reach the end. So a
+ * folder is searched again only if the last scan never got an answer for it:
+ * `failure: null` is an answer, including "ComicVine has no match for this".
+ *
+ * `groups` is the authority on what exists. A folder in `previous` that is no
+ * longer on disk is dropped, and a folder that has appeared since is searched.
+ */
+export function planLibraryImportScan(
+  groups: ImportGroup[],
+  previous: StoredImportProposal[]
+): ScanPlan {
+  const answered = new Map(
+    previous
+      .filter((proposal) => proposal.failure === null)
+      .map((proposal) => [proposal.folder, proposal])
+  );
+
+  const plan: ScanPlan = { toSearch: [], carried: [] };
+  for (const group of groups) {
+    const prior = answered.get(group.folder);
+    if (!prior) {
+      plan.toSearch.push(group);
+      continue;
+    }
+
+    // The answer is reused, but everything the folder itself says is re-read:
+    // files may have been added since, and the volume may have been imported,
+    // in which case the review should say so rather than offer it again.
+    plan.carried.push({
+      ...unsearchedProposal(group),
+      suggestedComicvineId: prior.suggestedComicvineId,
+      alreadyAdded:
+        prior.suggestedComicvineId === null
+          ? null
+          : getComicVolumeByComicvineId(prior.suggestedComicvineId)?.id ?? null,
+      failure: null,
+      candidates: prior.candidates,
+    });
+  }
+
+  if (plan.carried.length > 0) {
+    log.info('Resuming a library import scan', {
+      carried: plan.carried.length,
+      toSearch: plan.toSearch.length,
+    });
+  }
+
+  return plan;
+}
+
+/**
+ * Merge a resumed scan's carried-over proposals with what it just searched,
+ * back into the folder order the review page lists them in.
+ *
+ * A folder in neither set was cut short by cancellation, so it is recorded as
+ * unsearched rather than dropped — the list stays a complete picture of the
+ * tree, and the next re-run picks it up.
+ */
+export function mergeScanResults(
+  groups: ImportGroup[],
+  plan: ScanPlan,
+  searched: ImportProposal[]
+): StoredImportProposal[] {
+  const byFolder = new Map<string, StoredImportProposal>();
+  for (const proposal of plan.carried) byFolder.set(proposal.folder, proposal);
+  for (const proposal of searched) {
+    byFolder.set(proposal.folder, toStoredProposal(proposal));
+  }
+
+  return groups.map((group) => byFolder.get(group.folder) ?? unsearchedProposal(group));
 }
 
 export interface ImportSelection {

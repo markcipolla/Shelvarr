@@ -49,7 +49,13 @@ import { ensureImportable, importComicDownload } from '../comics/import';
 import { sweepComicScratch } from '../comics/scratch';
 import { scanVolumeFiles } from '../comics/scan';
 import { applyVolumeRename } from '../comics/rename';
-import { findImportGroups, proposeLibraryImport } from '../comics/import-library';
+import {
+  findImportGroups,
+  mergeScanResults,
+  planLibraryImportScan,
+  proposeLibraryImport,
+  type StoredImportProposal,
+} from '../comics/import-library';
 import { getServiceConfig } from '../config';
 import * as metadataService from '../metadata';
 import {
@@ -1997,11 +2003,47 @@ const bookSearchAllHandler: TaskHandler = async (taskId, onProgress, signal) => 
 };
 
 /**
+ * The proposals the last completed scan of `path` left behind.
+ *
+ * A scan's task row holds its input configuration until the handler returns,
+ * at which point the return value replaces it — so only a completed run has
+ * proposals to offer, and a run of some other folder has nothing to say about
+ * this one.
+ */
+function previousScanProposals(taskId: number, path: string): StoredImportProposal[] {
+  const row = queryOne<{ result: string | null }>(
+    `SELECT result FROM tasks
+      WHERE type = 'comic_library_import' AND status = 'completed'
+        AND id != ? AND result IS NOT NULL
+      ORDER BY id DESC LIMIT 1`,
+    [taskId]
+  );
+  if (!row?.result) return [];
+
+  try {
+    const parsed = JSON.parse(row.result) as {
+      path?: string;
+      proposals?: StoredImportProposal[];
+    };
+    if (parsed.path !== path || !Array.isArray(parsed.proposals)) return [];
+    return parsed.proposals;
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Walk a folder tree and work out which ComicVine volume each folder is.
  *
  * Proposals are returned rather than applied — adopting the wrong series would
  * be tedious to undo, so a human confirms. One ComicVine search per folder
  * means this is slow by design.
+ *
+ * Re-running this resumes rather than restarts: folders the last scan of the
+ * same path already got an answer for keep it, and only the ones it never
+ * reached are searched. That is what makes a library bigger than ComicVine's
+ * hourly quota finishable — each re-run spends the new hour's quota on new
+ * folders instead of re-asking about the same first two hundred.
  */
 const comicLibraryImportHandler: TaskHandler = async (taskId, onProgress, signal) => {
   const data = comicTaskData<{ path?: string; maxGroups?: number }>(
@@ -2013,40 +2055,30 @@ const comicLibraryImportHandler: TaskHandler = async (taskId, onProgress, signal
   const groups = await findImportGroups(data.path, {
     ...(data.maxGroups !== undefined ? { maxGroups: data.maxGroups } : {}),
   });
-  onProgress(0, groups.length);
 
-  const proposals = await proposeLibraryImport(groups, {
+  const plan = planLibraryImportScan(groups, previousScanProposals(taskId, data.path));
+
+  // Carried folders are already done, so progress starts where the last run
+  // left off rather than replaying from zero.
+  onProgress(plan.carried.length, groups.length);
+
+  const searched = await proposeLibraryImport(plan.toSearch, {
     signal,
-    onProgress: (done, total) => onProgress(done, total),
+    onProgress: (done) => onProgress(plan.carried.length + done, groups.length),
   });
 
   // Candidates are kept — trimmed to what the review UI shows — so choosing a
-  // different match costs no further ComicVine searches. Descriptions are
-  // dropped: they are by far the largest field and the UI does not use them.
+  // different match costs no further ComicVine searches, and so the next run
+  // can tell which folders it is allowed to skip.
+  const proposals = mergeScanResults(groups, plan, searched);
+
   return {
     path: data.path,
     // A folder with no candidates because ComicVine stopped answering is not
     // the same as one ComicVine has never heard of, so the reason travels with
     // the proposal rather than being flattened into an empty candidate list.
     unsearched: proposals.filter((proposal) => proposal.failure !== null).length,
-    proposals: proposals.map((proposal) => ({
-      folder: proposal.folder,
-      series: proposal.info.series,
-      year: proposal.info.year,
-      fileCount: proposal.files.length,
-      suggestedComicvineId: proposal.suggested?.comicvineId ?? null,
-      alreadyAdded: proposal.alreadyAdded,
-      failure: proposal.failure,
-      failureMessage: proposal.failureMessage,
-      candidates: proposal.candidates.map((candidate) => ({
-        comicvineId: candidate.comicvineId,
-        title: candidate.title,
-        year: candidate.year,
-        volumeNumber: candidate.volumeNumber,
-        publisher: candidate.publisher,
-        issueCount: candidate.issueCount,
-      })),
-    })),
+    proposals,
   };
 };
 
