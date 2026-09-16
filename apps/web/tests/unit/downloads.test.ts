@@ -1234,6 +1234,12 @@ describe('Download Services', () => {
       });
 
       it('should report a blocked source instead of silently returning no results', async () => {
+        // Shadow-library sources default to disabled with no config row
+        // (see E1-8) — enable annas explicitly so this test exercises the
+        // block-detection path rather than the "source not enabled" skip.
+        const db = await import('../../lib/db/index.js');
+        db.upsertDownloadSourceConfig('annas', true);
+
         mockFetch.mock.mockImplementation(async (url: string) => {
           if (typeof url === 'string' && url.includes('annas-archive')) {
             return new Response('<html><title>Just a moment...</title></html>', { status: 200 });
