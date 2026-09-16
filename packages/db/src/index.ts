@@ -2597,6 +2597,44 @@ export function addBookDownloadHistory(entry: BookDownloadHistoryEntry): void {
   );
 }
 
+/**
+ * Claim book downloads that were left mid-flight when a process stopped.
+ *
+ * Mirrors `claimStalledComicDownloads`: the claim is the same UPDATE that
+ * finds the rows, so two server processes sweeping at once cannot both take
+ * one — the loser's subquery no longer matches once the winner's heartbeat
+ * stamp lands.
+ *
+ * Unlike comics, `queued` is not among the claimable states here. A book
+ * download's row is created and moved straight to `downloading` within the
+ * same task invocation (see `downloadHandler`) — there is no gap where a row
+ * sits in `queued` waiting for a separate process to pick it up, so a row
+ * still in `queued` was never claimed by anyone to begin with and has
+ * nothing to resume.
+ */
+export function claimStalledBookDownloads(
+  staleMinutes: number,
+  limit = 25
+): BookDownload[] {
+  const rows = getDb()
+    .prepare(
+      `UPDATE book_downloads
+          SET state = 'queued', heartbeat_at = CURRENT_TIMESTAMP
+        WHERE id IN (
+          SELECT id FROM book_downloads
+           WHERE state IN ('downloading', 'importing')
+             AND (heartbeat_at IS NULL
+                  OR heartbeat_at <= datetime('now', ?))
+           ORDER BY id ASC
+           LIMIT ?
+        )
+        RETURNING *`
+    )
+    .all(`-${staleMinutes} minutes`, limit) as BookDownloadRow[];
+
+  return rows.map(rowToBookDownload);
+}
+
 export interface AddBookBlocklistInput {
   downloadUrl: string;
   reason: BlocklistReason;

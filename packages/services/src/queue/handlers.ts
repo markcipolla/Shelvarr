@@ -20,9 +20,11 @@ import {
   getComicVolumesWithMissingIssues,
   startComicDownloadAttempt,
   addBookDownload,
+  getBookDownload,
   setBookDownloadState,
   updateBookDownloadProgress,
   addBookDownloadHistory,
+  claimStalledBookDownloads,
 } from '@shelvarr/db';
 import {
   deferDownload,
@@ -387,6 +389,14 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
     extension: string;
     libraryId: number;
     wantedBookId?: number;
+    /**
+     * Set by `bookResumeHandler` when this task is resuming a download that
+     * already has a `book_downloads` row (and, on disk, a `.partial` file to
+     * pick back up) rather than starting a new one. Every other caller
+     * (`queueDownload`, `/api/downloads/queue`) leaves this unset and gets
+     * the original create-a-new-row behaviour below.
+     */
+    bookDownloadId?: number;
   };
 
   if (!data.source || !data.md5 || !data.libraryId) {
@@ -426,16 +436,31 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
   // sweeping a download whose heartbeat has gone cold after a restart
   // (E2-4), so neither is wired up here.
   const downloadUrl = `${data.source}:${data.md5}`;
-  const bookDownload = addBookDownload({
-    wantedBookId: data.wantedBookId ?? null,
-    libraryId: data.libraryId,
-    source: data.source,
-    title: bookTitle,
-    author: bookAuthor,
-    extension: data.extension || 'epub',
-    downloadUrl,
-    md5: data.md5,
-  });
+
+  // A resume task (book_resume) passes the id of an existing row so this
+  // invocation drives the same row — and the same `.partial` file on disk —
+  // rather than splitting the download's state, history and blocklist
+  // context across a second one. Every other caller leaves bookDownloadId
+  // unset and gets a fresh row, as before.
+  let bookDownload: ReturnType<typeof addBookDownload>;
+  if (data.bookDownloadId !== undefined) {
+    const existing = getBookDownload(data.bookDownloadId);
+    if (!existing) {
+      throw new Error(`Book download ${data.bookDownloadId} not found`);
+    }
+    bookDownload = existing;
+  } else {
+    bookDownload = addBookDownload({
+      wantedBookId: data.wantedBookId ?? null,
+      libraryId: data.libraryId,
+      source: data.source,
+      title: bookTitle,
+      author: bookAuthor,
+      extension: data.extension || 'epub',
+      downloadUrl,
+      md5: data.md5,
+    });
+  }
   setBookDownloadState(bookDownload.id, 'downloading');
 
   const recordFailure = (error: string): void => {
@@ -716,6 +741,60 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
     recordFailure(err instanceof Error ? err.message : String(err));
     throw err;
   }
+};
+
+/**
+ * Pick up book downloads that were interrupted rather than finished.
+ *
+ * A book download is driven by a `download` task in one server process. If
+ * that process stops — a restart, a crash, a container being replaced — the
+ * row is left sitting in `downloading` or `importing` with nobody working on
+ * it.
+ *
+ * `claimStalledBookDownloads` does the actual claiming (same
+ * atomic-UPDATE-with-RETURNING shape as `claimStalledComicDownloads`, so two
+ * server processes sweeping at once can't double up). For each row claimed,
+ * this re-enqueues a `download` task carrying that row's own id
+ * (`bookDownloadId`), which is what makes `downloadHandler` drive the same
+ * row — and resume the same `.partial` file on disk — instead of starting a
+ * new download from scratch.
+ */
+const bookResumeHandler: TaskHandler = async (taskId, onProgress) => {
+  const taskRow = queryOne<{ result: string | null }>(
+    'SELECT result FROM tasks WHERE id = ?',
+    [taskId]
+  );
+  if (!taskRow?.result) throw new Error('Task missing book resume configuration');
+
+  const data = JSON.parse(taskRow.result) as { staleMinutes?: number; limit?: number };
+
+  const stalled = claimStalledBookDownloads(data.staleMinutes ?? 30, data.limit ?? 25);
+  onProgress(0, stalled.length);
+
+  const resumed: number[] = [];
+  for (const [index, download] of stalled.entries()) {
+    enqueueTask('download', {
+      bookDownloadId: download.id,
+      source: download.source,
+      md5: download.md5,
+      title: download.title,
+      author: download.author,
+      extension: download.extension,
+      libraryId: download.libraryId,
+      wantedBookId: download.wantedBookId ?? undefined,
+    });
+    resumed.push(download.id);
+    onProgress(index + 1, stalled.length);
+  }
+
+  if (resumed.length > 0) {
+    console.warn(`[book-resume] restarted ${resumed.length} interrupted download(s)`);
+  }
+
+  return {
+    resumed: resumed.length,
+    downloadIds: resumed,
+  };
 };
 
 /**
@@ -1507,6 +1586,7 @@ export function registerAllHandlers(): void {
   // Library-wide book sweeps, run on a timer from Settings -> Books.
   registerTaskHandler('book_scan_all', bookScanAllHandler);
   registerTaskHandler('book_organize_all', bookOrganizeAllHandler);
+  registerTaskHandler('book_resume', bookResumeHandler);
 
   // Comic acquisition: search GetComics, then fetch and import what it found.
   registerTaskHandler('comic_search', comicSearchHandler);

@@ -53,6 +53,17 @@ describe('Scheduler', () => {
     // Finishing a download that was already asked for is not unprompted, so
     // the resume sweep runs by default.
     assert.strictEqual(scheduler.getSchedule('comic_resume')!.enabled, true);
+    // Same reasoning applies on the book side.
+    assert.strictEqual(scheduler.getSchedule('book_resume')!.enabled, true);
+  });
+
+  it('resumes interrupted book downloads every 15 minutes, matching the comic sweep', () => {
+    scheduler.ensureDefaultSchedules();
+
+    const schedule = scheduler.getSchedule('book_resume')!;
+    assert.strictEqual(schedule.taskType, 'book_resume');
+    assert.strictEqual(schedule.intervalSeconds, 15 * 60);
+    assert.strictEqual(schedule.category, 'books');
   });
 
   it('sorts the book jobs onto the Books tab and the comic jobs onto Comics', () => {
@@ -64,6 +75,7 @@ describe('Scheduler', () => {
     assert.strictEqual(byName.get('book_scan_all'), 'books');
     assert.strictEqual(byName.get('book_metadata_all'), 'books');
     assert.strictEqual(byName.get('book_organize_all'), 'books');
+    assert.strictEqual(byName.get('book_resume'), 'books');
     assert.strictEqual(byName.get('comic_update_all'), 'comics');
     // Session cleanup keeps the app running rather than managing content, so
     // it belongs to neither tab.
