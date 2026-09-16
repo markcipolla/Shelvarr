@@ -20,6 +20,12 @@ jest.mock('react-native-pdf', () => {
       if (props.onError && triggerError) {
         props.onError(new Error('PDF load error'));
       }
+      // This mimics the native module firing its initial page-loaded event
+      // once on mount. The real PdfReaderScreen passes fresh inline
+      // `onPageChanged`/`onError` callbacks on every render, so depending on
+      // `props` here would re-fire this mock (and re-sync progress) on every
+      // re-render instead of once, unlike the native library it stands in for.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     return <View testID="mock-pdf" />;
   };

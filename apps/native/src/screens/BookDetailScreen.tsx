@@ -79,6 +79,12 @@ export default function BookDetailScreen({ route, navigation }: Props) {
         }
       })
       .finally(() => setLoading(false));
+    // `downloadedEntry.book` is only read as an offline fallback inside the
+    // catch above; the download store updates it independently of this
+    // screen (e.g. a background download finishing), and re-running the
+    // network fetch every time that happens would refetch and flicker the
+    // screen for no reason.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId]);
 
   const handleRead = async () => {
