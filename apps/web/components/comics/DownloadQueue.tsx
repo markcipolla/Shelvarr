@@ -9,6 +9,7 @@ import {
   unblockComicLink,
   type DownloadQueueView,
 } from '@/lib/actions/comics';
+import { formatByteProgress } from '@/lib/utils/bytes';
 
 const STATE_STYLES: Record<string, string> = {
   queued: 'bg-shelvarr-surface text-shelvarr-text-muted border-shelvarr-border',
@@ -18,23 +19,6 @@ const STATE_STYLES: Record<string, string> = {
   failed: 'bg-red-600/20 text-red-400 border-red-500/40',
   cancelled: 'bg-gray-600/20 text-gray-400 border-gray-500/40',
 };
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ['KB', 'MB', 'GB'];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value.toFixed(1)} ${units[unit]}`;
-}
-
-function progressLabel(progress: number, size: number | null): string {
-  if (!size) return progress > 0 ? formatBytes(progress) : '';
-  return `${formatBytes(progress)} of ${formatBytes(size)} (${Math.round((progress / size) * 100)}%)`;
-}
 
 export function DownloadQueue({ data }: { data: DownloadQueueView }) {
   const router = useRouter();
@@ -101,8 +85,8 @@ export function DownloadQueue({ data }: { data: DownloadQueueView }) {
                     {download.webSubTitle ?? download.webTitle ?? ''}
                     {' · '}
                     {download.host}
-                    {progressLabel(download.progress, download.size) &&
-                      ` · ${progressLabel(download.progress, download.size)}`}
+                    {formatByteProgress(download.progress, download.size) &&
+                      ` · ${formatByteProgress(download.progress, download.size)}`}
                     {download.attempts > 1 && ` · attempt ${download.attempts}`}
                     {download.alternates > 0 &&
                       ` · ${download.alternates} fallback${download.alternates === 1 ? '' : 's'}`}
