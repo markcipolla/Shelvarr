@@ -798,6 +798,99 @@ if (canRunTests) {
       });
     });
 
+    describe('getTasks comic download subjects', () => {
+      beforeEach(() => {
+        execute('DELETE FROM comic_downloads', []);
+        execute('DELETE FROM comic_issues', []);
+        execute('DELETE FROM comics', []);
+      });
+
+      const seedVolume = () => {
+        execute(
+          `INSERT INTO comics (id, title, slug, year) VALUES (7, 'Saga', 'saga-2012', 2012)`,
+          []
+        );
+      };
+
+      /** Queue a download the way the acquisition code does, plus its task. */
+      const seedDownload = (columns: string, values: string) => {
+        const downloadId = execute(
+          `INSERT INTO comic_downloads (volume_id, host, download_link, state${columns})
+           VALUES (7, 'pixeldrain', 'https://example.test/file', 'downloading'${values})`,
+          []
+        ).lastInsertRowid as number;
+        execute(
+          `INSERT INTO tasks (type, status, result) VALUES ('comic_download', 'running', ?)`,
+          [JSON.stringify({ comicDownloadId: downloadId })]
+        );
+        return downloadId;
+      };
+
+      it('says which volume and issue a download is for', async () => {
+        seedVolume();
+        execute(
+          `INSERT INTO comic_issues (id, volume_id, issue_number) VALUES (55, 7, '12')`,
+          []
+        );
+        seedDownload(
+          ', issue_id, web_title, web_sub_title',
+          `, 55, 'Saga (2012)', 'Saga 012 (2012) (Digital)'`
+        );
+
+        const { getTasks } = await import('../../lib/actions/tasks.js');
+        const { tasks } = await getTasks({ statuses: ['running'] });
+
+        assert.deepStrictEqual(tasks[0]?.data?.['comicDownload'], {
+          volumeId: 7,
+          volumeSlug: 'saga-2012',
+          volumeTitle: 'Saga',
+          issueLabel: '#12',
+          releaseTitle: 'Saga 012 (2012) (Digital)',
+          host: 'pixeldrain',
+          state: 'downloading',
+        });
+      });
+
+      it('shows a range for a release covering several issues', async () => {
+        seedVolume();
+        seedDownload(', covered_issues', `, '[1,25]'`);
+
+        const { getTasks } = await import('../../lib/actions/tasks.js');
+        const { tasks } = await getTasks({ statuses: ['running'] });
+
+        const subject = tasks[0]?.data?.['comicDownload'] as { issueLabel: string | null };
+        assert.strictEqual(subject.issueLabel, '#1–25');
+      });
+
+      it('leaves the issue unnamed when the release does not say', async () => {
+        seedVolume();
+        seedDownload('', '');
+
+        const { getTasks } = await import('../../lib/actions/tasks.js');
+        const { tasks } = await getTasks({ statuses: ['running'] });
+
+        const subject = tasks[0]?.data?.['comicDownload'] as {
+          issueLabel: string | null;
+          releaseTitle: string | null;
+        };
+        assert.strictEqual(subject.issueLabel, null);
+        assert.strictEqual(subject.releaseTitle, null);
+      });
+
+      it('leaves a task alone when its download row is gone', async () => {
+        execute(
+          `INSERT INTO tasks (type, status, result) VALUES ('comic_download', 'completed', ?)`,
+          [JSON.stringify({ comicDownloadId: 4242, bytes: 1024 })]
+        );
+
+        const { getTasks } = await import('../../lib/actions/tasks.js');
+        const { tasks } = await getTasks({ statuses: ['completed'] });
+
+        assert.strictEqual(tasks[0]?.data?.['comicDownload'], undefined);
+        assert.strictEqual(tasks[0]?.data?.['bytes'], 1024);
+      });
+    });
+
     describe('getTaskById', () => {
       it('should return task by ID', async () => {
         const taskId = execute(`INSERT INTO tasks (type, status, result) VALUES ('scan', 'pending', '{}')`, []).lastInsertRowid as number;

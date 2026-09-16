@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { Task } from '@/lib/services/queue';
-import { cancelTask, retryTask } from '@/lib/actions/tasks';
+import { cancelTask, retryTask, type ComicDownloadSubject } from '@/lib/actions/tasks';
+import { formatBytes } from '@/lib/utils/bytes';
 import { useLiveTaskProgress } from '@/components/live/useLiveProgress';
 import { useToast } from '@/components/ui/Toast';
 
@@ -102,6 +104,22 @@ function TaskRow({ task }: { task: Task }) {
       ? (taskData as unknown as OrganizeResult)
       : null;
 
+  const comicDownload = taskData.comicDownload as ComicDownloadSubject | undefined;
+
+  // Comic downloads count bytes rather than items, so their progress reads as
+  // a file size. Every other task counts things and stays as "3 / 12". The
+  // percentage is left off: it's the bar sitting right above the label.
+  const countsBytes = task.type === 'comic_download';
+  const progressLabel = countsBytes
+    ? `${formatBytes(progress)} / ${formatBytes(total ?? 0)}`
+    : `${progress} / ${total}`;
+
+  // What actually landed, once it has: the handler records the imported size.
+  const importedBytes =
+    countsBytes && task.status === 'completed' && typeof taskData.bytes === 'number'
+      ? taskData.bytes
+      : null;
+
   return (
     <div className="p-4 flex items-center justify-between">
       <div className="flex items-center gap-4">
@@ -116,6 +134,12 @@ function TaskRow({ task }: { task: Task }) {
               <span>Book ID: {String(taskData.bookId)}</span>
             ) : null}
           </div>
+          {comicDownload && (
+            <ComicDownloadSummary
+              subject={comicDownload}
+              importedBytes={importedBytes}
+            />
+          )}
           {organizeResult && <OrganizeResultSummary result={organizeResult} />}
           <div className="text-xs text-shelvarr-text-muted mt-1">
             Created: {formatDate(task.createdAt)}
@@ -134,7 +158,7 @@ function TaskRow({ task }: { task: Task }) {
               />
             </div>
             <div className="text-xs text-shelvarr-text-muted text-center mt-1">
-              {progress} / {total}
+              {progressLabel}
             </div>
           </div>
         )}
@@ -171,6 +195,38 @@ function TaskRow({ task }: { task: Task }) {
             {task.error}
           </span>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Which comic a download task is for: the volume and issue on one line, the
+ * release the file came from underneath it. Without this the row says only
+ * "Comic Download", which is no use when a dozen are queued at once.
+ */
+function ComicDownloadSummary({
+  subject,
+  importedBytes,
+}: {
+  subject: ComicDownloadSubject;
+  importedBytes: number | null;
+}) {
+  return (
+    <div className="text-sm text-shelvarr-text-muted">
+      <Link
+        href={`/comics/${subject.volumeSlug}`}
+        className="text-shelvarr-text hover:underline"
+      >
+        {subject.volumeTitle}
+      </Link>
+      {subject.issueLabel && <span> {subject.issueLabel}</span>}
+      <div className="text-xs mt-0.5">
+        {subject.releaseTitle && (
+          <span className="mr-1">{subject.releaseTitle} ·</span>
+        )}
+        <span>{subject.host}</span>
+        {importedBytes !== null && <span> · {formatBytes(importedBytes)}</span>}
       </div>
     </div>
   );

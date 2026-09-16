@@ -10,6 +10,7 @@ import {
   unblockComicLink,
   type DownloadQueueView,
 } from '@/lib/actions/comics';
+import { formatByteProgress } from '@/lib/utils/bytes';
 import { useLiveRefresh } from '@/components/live/LiveEvents';
 import { useLiveDownloadProgress } from '@/components/live/useLiveProgress';
 
@@ -21,23 +22,6 @@ const STATE_STYLES: Record<string, string> = {
   failed: 'bg-red-600/20 text-red-400 border-red-500/40',
   cancelled: 'bg-gray-600/20 text-gray-400 border-gray-500/40',
 };
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ['KB', 'MB', 'GB'];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value.toFixed(1)} ${units[unit]}`;
-}
-
-function progressLabel(progress: number, size: number | null): string {
-  if (!size) return progress > 0 ? formatBytes(progress) : '';
-  return `${formatBytes(progress)} of ${formatBytes(size)} (${Math.round((progress / size) * 100)}%)`;
-}
 
 export function DownloadQueue({ data }: { data: DownloadQueueView }) {
   const router = useRouter();
@@ -250,7 +234,7 @@ function ActiveDownloadRow({
     size: download.size,
   });
 
-  const label = progressLabel(progress, size);
+  const label = formatByteProgress(progress, size);
 
   return (
     <li className="p-3 flex items-center justify-between gap-4">
