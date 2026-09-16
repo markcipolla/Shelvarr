@@ -14,6 +14,25 @@ import {
   recordParseSuccess,
   recordParseFailure,
 } from './challenge';
+import {
+  DownloadLimitReachedError,
+  LinkBrokenError,
+  downloadToFile,
+  type DownloadResult,
+  type DownloadToFileOptions,
+  type ResolvedDownload,
+} from '../utils/streaming-download';
+
+// Re-exported so callers (and tests) can reach the whole download surface
+// through this one module boundary, the same way they already do for search.
+export {
+  DownloadLimitReachedError,
+  LinkBrokenError,
+  downloadToFile,
+  type DownloadResult,
+  type DownloadToFileOptions,
+  type ResolvedDownload,
+};
 
 // LibGen's results page is a plain HTML table. Its presence — even with zero
 // rows carrying an md5 — means the page had a fair shot at matching the row
@@ -345,60 +364,90 @@ export async function getActualDownloadUrl(md5: string): Promise<string | null> 
   return null;
 }
 
+/** Pull a filename out of a Content-Disposition header, LibGen's own way. */
+function filenameFromDisposition(disposition: string | null, fallback: string): string {
+  if (!disposition) return fallback;
+  const match = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+  return match?.[1] ? match[1].replace(/['"]/g, '') : fallback;
+}
+
 /**
- * Download a file from LibGen and return the buffer and filename.
- * Falls over to the next mirror if a host fails at either step.
+ * Resolve one mirror's get.php link into a streamable download, without
+ * fetching the file body.
+ *
+ * A Range request for the first byte is enough to read the real headers —
+ * size, content type, whether the mirror honours Range — without pulling
+ * megabytes across the wire just to inspect them.
+ *
+ * @throws LinkBrokenError when this mirror's response is an HTML page (a
+ * rate-limit or error page) rather than a file.
  */
-export async function downloadFile(md5: string): Promise<{
-  buffer: Buffer;
-  filename: string;
-  contentType: string;
-} | null> {
+async function probeLibgenDomain(domain: string, md5: string): Promise<ResolvedDownload | null> {
+  const downloadUrl = await getDownloadUrlFromDomain(domain, md5);
+  if (!downloadUrl) return null;
+
+  const response = await fetchWithRetry(downloadUrl, {
+    headers: {
+      ...BROWSER_HEADERS,
+      'Accept': '*/*',
+      'Referer': `https://${domain}/ads.php?md5=${md5}`,
+      'Range': 'bytes=0-0',
+    },
+    redirect: 'follow',
+  });
+  if (!response) return null;
+
+  // Drain the tiny probe body so the socket can be reused; only the headers
+  // below are actually used.
+  await response.arrayBuffer().catch(() => undefined);
+
+  const contentType = response.headers.get('content-type');
+  if (contentType?.includes('text/html')) {
+    // A rate-limit or error page, not the book.
+    throw new LinkBrokenError(downloadUrl, `${domain} served HTML instead of a file`);
+  }
+
+  let size: number | null = null;
+  const contentRange = response.headers.get('content-range');
+  if (contentRange) {
+    const total = /\/(\d+)\s*$/.exec(contentRange)?.[1];
+    if (total) size = parseInt(total, 10);
+  } else {
+    const length = response.headers.get('content-length');
+    if (length) size = parseInt(length, 10);
+  }
+
+  return {
+    url: response.url || downloadUrl,
+    filename: filenameFromDisposition(response.headers.get('content-disposition'), `${md5}.epub`),
+    size: size !== null && Number.isFinite(size) ? size : null,
+    supportsRange:
+      response.status === 206 || response.headers.get('accept-ranges') === 'bytes',
+    contentType,
+  };
+}
+
+/**
+ * Resolve a LibGen file into something streamable, trying each mirror in turn
+ * so one flaky or rate-limited host doesn't sink the download. Mirrors the
+ * fallback behaviour of the old buffer-everything `downloadFile`, minus the
+ * buffering: this only probes headers, it never reads the file body.
+ */
+export async function resolveLibgenDownload(md5: string): Promise<ResolvedDownload | null> {
   for (const domain of getLibGenDomains()) {
     try {
-      const downloadUrl = await getDownloadUrlFromDomain(domain, md5);
-      if (!downloadUrl) continue;
-
-      const response = await fetchWithRetry(downloadUrl, {
-        headers: { ...BROWSER_HEADERS, 'Accept': '*/*', 'Referer': `https://${domain}/ads.php?md5=${md5}` },
-        redirect: 'follow',
-      });
-      if (!response) continue;
-
-      const contentType = response.headers.get('content-type') || 'application/octet-stream';
-
-      // A HTML body here is a rate-limit or error page, not the book.
-      if (contentType.includes('text/html')) {
-        console.warn(`LibGen mirror ${domain} served HTML instead of a file for ${md5}`);
-        continue;
-      }
-
-      // Get filename from Content-Disposition header or URL
-      const contentDisposition = response.headers.get('content-disposition');
-      let filename = `${md5}.epub`; // Default
-
-      if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-        if (filenameMatch?.[1]) {
-          filename = filenameMatch[1].replace(/['"]/g, '');
-        }
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-
-      if (buffer.length === 0) {
-        console.warn(`LibGen mirror ${domain} returned an empty file for ${md5}`);
-        continue;
-      }
-
-      return { buffer, filename, contentType };
+      const resolved = await probeLibgenDomain(domain, md5);
+      if (resolved) return resolved;
     } catch (error) {
-      console.error(`Error downloading ${md5} from ${domain}:`, error);
+      if (error instanceof LinkBrokenError) {
+        console.warn(`LibGen mirror ${domain} link broken for ${md5}: ${error.message}`);
+        continue;
+      }
+      console.error(`Error resolving ${md5} from ${domain}:`, error);
     }
   }
 
-  console.error('All LibGen mirrors failed for', md5);
+  console.error('Could not resolve a download for', md5);
   return null;
 }
 
@@ -407,7 +456,8 @@ export default {
   getLibGenSearchUrl,
   getLibGenDownloadUrl,
   getActualDownloadUrl,
-  downloadFile,
+  resolveLibgenDownload,
+  downloadToFile,
   getLibGenDomain,
   getLibGenDomains,
 };

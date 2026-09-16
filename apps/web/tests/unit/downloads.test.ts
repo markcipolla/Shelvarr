@@ -758,81 +758,58 @@ describe('Download Services', () => {
       });
     });
 
-    describe('downloadFile', () => {
-      it('should return null when getActualDownloadUrl fails', async () => {
-        mockFetch.mock.mockImplementationOnce(async () =>
-          new Response('', { status: 404 })
-        );
+    describe('resolveLibgenDownload', () => {
+      // E2-2 replaced the old buffer-everything `downloadFile` with a resolve
+      // step that only probes headers (a ranged GET, never the full body) and
+      // leaves the actual streaming to the shared `downloadToFile` (tested
+      // directly, against the real implementation, in
+      // streaming-download.test.ts). These tests cover the mirror-walking
+      // and header-parsing `resolveLibgenDownload` is responsible for.
 
-        const result = await libgen.downloadFile('abc123');
+      it('should return null when every mirror fails to resolve a link', async () => {
+        mockFetch.mock.mockImplementation(async () => new Response('', { status: 404 }));
+
+        const result = await libgen.resolveLibgenDownload('abc123');
         assert.strictEqual(result, null);
       });
 
-      it('should return null when download fetch fails', async () => {
-        // First call: getActualDownloadUrl succeeds
-        mockFetch.mock.mockImplementationOnce(async () =>
-          new Response('<a href="get.php?md5=abc&key=xyz">Download</a>', { status: 200 })
-        );
-        // Second call: actual download fails
-        mockFetch.mock.mockImplementationOnce(async () =>
-          new Response('', { status: 500 })
-        );
-
-        const result = await libgen.downloadFile('abc123');
-        assert.strictEqual(result, null);
-      });
-
-      it('should download file and extract filename from Content-Disposition', async () => {
-        let callCount = 0;
-        mockFetch.mock.mockImplementation(async () => {
-          callCount++;
-          if (callCount === 1) {
-            // First call: getActualDownloadUrl
+      it('should resolve the first working mirror without fetching the file body', async () => {
+        let probeCount = 0;
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          if (url.includes('ads.php')) {
             return new Response('<a href="get.php?md5=abc&key=xyz">Download</a>', { status: 200 });
-          } else {
-            // Second call: actual download
-            const fileContent = Buffer.from('test file content');
-            const headers = new Headers({
-              'content-disposition': 'attachment; filename="test-book.epub"',
-              'content-type': 'application/epub+zip',
-            });
-            return new Response(fileContent, { status: 200, headers });
           }
+
+          probeCount++;
+          const headers = new Headers({
+            'content-disposition': 'attachment; filename="test-book.epub"',
+            'content-type': 'application/epub+zip',
+            'content-range': 'bytes 0-0/18',
+          });
+          return new Response('t', { status: 206, headers });
         });
 
-        const result = await libgen.downloadFile('abc123');
+        const result = await libgen.resolveLibgenDownload('abc123');
         assert.ok(result !== null);
         assert.strictEqual(result?.filename, 'test-book.epub');
         assert.strictEqual(result?.contentType, 'application/epub+zip');
-        assert.ok(Buffer.isBuffer(result?.buffer));
+        assert.strictEqual(result?.size, 18);
+        assert.strictEqual(result?.supportsRange, true);
+        // Exactly one ranged probe — resolving must not pull the whole file.
+        assert.strictEqual(probeCount, 1);
       });
 
-      it('should use default filename when Content-Disposition is missing', async () => {
-        let callCount = 0;
-        mockFetch.mock.mockImplementation(async () => {
-          callCount++;
-          if (callCount === 1) {
-            // First call: getActualDownloadUrl
+      it('should use a default filename when Content-Disposition is missing', async () => {
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          if (url.includes('ads.php')) {
             return new Response('<a href="get.php?md5=abc123&key=xyz">Download</a>', { status: 200 });
-          } else {
-            // Second call: actual download
-            const fileContent = Buffer.from('test file content');
-            return new Response(fileContent, { status: 200 });
           }
+          return new Response('t', { status: 200 });
         });
 
-        const result = await libgen.downloadFile('abc123');
+        const result = await libgen.resolveLibgenDownload('abc123');
         assert.ok(result !== null);
         assert.strictEqual(result?.filename, 'abc123.epub');
-      });
-
-      it('should handle download errors gracefully', async () => {
-        mockFetch.mock.mockImplementationOnce(async () => {
-          throw new Error('Network error');
-        });
-
-        const result = await libgen.downloadFile('abc123');
-        assert.strictEqual(result, null);
       });
 
       it('should fail over to the next mirror when a host errors', async () => {
@@ -851,42 +828,18 @@ describe('Download Services', () => {
             return new Response('<a href="get.php?md5=abc123&key=xyz">Download</a>', { status: 200 });
           }
 
-          return new Response(Buffer.from('book'), {
+          return new Response('book', {
             status: 200,
             headers: new Headers({ 'content-type': 'application/epub+zip' }),
           });
         });
 
-        const result = await libgen.downloadFile('abc123');
+        const result = await libgen.resolveLibgenDownload('abc123');
         assert.ok(result !== null);
         assert.ok(requested.some(u => !u.includes(firstDomain!)));
       });
 
-      it('should retry a transient 500 on the file itself', async () => {
-        let downloadAttempts = 0;
-
-        mockFetch.mock.mockImplementation(async (url: string) => {
-          if (url.includes('ads.php')) {
-            return new Response('<a href="get.php?md5=abc123&key=xyz">Download</a>', { status: 200 });
-          }
-
-          downloadAttempts++;
-          if (downloadAttempts === 1) {
-            return new Response('', { status: 500 });
-          }
-
-          return new Response(Buffer.from('book'), {
-            status: 200,
-            headers: new Headers({ 'content-type': 'application/epub+zip' }),
-          });
-        });
-
-        const result = await libgen.downloadFile('abc123');
-        assert.ok(result !== null);
-        assert.strictEqual(downloadAttempts, 2);
-      });
-
-      it('should skip a mirror that serves an HTML error page', async () => {
+      it('should treat a mirror serving an HTML page as broken and fall through to the next', async () => {
         const firstDomain = libgen.getLibGenDomains()[0];
 
         mockFetch.mock.mockImplementation(async (url: string) => {
@@ -901,15 +854,32 @@ describe('Download Services', () => {
             });
           }
 
-          return new Response(Buffer.from('book'), {
+          return new Response('book', {
             status: 200,
             headers: new Headers({ 'content-type': 'application/epub+zip' }),
           });
         });
 
-        const result = await libgen.downloadFile('abc123');
+        const result = await libgen.resolveLibgenDownload('abc123');
         assert.ok(result !== null);
         assert.strictEqual(result?.contentType, 'application/epub+zip');
+      });
+
+      it('should handle probe errors gracefully and move to the next mirror', async () => {
+        const firstDomain = libgen.getLibGenDomains()[0];
+
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          if (url.includes('ads.php')) {
+            return new Response('<a href="get.php?md5=abc123&key=xyz">Download</a>', { status: 200 });
+          }
+          if (url.includes(firstDomain!)) {
+            throw new Error('Network error');
+          }
+          return new Response('book', { status: 200 });
+        });
+
+        const result = await libgen.resolveLibgenDownload('abc123');
+        assert.ok(result !== null);
       });
     });
 

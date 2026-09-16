@@ -1,22 +1,85 @@
 import { describe, it, beforeEach, afterEach, after, mock } from 'node:test';
 import assert from 'node:assert';
-import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync, readFileSync, statSync } from 'fs';
+import { join, dirname } from 'path';
 import { tmpdir } from 'os';
 
 // The download handler's static import of the LibGen client must be mocked
 // before that module is ever loaded (a dynamic `import()` further down still
 // counts as "loaded" the first time it runs), so this has to sit at the top
 // of the file, before any `it()` body gets a chance to run.
-const mockDownloadFile = mock.fn(async (_md5: string) => ({
-  buffer: Buffer.from('new downloaded content'),
+//
+// E2-2 split the old buffer-everything `downloadFile` into a resolve step
+// (`resolveLibgenDownload`, returning a `ResolvedDownload` — just headers, no
+// bytes) and a streaming step (`downloadToFile`, shared with the comic
+// downloader). Both are mocked here so these tests can drive the handler's
+// own orchestration (the scratch-then-move path, the progress throttle)
+// without touching a network. `downloadToFile` itself — resume, range
+// headers, the real fetch — is covered directly against the real
+// implementation in streaming-download.test.ts.
+const DEFAULT_CONTENT = Buffer.from('new downloaded content');
+
+let resolvedDownload: {
+  url: string;
+  filename: string;
+  size: number | null;
+  supportsRange: boolean;
+  contentType: string | null;
+} | null = {
+  url: 'https://libgen.example/get.php?md5=test&key=abc',
   filename: 'source-name-is-ignored.epub',
+  size: DEFAULT_CONTENT.length,
+  supportsRange: false,
   contentType: 'application/epub+zip',
-}));
+};
+
+/** Content the mocked `downloadToFile` writes on its next call. */
+let downloadContent: Buffer = DEFAULT_CONTENT;
+
+/** How many bytes the mock writes per `onProgress` tick. */
+let downloadChunkSize = 4;
+
+/** Set by a test that wants the streamed download to fail partway through. */
+let downloadFailure: Error | null = null;
+
+/**
+ * Fires on every chunk the mock writes, in addition to the handler's own
+ * `onProgress` callback — lets a test observe what actually landed in
+ * `book_downloads` after each chunk, to check the handler's throttle.
+ */
+let onChunkWritten: (() => void) | null = null;
+
+const mockResolveLibgenDownload = mock.fn(async (_md5: string) => resolvedDownload);
+
+const mockDownloadToFile = mock.fn(
+  async (
+    resolved: { size: number | null },
+    destination: string,
+    options: { onProgress?: (bytes: number, total: number | null) => void } = {}
+  ) => {
+    mkdirSync(dirname(destination), { recursive: true });
+
+    let written = 0;
+    for (let offset = 0; offset < downloadContent.length; offset += downloadChunkSize) {
+      const chunk = downloadContent.subarray(offset, offset + downloadChunkSize);
+      writeFileSync(destination, chunk, { flag: 'a' });
+      written += chunk.length;
+      options.onProgress?.(written, resolved.size);
+      onChunkWritten?.();
+
+      if (downloadFailure && written >= downloadContent.length / 2) {
+        throw downloadFailure;
+      }
+    }
+
+    return { path: destination, bytes: written };
+  }
+);
 
 mock.module('@shelvarr/services/downloads/libgen', {
   namedExports: {
-    downloadFile: mockDownloadFile,
+    resolveLibgenDownload: mockResolveLibgenDownload,
+    downloadToFile: mockDownloadToFile,
   },
 });
 
@@ -42,7 +105,7 @@ if (canRunTests) {
   process.env['DB_PATH'] = join(testDir, 'test.db');
 
   // Dynamic imports only when tests can run
-  const { initDatabase, closeDatabase, execute, getBookDownloads } = await import('../../lib/db/index.js');
+  const { initDatabase, closeDatabase, execute, getBookDownloads, getBookDownload } = await import('../../lib/db/index.js');
   const {
     registerTaskHandler,
     enqueueTask,
@@ -445,6 +508,22 @@ if (canRunTests) {
         'INSERT INTO libraries (id, name, path, type) VALUES (?, ?, ?, ?)',
         [1, 'Test Library', testLibPath, 'books']
       );
+
+      // Reset the resolve/stream mocks between tests, since several tests
+      // below configure them differently.
+      resolvedDownload = {
+        url: 'https://libgen.example/get.php?md5=test&key=abc',
+        filename: 'source-name-is-ignored.epub',
+        size: DEFAULT_CONTENT.length,
+        supportsRange: false,
+        contentType: 'application/epub+zip',
+      };
+      downloadContent = DEFAULT_CONTENT;
+      downloadChunkSize = 4;
+      downloadFailure = null;
+      onChunkWritten = null;
+      mockResolveLibgenDownload.mock.resetCalls();
+      mockDownloadToFile.mock.resetCalls();
     });
 
     afterEach(() => {
@@ -720,9 +799,97 @@ if (canRunTests) {
           assert.strictEqual(downloads[0]!.filePath, dedupedPath);
           assert.ok(downloads[0]!.bookId);
           assert.ok(downloads[0]!.completedAt);
+
+          // No `.partial` scratch file left behind once the download landed.
+          assert.strictEqual(existsSync(`${dedupedPath}.partial`), false);
         } finally {
           rmSync(blockingPath, { force: true });
         }
+      });
+
+      it('persists byte progress to the book_downloads row as the stream runs, throttled rather than on every chunk', async () => {
+        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+        registerAllHandlers();
+
+        // 2.5 MB in 250 KB chunks: crosses the handler's 1 MB persist
+        // threshold twice during the stream (at 1 MB and 2 MB), so a
+        // throttled handler should write far fewer than the 10 chunks below.
+        const size = 2_500_000;
+        downloadContent = Buffer.alloc(size, 'x');
+        downloadChunkSize = 250_000;
+        resolvedDownload = {
+          url: 'https://libgen.example/get.php?md5=big&key=abc',
+          filename: 'big-book.epub',
+          size,
+          supportsRange: false,
+          contentType: 'application/epub+zip',
+        };
+
+        const observedProgress: number[] = [];
+        onChunkWritten = () => {
+          const row = getBookDownloads({ libraryId: 1 })[0];
+          if (row) observedProgress.push(row.progress);
+        };
+
+        const task = createTask('download', {
+          source: 'libgen',
+          md5: 'big',
+          title: 'Big Book',
+          author: 'Big Author',
+          extension: 'epub',
+          libraryId: 1,
+        });
+        await runTask(task.id);
+
+        const updated = getTask(task.id);
+        assert.strictEqual(updated?.status, 'completed');
+
+        // 10 chunks were written, but the row should have been persisted at
+        // only a handful of distinct progress values — proof the handler is
+        // throttling rather than writing on every chunk.
+        const distinctValues = new Set(observedProgress);
+        assert.ok(
+          distinctValues.size < observedProgress.length,
+          `expected fewer distinct progress writes than chunks (${observedProgress.length}), got ${distinctValues.size}`
+        );
+        assert.ok(distinctValues.size <= 3, `expected at most a few persisted values, got ${[...distinctValues]}`);
+
+        // The final row reflects the whole file, regardless of the throttle.
+        const finalDownload = getBookDownloads({ libraryId: 1 })[0]!;
+        assert.strictEqual(finalDownload.progress, size);
+        assert.strictEqual(finalDownload.size, size);
+        assert.strictEqual(finalDownload.state, 'completed');
+      });
+
+      it('never leaves a partial file at the final library path when the stream fails partway', async () => {
+        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+        registerAllHandlers();
+
+        downloadContent = Buffer.from('this download will not finish');
+        downloadChunkSize = 4;
+        downloadFailure = new Error('connection reset mid-stream');
+
+        const task = createTask('download', {
+          source: 'libgen',
+          md5: 'flaky',
+          title: 'Flaky Book',
+          author: 'Flaky Author',
+          extension: 'epub',
+          libraryId: 1,
+        });
+        await runTask(task.id);
+
+        const updated = getTask(task.id);
+        assert.strictEqual(updated?.status, 'failed');
+
+        const finalPath = join(testLibPath, 'Flaky Author - Flaky Book.epub');
+        assert.strictEqual(existsSync(finalPath), false, 'the final path must not exist after a failed stream');
+        assert.strictEqual(existsSync(`${finalPath}.partial`), false, 'the partial scratch file must be cleaned up too');
+
+        const downloads = getBookDownloads({ libraryId: 1 });
+        assert.strictEqual(downloads.length, 1);
+        assert.strictEqual(downloads[0]!.state, 'failed');
+        assert.ok(downloads[0]!.error?.includes('connection reset mid-stream'));
       });
     });
 
