@@ -342,6 +342,72 @@ Settings persist per user, so they follow you between devices — and per the
 existing brand notes, no serif fonts in the chrome, though the *book* should
 absolutely offer one.
 
+**Shipped 2026-09-17.** Everything on the list above is in, and reader
+preferences are per user rather than per device — a new `reader_preferences`
+table keyed on user id alone, behind `GET`/`PUT /api/reader/preferences`,
+deliberately not localStorage and deliberately not keyed by device the way
+`epub_progression` is. Pick a type size on the laptop and the tablet already
+agrees.
+
+Built:
+
+- **Typography.** Text size (70–250%), typeface (as published / serif /
+  sans / mono), line height, side margins, and alignment (as published /
+  ragged right / justified). The serif stack is offered to the *book*; the
+  chrome stays sans-serif, including the panel itself — the one exception is
+  the typeface buttons, which preview the face they name.
+- **Themes.** Light, sepia and dark, applied to the book's own iframe *and*
+  to react-reader's frame. react-reader hard-codes a white reading area and
+  grey arrows inline, which CSS cannot override, so
+  `lib/reader/readerStyles.ts` rebuilds its whole `readerStyles` object from
+  the chosen palette.
+- **Hide the header.** Collapses to a faint two-button overlay (show /
+  close) and a hairline progress rule.
+- **Keyboard navigation.** →/Page Down/Space forward, ←/Page Up/⇧Space back,
+  `B` bookmark, `F` or `/` search, `D` display settings, `H` header, `Esc`
+  closes the panel and then the book. Passing react-reader's
+  `handleKeyPress` prop switches off its own arrow handling, so keys behave
+  identically inside the book's iframe and outside it. The shortcuts are
+  listed in the display panel, because an unlisted shortcut is an unused one.
+- **Progress and time remaining.** `book.locations.generate()` runs once in
+  the background; `lib/reader/progress.ts` does the arithmetic over the
+  result, deriving chapter boundaries from the location CFIs themselves (the
+  spine base is the part before the `!`). Gives "60% through the book · about
+  12 minutes left in this chapter", with reading speed configurable because
+  240 wpm is not everyone. **This also lifts E3-1's documented scope cut:**
+  the reader now sends a real 0–1 `progression` instead of a hard-coded 0, so
+  finishing a book can finally trigger the Hardcover completion sync.
+- **Bookmarks, highlights and in-book search**, in one panel. A new
+  `reader_annotations` table (per user, per book, not per device) behind
+  `/api/books/[id]/annotations`; highlights are drawn with
+  `rendition.annotations.highlight`; search uses react-reader 2.0's own
+  `searchQuery`/`onSearchResults`.
+
+Offline caching (E3-6) and progression save/restore (E3-1) are untouched and
+still covered by their original tests.
+
+**Deferred, and why:**
+
+- **Paginated ("page-turn") mode.** Not on the card's list, and switching
+  `flow` at runtime means either `rendition.flow()` against the continuous
+  manager or remounting react-reader with a new key — both are real risks to
+  the offline-buffer and restore-position paths for a setting nobody asked
+  for here. Scrolled/continuous stays.
+- **Highlight colours and notes.** The schema has `colour` and the UI has
+  one highlight colour. A colour picker and a note attached to a highlight
+  are the obvious next increment; nothing needs to change in storage for it.
+- **Bookmark de-duplication by proximity.** A bookmark matches on the exact
+  CFI, so in scrolled mode two bookmarks a paragraph apart are two bookmarks.
+  A fuzzy rule sounds better and behaves worse (it quietly refuses to
+  bookmark the next screenful), so exact matching stands until someone
+  complains.
+- **Search result highlighting in the text.** Results jump you to the right
+  place; the matched phrase isn't tinted when you land.
+- **Preferences for the PDF and page-based readers.** `PdfReader` hands off
+  to the browser's own viewer and `BookPageReader`/`ComicReader` render
+  images, so none of the typography settings mean anything there. The theme
+  might; that is a separate, smaller card.
+
 ### E3-6 · Make an opened book available offline
 **Size M. Redefined 2026-09-16** — this was "start reading before the whole
 book has downloaded" (progressive/streaming loading). Decided against: the

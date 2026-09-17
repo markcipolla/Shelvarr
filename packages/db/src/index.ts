@@ -487,6 +487,8 @@ function migrateProgressToPerUser(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_comic_read_progress_user ON comic_read_progress(user_id);
     CREATE INDEX IF NOT EXISTS idx_epub_progression_book ON epub_progression(book_id);
     CREATE INDEX IF NOT EXISTS idx_epub_progression_user ON epub_progression(user_id);
+    CREATE INDEX IF NOT EXISTS idx_reader_annotations_book_user
+      ON reader_annotations(book_id, user_id);
   `);
 }
 
@@ -1098,6 +1100,98 @@ export function upsertEpubProgression(
      ON CONFLICT (book_id, user_id, device_id) DO UPDATE SET locator = ?, progression = ?, updated_at = CURRENT_TIMESTAMP`,
     [bookId, progressUserId(userId), deviceId, locator, progression, locator, progression]
   );
+}
+
+// ============ Reader Preferences (per user, NOT per device) ============
+
+export interface ReaderPreferencesRow {
+  user_id: number;
+  preferences: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * The raw preferences JSON for one person, or null if they have never changed
+ * anything. Deliberately returns the string rather than parsing: what the
+ * shape means is the reader's business, and the caller already has to cope
+ * with keys from an older or newer client.
+ */
+export function getReaderPreferences(userId: number): ReaderPreferencesRow | null {
+  return queryOne<ReaderPreferencesRow>(
+    'SELECT * FROM reader_preferences WHERE user_id = ?',
+    [progressUserId(userId)]
+  );
+}
+
+export function setReaderPreferences(userId: number, preferences: string): void {
+  execute(
+    `INSERT INTO reader_preferences (user_id, preferences, updated_at)
+     VALUES (?, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT (user_id) DO UPDATE SET preferences = ?, updated_at = CURRENT_TIMESTAMP`,
+    [progressUserId(userId), preferences, preferences]
+  );
+}
+
+// ============ Reader Annotations (bookmarks and highlights) ============
+
+export type ReaderAnnotationKind = 'bookmark' | 'highlight';
+
+export interface ReaderAnnotationRow {
+  id: number;
+  book_id: number;
+  user_id: number;
+  kind: ReaderAnnotationKind;
+  cfi: string;
+  text: string | null;
+  colour: string | null;
+  created_at: string;
+}
+
+export function getReaderAnnotations(userId: number, bookId: number): ReaderAnnotationRow[] {
+  return query<ReaderAnnotationRow>(
+    'SELECT * FROM reader_annotations WHERE book_id = ? AND user_id = ? ORDER BY created_at ASC, id ASC',
+    [bookId, progressUserId(userId)]
+  );
+}
+
+/**
+ * Add a bookmark or highlight, or return the one that is already there.
+ *
+ * Bookmarking the same spot twice is a slip, not an error — the UNIQUE index
+ * absorbs it and the existing row comes back, so the caller can treat "added"
+ * and "already had it" identically.
+ */
+export function addReaderAnnotation(
+  userId: number,
+  bookId: number,
+  kind: ReaderAnnotationKind,
+  cfi: string,
+  text: string | null,
+  colour: string | null
+): ReaderAnnotationRow | null {
+  const owner = progressUserId(userId);
+  execute(
+    `INSERT INTO reader_annotations (book_id, user_id, kind, cfi, text, colour)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (book_id, user_id, kind, cfi) DO UPDATE SET
+       text = COALESCE(excluded.text, reader_annotations.text),
+       colour = COALESCE(excluded.colour, reader_annotations.colour)`,
+    [bookId, owner, kind, cfi, text, colour]
+  );
+  return queryOne<ReaderAnnotationRow>(
+    'SELECT * FROM reader_annotations WHERE book_id = ? AND user_id = ? AND kind = ? AND cfi = ?',
+    [bookId, owner, kind, cfi]
+  );
+}
+
+/** Returns true if a row was actually removed — i.e. it existed and was theirs. */
+export function deleteReaderAnnotation(userId: number, bookId: number, id: number): boolean {
+  const result = execute(
+    'DELETE FROM reader_annotations WHERE id = ? AND book_id = ? AND user_id = ?',
+    [id, bookId, progressUserId(userId)]
+  );
+  return result.rowCount > 0;
 }
 
 // ============ Comic Read Progress Functions ============

@@ -247,6 +247,51 @@ CREATE TABLE IF NOT EXISTS epub_progression (
   UNIQUE(book_id, user_id, device_id)
 );
 
+-- How someone likes their reader set up: type size, typeface, line height,
+-- margins, light/sepia/dark.
+--
+-- Deliberately NOT per-device, which is the whole difference between this and
+-- epub_progression above. Where you are in a book is a property of the copy
+-- in your hands; how big you like the type is a property of your eyes, and
+-- should follow you from the laptop to the tablet without being set twice.
+--
+-- Stored as one JSON blob rather than a column per setting: this is a bag of
+-- presentation preferences that will keep growing, it is only ever read and
+-- written whole, and nothing ever queries or aggregates across it. The
+-- reader normalises and clamps whatever comes back, so an older or newer
+-- client's extra keys are harmless.
+--
+-- user_id 0 is the shared shelf, same convention as read_progress.
+CREATE TABLE IF NOT EXISTS reader_preferences (
+  user_id INTEGER PRIMARY KEY,
+  preferences TEXT NOT NULL, -- JSON
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Bookmarks and highlights. Both are "a place in a book that matters to one
+-- person", differing only in whether they span a range of text, so they share
+-- a table and are told apart by `kind`.
+--
+-- Per-user and per-book, but not per-device: a passage you highlighted on the
+-- sofa should be there on the train.
+--
+-- cfi is an EPUB CFI — a range for a highlight, a point for a bookmark. It is
+-- opaque to the server; only the reader interprets it.
+CREATE TABLE IF NOT EXISTS reader_annotations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL DEFAULT 0,
+  kind TEXT NOT NULL, -- bookmark|highlight
+  cfi TEXT NOT NULL,
+  -- The selected text for a highlight, or the chapter/position label for a
+  -- bookmark, so the list is readable without re-opening every location.
+  text TEXT,
+  colour TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(book_id, user_id, kind, cfi)
+);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_books_library ON books(library_id);
 CREATE INDEX IF NOT EXISTS idx_books_title ON books(title);
