@@ -5,7 +5,8 @@
  * Uses the cached source statuses (see source-status.ts) to check availability.
  */
 
-import { getSourceStatusCache, getDownloadSourceConfig } from '@shelvarr/db';
+import { getDownloadSourceConfig } from '@shelvarr/db';
+import { anyMirrorReachable, preferredMirrorDomain } from './mirrors';
 import {
   detectChallenge,
   SourceBlockedError,
@@ -19,6 +20,9 @@ import {
   buildResolvedDownload,
   type ResolvedDownload,
 } from '../utils/streaming-download';
+import { parseRetryAfter } from '../utils/pacing';
+import { SourceLimitReachedError, defaultLimitMs } from './source-limits';
+import { sourceFetch } from '../utils/source-http';
 
 // Re-exported so callers (and tests) can reach the download surface through
 // this one module boundary, the same way they already do for search.
@@ -52,58 +56,28 @@ export interface AnnasResult {
   searchUrl: string;
 }
 
-// Anna's Archive source names (as cached by the status service) and their domains
-const ANNAS_SOURCES: Record<string, string> = {
-  annas: 'annas-archive.org',
-  annas_li: 'annas-archive.li',
-};
-
-// Fallback domain
+// Last-resort domain for a server with no mirrors configured at all. Also
+// the tie-break when no mirror has been probed yet, which is why it is .li
+// and not the higher-priority .org.
 const ANNAS_FALLBACK = 'annas-archive.li';
 
 /**
- * Get the current working Anna's Archive domain based on cached source status
+ * Get the current working Anna's Archive domain.
+ *
+ * Mirrors come from the `source_mirrors` table (E1-1), read fresh on every
+ * call, so one added in Settings is usable immediately.
  */
 export function getAnnasDomain(): string {
-  try {
-    const statuses = getSourceStatusCache();
-
-    // Find an Anna's source that's up
-    for (const [source, domain] of Object.entries(ANNAS_SOURCES)) {
-      const status = statuses.find(s => s.source === source);
-      if (status?.status === 'up') {
-        return domain;
-      }
-    }
-
-    // If none are up, try degraded
-    for (const [source, domain] of Object.entries(ANNAS_SOURCES)) {
-      const status = statuses.find(s => s.source === source);
-      if (status?.status === 'degraded') {
-        return domain;
-      }
-    }
-  } catch {
-    // Ignore errors, use fallback
-  }
-
-  return ANNAS_FALLBACK;
+  return preferredMirrorDomain('annas', ANNAS_FALLBACK);
 }
 
 /**
- * Check if Anna's Archive is available based on cached source status
+ * Check if Anna's Archive is available based on cached mirror health.
+ * Not being able to tell counts as available — a source is never hidden on
+ * the strength of a missing status row.
  */
 export function isAnnasAvailable(): boolean {
-  try {
-    const statuses = getSourceStatusCache();
-    // Check if any Anna's source is up
-    return Object.keys(ANNAS_SOURCES).some(source => {
-      const status = statuses.find(s => s.source === source);
-      return status?.status === 'up' || status?.status === 'degraded';
-    });
-  } catch {
-    return true; // Assume available if can't check
-  }
+  return anyMirrorReachable('annas', true);
 }
 
 /**
@@ -146,11 +120,8 @@ export async function searchAnnas(
     const domain = getAnnasDomain();
     const searchUrl = `https://${domain}/search?${params.toString()}`;
 
-    const response = await fetch(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-      },
+    const response = await sourceFetch('annas', searchUrl, {
+      headers: { 'Accept': 'text/html,application/xhtml+xml' },
       signal: AbortSignal.timeout(15000),
     });
 
@@ -255,13 +226,16 @@ export async function getAnnasDownloadLinks(md5: string): Promise<string[]> {
     const domain = getAnnasDomain();
     const detailUrl = `https://${domain}/md5/${md5}`;
 
-    const response = await fetch(detailUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-      },
+    const response = await sourceFetch('annas', detailUrl, {
+      headers: { 'Accept': 'text/html,application/xhtml+xml' },
       signal: AbortSignal.timeout(15000),
     });
+
+    // Anna's free tier is a waitlist: once it says no, it says no to every
+    // book, so this is the source's limit rather than this link's (E1-6).
+    if (response.status === 429) {
+      throw annasLimitReached(response);
+    }
 
     if (!response.ok) {
       return links;
@@ -282,10 +256,23 @@ export async function getAnnasDownloadLinks(md5: string): Promise<string[]> {
     }
   } catch (error) {
     if (error instanceof SourceBlockedError) throw error;
+    if (error instanceof SourceLimitReachedError) throw error;
     console.error("Anna's Archive download links error:", error);
   }
 
   return links;
+}
+
+/**
+ * Turn a refusal from Anna's Archive into a deadline for the whole source.
+ *
+ * Honours `Retry-After` when it's there; without one the free tier's
+ * waitlist is day-scoped, so `defaultLimitMs` waits until the daily reset
+ * rather than guessing at minutes.
+ */
+function annasLimitReached(response: Response): SourceLimitReachedError {
+  const retryAfterMs = parseRetryAfter(response.headers.get('retry-after')) ?? defaultLimitMs('annas');
+  return new SourceLimitReachedError('annas', retryAfterMs);
 }
 
 /** Anna's Archive credentials as stored in `download_source_config.credentials`. */
@@ -317,9 +304,7 @@ function getAnnasCredentials(): AnnasConfig | null {
  * an error page, a login wall.
  */
 async function probeAnnasCandidate(url: string, md5: string): Promise<ResolvedDownload | null> {
-  const response = await fetchProbe(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-  });
+  const response = await fetchProbe(url, { source: 'annas' });
   if (!response) return null;
 
   const contentType = response.headers.get('content-type');
@@ -360,7 +345,7 @@ export async function resolveAnnasDownload(md5: string): Promise<ResolvedDownloa
     try {
       const domain = getAnnasDomain();
       const apiUrl = `https://${domain}/dyn/api/fast_download.json?md5=${md5}&key=${encodeURIComponent(credentials.apiKey)}`;
-      const response = await fetch(apiUrl, {
+      const response = await sourceFetch('annas', apiUrl, {
         headers: { 'Accept': 'application/json' },
         signal: AbortSignal.timeout(15000),
       });
@@ -376,10 +361,15 @@ export async function resolveAnnasDownload(md5: string): Promise<ResolvedDownloa
         } else if (body?.error) {
           console.warn(`Anna's Archive fast_download API error for ${md5}: ${body.error}`);
         }
+      } else if (response.status === 429) {
+        // The membership's daily fast-download allowance is spent. Falling
+        // through to the free path would only queue behind the same account.
+        throw annasLimitReached(response);
       } else {
         console.warn(`Anna's Archive fast_download API failed: ${response.status}`);
       }
     } catch (error) {
+      if (error instanceof SourceLimitReachedError) throw error;
       console.error(`Anna's Archive fast_download API error for ${md5}:`, error);
     }
   }

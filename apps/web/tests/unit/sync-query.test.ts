@@ -107,15 +107,21 @@ describe('getSyncChangesSince', () => {
   // stamped that same day — the client would sync once and then see nothing.
   describe('the cursor it hands out is comparable to the rows it stores', () => {
     it('finds a row written after an ISO cursor from the same day', () => {
+      // Both rows are stamped with *today's* date: the bug this covers is a
+      // same-day string comparison, so a hardcoded date stops exercising it
+      // the moment that date is in the past.
+      const today = new Date().toISOString().slice(0, 10);
       db.execute(
-        `INSERT INTO comics (id, title, updated_at) VALUES (1, 'Before', '2026-09-16 01:00:00')`
+        `INSERT INTO comics (id, title, updated_at) VALUES (1, 'Before', ?)`,
+        [`${today} 00:00:01`]
       );
       const first = db.getSyncChangesSince(null);
       assert.strictEqual(first.comics.length, 1);
 
       // A change lands after the client's cursor, on the same date.
       db.execute(
-        `INSERT INTO comics (id, title, updated_at) VALUES (2, 'After', '2026-09-16 23:59:59')`
+        `INSERT INTO comics (id, title, updated_at) VALUES (2, 'After', ?)`,
+        [`${today} 23:59:59`]
       );
 
       const second = db.getSyncChangesSince(first.now);

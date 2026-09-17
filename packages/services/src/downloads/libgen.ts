@@ -5,8 +5,8 @@
  * Mirror choice follows the cached source statuses (see source-status.ts).
  */
 
-import { getSourceStatusCache } from '@shelvarr/db';
 import { pace } from '../utils/pacing';
+import { rankedMirrorDomains } from './mirrors';
 import {
   detectChallenge,
   SourceBlockedError,
@@ -16,22 +16,27 @@ import {
 } from './challenge';
 import {
   DownloadLimitReachedError,
+  FileVerificationError,
   LinkBrokenError,
   downloadToFile,
   probeDownloadUrl,
   type DownloadResult,
   type DownloadToFileOptions,
+  type DownloadVerification,
   type ResolvedDownload,
 } from '../utils/streaming-download';
+import { sourceFetch } from '../utils/source-http';
 
 // Re-exported so callers (and tests) can reach the whole download surface
 // through this one module boundary, the same way they already do for search.
 export {
   DownloadLimitReachedError,
+  FileVerificationError,
   LinkBrokenError,
   downloadToFile,
   type DownloadResult,
   type DownloadToFileOptions,
+  type DownloadVerification,
   type ResolvedDownload,
 };
 
@@ -58,41 +63,20 @@ export interface LibGenResult {
   searchUrl: string;
 }
 
-// LibGen source names (as cached by the status service) and their domains
-const LIBGEN_SOURCES: Record<string, string> = {
-  libgen_vg: 'libgen.vg',
-  libgen_la: 'libgen.la',
-  libgen_bz: 'libgen.bz',
-  libgen_gl: 'libgen.gl',
-};
-
-// Fallback mirrors if status unavailable
+// Last-resort domain for a server with no mirrors configured at all.
 const LIBGEN_FALLBACK = 'libgen.vg';
 
 /**
- * Get every LibGen mirror, best-first: sources last probed as up, then
+ * Get every LibGen mirror, best-first: mirrors last probed as up, then
  * degraded, then unchecked, then known-down. Callers that can fail over walk
  * the whole list; `getLibGenDomain` just takes the head.
+ *
+ * The mirrors themselves come from the `source_mirrors` table (E1-1), read
+ * fresh on every call, so one added in Settings is searchable immediately.
  */
 export function getLibGenDomains(): string[] {
-  const rank: Record<string, number> = { up: 0, degraded: 1, unknown: 2, down: 3 };
-
-  const entries = Object.entries(LIBGEN_SOURCES).map(([source, domain]) => ({ source, domain }));
-
-  try {
-    const statuses = getSourceStatusCache();
-    entries.sort((a, b) => {
-      const aRank = rank[statuses.find(s => s.source === a.source)?.status ?? 'unknown'] ?? 2;
-      const bRank = rank[statuses.find(s => s.source === b.source)?.status ?? 'unknown'] ?? 2;
-      return aRank - bRank;
-    });
-  } catch {
-    // Ignore errors, keep the declared order
-  }
-
-  const domains = entries.map(e => e.domain);
-  if (!domains.includes(LIBGEN_FALLBACK)) domains.push(LIBGEN_FALLBACK);
-  return domains;
+  const domains = rankedMirrorDomains('libgen');
+  return domains.length > 0 ? domains : [LIBGEN_FALLBACK];
 }
 
 /**
@@ -128,11 +112,8 @@ export async function searchLibGen(
     const domain = getLibGenDomain();
     const searchPageUrl = `https://${domain}/index.php?req=${encoded}&lg_topic=libgen&open=0&view=simple&res=25&phrase=1&column=def`;
 
-    const response = await fetch(searchPageUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-      },
+    const response = await sourceFetch('libgen', searchPageUrl, {
+      headers: { 'Accept': 'text/html,application/xhtml+xml' },
       signal: AbortSignal.timeout(15000),
     });
 
@@ -295,7 +276,7 @@ const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 async function fetchWithRetry(url: string, init: RequestInit, attempts = 2): Promise<Response | null> {
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      const response = await fetch(url, init);
+      const response = await sourceFetch('libgen', url, init);
       if (response.ok) return response;
 
       console.warn(`LibGen request to ${url} failed: ${response.status}`);
@@ -312,17 +293,13 @@ async function fetchWithRetry(url: string, init: RequestInit, attempts = 2): Pro
   return null;
 }
 
-const BROWSER_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-};
-
 /**
  * Scrape the ads.php page on one mirror for the get.php URL (which carries a
  * short-lived key). Returns null if that mirror won't serve the page.
  */
 async function getDownloadUrlFromDomain(domain: string, md5: string): Promise<string | null> {
   const response = await fetchWithRetry(`https://${domain}/ads.php?md5=${md5}`, {
-    headers: { ...BROWSER_HEADERS, 'Accept': 'text/html,application/xhtml+xml' },
+    headers: { 'Accept': 'text/html,application/xhtml+xml' },
     signal: AbortSignal.timeout(15000),
   });
 
@@ -386,9 +363,10 @@ async function probeLibgenDomain(domain: string, md5: string): Promise<ResolvedD
   if (!downloadUrl) return null;
 
   return probeDownloadUrl(downloadUrl, {
-    headers: { ...BROWSER_HEADERS, 'Referer': `https://${domain}/ads.php?md5=${md5}` },
+    headers: { 'Referer': `https://${domain}/ads.php?md5=${md5}` },
     fallbackFilename: `${md5}.epub`,
     fetchFn: fetchWithRetry,
+    source: 'libgen',
   });
 }
 

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import type {
   WantedBook,
   DownloadSourceConfig,
+  SourceMirror,
   SourceStatusCache,
   ComicVolumeSummary,
   ComicVolumeDetail,
@@ -14,6 +15,7 @@ import type {
   BlocklistReason,
   ComicBlocklistEntry,
   ComicDownload,
+  ComicDownloadFailureReason,
   ComicDownloadLink,
   ComicDownloadState,
   DownloadHost,
@@ -33,11 +35,14 @@ import type {
   Session,
   AuthClient,
   AuthenticatedSession,
+  SourceNetworkSettings,
 } from '@shelvarr/types';
 
 import { uniqueComicSlug } from './comic-slug';
+import { decryptSecret, encryptSecret, initSecrets, isEncrypted } from './secrets';
 
 export { slugify, baseComicSlug, uniqueComicSlug } from './comic-slug';
+export { encryptSecret, decryptSecret, isEncrypted, initSecrets, resetSecretsCache, secretKeyPath } from './secrets';
 
 // ---------------------------------------------------------------------------
 // Timestamps
@@ -152,14 +157,28 @@ function withBusyRetry<T>(fn: () => T): T {
   }
 }
 
+export interface InitDatabaseOptions {
+  /**
+   * The data directory, for anything that lives beside the database rather
+   * than in it — currently just the key that encrypts stored secrets. Defaults
+   * to the directory holding `dbPath`.
+   */
+  dataDir?: string;
+}
+
 /**
  * Initialize the database connection and run migrations
  */
-export function initDatabase(dbPath: string): Database.Database {
+export function initDatabase(dbPath: string, options: InitDatabaseOptions = {}): Database.Database {
   try {
     // Ensure data directory exists
     const dbDir = dirname(dbPath);
     mkdirSync(dbDir, { recursive: true });
+
+    // Where the key that encrypts stored secrets lives. Injected by the caller
+    // (apps/web hands over `config.dataDir`); the directory holding the
+    // database is the right answer for every other caller, including tests.
+    initSecrets(options.dataDir ?? dbDir);
 
     console.log(`Opening SQLite database at: ${dbPath}`);
 
@@ -267,6 +286,18 @@ function runMigrations(database: Database.Database): void {
     console.log(`Running migration: removed ${staleSettings.changes} unused settings`);
   }
 
+  // Per-source networking: an optional proxy (for ISPs that DNS-block these
+  // domains) and an optional User-Agent override. Both nullable — a source
+  // with neither behaves exactly as it did before.
+  const sourceConfigInfo = database
+    .prepare('PRAGMA table_info(download_source_config)')
+    .all() as Array<{ name: string }>;
+  for (const column of ['proxy_url', 'user_agent']) {
+    if (sourceConfigInfo.some((col) => col.name === column)) continue;
+    console.log(`Running migration: adding ${column} column to download_source_config`);
+    database.exec(`ALTER TABLE download_source_config ADD COLUMN ${column} TEXT`);
+  }
+
   // Check if author_works table has 'language' column
   const authorWorksInfo = database.prepare("PRAGMA table_info(author_works)").all() as Array<{ name: string }>;
   const hasLanguageColumn = authorWorksInfo.some(col => col.name === 'language');
@@ -333,6 +364,9 @@ function runMigrations(database: Database.Database): void {
     // No DEFAULT: SQLite rejects a non-constant one in ALTER TABLE, so
     // existing rows are backfilled below instead.
     ['heartbeat_at', 'TEXT'],
+    // Why a download was abandoned. Rows that failed before this existed keep
+    // a null reason and are shown by their error string instead.
+    ['failure_reason', 'TEXT'],
   ];
   for (const [name, definition] of comicDownloadColumns) {
     if (comicDownloadsInfo.some((col) => col.name === name)) continue;
@@ -347,6 +381,16 @@ function runMigrations(database: Database.Database): void {
   database.exec(
     'CREATE INDEX IF NOT EXISTS idx_comic_downloads_heartbeat ON comic_downloads(state, heartbeat_at)'
   );
+
+  // History rows carry the same reason, so a failure still says why after the
+  // download row has been cleared out of the queue.
+  const comicDownloadHistoryInfo = database
+    .prepare('PRAGMA table_info(comic_download_history)')
+    .all() as Array<{ name: string }>;
+  if (!comicDownloadHistoryInfo.some((col) => col.name === 'failure_reason')) {
+    console.log('Running migration: adding failure_reason column to comic_download_history');
+    database.exec('ALTER TABLE comic_download_history ADD COLUMN failure_reason TEXT');
+  }
 
   const comicIssuesInfo = database.prepare('PRAGMA table_info(comic_issues)').all() as Array<{ name: string }>;
   if (!comicIssuesInfo.some((col) => col.name === 'comicvine_volume_id')) {
@@ -393,7 +437,48 @@ function runMigrations(database: Database.Database): void {
     database.exec('ALTER TABLE tasks ADD COLUMN not_before TEXT');
   }
 
+  seedSourceMirrors(database);
+
   migrateProgressToPerUser(database);
+}
+
+/**
+ * Seed `source_mirrors` with the domains that used to be hardcoded in the
+ * download services, and drop the status-cache rows keyed by the old
+ * per-mirror constants (`libgen_vg`, `annas_li`, `zlib_gl`, …) — health is
+ * keyed off the mirror row now.
+ *
+ * Guarded by a settings marker rather than "is the table empty", so an
+ * operator who deliberately removes every mirror of a source in Settings
+ * doesn't get them all back on the next restart.
+ */
+function seedSourceMirrors(database: Database.Database): void {
+  const marker = database
+    .prepare("SELECT value FROM settings WHERE key = 'source_mirrors_seeded'")
+    .get() as { value: string } | undefined;
+  if (marker) return;
+
+  console.log('Running migration: seeding source_mirrors from the shipped mirror defaults');
+
+  const insert = database.prepare(
+    `INSERT OR IGNORE INTO source_mirrors (source, domain, priority, enabled, added_by)
+     VALUES (?, ?, ?, 1, 'seed')`
+  );
+
+  for (const [source, domains] of Object.entries(DEFAULT_SOURCE_MIRRORS)) {
+    domains.forEach((domain, index) => insert.run(source, domain, index));
+  }
+
+  database
+    .prepare(
+      `DELETE FROM source_status_cache
+       WHERE source IN ('libgen_vg', 'libgen_la', 'libgen_bz', 'libgen_gl', 'annas_li', 'zlib_gl')`
+    )
+    .run();
+
+  database
+    .prepare("INSERT INTO settings (key, value) VALUES ('source_mirrors_seeded', '1')")
+    .run();
 }
 
 /**
@@ -487,6 +572,8 @@ function migrateProgressToPerUser(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_comic_read_progress_user ON comic_read_progress(user_id);
     CREATE INDEX IF NOT EXISTS idx_epub_progression_book ON epub_progression(book_id);
     CREATE INDEX IF NOT EXISTS idx_epub_progression_user ON epub_progression(user_id);
+    CREATE INDEX IF NOT EXISTS idx_reader_annotations_book_user
+      ON reader_annotations(book_id, user_id);
   `);
 }
 
@@ -538,7 +625,7 @@ export function getDb(): Database.Database {
   if (!db) {
     const dataDir = process.env['DATA_DIR'] || process.cwd() + '/data';
     const dbPath = process.env['DB_PATH'] || join(dataDir, 'shelvarr.db');
-    initDatabase(dbPath);
+    initDatabase(dbPath, { dataDir });
   }
   return db!;
 }
@@ -771,22 +858,128 @@ export function markWantedBookAsAcquired(
 
 // ============ Download Source Config Functions ============
 
+/**
+ * The columns of `download_source_config` that hold a secret and are therefore
+ * stored encrypted: an account password, an API key, a proxy URL that can
+ * carry `user:pass@`.
+ */
+const ENCRYPTED_SOURCE_COLUMNS = ['credentials', 'proxy_url'] as const;
+
+/**
+ * Hand a row back with its secrets in the clear, migrating any that are still
+ * plaintext.
+ *
+ * Databases in the wild predate encryption, so both shapes have to be readable
+ * and the plaintext one cannot be left where it is. Reading a plaintext value
+ * therefore re-writes it encrypted, in place, before returning it — the caller
+ * sees the same string either way, and the row is only ever migrated once.
+ *
+ * A value that is encrypted but will not open (the key file was lost or
+ * replaced) is reported as null rather than thrown: the operator has to
+ * re-enter their credentials, but nothing else about the app should break, and
+ * the unreadable ciphertext is left alone in case the key comes back.
+ */
+function decodeDownloadSourceRow(row: DownloadSourceConfig): DownloadSourceConfig {
+  const decoded = { ...row };
+
+  for (const column of ENCRYPTED_SOURCE_COLUMNS) {
+    const stored = row[column];
+    if (stored == null || stored === '') continue;
+
+    if (!isEncrypted(stored)) {
+      // Written before this column was encrypted. Migrate on first read.
+      try {
+        execute(`UPDATE download_source_config SET ${column} = ? WHERE id = ?`, [
+          encryptSecret(stored),
+          row.id,
+        ]);
+      } catch (error) {
+        console.warn(`Could not encrypt ${column} for download source ${row.source}:`, error);
+      }
+      decoded[column] = stored;
+      continue;
+    }
+
+    const plaintext = decryptSecret(stored);
+    if (plaintext === null) {
+      console.warn(
+        `Could not decrypt ${column} for download source ${row.source}. ` +
+          `The key in the data directory looks different to the one it was written with.`
+      );
+    }
+    decoded[column] = plaintext;
+  }
+
+  return decoded;
+}
+
 export function getDownloadSourceConfigs(): DownloadSourceConfig[] {
-  return query<DownloadSourceConfig>('SELECT * FROM download_source_config');
+  return query<DownloadSourceConfig>('SELECT * FROM download_source_config').map(decodeDownloadSourceRow);
 }
 
 export function getDownloadSourceConfig(source: string): DownloadSourceConfig | null {
-  return queryOne<DownloadSourceConfig>('SELECT * FROM download_source_config WHERE source = ?', [source]);
+  const row = queryOne<DownloadSourceConfig>('SELECT * FROM download_source_config WHERE source = ?', [source]);
+  return row ? decodeDownloadSourceRow(row) : null;
 }
 
 export function upsertDownloadSourceConfig(source: string, enabled: boolean, credentials?: object): void {
-  const credentialsJson = credentials ? JSON.stringify(credentials) : null;
+  const credentialsJson = credentials ? encryptSecret(JSON.stringify(credentials)) : null;
   execute(
     `INSERT INTO download_source_config (source, enabled, credentials, last_checked)
      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
      ON CONFLICT (source) DO UPDATE SET enabled = ?, credentials = ?, last_checked = CURRENT_TIMESTAMP`,
     [source, enabled ? 1 : 0, credentialsJson, enabled ? 1 : 0, credentialsJson]
   );
+}
+
+/**
+ * Read the proxy and User-Agent a source's HTTP requests should use.
+ *
+ * Deliberately narrow: this is the only thing the HTTP layer needs from the
+ * config row, and keeping it separate means a request path never has to hold
+ * the source's credentials to make a request.
+ */
+export function getSourceNetworkSettings(source: string): SourceNetworkSettings {
+  const config = getDownloadSourceConfig(source);
+  return {
+    proxyUrl: config?.proxy_url || null,
+    userAgent: config?.user_agent || null,
+  };
+}
+
+/**
+ * Set (or clear, with null) a source's proxy and User-Agent.
+ *
+ * Leaves `enabled` and `credentials` alone. When there is no row yet, the one
+ * this creates records the source's current effective enabled state, so
+ * configuring a proxy never silently turns a source on or off.
+ */
+export function setSourceNetworkSettings(
+  source: string,
+  settings: { proxyUrl?: string | null; userAgent?: string | null }
+): void {
+  const existing = queryOne<{ id: number }>('SELECT id FROM download_source_config WHERE source = ?', [source]);
+
+  const proxyUrl = settings.proxyUrl?.trim() ? encryptSecret(settings.proxyUrl.trim()) : null;
+  const userAgent = settings.userAgent?.trim() || null;
+
+  if (!existing) {
+    execute(
+      `INSERT INTO download_source_config (source, enabled, proxy_url, user_agent, last_checked)
+       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+      [source, isSourceEnabled(source) ? 1 : 0, proxyUrl, userAgent]
+    );
+    return;
+  }
+
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  if (settings.proxyUrl !== undefined) { fields.push('proxy_url = ?'); values.push(proxyUrl); }
+  if (settings.userAgent !== undefined) { fields.push('user_agent = ?'); values.push(userAgent); }
+  if (fields.length === 0) return;
+
+  values.push(existing.id);
+  execute(`UPDATE download_source_config SET ${fields.join(', ')} WHERE id = ?`, values);
 }
 
 // zlibrary, annas and libgen are shadow libraries: searching them is an
@@ -799,6 +992,140 @@ export function isSourceEnabled(source: string): boolean {
   const sourceConfig = getDownloadSourceConfig(source);
   if (sourceConfig) return sourceConfig.enabled === 1;
   return !SHADOW_LIBRARY_SOURCES.has(source);
+}
+
+// ============ Source Mirror Functions ============
+
+/**
+ * The mirror domains Shelvarr ships with, in preference order — the same
+ * lists that used to be `LIBGEN_SOURCES`, `ANNAS_SOURCES` and `ZLIB_SOURCES`
+ * in the download services.
+ *
+ * They are seed data, not runtime configuration: after the first run the
+ * `source_mirrors` table is the only thing mirror selection reads. They stay
+ * here as the last-resort answer for a caller that asks before the database
+ * exists (a unit test, a probe during startup).
+ */
+export const DEFAULT_SOURCE_MIRRORS: Record<string, string[]> = {
+  libgen: ['libgen.vg', 'libgen.la', 'libgen.bz', 'libgen.gl'],
+  annas: ['annas-archive.org', 'annas-archive.li'],
+  zlibrary: ['z-library.sk', 'z-lib.gl'],
+};
+
+/** Sources that draw their domains from `source_mirrors`. */
+export const MIRRORED_SOURCES = Object.keys(DEFAULT_SOURCE_MIRRORS);
+
+/**
+ * Normalise whatever an operator pasted into Settings into a bare hostname:
+ * `https://LibGen.VG/index.php` -> `libgen.vg`. Returns null if what's left
+ * isn't a plausible hostname.
+ */
+export function normaliseMirrorDomain(input: string): string | null {
+  const trimmed = input.trim().toLowerCase();
+  if (!trimmed) return null;
+
+  const withoutScheme = trimmed.replace(/^[a-z][a-z0-9+.-]*:\/\//, '');
+  const host = withoutScheme.split('/')[0]!.split('?')[0]!.split('#')[0]!;
+  if (!host) return null;
+
+  // Hostname with at least one dot, optionally a port. No credentials, no
+  // spaces, no wildcards.
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(:\d{1,5})?$/.test(host)) {
+    return null;
+  }
+
+  return host;
+}
+
+/** Every mirror row for a source (enabled or not), in priority order. */
+export function getSourceMirrors(source?: string): SourceMirror[] {
+  return source
+    ? query<SourceMirror>(
+        'SELECT * FROM source_mirrors WHERE source = ? ORDER BY priority ASC, id ASC',
+        [source]
+      )
+    : query<SourceMirror>('SELECT * FROM source_mirrors ORDER BY source ASC, priority ASC, id ASC');
+}
+
+/** The mirrors a search or download may actually use, in priority order. */
+export function getEnabledSourceMirrors(source: string): SourceMirror[] {
+  return query<SourceMirror>(
+    'SELECT * FROM source_mirrors WHERE source = ? AND enabled = 1 ORDER BY priority ASC, id ASC',
+    [source]
+  );
+}
+
+export function getSourceMirror(id: number): SourceMirror | null {
+  return queryOne<SourceMirror>('SELECT * FROM source_mirrors WHERE id = ?', [id]);
+}
+
+/**
+ * Add a mirror, appended after the ones already configured for that source.
+ * Returns the existing row unchanged if the domain is already there, so
+ * re-adding one is a no-op rather than an error.
+ */
+export function addSourceMirror(
+  source: string,
+  domain: string,
+  addedBy: 'seed' | 'user' = 'user'
+): SourceMirror {
+  const existing = queryOne<SourceMirror>(
+    'SELECT * FROM source_mirrors WHERE source = ? AND domain = ?',
+    [source, domain]
+  );
+  if (existing) return existing;
+
+  const next = queryOne<{ nextPriority: number }>(
+    'SELECT COALESCE(MAX(priority), -1) + 1 AS nextPriority FROM source_mirrors WHERE source = ?',
+    [source]
+  );
+
+  execute(
+    'INSERT INTO source_mirrors (source, domain, priority, enabled, added_by) VALUES (?, ?, ?, 1, ?)',
+    [source, domain, next?.nextPriority ?? 0, addedBy]
+  );
+
+  return queryOne<SourceMirror>(
+    'SELECT * FROM source_mirrors WHERE source = ? AND domain = ?',
+    [source, domain]
+  )!;
+}
+
+export function setSourceMirrorEnabled(id: number, enabled: boolean): void {
+  execute('UPDATE source_mirrors SET enabled = ? WHERE id = ?', [enabled ? 1 : 0, id]);
+}
+
+export function deleteSourceMirror(id: number): void {
+  const mirror = getSourceMirror(id);
+  if (!mirror) return;
+
+  execute('DELETE FROM source_mirrors WHERE id = ?', [id]);
+  // The mirror's health row is keyed off the mirror, so it goes too.
+  execute('DELETE FROM source_status_cache WHERE source = ?', [`${mirror.source}:${mirror.domain}`]);
+}
+
+/**
+ * Move a mirror one place up or down its source's preference order, by
+ * swapping priorities with its neighbour. Priorities are rewritten as a
+ * dense 0..n-1 sequence first, so hand-edited or seeded gaps can't strand a
+ * row.
+ */
+export function moveSourceMirror(id: number, direction: 'up' | 'down'): void {
+  const mirror = getSourceMirror(id);
+  if (!mirror) return;
+
+  const ordered = getSourceMirrors(mirror.source);
+  const index = ordered.findIndex((m) => m.id === id);
+  const target = direction === 'up' ? index - 1 : index + 1;
+  if (index === -1 || target < 0 || target >= ordered.length) return;
+
+  const reordered = [...ordered];
+  reordered[index] = ordered[target]!;
+  reordered[target] = ordered[index]!;
+
+  for (const [position, row] of reordered.entries()) {
+    execute('UPDATE source_mirrors SET priority = ? WHERE id = ?', [position, row.id]);
+  }
 }
 
 // ============ Source Status Cache Functions ============
@@ -1098,6 +1425,98 @@ export function upsertEpubProgression(
      ON CONFLICT (book_id, user_id, device_id) DO UPDATE SET locator = ?, progression = ?, updated_at = CURRENT_TIMESTAMP`,
     [bookId, progressUserId(userId), deviceId, locator, progression, locator, progression]
   );
+}
+
+// ============ Reader Preferences (per user, NOT per device) ============
+
+export interface ReaderPreferencesRow {
+  user_id: number;
+  preferences: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * The raw preferences JSON for one person, or null if they have never changed
+ * anything. Deliberately returns the string rather than parsing: what the
+ * shape means is the reader's business, and the caller already has to cope
+ * with keys from an older or newer client.
+ */
+export function getReaderPreferences(userId: number): ReaderPreferencesRow | null {
+  return queryOne<ReaderPreferencesRow>(
+    'SELECT * FROM reader_preferences WHERE user_id = ?',
+    [progressUserId(userId)]
+  );
+}
+
+export function setReaderPreferences(userId: number, preferences: string): void {
+  execute(
+    `INSERT INTO reader_preferences (user_id, preferences, updated_at)
+     VALUES (?, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT (user_id) DO UPDATE SET preferences = ?, updated_at = CURRENT_TIMESTAMP`,
+    [progressUserId(userId), preferences, preferences]
+  );
+}
+
+// ============ Reader Annotations (bookmarks and highlights) ============
+
+export type ReaderAnnotationKind = 'bookmark' | 'highlight';
+
+export interface ReaderAnnotationRow {
+  id: number;
+  book_id: number;
+  user_id: number;
+  kind: ReaderAnnotationKind;
+  cfi: string;
+  text: string | null;
+  colour: string | null;
+  created_at: string;
+}
+
+export function getReaderAnnotations(userId: number, bookId: number): ReaderAnnotationRow[] {
+  return query<ReaderAnnotationRow>(
+    'SELECT * FROM reader_annotations WHERE book_id = ? AND user_id = ? ORDER BY created_at ASC, id ASC',
+    [bookId, progressUserId(userId)]
+  );
+}
+
+/**
+ * Add a bookmark or highlight, or return the one that is already there.
+ *
+ * Bookmarking the same spot twice is a slip, not an error — the UNIQUE index
+ * absorbs it and the existing row comes back, so the caller can treat "added"
+ * and "already had it" identically.
+ */
+export function addReaderAnnotation(
+  userId: number,
+  bookId: number,
+  kind: ReaderAnnotationKind,
+  cfi: string,
+  text: string | null,
+  colour: string | null
+): ReaderAnnotationRow | null {
+  const owner = progressUserId(userId);
+  execute(
+    `INSERT INTO reader_annotations (book_id, user_id, kind, cfi, text, colour)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (book_id, user_id, kind, cfi) DO UPDATE SET
+       text = COALESCE(excluded.text, reader_annotations.text),
+       colour = COALESCE(excluded.colour, reader_annotations.colour)`,
+    [bookId, owner, kind, cfi, text, colour]
+  );
+  return queryOne<ReaderAnnotationRow>(
+    'SELECT * FROM reader_annotations WHERE book_id = ? AND user_id = ? AND kind = ? AND cfi = ?',
+    [bookId, owner, kind, cfi]
+  );
+}
+
+/** Returns true if a row was actually removed — i.e. it existed and was theirs. */
+export function deleteReaderAnnotation(userId: number, bookId: number, id: number): boolean {
+  const result = execute(
+    'DELETE FROM reader_annotations WHERE id = ? AND book_id = ? AND user_id = ?',
+    [id, bookId, progressUserId(userId)]
+  );
+  return result.rowCount > 0;
 }
 
 // ============ Comic Read Progress Functions ============
@@ -2041,6 +2460,7 @@ interface ComicDownloadRow {
   attempts: number;
   file_path: string | null;
   error: string | null;
+  failure_reason: string | null;
   heartbeat_at: string | null;
   created_at: string;
   completed_at: string | null;
@@ -2083,6 +2503,7 @@ function rowToComicDownload(row: ComicDownloadRow): ComicDownload {
     size: row.size,
     attempts: row.attempts ?? 0,
     error: row.error,
+    failureReason: (row.failure_reason as ComicDownloadFailureReason | null) ?? null,
     heartbeatAt: sqlTimeToIso(row.heartbeat_at),
     createdAt: sqlTimeToIso(row.created_at),
     completedAt: sqlTimeToIso(row.completed_at),
@@ -2176,10 +2597,21 @@ export function updateComicDownloadProgress(id: number, progress: number, size: 
   );
 }
 
+/**
+ * Move a download to a new state.
+ *
+ * `error` and `filePath` are merged — passing neither leaves what is there.
+ * `failureReason` is not: it only ever describes the failure the row is in
+ * right now, so anything other than a failure clears it.
+ */
 export function setComicDownloadState(
   id: number,
   state: ComicDownloadState,
-  extra: { error?: string | null; filePath?: string | null } = {}
+  extra: {
+    error?: string | null;
+    filePath?: string | null;
+    failureReason?: ComicDownloadFailureReason | null;
+  } = {}
 ): void {
   const terminal = state === 'completed' || state === 'failed' || state === 'cancelled';
   execute(
@@ -2187,10 +2619,18 @@ export function setComicDownloadState(
         SET state = ?,
             error = COALESCE(?, error),
             file_path = COALESCE(?, file_path),
+            failure_reason = ?,
             heartbeat_at = CURRENT_TIMESTAMP,
             completed_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE completed_at END
       WHERE id = ?`,
-    [state, extra.error ?? null, extra.filePath ?? null, terminal ? 1 : 0, id]
+    [
+      state,
+      extra.error ?? null,
+      extra.filePath ?? null,
+      state === 'failed' ? extra.failureReason ?? null : null,
+      terminal ? 1 : 0,
+      id,
+    ]
   );
 }
 
@@ -2204,7 +2644,7 @@ export function startComicDownloadAttempt(id: number): number {
   execute(
     `UPDATE comic_downloads
         SET state = 'downloading', attempts = attempts + 1, error = NULL,
-            heartbeat_at = CURRENT_TIMESTAMP
+            failure_reason = NULL, heartbeat_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
     [id]
   );
@@ -2223,7 +2663,7 @@ export function startComicDownloadAttempt(id: number): number {
 export function deferComicDownload(id: number, error: string): void {
   execute(
     `UPDATE comic_downloads
-        SET state = 'queued', error = ?, completed_at = NULL,
+        SET state = 'queued', error = ?, failure_reason = NULL, completed_at = NULL,
             heartbeat_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
     [error, id]
@@ -2293,7 +2733,8 @@ export function resetComicDownloadForRetry(id: number): void {
   execute(
     `UPDATE comic_downloads
         SET state = 'queued', progress = 0, attempts = 0, error = NULL,
-            file_path = NULL, completed_at = NULL, heartbeat_at = CURRENT_TIMESTAMP
+            failure_reason = NULL, file_path = NULL, completed_at = NULL,
+            heartbeat_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
     [id]
   );
@@ -2312,13 +2753,16 @@ export interface ComicDownloadHistoryEntry {
   fileTitle?: string | null;
   host?: DownloadHost | null;
   success: boolean;
+  /** Why it failed, on a failure — same vocabulary as the download row. */
+  failureReason?: ComicDownloadFailureReason | null;
 }
 
 export function addComicDownloadHistory(entry: ComicDownloadHistoryEntry): void {
   execute(
     `INSERT INTO comic_download_history
-       (volume_id, issue_id, web_link, web_title, web_sub_title, file_title, host, success)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (volume_id, issue_id, web_link, web_title, web_sub_title, file_title, host, success,
+        failure_reason)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       entry.volumeId,
       entry.issueId ?? null,
@@ -2328,6 +2772,7 @@ export function addComicDownloadHistory(entry: ComicDownloadHistoryEntry): void 
       entry.fileTitle ?? null,
       entry.host ?? null,
       entry.success ? 1 : 0,
+      entry.success ? null : entry.failureReason ?? null,
     ]
   );
 }

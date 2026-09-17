@@ -11,6 +11,18 @@ import { getSourceStatuses } from './source-status';
 import { SourceBlockedError, SourceParseError } from './challenge';
 import { isSourceEnabled, getDownloadSourceConfig } from '@shelvarr/db';
 
+// Per-source networking (E1-7): the proxy and User-Agent settings live with
+// the source config, so the Settings UI reaches them through this module the
+// same way it reaches everything else about a source.
+export {
+  parseProxyUrl,
+  describeProxy,
+  InvalidProxyError,
+  ProxyConnectionError,
+  type ProxySpec,
+} from '../utils/proxy-fetch';
+export { DEFAULT_USER_AGENT, resolveSourceNetwork } from '../utils/source-http';
+
 export type DownloadSource = 'zlibrary' | 'annas' | 'libgen';
 
 export interface DownloadResult {
@@ -310,12 +322,20 @@ export { searchAnnas, getAnnasSearchUrl, getAnnasDownloadLinks } from './annas';
 export { searchLibGen, getLibGenSearchUrl, getLibGenDownloadUrl } from './libgen';
 export { getSourceStatuses, refreshSourceStatuses, checkSourceHealth } from './source-status';
 export { detectChallenge, SourceBlockedError, SourceParseError, getParserHealth } from './challenge';
+export {
+  mirrorStatusKey,
+  parseMirrorStatusKey,
+  configuredMirrorDomains,
+  rankedMirrorDomains,
+  preferredMirrorDomain,
+} from './mirrors';
 
 export type { ZLibraryResult } from './zlibrary';
 export type { AnnasResult } from './annas';
 export type { LibGenResult } from './libgen';
 export type { SourceStatus } from './source-status';
 export type { ParserHealth } from './challenge';
+export type { MirroredSource } from './mirrors';
 
 export default {
   searchAllSources,

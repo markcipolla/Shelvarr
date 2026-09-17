@@ -5,6 +5,11 @@
 
 import { query, queryOne, execute, insertReturning, sqlTimeToIso, isoToSqlTime } from '@shelvarr/db';
 import { createLogger } from '../utils/logger';
+import {
+  SourceUnavailableError,
+  clearExpiredSourceLimits,
+  deferralDelay,
+} from '../downloads/source-limits';
 import { listenerCount, publish } from '../events/index';
 import type { TaskEvent } from '../events/index';
 
@@ -87,6 +92,14 @@ let retryProcessorRunning = false;
 const RETRY_DELAY_MS = 10000; // 10 seconds between retries
 
 /**
+ * Longest the processor sleeps in one go while waiting for the next entry to
+ * come due. Waiting is sliced rather than slept through so that a task
+ * deferred for hours — a spent daily quota, say — doesn't hold up a task
+ * deferred for seconds that arrives behind it.
+ */
+const RETRY_POLL_SLICE_MS = 15_000;
+
+/**
  * A rate limit the handler wants waited out for a specific length of time.
  *
  * Handlers that know what they hit — a host's download limit, say, which is
@@ -101,14 +114,23 @@ export class RateLimitedError extends Error {
 }
 
 /**
- * Whether an error means "come back later" rather than "this failed".
+ * Whether an error means "come back later" rather than "this failed", and if
+ * so, how long "later" is.
  *
- * Matched by name rather than by type so the queue doesn't have to import the
- * download clients that raise them: `DownloadLimitReachedError` says only
- * "Download limit reached for <host>", with no status code to sniff for.
+ * Three shapes, in descending order of how much the thrower knew:
+ * `RateLimitedError` and the source-scoped errors behind `deferralDelay`
+ * carry their own wait; `DownloadLimitReachedError` is matched by name rather
+ * than by type, so the queue doesn't have to import the download clients that
+ * raise it, and says only "Download limit reached for <host>" with no status
+ * code to sniff for; anything else is a last-resort look for a 429 in the
+ * message.
  */
 function rateLimitDelay(error: unknown, message: string): number | null {
   if (error instanceof RateLimitedError) return error.retryAfterMs;
+  // A whole source is spent, or is already busy with one download (E1-6).
+  // Carries its own deadline, which can be hours rather than seconds.
+  const sourceDelay = deferralDelay(error);
+  if (sourceDelay !== null) return sourceDelay;
   if (error instanceof Error && error.name === 'DownloadLimitReachedError') {
     return RETRY_DELAY_MS;
   }
@@ -133,17 +155,33 @@ async function processRetryQueue(): Promise<void> {
   if (retryProcessorRunning) return;
   retryProcessorRunning = true;
 
+  /** Which task the processor last said it was waiting on, so it says it once. */
+  let waitingFor: number | null = null;
+
   while (retryQueue.length > 0) {
-    // Take whichever task is due soonest, waiting for it if it isn't due yet.
+    // Whichever task is due soonest, without taking it off the queue yet.
     retryQueue.sort((a, b) => a.notBefore - b.notBefore);
+    const soonest = retryQueue[0];
+    if (!soonest) continue;
+
+    // Wait in slices rather than sleeping the whole way to the deadline: a
+    // source-level deferral (E1-6) can be hours out, and sleeping through it
+    // with the entry already shifted off the queue would mean a task
+    // deferred ten seconds from now sat behind it. Re-sorting each slice
+    // lets a sooner arrival overtake a long wait.
+    const wait = soonest.notBefore - Date.now();
+    if (wait > 0) {
+      if (waitingFor !== soonest.taskId) {
+        waitingFor = soonest.taskId;
+        log.info('Waiting before retry', { taskId: soonest.taskId, delayMs: wait });
+      }
+      await sleep(Math.min(wait, RETRY_POLL_SLICE_MS));
+      continue;
+    }
+
+    waitingFor = null;
     const entry = retryQueue.shift();
     if (!entry) continue;
-
-    const wait = entry.notBefore - Date.now();
-    if (wait > 0) {
-      log.info('Waiting before retry', { taskId: entry.taskId, delayMs: wait });
-      await sleep(wait);
-    }
 
     // Check if task still exists and is pending
     const task = getTask(entry.taskId);
@@ -271,6 +309,12 @@ export function rebuildRetryQueueFromDatabase(): number {
   if (rows.length > 0) {
     log.info('Rebuilt retry queue from database', { count: rows.length });
   }
+
+  // Per-source deadlines (E1-6) survive a restart in their own table and are
+  // read at the point of use, so there is nothing to rebuild — only spent
+  // rows to tidy away, which is cheapest to do here, once, at boot.
+  const expired = clearExpiredSourceLimits();
+  if (expired > 0) log.info('Cleared expired source limits', { count: expired });
 
   if (retryQueue.length > 0 && !retryProcessorRunning) {
     processRetryQueue().catch(err => {
@@ -631,11 +675,16 @@ export async function runTask(taskId: number): Promise<void> {
       if (retryAfterMs !== null) {
         log.info('Rate limited, adding to retry queue', { taskId, type: task.type, retryAfterMs });
 
-        // Update task to pending with a note about queue position
+        // Update task to pending with a note about queue position. A
+        // source-scoped deferral says which source and for how long, which is
+        // the difference between "stuck" and "waiting" to someone reading the
+        // tasks page; the "queued for retry (#n)" part stays in the string
+        // either way, because that is what the page parses a position out of.
         const queuePosition = retryQueue.length + 1;
+        const reason = error instanceof SourceUnavailableError ? `: ${error.message}` : '';
         execute(
           "UPDATE tasks SET status = 'pending', error = ? WHERE id = ?",
-          [`Rate limited - queued for retry (#${queuePosition})`, taskId]
+          [`Rate limited - queued for retry (#${queuePosition})${reason}`, taskId]
         );
         runningTasks.delete(taskId);
         emitTaskChange('deferred', taskId);

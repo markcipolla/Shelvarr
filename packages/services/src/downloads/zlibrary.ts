@@ -6,7 +6,8 @@
  * Reference: https://github.com/sertraline/zlibrary
  */
 
-import { getSourceStatusCache, getDownloadSourceConfig, upsertDownloadSourceConfig } from '@shelvarr/db';
+import { getDownloadSourceConfig, upsertDownloadSourceConfig } from '@shelvarr/db';
+import { preferredMirrorDomain } from './mirrors';
 import {
   detectChallenge,
   SourceBlockedError,
@@ -19,6 +20,9 @@ import {
   probeDownloadUrl,
   type ResolvedDownload,
 } from '../utils/streaming-download';
+import { parseRetryAfter } from '../utils/pacing';
+import { SourceLimitReachedError, defaultLimitMs } from './source-limits';
+import { sourceFetch } from '../utils/source-http';
 
 // Re-exported so callers (and tests) can reach the download surface through
 // this one module boundary, the same way they already do for search.
@@ -64,45 +68,22 @@ export interface ZLibraryResult {
   searchUrl: string;
 }
 
-// Z-Library source names (as cached by the status service) and their domains
-const ZLIB_SOURCES: Record<string, string> = {
-  zlibrary: 'z-library.sk',
-  zlib_gl: 'z-lib.gl',
-};
-
-// Fallback domain if status unavailable
+// Last-resort domain for a server with no mirrors configured at all.
 const ZLIB_FALLBACK = 'z-library.sk';
 
 // Login domain (separate from search)
 const ZLIB_LOGIN_DOMAIN = 'singlelogin.re';
 
 /**
- * Get the current working Z-Library domain based on cached source status
+ * Get the current working Z-Library domain.
+ *
+ * Mirrors come from the `source_mirrors` table (E1-1), read fresh on every
+ * call. Z-Library issues a per-account personal domain after login, which
+ * the old hardcoded list couldn't represent; it can be added in Settings ->
+ * Download Sources like any other mirror.
  */
 export function getZLibraryDomain(): string {
-  try {
-    const statuses = getSourceStatusCache();
-
-    // Find a zlibrary source that's up
-    for (const [source, domain] of Object.entries(ZLIB_SOURCES)) {
-      const status = statuses.find(s => s.source === source);
-      if (status?.status === 'up') {
-        return domain;
-      }
-    }
-
-    // If none are up, try degraded
-    for (const [source, domain] of Object.entries(ZLIB_SOURCES)) {
-      const status = statuses.find(s => s.source === source);
-      if (status?.status === 'degraded') {
-        return domain;
-      }
-    }
-  } catch {
-    // Ignore errors, use fallback
-  }
-
-  return ZLIB_FALLBACK;
+  return preferredMirrorDomain('zlibrary', ZLIB_FALLBACK);
 }
 
 /**
@@ -128,7 +109,6 @@ export async function searchZLibrary(
     const searchUrl = `https://${domain}/s/${encodeURIComponent(query)}`;
 
     const headers: Record<string, string> = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Accept': 'text/html,application/xhtml+xml',
     };
 
@@ -137,7 +117,7 @@ export async function searchZLibrary(
       headers['Cookie'] = `remix_userid=${config.remix_userid}; remix_userkey=${config.remix_userkey}`;
     }
 
-    const response = await fetch(searchUrl, { headers, signal: AbortSignal.timeout(15000) });
+    const response = await sourceFetch('zlibrary', searchUrl, { headers, signal: AbortSignal.timeout(15000) });
 
     if (!response.ok) {
       console.warn(`Z-Library search failed: ${response.status}`);
@@ -224,12 +204,9 @@ export async function authenticateZLibrary(
   try {
     const loginUrl = `https://${ZLIB_LOGIN_DOMAIN}/rpc.php`;
 
-    const response = await fetch(loginUrl, {
+    const response = await sourceFetch('zlibrary', loginUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         isModal: 'true',
         email,
@@ -328,6 +305,24 @@ function findZlibraryDownloadPath(html: string): string | null {
 }
 
 /**
+ * Z-Library's free tier allows a handful of downloads a day, and when that
+ * allowance is spent the detail page simply renders the limit notice where
+ * the download button would be. There is no status code to go on, so this
+ * is a phrase match — deliberately checked only when no download link was
+ * found, so a page that has a button is never second-guessed by it.
+ */
+const ZLIBRARY_LIMIT_PHRASES = [
+  /daily (?:download )?limit/i,
+  /download limit (?:has been )?(?:reached|exceeded)/i,
+  /you have reached your (?:daily )?limit/i,
+  /limit of \d+ downloads/i,
+];
+
+function looksLikeZlibraryLimitPage(html: string): boolean {
+  return ZLIBRARY_LIMIT_PHRASES.some((phrase) => phrase.test(html));
+}
+
+/**
  * Resolve a book's real download link via Z-Library.
  *
  * Unlike LibGen and Anna's Archive, a Z-Library search result's
@@ -347,14 +342,23 @@ export async function resolveZlibraryDownload(id: string): Promise<ResolvedDownl
   const detailUrl = `https://${domain}/book/${id}`;
   const cookie = `remix_userid=${session.remix_userid}; remix_userkey=${session.remix_userkey}`;
 
-  const response = await fetch(detailUrl, {
+  const response = await sourceFetch('zlibrary', detailUrl, {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Accept': 'text/html,application/xhtml+xml',
       'Cookie': cookie,
     },
     signal: AbortSignal.timeout(15000),
   });
+
+  // A 429 here is the account's allowance, not this book's page: every other
+  // queued Z-Library download would get the same answer, so it becomes a
+  // deadline for the source rather than a failure for this task (E1-6).
+  if (response.status === 429) {
+    throw new SourceLimitReachedError(
+      'zlibrary',
+      parseRetryAfter(response.headers.get('retry-after')) ?? defaultLimitMs('zlibrary')
+    );
+  }
 
   if (!response.ok) {
     console.warn(`Z-Library detail page failed for book ${id}: ${response.status}`);
@@ -368,6 +372,11 @@ export async function resolveZlibraryDownload(id: string): Promise<ResolvedDownl
 
   const downloadPath = findZlibraryDownloadPath(html);
   if (!downloadPath) {
+    // No button and a limit notice in its place: the quota is spent, which
+    // is a wait rather than a parse failure.
+    if (looksLikeZlibraryLimitPage(html)) {
+      throw new SourceLimitReachedError('zlibrary', defaultLimitMs('zlibrary'));
+    }
     console.error(`Could not find a download link on the Z-Library detail page for book ${id}`);
     return [];
   }
@@ -378,6 +387,7 @@ export async function resolveZlibraryDownload(id: string): Promise<ResolvedDownl
     const candidate = await probeDownloadUrl(downloadUrl, {
       headers: { 'Cookie': cookie, 'Referer': detailUrl },
       fallbackFilename: `zlibrary-${id}.epub`,
+      source: 'zlibrary',
     });
     return candidate ? [candidate] : [];
   } catch (error) {

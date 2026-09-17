@@ -1,8 +1,9 @@
 import { describe, it, beforeEach, afterEach, after, mock } from 'node:test';
 import assert from 'node:assert';
-import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync, readFileSync, statSync } from 'fs';
+import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync, readFileSync, readdirSync, statSync } from 'fs';
 import { join, dirname } from 'path';
 import { tmpdir } from 'os';
+import { createHash } from 'crypto';
 
 // The download handler's static import of the LibGen client must be mocked
 // before that module is ever loaded (a dynamic `import()` further down still
@@ -40,11 +41,27 @@ class MockLinkBrokenError extends Error {
   }
 }
 
-/** Same shape as the real `DownloadLimitReachedError` from streaming-download.ts. */
+/**
+ * Same shape as the real `DownloadLimitReachedError` from
+ * streaming-download.ts, including the `retryAfterMs` it carries when the
+ * 429 came with a `Retry-After` header (E1-6).
+ */
 class MockDownloadLimitReachedError extends Error {
-  constructor(readonly host: string) {
+  constructor(readonly host: string, readonly retryAfterMs: number | null = null) {
     super(`Download limit reached for ${host}`);
     this.name = 'DownloadLimitReachedError';
+  }
+}
+
+/** Same shape as the real `FileVerificationError` from streaming-download.ts (E1-5). */
+class MockFileVerificationError extends Error {
+  constructor(
+    readonly link: string,
+    readonly reason: 'truncated' | 'wrong-file-type' | 'md5-mismatch',
+    message: string
+  ) {
+    super(message);
+    this.name = 'FileVerificationError';
   }
 }
 
@@ -90,6 +107,13 @@ let downloadChunkSize = 4;
 let downloadFailure: Error | null = null;
 
 /**
+ * When set, the mock's first attempt writes only half of `downloadContent` —
+ * a mirror that hangs up mid-file. The bytes that land are then checked
+ * against `verify.md5` below, exactly as the real `downloadToFile` does.
+ */
+let downloadTruncateFirstAttempt = false;
+
+/**
  * When set, `downloadFailure` is only thrown on the download's first attempt
  * — later attempts (a fallback to the next mirror) stream to completion. Lets
  * a test simulate "this mirror is dead, the next one works".
@@ -113,26 +137,52 @@ const mockResolveLibgenDownloads = mock.fn(async (_md5: string) => {
 
 const mockDownloadToFile = mock.fn(
   async (
-    resolved: { size: number | null },
+    resolved: { url?: string; size: number | null },
     destination: string,
-    options: { onProgress?: (bytes: number, total: number | null) => void } = {}
+    options: {
+      onProgress?: (bytes: number, total: number | null) => void;
+      verify?: { md5?: string | null; extension?: string | null };
+    } = {}
   ) => {
     downloadAttemptCount += 1;
     const isFirstAttempt = downloadAttemptCount === 1;
 
     mkdirSync(dirname(destination), { recursive: true });
 
+    // A mirror that hangs up mid-file serves only part of what it promised.
+    const content =
+      downloadTruncateFirstAttempt && isFirstAttempt
+        ? downloadContent.subarray(0, Math.floor(downloadContent.length / 2))
+        : downloadContent;
+
     let written = 0;
-    for (let offset = 0; offset < downloadContent.length; offset += downloadChunkSize) {
-      const chunk = downloadContent.subarray(offset, offset + downloadChunkSize);
+    for (let offset = 0; offset < content.length; offset += downloadChunkSize) {
+      const chunk = content.subarray(offset, offset + downloadChunkSize);
       writeFileSync(destination, chunk, { flag: 'a' });
       written += chunk.length;
       options.onProgress?.(written, resolved.size);
       onChunkWritten?.();
 
       const shouldFailThisAttempt = downloadFailOnlyFirstAttempt ? isFirstAttempt : true;
-      if (downloadFailure && shouldFailThisAttempt && written >= downloadContent.length / 2) {
+      if (downloadFailure && shouldFailThisAttempt && written >= content.length / 2) {
         throw downloadFailure;
+      }
+    }
+
+    // Stands in for the real function's streaming hash check (E1-5) — the
+    // hashing itself is tested against the real implementation in
+    // streaming-download.test.ts; what matters here is that the handler
+    // passed an expected md5 down and copes with the error that comes back.
+    const expectedMd5 = options.verify?.md5;
+    if (expectedMd5) {
+      const digest = createHash('md5').update(content).digest('hex');
+      if (digest !== expectedMd5.toLowerCase()) {
+        rmSync(destination, { force: true });
+        throw new MockFileVerificationError(
+          resolved.url ?? 'unknown',
+          written < downloadContent.length ? 'truncated' : 'md5-mismatch',
+          `File hashes to ${digest}, expected ${expectedMd5}`
+        );
       }
     }
 
@@ -211,6 +261,7 @@ mock.module('@shelvarr/services/downloads/libgen', {
     downloadToFile: mockDownloadToFile,
     LinkBrokenError: MockLinkBrokenError,
     DownloadLimitReachedError: MockDownloadLimitReachedError,
+    FileVerificationError: MockFileVerificationError,
     // Not used by any test in this file, but `downloads/index.ts` (E4-2 pulled
     // in via handlers.ts's `searchAllSources` import) re-exports these from
     // this same module, so a full mock of the module has to provide them too
@@ -254,7 +305,9 @@ if (canRunTests) {
     claimStalledBookDownloads,
     bookBlocklistContains,
     addToBookBlocklist,
+    getBookBlocklist,
   } = await import('../../lib/db/index.js');
+  const { getSourceLimit } = await import('../../lib/services/downloads/source-limits.js');
   const {
     registerTaskHandler,
     enqueueTask,
@@ -649,6 +702,10 @@ if (canRunTests) {
       execute('DELETE FROM book_downloads', []);
       execute('DELETE FROM book_download_history', []);
       execute('DELETE FROM settings', []);
+      // A source deferral outlives the task that caused it (that is the whole
+      // point of E1-6), so it has to be cleared here or the first test to
+      // record one would gate every download test after it.
+      execute('DELETE FROM source_limits', []);
 
       // Create test library
       testLibPath = join(testDir, 'test-lib');
@@ -673,6 +730,7 @@ if (canRunTests) {
       downloadChunkSize = 4;
       downloadFailure = null;
       downloadFailOnlyFirstAttempt = false;
+      downloadTruncateFirstAttempt = false;
       downloadAttemptCount = 0;
       onChunkWritten = null;
       execute('DELETE FROM book_blocklist', []);
@@ -1165,6 +1223,158 @@ if (canRunTests) {
         });
       });
 
+      // E1-6. Z-Library's free tier allows a handful of downloads a day and
+      // Anna's is a waitlist: a spent quota is a fact about the source, not
+      // about the task that happened to discover it. These check that the
+      // discovery defers rather than fails, that it is remembered, and that
+      // it stops the rest of the queue walking into the same wall — without
+      // stopping a different source.
+      describe('per-source daily limits (E1-6)', () => {
+        /** A 429 carrying `Retry-After: 3600`, as the real downloader would report it. */
+        const rateLimitedIn = (ms: number) =>
+          new MockDownloadLimitReachedError('zlib.example', ms);
+
+        async function runZlibraryDownload(md5: string, title: string): Promise<number> {
+          const task = createTask('download', {
+            source: 'zlibrary',
+            md5,
+            title,
+            author: 'Limited Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(task.id);
+          return task.id;
+        }
+
+        it('defers the download instead of failing it, and keeps the partial file', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          downloadFailure = rateLimitedIn(3_600_000);
+
+          const taskId = await runZlibraryDownload('limit-1', 'Quota Book');
+
+          // The task goes back to pending for the retry queue, not to failed.
+          const task = getTask(taskId);
+          assert.strictEqual(task?.status, 'pending');
+          assert.ok(task?.error?.includes('Rate limited'), task?.error ?? 'no error recorded');
+          assert.ok(task?.error?.includes('Z-Library'), task?.error ?? 'no error recorded');
+
+          // And so does the download row — still queued, not failed, with no
+          // history row written for a download that hasn't finished.
+          const download = getBookDownloads({ libraryId: 1 })[0]!;
+          assert.strictEqual(download.state, 'queued');
+
+          // The bytes that did arrive are left on disk to resume from.
+          const partial = join(testLibPath, 'Limited Author - Quota Book.epub.partial');
+          assert.ok(existsSync(partial), 'the partial file should survive a deferral');
+
+          // The deadline the host asked for is recorded against the source.
+          const limit = getSourceLimit('zlibrary');
+          assert.ok(limit, 'a source limit should have been recorded');
+          assert.ok(limit.retryAfterMs > 3_000_000, `retryAfterMs was ${limit.retryAfterMs}`);
+
+          cancelTask(taskId);
+        });
+
+        it('stops everything else from that source before the deadline', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          downloadFailure = rateLimitedIn(3_600_000);
+          const firstId = await runZlibraryDownload('limit-2', 'First Book');
+
+          // The next book in the queue is fine, the source is not: it must
+          // defer without spending a single request finding that out.
+          downloadFailure = null;
+          mockResolveZlibraryDownload.mock.resetCalls();
+          mockDownloadToFile.mock.resetCalls();
+
+          const secondId = await runZlibraryDownload('limit-3', 'Second Book');
+
+          assert.strictEqual(
+            mockResolveZlibraryDownload.mock.calls.length,
+            0,
+            'a deferred source must not be contacted at all'
+          );
+          assert.strictEqual(mockDownloadToFile.mock.calls.length, 0);
+
+          const second = getTask(secondId);
+          assert.strictEqual(second?.status, 'pending');
+          assert.ok(second?.error?.includes('rate limited'), second?.error ?? 'no error recorded');
+
+          cancelTask(firstId);
+          cancelTask(secondId);
+        });
+
+        it('keeps working on other sources while one is waiting', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          downloadFailure = rateLimitedIn(3_600_000);
+          const deferredId = await runZlibraryDownload('limit-4', 'Waiting Book');
+
+          downloadFailure = null;
+          const libgenTask = createTask('download', {
+            source: 'libgen',
+            md5: 'abc123',
+            title: 'Unaffected Book',
+            author: 'Other Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(libgenTask.id);
+
+          assert.strictEqual(getTask(libgenTask.id)?.status, 'completed');
+          assert.strictEqual(getTask(deferredId)?.status, 'pending');
+
+          cancelTask(deferredId);
+        });
+
+        it('waits out a LibGen limit only once every mirror has refused', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          // LibGen has no daily quota — a limit on one mirror is worth trying
+          // the next for, which is the opposite of the quota sources above.
+          const first: MockResolvedLink = {
+            url: 'https://libgen-1.example/get.php?md5=busy',
+            filename: 'busy-book.epub',
+            size: DEFAULT_CONTENT.length,
+            supportsRange: false,
+            contentType: 'application/epub+zip',
+          };
+          const second: MockResolvedLink = {
+            url: 'https://libgen-2.example/get.php?md5=busy',
+            filename: 'busy-book.epub',
+            size: DEFAULT_CONTENT.length,
+            supportsRange: false,
+            contentType: 'application/epub+zip',
+          };
+          resolvedDownloadList = [first, second];
+          downloadFailure = new MockDownloadLimitReachedError('libgen-1.example', 60_000);
+          downloadFailOnlyFirstAttempt = true;
+
+          const task = createTask('download', {
+            source: 'libgen',
+            md5: 'busy',
+            title: 'Busy Mirror Book',
+            author: 'Busy Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(task.id);
+
+          assert.strictEqual(getTask(task.id)?.status, 'completed');
+          assert.strictEqual(mockDownloadToFile.mock.calls.length, 2);
+          // A rate-limited mirror is not a dead one: nothing is blocklisted,
+          // and nothing is waited out, because the second mirror worked.
+          assert.ok(!bookBlocklistContains(first.url));
+          assert.strictEqual(getSourceLimit('libgen'), null);
+        });
+      });
+
       it('should not overwrite a book you already have — it saves the new download under a numbered suffix', async () => {
         const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
         registerAllHandlers();
@@ -1574,6 +1784,154 @@ if (canRunTests) {
             (mockDownloadToFile.mock.calls[1]!.arguments[0] as MockResolvedLink).url,
             mirrors[2]!.url
           );
+        });
+      });
+
+      describe('file verification (E1-5)', () => {
+        /** The file the md5 in the search result actually describes. */
+        const REAL_EPUB = Buffer.concat([
+          Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+          Buffer.from('a whole and entire book'),
+        ]);
+        const REAL_MD5 = createHash('md5').update(REAL_EPUB).digest('hex');
+
+        const verifyMirrors: MockResolvedLink[] = [
+          {
+            url: 'https://libgen.example/get.php?md5=verified&key=one',
+            filename: 'verified-book.epub',
+            size: REAL_EPUB.length,
+            supportsRange: false,
+            contentType: 'application/epub+zip',
+          },
+          {
+            url: 'https://libgen2.example/get.php?md5=verified&key=two',
+            filename: 'verified-book.epub',
+            size: REAL_EPUB.length,
+            supportsRange: false,
+            contentType: 'application/epub+zip',
+          },
+        ];
+
+        it('hands the search result’s md5 and extension down to the downloader', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          resolvedDownloadList = verifyMirrors;
+          downloadContent = REAL_EPUB;
+
+          const task = createTask('download', {
+            source: 'libgen',
+            md5: REAL_MD5,
+            title: 'Verified Book',
+            author: 'Verified Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(task.id);
+
+          assert.strictEqual(getTask(task.id)?.status, 'completed');
+          const options = mockDownloadToFile.mock.calls[0]!.arguments[2] as {
+            verify?: { md5?: string | null; extension?: string | null };
+          };
+          assert.deepStrictEqual(options.verify, { md5: REAL_MD5, extension: 'epub' });
+        });
+
+        it('discards a truncated file, blocklists that mirror, and takes the next one', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          // The first mirror hangs up halfway through. Before E1-5 those
+          // bytes were moved into the library and imported as a book.
+          resolvedDownloadList = verifyMirrors;
+          downloadContent = REAL_EPUB;
+          downloadTruncateFirstAttempt = true;
+
+          const task = createTask('download', {
+            source: 'libgen',
+            md5: REAL_MD5,
+            title: 'Verified Book',
+            author: 'Verified Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(task.id);
+
+          assert.strictEqual(getTask(task.id)?.status, 'completed');
+          assert.strictEqual(mockDownloadToFile.mock.calls.length, 2);
+
+          // The mirror that served the short read is blocklisted under its
+          // own reason — it answered, it just answered with rubbish.
+          assert.ok(bookBlocklistContains(verifyMirrors[0]!.url));
+          assert.strictEqual(
+            getBookBlocklist().find((entry) => entry.downloadUrl === verifyMirrors[0]!.url)?.reason,
+            'failed-verification'
+          );
+
+          // What landed in the library is the whole file, from mirror two.
+          const download = getBookDownloads({ libraryId: 1 })[0]!;
+          assert.strictEqual(download.state, 'completed');
+          assert.deepStrictEqual(readFileSync(download.filePath!), REAL_EPUB);
+        });
+
+        it('fails the download outright when every mirror serves the wrong file', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          resolvedDownloadList = verifyMirrors;
+          // Every mirror serves a complete file — just not this book.
+          downloadContent = Buffer.concat([
+            Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+            Buffer.from('somebody else’s book entirely'),
+          ]);
+
+          const before = (readdirSync(testLibPath, { recursive: true }) as string[]).sort();
+
+          const task = createTask('download', {
+            source: 'libgen',
+            md5: REAL_MD5,
+            title: 'Verified Book',
+            author: 'Verified Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(task.id);
+
+          assert.strictEqual(getTask(task.id)?.status, 'failed');
+          assert.strictEqual(mockDownloadToFile.mock.calls.length, 2);
+          for (const mirror of verifyMirrors) {
+            assert.ok(bookBlocklistContains(mirror.url));
+          }
+          assert.ok(bookBlocklistContains(`libgen:${REAL_MD5}`));
+
+          // Nothing was left behind in the library — neither a finished file
+          // nor the `.partial` it streamed to. (Tests in this suite share the
+          // library directory, so the check is that it is unchanged.)
+          assert.deepStrictEqual(
+            (readdirSync(testLibPath, { recursive: true }) as string[]).sort(),
+            before
+          );
+          assert.strictEqual(getBookDownloads({ libraryId: 1 })[0]!.state, 'failed');
+        });
+
+        it('expects no hash from Z-Library, whose identifier is a numeric book id', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          const task = createTask('download', {
+            source: 'zlibrary',
+            md5: '12345678',
+            title: 'Z Book',
+            author: 'Z Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(task.id);
+
+          assert.strictEqual(getTask(task.id)?.status, 'completed');
+          const options = mockDownloadToFile.mock.calls[0]!.arguments[2] as {
+            verify?: { md5?: string | null; extension?: string | null };
+          };
+          assert.deepStrictEqual(options.verify, { md5: null, extension: 'epub' });
         });
       });
     });
