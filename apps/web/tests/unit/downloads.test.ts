@@ -496,6 +496,54 @@ describe('Download Services', () => {
         assert.strictEqual(results[0]?.url, 'https://annas.example/download/fallback');
       });
 
+      // E1-6: Anna's free tier is a waitlist and its member tier has a daily
+      // fast-download allowance. Either way a 429 is the source saying no to
+      // everything, so it defers the whole source rather than failing a book.
+      it('throws SourceLimitReachedError when the free detail page answers 429', async () => {
+        const { SourceLimitReachedError } = await import(
+          '../../lib/services/downloads/source-limits.js'
+        );
+        const db = await import('../../lib/db/index.js');
+        db.upsertDownloadSourceConfig('annas', true, undefined);
+
+        mockFetch.mock.mockImplementation(async () =>
+          new Response('', { status: 429, headers: new Headers({ 'retry-after': '900' }) })
+        );
+
+        await assert.rejects(
+          () => annas.resolveAnnasDownload('abc123'),
+          (err: unknown) =>
+            err instanceof SourceLimitReachedError &&
+            err.source === 'annas' &&
+            err.retryAfterMs === 900_000
+        );
+      });
+
+      it('does not fall back to the free path when the member API allowance is spent', async () => {
+        const { SourceLimitReachedError } = await import(
+          '../../lib/services/downloads/source-limits.js'
+        );
+        const db = await import('../../lib/db/index.js');
+        db.upsertDownloadSourceConfig('annas', true, { apiKey: 'secret-key' });
+
+        let scrapedDetailPage = false;
+        mockFetch.mock.mockImplementation(async (url: string) => {
+          if (url.includes('fast_download.json')) return new Response('', { status: 429 });
+          scrapedDetailPage = true;
+          return new Response('', { status: 200 });
+        });
+
+        await assert.rejects(
+          () => annas.resolveAnnasDownload('abc123'),
+          (err: unknown) => err instanceof SourceLimitReachedError
+        );
+        assert.strictEqual(
+          scrapedDetailPage,
+          false,
+          'the free path is the same account queueing behind the same limit'
+        );
+      });
+
       it('throws SourceBlockedError when a candidate is a bot-check challenge page', async () => {
         const db = await import('../../lib/db/index.js');
         db.upsertDownloadSourceConfig('annas', true, undefined);
@@ -1455,6 +1503,60 @@ describe('Download Services', () => {
           () => zlib.resolveZlibraryDownload('1'),
           (err: unknown) => err instanceof SourceBlockedError
         );
+      });
+
+      // E1-6: the free tier's daily allowance. Both shapes it arrives in are
+      // a wait, not a failure — they say the account is spent, which is true
+      // of every other queued Z-Library download too.
+      it('throws SourceLimitReachedError on a 429, honouring Retry-After', async () => {
+        const { SourceLimitReachedError } = await import(
+          '../../lib/services/downloads/source-limits.js'
+        );
+        const db = await import('../../lib/db/index.js');
+        db.upsertDownloadSourceConfig('zlibrary', true, { remix_userid: '1', remix_userkey: 'key' });
+
+        mockFetch.mock.mockImplementation(async () =>
+          new Response('', { status: 429, headers: new Headers({ 'retry-after': '1800' }) })
+        );
+
+        await assert.rejects(
+          () => zlib.resolveZlibraryDownload('1'),
+          (err: unknown) =>
+            err instanceof SourceLimitReachedError &&
+            err.source === 'zlibrary' &&
+            err.retryAfterMs === 1_800_000
+        );
+      });
+
+      it('reads the daily-limit notice that replaces the download button', async () => {
+        const { SourceLimitReachedError } = await import(
+          '../../lib/services/downloads/source-limits.js'
+        );
+        const db = await import('../../lib/db/index.js');
+        db.upsertDownloadSourceConfig('zlibrary', true, { remix_userid: '1', remix_userkey: 'key' });
+
+        mockFetch.mock.mockImplementation(async () =>
+          new Response(
+            '<html><body><div class="notification">You have reached your daily download limit</div></body></html>',
+            { status: 200 }
+          )
+        );
+
+        await assert.rejects(
+          () => zlib.resolveZlibraryDownload('1'),
+          (err: unknown) => err instanceof SourceLimitReachedError && err.retryAfterMs > 0
+        );
+      });
+
+      it('still reports a page with no download link and no limit notice as simply unresolved', async () => {
+        const db = await import('../../lib/db/index.js');
+        db.upsertDownloadSourceConfig('zlibrary', true, { remix_userid: '1', remix_userkey: 'key' });
+
+        mockFetch.mock.mockImplementation(async () =>
+          new Response('<html><body><p>Some other page entirely</p></body></html>', { status: 200 })
+        );
+
+        assert.strictEqual((await zlib.resolveZlibraryDownload('1')).length, 0);
       });
     });
   });

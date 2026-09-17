@@ -19,6 +19,8 @@ import {
   probeDownloadUrl,
   type ResolvedDownload,
 } from '../utils/streaming-download';
+import { parseRetryAfter } from '../utils/pacing';
+import { SourceLimitReachedError, defaultLimitMs } from './source-limits';
 
 // Re-exported so callers (and tests) can reach the download surface through
 // this one module boundary, the same way they already do for search.
@@ -328,6 +330,24 @@ function findZlibraryDownloadPath(html: string): string | null {
 }
 
 /**
+ * Z-Library's free tier allows a handful of downloads a day, and when that
+ * allowance is spent the detail page simply renders the limit notice where
+ * the download button would be. There is no status code to go on, so this
+ * is a phrase match — deliberately checked only when no download link was
+ * found, so a page that has a button is never second-guessed by it.
+ */
+const ZLIBRARY_LIMIT_PHRASES = [
+  /daily (?:download )?limit/i,
+  /download limit (?:has been )?(?:reached|exceeded)/i,
+  /you have reached your (?:daily )?limit/i,
+  /limit of \d+ downloads/i,
+];
+
+function looksLikeZlibraryLimitPage(html: string): boolean {
+  return ZLIBRARY_LIMIT_PHRASES.some((phrase) => phrase.test(html));
+}
+
+/**
  * Resolve a book's real download link via Z-Library.
  *
  * Unlike LibGen and Anna's Archive, a Z-Library search result's
@@ -356,6 +376,16 @@ export async function resolveZlibraryDownload(id: string): Promise<ResolvedDownl
     signal: AbortSignal.timeout(15000),
   });
 
+  // A 429 here is the account's allowance, not this book's page: every other
+  // queued Z-Library download would get the same answer, so it becomes a
+  // deadline for the source rather than a failure for this task (E1-6).
+  if (response.status === 429) {
+    throw new SourceLimitReachedError(
+      'zlibrary',
+      parseRetryAfter(response.headers.get('retry-after')) ?? defaultLimitMs('zlibrary')
+    );
+  }
+
   if (!response.ok) {
     console.warn(`Z-Library detail page failed for book ${id}: ${response.status}`);
     return [];
@@ -368,6 +398,11 @@ export async function resolveZlibraryDownload(id: string): Promise<ResolvedDownl
 
   const downloadPath = findZlibraryDownloadPath(html);
   if (!downloadPath) {
+    // No button and a limit notice in its place: the quota is spent, which
+    // is a wait rather than a parse failure.
+    if (looksLikeZlibraryLimitPage(html)) {
+      throw new SourceLimitReachedError('zlibrary', defaultLimitMs('zlibrary'));
+    }
     console.error(`Could not find a download link on the Z-Library detail page for book ${id}`);
     return [];
   }

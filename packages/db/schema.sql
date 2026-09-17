@@ -137,6 +137,20 @@ CREATE TABLE IF NOT EXISTS source_status_cache (
   last_updated TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Daily limits and rate limits a download source is currently waiting out
+-- (E1-6). One row per source while it is spent; the row is deleted once the
+-- deadline passes. Kept in the database rather than in memory so a restart
+-- mid-wait doesn't hand the whole queue back a quota it has already spent —
+-- the same reasoning as tasks.not_before.
+CREATE TABLE IF NOT EXISTS source_limits (
+  source TEXT PRIMARY KEY, -- libgen, annas, zlibrary, getcomics
+  -- Naked-UTC timestamp (see the Timestamps note in packages/db/src/index.ts)
+  -- before which nothing from this source should be downloaded.
+  retry_after TEXT NOT NULL,
+  reason TEXT,
+  recorded_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Read progress (page-based, for the reader API)
 --
 -- user_id 0 is the shared shelf: it is what a server with accounts switched

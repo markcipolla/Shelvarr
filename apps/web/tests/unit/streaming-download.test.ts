@@ -148,6 +148,28 @@ describe('downloadToFile', () => {
     );
   });
 
+  it('carries the Retry-After the host asked for, so the source can be deferred for that long', async () => {
+    queueResponse('', { status: 429, headers: { 'Retry-After': '3600' } });
+    const destination = join(workDir, 'book.epub');
+
+    await assert.rejects(
+      () => downloadToFile(resolved(), destination),
+      (error: unknown) =>
+        error instanceof DownloadLimitReachedError && error.retryAfterMs === 3_600_000
+    );
+  });
+
+  it('reports no Retry-After rather than inventing one, leaving the wait to the source policy', async () => {
+    queueResponse('', { status: 429 });
+    const destination = join(workDir, 'book.epub');
+
+    await assert.rejects(
+      () => downloadToFile(resolved(), destination),
+      (error: unknown) =>
+        error instanceof DownloadLimitReachedError && error.retryAfterMs === null
+    );
+  });
+
   it('throws LinkBrokenError when the server refuses the request', async () => {
     queueResponse('', { status: 404 });
     const destination = join(workDir, 'book.epub');

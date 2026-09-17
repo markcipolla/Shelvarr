@@ -139,6 +139,43 @@ working on other sources.
 
 **Depends on:** E2-1. **Mirrors:** the comic `DownloadLimitReachedError` work.
 
+**Shipped 2026-09-17.** `downloads/source-limits.ts` is the new home for
+everything a source-wide limit implies: a `SourceLimitReachedError` and a
+`SourceBusyError` the queue *defers* on (`deferralDelay` feeds
+`rateLimitDelay`, so the task goes back to `pending` with its own deadline
+rather than the flat 10-second one), a deadline recorded in a new
+`source_limits` table, a concurrency cap of one per source, and per-source
+pacing via `paceSource`/`parseRetryAfter`, added to `utils/pacing.ts`.
+`downloadToFile` now carries the 429's `Retry-After` on
+`DownloadLimitReachedError`; `downloadBookWithFallback` runs inside the
+source's gate and turns that into the source's deadline — immediately for a
+daily-quota source (Anna's, Z-Library), and only once every mirror has
+refused for LibGen, which is merely busy rather than spent. A deferred book
+download goes back to `queued` with its partial file intact and no history
+row, and the wanted book stays `searching`, because it is still in flight.
+The resolvers recognise the quota themselves too: a 429 from Anna's detail
+page or `fast_download.json` (which no longer falls through to the free path
+— same account, same limit), and from Z-Library either a 429 or the
+daily-limit notice that replaces the download button.
+
+Deadlines live in the database, so, as with E6-2's `not_before`, a restart
+mid-wait doesn't hand the queue back a spent quota; nothing needs rebuilding
+at boot because the deadline is read at the point of use, and
+`rebuildRetryQueueFromDatabase` just sweeps expired rows on the way past.
+Two things were fixed alongside: the retry processor now waits in slices
+instead of sleeping the whole way to the soonest deadline (a 12-hour source
+deferral would otherwise have head-of-line-blocked a 10-second one behind
+it), and a rate-limited mirror is no longer blocklisted as a dead link.
+
+Still open: comics still use their own per-task `DownloadLimitReachedError`
+backoff rather than this (the machinery is source-keyed and `getcomics` has
+a policy here, so adopting it is small, but it is not this card); a 429 seen
+while *probing* a candidate is still invisible, because `fetchProbe` reports
+any non-2xx as "this candidate didn't work"; Anna's waitlist countdown is
+only read when it comes with a `Retry-After` or a 429, not parsed off the
+page; and there is no Settings UI for a limit in force — it shows up only as
+the deferred task's error text.
+
 ### E1-7 · Let me put these sources behind a proxy, and keep my password out of the database
 **Size M.** Two related gaps:
 - Many ISPs DNS-block these domains outright. There's no proxy setting

@@ -32,6 +32,7 @@ export * as queueHandlers from './queue/handlers';
 export * as scheduler from './queue/scheduler';
 export * as downloads from './downloads/index';
 export * as sourceStatus from './downloads/source-status';
+export * as sourceLimits from './downloads/source-limits';
 export * as bookDownloadEvents from './downloads/download-events';
 
 // API response adapters
@@ -62,5 +63,5 @@ export { getReadingUserId, SHARED_USER_ID } from './reading-user';
 export * as authors from './utils/authors';
 export * as logger from './utils/logger';
 export * as sanitize from './utils/sanitize';
-export { pace } from './utils/pacing';
+export { pace, paceSource, parseRetryAfter } from './utils/pacing';
 export * from './constants';
