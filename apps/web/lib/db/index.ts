@@ -24,6 +24,8 @@ export {
   getDownloadSourceConfigs,
   getDownloadSourceConfig,
   upsertDownloadSourceConfig,
+  getSourceNetworkSettings,
+  setSourceNetworkSettings,
   isSourceEnabled,
   DEFAULT_SOURCE_MIRRORS,
   MIRRORED_SOURCES,

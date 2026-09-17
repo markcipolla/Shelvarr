@@ -241,6 +241,47 @@ credentials at rest with a key derived from a value in the data directory.
 **Acceptance:** a configured proxy is used for that source's requests only;
 existing plaintext credentials are migrated on first read.
 
+**Shipped 2026-09-17.** `download_source_config` gained `proxy_url` and
+`user_agent`, both per source, both editable under Settings → Download
+Sources (every source card now expands to a Network section; a proxied source
+is badged in the header).
+
+Secrets are encrypted at rest with AES-256-GCM, keyed by HKDF from a random
+32-byte seed in `<dataDir>/.secret-key` (mode 0600, created atomically with
+`wx` so racing server processes agree). Values carry an `enc.v1.` prefix, so
+the read path recognises a plaintext row, hands the caller what it asked for,
+and rewrites the row encrypted in place — a live database upgrades on first
+read with nothing to run. `proxy_url` is encrypted too, since it can carry
+`user:pass@`. A value that will not decrypt (key lost) reads as "no
+credentials" and is left on disk rather than throwing. `getDownloadConfigs`
+now redacts credentials before they leave the server, which they previously
+did not: the settings page only ever needed "is this configured".
+
+The proxy client is written against Node's `net`/`tls`/`http`/`https` — **no
+new dependency**, deliberately, given E6-4. Both proxy families end in a
+connected socket, which `http.request({ createConnection })` will speak HTTP
+over, so only the tunnel setup is proxy-specific: HTTP CONNECT (with Basic
+proxy auth), SOCKS5 (RFC 1928 + 1929 user/pass), SOCKS4/4a. A plain-http
+target through an http proxy uses absolute-URI forwarding instead, since many
+proxies only allow CONNECT to 443. `proxyFetch` covers what the callers use:
+GET/POST/HEAD, string/`URLSearchParams`/buffer bodies, redirect following,
+abort signals and gzip/deflate/br. A source with no proxy set never touches
+any of it and stays on the global `fetch`.
+
+The six copies of the hardcoded User-Agent are gone; every source request now
+goes through `utils/source-http.ts`, which resolves that source's User-Agent
+and proxy on each call. LibGen/Anna's/Z-Library mirrors (`libgen_vg`,
+`annas_li`, `zlib_gl`) share their parent source's settings, which is the
+point — a mirror list exists because individual domains get blocked.
+
+**Left open:** the CONNECT handshake is tested directly, but there is no test
+of an https origin end-to-end through a proxy, which would need a TLS origin
+and a certificate fixture. `proxyFetch` is HTTP/1.1 only (the global `fetch`
+keeps h2 for unproxied requests) and rejects streaming request bodies, which
+nothing sends. There is no "test this proxy" button in Settings — a bad proxy
+URL is rejected at save time by the parser, but an unreachable one only shows
+up on the next request.
+
 ### E1-8 · Ask before searching a shadow library, rather than assuming
 **Size S.** `isSourceEnabled` (`packages/db/src/index.ts:766`) returns `true`
 for any source with no config row. A fresh install therefore queries LibGen,

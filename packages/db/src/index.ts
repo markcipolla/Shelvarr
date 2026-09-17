@@ -35,11 +35,14 @@ import type {
   Session,
   AuthClient,
   AuthenticatedSession,
+  SourceNetworkSettings,
 } from '@shelvarr/types';
 
 import { uniqueComicSlug } from './comic-slug';
+import { decryptSecret, encryptSecret, initSecrets, isEncrypted } from './secrets';
 
 export { slugify, baseComicSlug, uniqueComicSlug } from './comic-slug';
+export { encryptSecret, decryptSecret, isEncrypted, initSecrets, resetSecretsCache, secretKeyPath } from './secrets';
 
 // ---------------------------------------------------------------------------
 // Timestamps
@@ -154,14 +157,28 @@ function withBusyRetry<T>(fn: () => T): T {
   }
 }
 
+export interface InitDatabaseOptions {
+  /**
+   * The data directory, for anything that lives beside the database rather
+   * than in it — currently just the key that encrypts stored secrets. Defaults
+   * to the directory holding `dbPath`.
+   */
+  dataDir?: string;
+}
+
 /**
  * Initialize the database connection and run migrations
  */
-export function initDatabase(dbPath: string): Database.Database {
+export function initDatabase(dbPath: string, options: InitDatabaseOptions = {}): Database.Database {
   try {
     // Ensure data directory exists
     const dbDir = dirname(dbPath);
     mkdirSync(dbDir, { recursive: true });
+
+    // Where the key that encrypts stored secrets lives. Injected by the caller
+    // (apps/web hands over `config.dataDir`); the directory holding the
+    // database is the right answer for every other caller, including tests.
+    initSecrets(options.dataDir ?? dbDir);
 
     console.log(`Opening SQLite database at: ${dbPath}`);
 
@@ -267,6 +284,18 @@ function runMigrations(database: Database.Database): void {
     .run();
   if (staleSettings.changes > 0) {
     console.log(`Running migration: removed ${staleSettings.changes} unused settings`);
+  }
+
+  // Per-source networking: an optional proxy (for ISPs that DNS-block these
+  // domains) and an optional User-Agent override. Both nullable — a source
+  // with neither behaves exactly as it did before.
+  const sourceConfigInfo = database
+    .prepare('PRAGMA table_info(download_source_config)')
+    .all() as Array<{ name: string }>;
+  for (const column of ['proxy_url', 'user_agent']) {
+    if (sourceConfigInfo.some((col) => col.name === column)) continue;
+    console.log(`Running migration: adding ${column} column to download_source_config`);
+    database.exec(`ALTER TABLE download_source_config ADD COLUMN ${column} TEXT`);
   }
 
   // Check if author_works table has 'language' column
@@ -596,7 +625,7 @@ export function getDb(): Database.Database {
   if (!db) {
     const dataDir = process.env['DATA_DIR'] || process.cwd() + '/data';
     const dbPath = process.env['DB_PATH'] || join(dataDir, 'shelvarr.db');
-    initDatabase(dbPath);
+    initDatabase(dbPath, { dataDir });
   }
   return db!;
 }
@@ -829,22 +858,128 @@ export function markWantedBookAsAcquired(
 
 // ============ Download Source Config Functions ============
 
+/**
+ * The columns of `download_source_config` that hold a secret and are therefore
+ * stored encrypted: an account password, an API key, a proxy URL that can
+ * carry `user:pass@`.
+ */
+const ENCRYPTED_SOURCE_COLUMNS = ['credentials', 'proxy_url'] as const;
+
+/**
+ * Hand a row back with its secrets in the clear, migrating any that are still
+ * plaintext.
+ *
+ * Databases in the wild predate encryption, so both shapes have to be readable
+ * and the plaintext one cannot be left where it is. Reading a plaintext value
+ * therefore re-writes it encrypted, in place, before returning it — the caller
+ * sees the same string either way, and the row is only ever migrated once.
+ *
+ * A value that is encrypted but will not open (the key file was lost or
+ * replaced) is reported as null rather than thrown: the operator has to
+ * re-enter their credentials, but nothing else about the app should break, and
+ * the unreadable ciphertext is left alone in case the key comes back.
+ */
+function decodeDownloadSourceRow(row: DownloadSourceConfig): DownloadSourceConfig {
+  const decoded = { ...row };
+
+  for (const column of ENCRYPTED_SOURCE_COLUMNS) {
+    const stored = row[column];
+    if (stored == null || stored === '') continue;
+
+    if (!isEncrypted(stored)) {
+      // Written before this column was encrypted. Migrate on first read.
+      try {
+        execute(`UPDATE download_source_config SET ${column} = ? WHERE id = ?`, [
+          encryptSecret(stored),
+          row.id,
+        ]);
+      } catch (error) {
+        console.warn(`Could not encrypt ${column} for download source ${row.source}:`, error);
+      }
+      decoded[column] = stored;
+      continue;
+    }
+
+    const plaintext = decryptSecret(stored);
+    if (plaintext === null) {
+      console.warn(
+        `Could not decrypt ${column} for download source ${row.source}. ` +
+          `The key in the data directory looks different to the one it was written with.`
+      );
+    }
+    decoded[column] = plaintext;
+  }
+
+  return decoded;
+}
+
 export function getDownloadSourceConfigs(): DownloadSourceConfig[] {
-  return query<DownloadSourceConfig>('SELECT * FROM download_source_config');
+  return query<DownloadSourceConfig>('SELECT * FROM download_source_config').map(decodeDownloadSourceRow);
 }
 
 export function getDownloadSourceConfig(source: string): DownloadSourceConfig | null {
-  return queryOne<DownloadSourceConfig>('SELECT * FROM download_source_config WHERE source = ?', [source]);
+  const row = queryOne<DownloadSourceConfig>('SELECT * FROM download_source_config WHERE source = ?', [source]);
+  return row ? decodeDownloadSourceRow(row) : null;
 }
 
 export function upsertDownloadSourceConfig(source: string, enabled: boolean, credentials?: object): void {
-  const credentialsJson = credentials ? JSON.stringify(credentials) : null;
+  const credentialsJson = credentials ? encryptSecret(JSON.stringify(credentials)) : null;
   execute(
     `INSERT INTO download_source_config (source, enabled, credentials, last_checked)
      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
      ON CONFLICT (source) DO UPDATE SET enabled = ?, credentials = ?, last_checked = CURRENT_TIMESTAMP`,
     [source, enabled ? 1 : 0, credentialsJson, enabled ? 1 : 0, credentialsJson]
   );
+}
+
+/**
+ * Read the proxy and User-Agent a source's HTTP requests should use.
+ *
+ * Deliberately narrow: this is the only thing the HTTP layer needs from the
+ * config row, and keeping it separate means a request path never has to hold
+ * the source's credentials to make a request.
+ */
+export function getSourceNetworkSettings(source: string): SourceNetworkSettings {
+  const config = getDownloadSourceConfig(source);
+  return {
+    proxyUrl: config?.proxy_url || null,
+    userAgent: config?.user_agent || null,
+  };
+}
+
+/**
+ * Set (or clear, with null) a source's proxy and User-Agent.
+ *
+ * Leaves `enabled` and `credentials` alone. When there is no row yet, the one
+ * this creates records the source's current effective enabled state, so
+ * configuring a proxy never silently turns a source on or off.
+ */
+export function setSourceNetworkSettings(
+  source: string,
+  settings: { proxyUrl?: string | null; userAgent?: string | null }
+): void {
+  const existing = queryOne<{ id: number }>('SELECT id FROM download_source_config WHERE source = ?', [source]);
+
+  const proxyUrl = settings.proxyUrl?.trim() ? encryptSecret(settings.proxyUrl.trim()) : null;
+  const userAgent = settings.userAgent?.trim() || null;
+
+  if (!existing) {
+    execute(
+      `INSERT INTO download_source_config (source, enabled, proxy_url, user_agent, last_checked)
+       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+      [source, isSourceEnabled(source) ? 1 : 0, proxyUrl, userAgent]
+    );
+    return;
+  }
+
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  if (settings.proxyUrl !== undefined) { fields.push('proxy_url = ?'); values.push(proxyUrl); }
+  if (settings.userAgent !== undefined) { fields.push('user_agent = ?'); values.push(userAgent); }
+  if (fields.length === 0) return;
+
+  values.push(existing.id);
+  execute(`UPDATE download_source_config SET ${fields.join(', ')} WHERE id = ?`, values);
 }
 
 // zlibrary, annas and libgen are shadow libraries: searching them is an

@@ -15,6 +15,7 @@ import {
   toggleDownloadSourceMirror,
   removeDownloadSourceMirror,
   reorderDownloadSourceMirror,
+  saveDownloadSourceNetwork,
 } from '@/lib/actions/downloads';
 import type { DownloadSourceConfig, SourceMirror } from '@/lib/db';
 import type { SourceStatus, ParserHealth } from '@/lib/services/downloads';
@@ -203,10 +204,10 @@ function SourceCard({
     config != null ? config.enabled === 1 : !SHADOW_LIBRARY_SOURCES.has(source.name);
   const hasCredentials = config?.credentials != null;
   const hasAuthFields = (source.authFields?.length ?? 0) > 0;
+  const hasProxy = (config?.proxy_url ?? '') !== '';
   const fieldsFilled = source.authFields?.every((field) => fieldValues[field.name]) ?? false;
   // Only the shadow libraries rotate domains, so only they carry mirrors.
   const supportsMirrors = SHADOW_LIBRARY_SOURCES.has(source.name);
-  const expandable = hasAuthFields || supportsMirrors;
 
   const handleToggle = async () => {
     setLoading(true);
@@ -303,6 +304,9 @@ function SourceCard({
               {source.requiresAuth ? 'Authenticated' : 'Configured'}
             </span>
           )}
+          {hasProxy && (
+            <span className="text-xs text-blue-300 bg-blue-400/20 px-2 py-1 rounded">Proxied</span>
+          )}
           <button
             onClick={handleTest}
             disabled={testing}
@@ -310,15 +314,13 @@ function SourceCard({
           >
             {testing ? 'Testing...' : 'Test'}
           </button>
-          {expandable && (
-            <button
-              onClick={() => setExpanded(!expanded)}
-              aria-label={expanded ? `Hide ${source.displayName} settings` : `Show ${source.displayName} settings`}
-              className="text-shelvarr-text-muted hover:text-white transition-colors"
-            >
-              <ChevronIcon expanded={expanded} />
-            </button>
-          )}
+          <button
+            onClick={() => setExpanded(!expanded)}
+            aria-label={expanded ? `Hide ${source.displayName} settings` : `Show ${source.displayName} settings`}
+            className="text-shelvarr-text-muted hover:text-white transition-colors"
+          >
+            <ChevronIcon expanded={expanded} />
+          </button>
         </div>
       </div>
 
@@ -385,6 +387,7 @@ function SourceCard({
       {expanded && supportsMirrors && (
         <MirrorList source={source} mirrors={mirrors} statuses={statuses} />
       )}
+      {expanded && <NetworkSettings source={source} config={config} />}
     </div>
   );
 }
@@ -532,6 +535,92 @@ function MirrorList({
           Add mirror
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Per-source proxy and User-Agent (E1-7).
+ *
+ * Both are per-source rather than global on purpose: an operator's ISP
+ * typically blocks one or two of these domains, not all of them, and routing
+ * everything through a proxy when only Anna's Archive needs it is slower and
+ * more conspicuous than it needs to be.
+ */
+function NetworkSettings({
+  source,
+  config,
+}: {
+  source: SourceInfo;
+  config?: DownloadSourceConfig;
+}) {
+  const router = useRouter();
+  const toast = useToast();
+  const [proxyUrl, setProxyUrl] = useState(config?.proxy_url ?? '');
+  const [userAgent, setUserAgent] = useState(config?.user_agent ?? '');
+  const [saving, setSaving] = useState(false);
+
+  // A refresh brings new props; take them as the new truth unless the field
+  // is mid-edit, which is what the saving flag stands in for.
+  useEffect(() => {
+    if (saving) return;
+    setProxyUrl(config?.proxy_url ?? '');
+    setUserAgent(config?.user_agent ?? '');
+  }, [config?.proxy_url, config?.user_agent, saving]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    const result = await saveDownloadSourceNetwork(source.name, { proxyUrl, userAgent });
+    if (result.success) toast.success('Network settings saved');
+    else toast.error(result.error || 'Failed to save network settings');
+    router.refresh();
+    setSaving(false);
+  };
+
+  return (
+    <div className="p-4 border-t border-shelvarr-border bg-shelvarr-bg/50 space-y-3">
+      <div>
+        <h4 className="text-sm font-medium text-white">Network</h4>
+        <p className="text-sm text-shelvarr-text-muted mt-0.5">
+          Applies to {source.displayName} requests only. Leave blank to connect directly.
+        </p>
+      </div>
+
+      <label className="block space-y-1">
+        <span className="text-xs text-shelvarr-text-muted">Proxy URL</span>
+        <input
+          type="text"
+          value={proxyUrl}
+          onChange={(e) => setProxyUrl(e.target.value)}
+          placeholder="socks5://127.0.0.1:1080"
+          spellCheck={false}
+          className="w-full bg-shelvarr-bg border border-shelvarr-border rounded-lg px-3 py-2 text-white placeholder-shelvarr-text-muted focus:outline-none focus:border-blue-500"
+        />
+        <span className="block text-xs text-shelvarr-text-muted">
+          http, https, socks4, socks5 or socks5h. Credentials go in the URL:
+          <code className="ml-1">socks5://user:pass@host:1080</code>
+        </span>
+      </label>
+
+      <label className="block space-y-1">
+        <span className="text-xs text-shelvarr-text-muted">User-Agent</span>
+        <input
+          type="text"
+          value={userAgent}
+          onChange={(e) => setUserAgent(e.target.value)}
+          placeholder="Default browser User-Agent"
+          spellCheck={false}
+          className="w-full bg-shelvarr-bg border border-shelvarr-border rounded-lg px-3 py-2 text-white placeholder-shelvarr-text-muted focus:outline-none focus:border-blue-500"
+        />
+      </label>
+
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+      >
+        {saving ? 'Saving...' : 'Save Network Settings'}
+      </button>
     </div>
   );
 }

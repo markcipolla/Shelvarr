@@ -38,6 +38,9 @@ mock.module('../../../lib/actions/downloads.js', {
     toggleDownloadSourceMirror: mockToggleMirror,
     removeDownloadSourceMirror: mockRemoveMirror,
     reorderDownloadSourceMirror: mockReorderMirror,
+    // The card expands into a Network section too (E1-7), so the component
+    // imports this alongside the mirror actions.
+    saveDownloadSourceNetwork: mock.fn(async () => ({ success: true })),
   },
 });
 

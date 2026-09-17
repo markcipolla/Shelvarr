@@ -730,6 +730,8 @@ async function streamBookFromSource(params: BookDownloadParams): Promise<BookDow
         // implies. A mirror that serves a truncated stream, a zero-padded
         // body or somebody else's file fails here rather than importing.
         verify: { md5: expectedMd5, extension: ext },
+        // Route the transfer through this source's proxy and User-Agent (E1-7).
+        source,
         onProgress: (bytes, total) => {
           if (bytes - lastPersisted < PROGRESS_PERSIST_BYTES) return;
           lastPersisted = bytes;
@@ -1718,6 +1720,7 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
 
     const result = await getcomics.downloadToFile(resolved, scratchPath, {
       signal: downloadSignal,
+      source: 'getcomics',
       onProgress: (bytes, total) => {
         onProgress(bytes, total ?? 0);
         if (bytes - lastPersist < 1_000_000) return;

@@ -342,8 +342,26 @@ export interface DownloadSourceConfig {
   id: number;
   source: string;
   enabled: number;
+  /**
+   * Credentials JSON, already decrypted by the read path. Encrypted at rest —
+   * never write this column directly, go through `upsertDownloadSourceConfig`.
+   */
   credentials: string | null;
   last_checked: string | null;
+  /**
+   * Optional proxy for this source's requests only: http(s)://, socks4://,
+   * socks5:// or socks5h://, with an optional `user:pass@`. Decrypted by the
+   * read path, like `credentials`.
+   */
+  proxy_url: string | null;
+  /** Optional per-source User-Agent override; null means the shared default. */
+  user_agent: string | null;
+}
+
+/** The network settings a source's HTTP requests are made with. */
+export interface SourceNetworkSettings {
+  proxyUrl: string | null;
+  userAgent: string | null;
 }
 
 /**

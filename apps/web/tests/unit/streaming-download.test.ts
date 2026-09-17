@@ -40,12 +40,11 @@ beforeEach(() => {
   requests = [];
   responses = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    // Requests now arrive via sourceFetch, which normalises whatever the
+    // caller passed into a Headers object on its way to adding the source's
+    // User-Agent. Header names in a Headers object are lower-cased.
     const headers: Record<string, string> = {};
-    if (init?.headers) {
-      for (const [key, value] of Object.entries(init.headers as Record<string, string>)) {
-        headers[key] = value;
-      }
-    }
+    new Headers(init?.headers).forEach((value, key) => { headers[key] = value; });
     requests.push({ url: String(input), headers });
     const next = responses.shift();
     if (!next) throw new Error(`Unexpected fetch to ${String(input)}`);
@@ -98,7 +97,7 @@ describe('downloadToFile', () => {
     assert.strictEqual(readFileSync(destination, 'utf8'), 'hello world');
     assert.strictEqual(result.bytes, 11);
 
-    const rangeHeader = requests[0]?.headers['Range'];
+    const rangeHeader = requests[0]?.headers['range'];
     assert.strictEqual(rangeHeader, 'bytes=6-');
   });
 

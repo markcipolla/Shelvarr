@@ -26,8 +26,15 @@ import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { parseRetryAfter } from './pacing';
 
-export const USER_AGENT =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+import { DEFAULT_USER_AGENT, sourceFetch, sourceHeaders } from './source-http';
+
+/**
+ * Kept as the name callers already import. The string itself, and the
+ * per-source override that can replace it, live in `source-http.ts` — pass a
+ * `source` to the functions below and they will use that source's own
+ * User-Agent and proxy instead.
+ */
+export const USER_AGENT = DEFAULT_USER_AGENT;
 
 /** The link doesn't lead to a file (dead, removed, or an error page). */
 export class LinkBrokenError extends Error {
@@ -140,6 +147,13 @@ export interface DownloadToFileOptions {
    * (E1-5). Omitted — as the comic pipeline omits it — nothing is verified.
    */
   verify?: DownloadVerification;
+  /**
+   * Which download source this is for, so the request uses that source's
+   * configured proxy and User-Agent. Omitted means a direct request with the
+   * shared default User-Agent, which is what every caller did before proxies
+   * existed.
+   */
+  source?: string;
 }
 
 export interface DownloadResult {
@@ -175,20 +189,22 @@ export async function fetchProbe(
   options: {
     headers?: Record<string, string>;
     fetchFn?: (url: string, init: RequestInit) => Promise<Response | null>;
+    /** Use this source's proxy and User-Agent. See `DownloadToFileOptions`. */
+    source?: string;
   } = {}
 ): Promise<Response | null> {
   const doFetch =
     options.fetchFn ??
     (async (u: string, init: RequestInit) => {
       try {
-        return await fetch(u, init);
+        return await sourceFetch(options.source, u, init);
       } catch {
         return null;
       }
     });
 
   const response = await doFetch(url, {
-    headers: { 'User-Agent': USER_AGENT, 'Accept': '*/*', 'Range': 'bytes=0-0', ...options.headers },
+    headers: { ...sourceHeaders(options.source), 'Accept': '*/*', 'Range': 'bytes=0-0', ...options.headers },
     redirect: 'follow',
   });
   if (!response) return null;
@@ -241,6 +257,8 @@ export async function probeDownloadUrl(
     headers?: Record<string, string>;
     fallbackFilename: string;
     fetchFn?: (url: string, init: RequestInit) => Promise<Response | null>;
+    /** Use this source's proxy and User-Agent. See `DownloadToFileOptions`. */
+    source?: string;
   }
 ): Promise<ResolvedDownload | null> {
   const response = await fetchProbe(url, options);
@@ -293,7 +311,7 @@ export async function downloadToFile(
   destination: string,
   options: DownloadToFileOptions = {}
 ): Promise<DownloadResult> {
-  const { onProgress, signal, resume = true, verify } = options;
+  const { onProgress, signal, resume = true, verify, source: networkSource } = options;
 
   const verifying = verify !== undefined;
   const expectedMd5 = verify?.md5 ? verify.md5.trim().toLowerCase() : null;
@@ -364,10 +382,10 @@ export async function downloadToFile(
     else startByte = existing;
   }
 
-  const headers: Record<string, string> = { 'User-Agent': USER_AGENT };
+  const headers: Record<string, string> = {};
   if (startByte > 0) headers['Range'] = `bytes=${startByte}-`;
 
-  const response = await fetch(resolved.url, {
+  const response = await sourceFetch(networkSource, resolved.url, {
     headers,
     redirect: 'follow',
     ...(signal ? { signal } : {}),
