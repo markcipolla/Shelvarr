@@ -728,21 +728,31 @@ warnings rather than guessed at. Resolve them deliberately.
 
 ## Suggested order
 
-**Status as of 2026-09-16: 31 of 32 original cards shipped.** E2, E4 and E6
-are done. E3 is done except E3-5 (reader polish) — E3-6 (redefined above as
-offline caching, not streaming) shipped too. E5 is done except E5-2.
+**Status as of 2026-09-17: every card on this roadmap has shipped.** E1 was
+the last epic still open; its four remaining cards — E1-1 (mirror domains in
+a `source_mirrors` table, editable in Settings), E1-5 (md5 and magic-byte
+verification while the bytes stream), E1-6 (per-source daily-quota deferral,
+concurrency cap and pacing) and E1-7 (per-source proxy and User-Agent, plus
+credentials encrypted at rest) — landed together with E3-5 (reader polish)
+and E5-2 (why a comic download was abandoned).
 
-**E1 is not fully done, despite an earlier version of this section claiming
-otherwise** — that was wrong, corrected 2026-09-16. Shipped: E1-2, E1-3,
-E1-4, E1-8 (challenge/parse-failure detection, scheduled health probes,
-shadow sources off by default). Still open: **E1-1** (mirror lists are still
-hardcoded constants, not a `source_mirrors` table), **E1-5** (downloaded
-files still aren't md5-verified), **E1-6** (no daily-quota deferral —
-`DownloadLimitReachedError` triggers mirror fallback within one download,
-per E2-3, but there's no per-source backoff across the whole queue), and
-**E1-7** (no proxy setting; `download_source_config.credentials` is still
-plaintext). None of these block anything already shipped — E4-5 shipped
-without them, on the task-level retry E2-3 already had, and is more fragile
-for it, most visibly around E1-6.
+That closes the gap the 2026-09-16 correction called out: E4-5 shipped
+against E1-2/E1-3/E2-2 and was knowingly fragile without E1-1 and E1-6. Both
+are now in, and Anna's Archive and Z-Library read their mirror domains from
+the table and defer on a spent quota rather than burning the queue against
+it.
 
-**What's left:** E1-1, E1-5, E1-6, E1-7, E3-5, E5-2. None block each other.
+**What's left: nothing on this roadmap.** Follow-ups noted on the cards
+above, none of them carded yet:
+
+- Extend the offline cache to `BookPageReader`/`ComicReader` page images
+  (E3-6) — needs those `<img src>` fetches converted to blob-URL management.
+- A watched folder that imports what appears in it (E4-3) — the manual
+  upload half shipped; this is the other half.
+- Measure the GetComics host mix before widening `SUPPORTED_HOSTS` (E5-1's
+  instrumentation is in; the decision it was meant to inform is still open).
+- Comics still use per-task rate-limit backoff rather than E1-6's
+  source-wide deferral; the machinery is source-keyed and `getcomics`
+  already has a policy, so adopting it is small.
+- PWA offline navigation (a manifest and a service worker caching the app
+  shell), explicitly out of scope for E3-6.
