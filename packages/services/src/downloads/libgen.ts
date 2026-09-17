@@ -5,8 +5,8 @@
  * Mirror choice follows the cached source statuses (see source-status.ts).
  */
 
-import { getSourceStatusCache } from '@shelvarr/db';
 import { pace } from '../utils/pacing';
+import { rankedMirrorDomains } from './mirrors';
 import {
   detectChallenge,
   SourceBlockedError,
@@ -58,41 +58,20 @@ export interface LibGenResult {
   searchUrl: string;
 }
 
-// LibGen source names (as cached by the status service) and their domains
-const LIBGEN_SOURCES: Record<string, string> = {
-  libgen_vg: 'libgen.vg',
-  libgen_la: 'libgen.la',
-  libgen_bz: 'libgen.bz',
-  libgen_gl: 'libgen.gl',
-};
-
-// Fallback mirrors if status unavailable
+// Last-resort domain for a server with no mirrors configured at all.
 const LIBGEN_FALLBACK = 'libgen.vg';
 
 /**
- * Get every LibGen mirror, best-first: sources last probed as up, then
+ * Get every LibGen mirror, best-first: mirrors last probed as up, then
  * degraded, then unchecked, then known-down. Callers that can fail over walk
  * the whole list; `getLibGenDomain` just takes the head.
+ *
+ * The mirrors themselves come from the `source_mirrors` table (E1-1), read
+ * fresh on every call, so one added in Settings is searchable immediately.
  */
 export function getLibGenDomains(): string[] {
-  const rank: Record<string, number> = { up: 0, degraded: 1, unknown: 2, down: 3 };
-
-  const entries = Object.entries(LIBGEN_SOURCES).map(([source, domain]) => ({ source, domain }));
-
-  try {
-    const statuses = getSourceStatusCache();
-    entries.sort((a, b) => {
-      const aRank = rank[statuses.find(s => s.source === a.source)?.status ?? 'unknown'] ?? 2;
-      const bRank = rank[statuses.find(s => s.source === b.source)?.status ?? 'unknown'] ?? 2;
-      return aRank - bRank;
-    });
-  } catch {
-    // Ignore errors, keep the declared order
-  }
-
-  const domains = entries.map(e => e.domain);
-  if (!domains.includes(LIBGEN_FALLBACK)) domains.push(LIBGEN_FALLBACK);
-  return domains;
+  const domains = rankedMirrorDomains('libgen');
+  return domains.length > 0 ? domains : [LIBGEN_FALLBACK];
 }
 
 /**

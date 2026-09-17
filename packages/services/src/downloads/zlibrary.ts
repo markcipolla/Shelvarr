@@ -6,7 +6,8 @@
  * Reference: https://github.com/sertraline/zlibrary
  */
 
-import { getSourceStatusCache, getDownloadSourceConfig, upsertDownloadSourceConfig } from '@shelvarr/db';
+import { getDownloadSourceConfig, upsertDownloadSourceConfig } from '@shelvarr/db';
+import { preferredMirrorDomain } from './mirrors';
 import {
   detectChallenge,
   SourceBlockedError,
@@ -64,45 +65,22 @@ export interface ZLibraryResult {
   searchUrl: string;
 }
 
-// Z-Library source names (as cached by the status service) and their domains
-const ZLIB_SOURCES: Record<string, string> = {
-  zlibrary: 'z-library.sk',
-  zlib_gl: 'z-lib.gl',
-};
-
-// Fallback domain if status unavailable
+// Last-resort domain for a server with no mirrors configured at all.
 const ZLIB_FALLBACK = 'z-library.sk';
 
 // Login domain (separate from search)
 const ZLIB_LOGIN_DOMAIN = 'singlelogin.re';
 
 /**
- * Get the current working Z-Library domain based on cached source status
+ * Get the current working Z-Library domain.
+ *
+ * Mirrors come from the `source_mirrors` table (E1-1), read fresh on every
+ * call. Z-Library issues a per-account personal domain after login, which
+ * the old hardcoded list couldn't represent; it can be added in Settings ->
+ * Download Sources like any other mirror.
  */
 export function getZLibraryDomain(): string {
-  try {
-    const statuses = getSourceStatusCache();
-
-    // Find a zlibrary source that's up
-    for (const [source, domain] of Object.entries(ZLIB_SOURCES)) {
-      const status = statuses.find(s => s.source === source);
-      if (status?.status === 'up') {
-        return domain;
-      }
-    }
-
-    // If none are up, try degraded
-    for (const [source, domain] of Object.entries(ZLIB_SOURCES)) {
-      const status = statuses.find(s => s.source === source);
-      if (status?.status === 'degraded') {
-        return domain;
-      }
-    }
-  } catch {
-    // Ignore errors, use fallback
-  }
-
-  return ZLIB_FALLBACK;
+  return preferredMirrorDomain('zlibrary', ZLIB_FALLBACK);
 }
 
 /**

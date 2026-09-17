@@ -10,6 +10,7 @@
  */
 
 import {
+  MIRRORED_SOURCES,
   getSourceStatusCache,
   updateSourceStatus,
   isStatusCacheStale,
@@ -17,6 +18,12 @@ import {
 } from '@shelvarr/db';
 
 import { getServiceConfig } from '../config';
+import {
+  configuredMirrorDomains,
+  mirrorStatusKey,
+  parseMirrorStatusKey,
+  preferredMirrorDomain,
+} from './mirrors';
 
 export interface SourceStatus {
   name: string;
@@ -41,47 +48,59 @@ interface KnownSource {
   mirrors?: string[];
 }
 
-// Sources shown in the UI
-const KNOWN_SOURCES: Record<string, KnownSource> = {
-  zlibrary: { displayName: 'Z-Library', url: 'https://z-library.sk' },
-  annas: { displayName: "Anna's Archive", url: 'https://annas-archive.org' },
-  annas_li: { displayName: "Anna's Archive .li", url: 'https://annas-archive.li' },
-  libgen: {
-    displayName: 'Library Genesis',
-    url: 'https://libgen.vg',
-    mirrors: ['libgen_vg', 'libgen_la', 'libgen_bz', 'libgen_gl'],
-  },
-  getcomics: { displayName: 'GetComics', url: 'https://getcomics.org' },
+// Headline sources shown in the UI.
+//
+// The three shadow libraries have no endpoint of their own: each is an
+// aggregate over its rows in `source_mirrors` (E1-1), so there is no second
+// copy of the domain list here to drift out of step with the download
+// services. GetComics isn't mirrored and is probed directly.
+const HEADLINE_SOURCES: Record<string, { displayName: string; fallbackDomain: string }> = {
+  zlibrary: { displayName: 'Z-Library', fallbackDomain: 'z-library.sk' },
+  annas: { displayName: "Anna's Archive", fallbackDomain: 'annas-archive.li' },
+  libgen: { displayName: 'Library Genesis', fallbackDomain: 'libgen.vg' },
+  getcomics: { displayName: 'GetComics', fallbackDomain: 'getcomics.org' },
 };
 
-// Individual mirrors. Probed so the download code can pick a working domain,
-// but they aren't surfaced as headline sources.
-const MIRROR_SOURCES: Record<string, KnownSource> = {
-  libgen_vg: { displayName: 'LibGen.vg', url: 'https://libgen.vg' },
-  libgen_la: { displayName: 'LibGen.la', url: 'https://libgen.la' },
-  libgen_bz: { displayName: 'LibGen.bz', url: 'https://libgen.bz' },
-  libgen_gl: { displayName: 'LibGen.gl', url: 'https://libgen.gl' },
-  zlib_gl: { displayName: 'Z-Lib.gl', url: 'https://z-lib.gl' },
-};
+/** The status-cache keys of every enabled mirror of a headline source. */
+function mirrorKeys(source: string): string[] {
+  return configuredMirrorDomains(source).map((domain) => mirrorStatusKey(source, domain));
+}
 
 /**
- * Look up a source, with the GetComics URLs taken from config so a configured
+ * Look up a source — a headline source, or one of its mirrors by status key
+ * (`libgen:libgen.la`). GetComics' URLs come from config, so a configured
  * mirror is what gets linked and probed.
  */
 function knownSource(source: string): KnownSource | undefined {
-  const info = KNOWN_SOURCES[source] || MIRROR_SOURCES[source];
-  if (!info) return undefined;
-  if (source !== 'getcomics') return info;
+  if (source === 'getcomics') {
+    const baseUrl = getServiceConfig().getcomics.baseUrl.replace(/\/$/, '');
+    return {
+      displayName: HEADLINE_SOURCES['getcomics']!.displayName,
+      url: baseUrl,
+      // GetComics is WordPress; the REST API answers reliably where the landing
+      // page sits behind caching and doesn't always accept HEAD.
+      healthUrl: `${baseUrl}/wp-json/wp/v2/posts?per_page=1&_fields=id`,
+      healthMethod: 'GET',
+    };
+  }
 
-  const baseUrl = getServiceConfig().getcomics.baseUrl.replace(/\/$/, '');
-  return {
-    ...info,
-    url: baseUrl,
-    // GetComics is WordPress; the REST API answers reliably where the landing
-    // page sits behind caching and doesn't always accept HEAD.
-    healthUrl: `${baseUrl}/wp-json/wp/v2/posts?per_page=1&_fields=id`,
-    healthMethod: 'GET',
-  };
+  const headline = HEADLINE_SOURCES[source];
+  if (headline) {
+    return {
+      displayName: headline.displayName,
+      url: `https://${preferredMirrorDomain(source, headline.fallbackDomain)}`,
+      mirrors: mirrorKeys(source),
+    };
+  }
+
+  // A mirror row, addressed by its status key. Nothing is hardcoded: a
+  // mirror added in Settings is probeable and displayable straight away.
+  const mirror = parseMirrorStatusKey(source);
+  if (mirror && MIRRORED_SOURCES.includes(mirror.source)) {
+    return { displayName: mirror.domain, url: `https://${mirror.domain}` };
+  }
+
+  return undefined;
 }
 
 /**
@@ -113,7 +132,7 @@ export async function getSourceStatuses(forceRefresh = false): Promise<SourceSta
   });
 
   // Add any known sources that aren't in cache
-  for (const name of Object.keys(KNOWN_SOURCES)) {
+  for (const name of Object.keys(HEADLINE_SOURCES)) {
     const info = knownSource(name)!;
     if (!statuses.find((s) => s.name === name)) {
       statuses.push({
@@ -165,9 +184,11 @@ async function probeSource(info: KnownSource): Promise<{
  * Refresh source statuses by probing every source and mirror in parallel
  */
 export async function refreshSourceStatuses(): Promise<void> {
+  // Every mirror row, plus the headline sources that have no mirrors of
+  // their own (GetComics). An aggregate is never probed directly.
   const toProbe = [
-    ...Object.keys(KNOWN_SOURCES).filter((name) => !KNOWN_SOURCES[name]!.mirrors),
-    ...Object.keys(MIRROR_SOURCES),
+    ...Object.keys(HEADLINE_SOURCES).filter((name) => mirrorKeys(name).length === 0),
+    ...Object.keys(HEADLINE_SOURCES).flatMap((name) => mirrorKeys(name)),
   ];
 
   const results = new Map<string, 'up' | 'down' | 'degraded'>();
@@ -188,13 +209,14 @@ export async function refreshSourceStatuses(): Promise<void> {
     })
   );
 
-  // Roll mirrors up into their aggregate source (e.g. libgen_* -> libgen)
+  // Roll mirrors up into their aggregate source (e.g. libgen:* -> libgen)
   const rank: Record<string, number> = { up: 0, degraded: 1, down: 2 };
 
-  for (const [name, info] of Object.entries(KNOWN_SOURCES)) {
-    if (!info.mirrors) continue;
+  for (const name of Object.keys(HEADLINE_SOURCES)) {
+    const keys = mirrorKeys(name);
+    if (keys.length === 0) continue;
 
-    const mirrorStatuses = info.mirrors
+    const mirrorStatuses = keys
       .map((mirror) => results.get(mirror))
       .filter((s): s is 'up' | 'down' | 'degraded' => s !== undefined);
 
@@ -226,7 +248,9 @@ export async function checkSourceHealth(source: string): Promise<SourceStatus> {
   }
 
   // An aggregate has no endpoint of its own; probe its mirrors and roll up.
-  if (sourceInfo.mirrors) {
+  // With every mirror removed there is nothing to aggregate, so fall through
+  // and probe the source's last-resort domain directly.
+  if (sourceInfo.mirrors && sourceInfo.mirrors.length > 0) {
     const rank: Record<string, number> = { up: 0, degraded: 1, down: 2 };
     let best: 'up' | 'down' | 'degraded' = 'down';
     let bestTime: number | undefined;

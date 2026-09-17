@@ -128,6 +128,25 @@ CREATE TABLE IF NOT EXISTS download_source_config (
   last_checked TEXT
 );
 
+-- Mirror domains for the shadow-library sources (libgen, annas, zlibrary).
+--
+-- These were hardcoded constants in the download services, so following a
+-- domain rotation meant shipping a new image. The table is seeded from those
+-- same shipped defaults on first run and edited in Settings -> Download
+-- Sources; `source_status_cache` keys each mirror's health off the row
+-- (`<source>:<domain>`), so a mirror added at 11pm is probed and ranked
+-- exactly like a seeded one.
+CREATE TABLE IF NOT EXISTS source_mirrors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source TEXT NOT NULL, -- libgen, annas, zlibrary
+  domain TEXT NOT NULL, -- bare hostname, no scheme
+  priority INTEGER NOT NULL DEFAULT 0, -- lower sorts first
+  enabled INTEGER NOT NULL DEFAULT 1,
+  added_by TEXT NOT NULL DEFAULT 'user', -- seed | user
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (source, domain)
+);
+
 -- Cache for source status from open-slum.org
 CREATE TABLE IF NOT EXISTS source_status_cache (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -260,6 +279,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_wanted_books_status ON wanted_books(status);
 CREATE INDEX IF NOT EXISTS idx_wanted_books_title ON wanted_books(title);
 CREATE INDEX IF NOT EXISTS idx_source_status_cache_source ON source_status_cache(source);
+CREATE INDEX IF NOT EXISTS idx_source_mirrors_source ON source_mirrors(source, priority);
 CREATE INDEX IF NOT EXISTS idx_read_progress_book ON read_progress(book_id);
 CREATE INDEX IF NOT EXISTS idx_hardcover_status_status ON hardcover_reading_status(status_id);
 CREATE INDEX IF NOT EXISTS idx_comic_read_progress_issue ON comic_read_progress(issue_id);

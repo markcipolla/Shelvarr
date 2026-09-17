@@ -5,7 +5,8 @@
  * Uses the cached source statuses (see source-status.ts) to check availability.
  */
 
-import { getSourceStatusCache, getDownloadSourceConfig } from '@shelvarr/db';
+import { getDownloadSourceConfig } from '@shelvarr/db';
+import { anyMirrorReachable, preferredMirrorDomain } from './mirrors';
 import {
   detectChallenge,
   SourceBlockedError,
@@ -52,58 +53,28 @@ export interface AnnasResult {
   searchUrl: string;
 }
 
-// Anna's Archive source names (as cached by the status service) and their domains
-const ANNAS_SOURCES: Record<string, string> = {
-  annas: 'annas-archive.org',
-  annas_li: 'annas-archive.li',
-};
-
-// Fallback domain
+// Last-resort domain for a server with no mirrors configured at all. Also
+// the tie-break when no mirror has been probed yet, which is why it is .li
+// and not the higher-priority .org.
 const ANNAS_FALLBACK = 'annas-archive.li';
 
 /**
- * Get the current working Anna's Archive domain based on cached source status
+ * Get the current working Anna's Archive domain.
+ *
+ * Mirrors come from the `source_mirrors` table (E1-1), read fresh on every
+ * call, so one added in Settings is usable immediately.
  */
 export function getAnnasDomain(): string {
-  try {
-    const statuses = getSourceStatusCache();
-
-    // Find an Anna's source that's up
-    for (const [source, domain] of Object.entries(ANNAS_SOURCES)) {
-      const status = statuses.find(s => s.source === source);
-      if (status?.status === 'up') {
-        return domain;
-      }
-    }
-
-    // If none are up, try degraded
-    for (const [source, domain] of Object.entries(ANNAS_SOURCES)) {
-      const status = statuses.find(s => s.source === source);
-      if (status?.status === 'degraded') {
-        return domain;
-      }
-    }
-  } catch {
-    // Ignore errors, use fallback
-  }
-
-  return ANNAS_FALLBACK;
+  return preferredMirrorDomain('annas', ANNAS_FALLBACK);
 }
 
 /**
- * Check if Anna's Archive is available based on cached source status
+ * Check if Anna's Archive is available based on cached mirror health.
+ * Not being able to tell counts as available — a source is never hidden on
+ * the strength of a missing status row.
  */
 export function isAnnasAvailable(): boolean {
-  try {
-    const statuses = getSourceStatusCache();
-    // Check if any Anna's source is up
-    return Object.keys(ANNAS_SOURCES).some(source => {
-      const status = statuses.find(s => s.source === source);
-      return status?.status === 'up' || status?.status === 'degraded';
-    });
-  } catch {
-    return true; // Assume available if can't check
-  }
+  return anyMirrorReachable('annas', true);
 }
 
 /**
