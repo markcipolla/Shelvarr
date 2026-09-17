@@ -1211,9 +1211,11 @@ describe('Download Services', () => {
         };
 
         await zlib.searchZLibrary('test', config);
-        const callHeaders = mockFetch.mock.calls[0]?.arguments[1]?.headers as Record<string, string>;
-        assert.ok(callHeaders.Cookie.includes('remix_userid=user123'));
-        assert.ok(callHeaders.Cookie.includes('remix_userkey=key456'));
+        // Requests go out through sourceFetch now, which normalises headers
+        // into a Headers object on its way to adding the source's User-Agent.
+        const callHeaders = new Headers(mockFetch.mock.calls[0]?.arguments[1]?.headers);
+        assert.ok(callHeaders.get('Cookie')?.includes('remix_userid=user123'));
+        assert.ok(callHeaders.get('Cookie')?.includes('remix_userkey=key456'));
       });
 
       it('should include downloadUrl when authenticated', async () => {

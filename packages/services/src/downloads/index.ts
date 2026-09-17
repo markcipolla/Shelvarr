@@ -11,6 +11,18 @@ import { getSourceStatuses } from './source-status';
 import { SourceBlockedError, SourceParseError } from './challenge';
 import { isSourceEnabled, getDownloadSourceConfig } from '@shelvarr/db';
 
+// Per-source networking (E1-7): the proxy and User-Agent settings live with
+// the source config, so the Settings UI reaches them through this module the
+// same way it reaches everything else about a source.
+export {
+  parseProxyUrl,
+  describeProxy,
+  InvalidProxyError,
+  ProxyConnectionError,
+  type ProxySpec,
+} from '../utils/proxy-fetch';
+export { DEFAULT_USER_AGENT, resolveSourceNetwork } from '../utils/source-http';
+
 export type DownloadSource = 'zlibrary' | 'annas' | 'libgen';
 
 export interface DownloadResult {

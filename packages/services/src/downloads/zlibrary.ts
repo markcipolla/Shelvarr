@@ -19,6 +19,7 @@ import {
   probeDownloadUrl,
   type ResolvedDownload,
 } from '../utils/streaming-download';
+import { sourceFetch } from '../utils/source-http';
 
 // Re-exported so callers (and tests) can reach the download surface through
 // this one module boundary, the same way they already do for search.
@@ -128,7 +129,6 @@ export async function searchZLibrary(
     const searchUrl = `https://${domain}/s/${encodeURIComponent(query)}`;
 
     const headers: Record<string, string> = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Accept': 'text/html,application/xhtml+xml',
     };
 
@@ -137,7 +137,7 @@ export async function searchZLibrary(
       headers['Cookie'] = `remix_userid=${config.remix_userid}; remix_userkey=${config.remix_userkey}`;
     }
 
-    const response = await fetch(searchUrl, { headers, signal: AbortSignal.timeout(15000) });
+    const response = await sourceFetch('zlibrary', searchUrl, { headers, signal: AbortSignal.timeout(15000) });
 
     if (!response.ok) {
       console.warn(`Z-Library search failed: ${response.status}`);
@@ -224,12 +224,9 @@ export async function authenticateZLibrary(
   try {
     const loginUrl = `https://${ZLIB_LOGIN_DOMAIN}/rpc.php`;
 
-    const response = await fetch(loginUrl, {
+    const response = await sourceFetch('zlibrary', loginUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         isModal: 'true',
         email,
@@ -347,9 +344,8 @@ export async function resolveZlibraryDownload(id: string): Promise<ResolvedDownl
   const detailUrl = `https://${domain}/book/${id}`;
   const cookie = `remix_userid=${session.remix_userid}; remix_userkey=${session.remix_userkey}`;
 
-  const response = await fetch(detailUrl, {
+  const response = await sourceFetch('zlibrary', detailUrl, {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Accept': 'text/html,application/xhtml+xml',
       'Cookie': cookie,
     },
@@ -378,6 +374,7 @@ export async function resolveZlibraryDownload(id: string): Promise<ResolvedDownl
     const candidate = await probeDownloadUrl(downloadUrl, {
       headers: { 'Cookie': cookie, 'Referer': detailUrl },
       fallbackFilename: `zlibrary-${id}.epub`,
+      source: 'zlibrary',
     });
     return candidate ? [candidate] : [];
   } catch (error) {

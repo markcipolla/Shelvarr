@@ -656,6 +656,7 @@ async function downloadBookWithFallback(params: {
     try {
       await downloadToFile(candidate, partialPath, {
         signal,
+        source,
         onProgress: (bytes, total) => {
           if (bytes - lastPersisted < PROGRESS_PERSIST_BYTES) return;
           lastPersisted = bytes;
@@ -1594,6 +1595,7 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
 
     const result = await getcomics.downloadToFile(resolved, scratchPath, {
       signal: downloadSignal,
+      source: 'getcomics',
       onProgress: (bytes, total) => {
         onProgress(bytes, total ?? 0);
         if (bytes - lastPersist < 1_000_000) return;

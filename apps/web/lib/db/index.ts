@@ -24,6 +24,8 @@ export {
   getDownloadSourceConfigs,
   getDownloadSourceConfig,
   upsertDownloadSourceConfig,
+  getSourceNetworkSettings,
+  setSourceNetworkSettings,
   isSourceEnabled,
   getSourceStatusCache,
   getSourceStatus,

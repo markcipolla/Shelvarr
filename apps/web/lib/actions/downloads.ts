@@ -11,6 +11,8 @@ import {
   getParserHealth,
   type DownloadResult,
   type DownloadSource,
+  parseProxyUrl,
+  DEFAULT_USER_AGENT,
   type SourceStatus,
   type BlockedSource,
   type ParserHealth,
@@ -19,6 +21,8 @@ import {
   getDownloadSourceConfigs,
   getDownloadSourceConfig,
   upsertDownloadSourceConfig,
+  getSourceNetworkSettings,
+  setSourceNetworkSettings,
   type DownloadSourceConfig,
 } from '@/lib/db';
 import { authenticateZLibrary } from '@/lib/services/downloads/zlibrary';
@@ -122,17 +126,86 @@ export async function getDownloadParserHealth(): Promise<ParserHealth[]> {
 }
 
 /**
+ * Strip the actual secret out of a config row before it leaves the server.
+ *
+ * These are server actions, so whatever they return is serialized to the
+ * browser. The UI only ever asks whether a source has credentials, never what
+ * they are, and there is no reason to ship a Z-Library password to a page —
+ * encrypting the column would be a thin victory if the plaintext went over
+ * the wire on every render of Settings.
+ */
+function withoutSecrets(config: DownloadSourceConfig): DownloadSourceConfig {
+  // A placeholder, not the value: callers only check whether it is null.
+  return { ...config, credentials: config.credentials ? 'configured' : null };
+}
+
+/**
  * Get download source configurations
  */
 export async function getDownloadConfigs(): Promise<DownloadSourceConfig[]> {
-  return getDownloadSourceConfigs();
+  return getDownloadSourceConfigs().map(withoutSecrets);
 }
 
 /**
  * Get configuration for a specific source
  */
 export async function getDownloadConfig(source: string): Promise<DownloadSourceConfig | null> {
-  return getDownloadSourceConfig(source);
+  const config = getDownloadSourceConfig(source);
+  return config ? withoutSecrets(config) : null;
+}
+
+/**
+ * Read a source's proxy and User-Agent (Settings -> Download Sources).
+ *
+ * The proxy URL is returned as stored, password and all: it is the operator's
+ * own setting on an admin-only page, and a field they cannot read back is a
+ * field they cannot correct.
+ */
+export async function getDownloadSourceNetwork(source: string): Promise<{
+  proxyUrl: string;
+  userAgent: string;
+  defaultUserAgent: string;
+}> {
+  const settings = getSourceNetworkSettings(source);
+  return {
+    proxyUrl: settings.proxyUrl ?? '',
+    userAgent: settings.userAgent ?? '',
+    defaultUserAgent: DEFAULT_USER_AGENT,
+  };
+}
+
+/**
+ * Set a source's proxy and User-Agent. Empty strings clear them.
+ *
+ * The proxy URL is parsed before it is stored, so a typo fails here rather
+ * than silently later, in the middle of a download, as a connection error.
+ */
+export async function saveDownloadSourceNetwork(
+  source: string,
+  settings: { proxyUrl: string; userAgent: string }
+): Promise<{ success: boolean; error?: string }> {
+  const proxyUrl = settings.proxyUrl.trim();
+  const userAgent = settings.userAgent.trim();
+
+  if (proxyUrl) {
+    try {
+      parseProxyUrl(proxyUrl);
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  }
+
+  try {
+    setSourceNetworkSettings(source, {
+      proxyUrl: proxyUrl || null,
+      userAgent: userAgent || null,
+    });
+    revalidatePath('/settings');
+    return { success: true };
+  } catch (error) {
+    console.error(`Error saving network settings for ${source}:`, error);
+    return { success: false, error: 'Failed to save network settings' };
+  }
 }
 
 /**

@@ -17,6 +17,7 @@ import {
 } from '@shelvarr/db';
 
 import { getServiceConfig } from '../config';
+import { sourceFetch } from '../utils/source-http';
 
 export interface SourceStatus {
   name: string;
@@ -63,6 +64,21 @@ const MIRROR_SOURCES: Record<string, KnownSource> = {
   libgen_gl: { displayName: 'LibGen.gl', url: 'https://libgen.gl' },
   zlib_gl: { displayName: 'Z-Lib.gl', url: 'https://z-lib.gl' },
 };
+
+/**
+ * The configured source a probe target belongs to.
+ *
+ * Mirrors are probed under their own names (`libgen_vg`, `annas_li`,
+ * `zlib_gl`) but share one config row with their parent, so a proxy set for
+ * LibGen also covers every LibGen mirror — which is the point, since a mirror
+ * list exists precisely because individual domains get blocked.
+ */
+function networkSourceFor(name: string): string {
+  if (name.startsWith('libgen')) return 'libgen';
+  if (name.startsWith('annas')) return 'annas';
+  if (name.startsWith('zlib')) return 'zlibrary';
+  return name;
+}
 
 /**
  * Look up a source, with the GetComics URLs taken from config so a configured
@@ -133,18 +149,15 @@ export async function getSourceStatuses(forceRefresh = false): Promise<SourceSta
  * Probe one source's domain. Bot-protection responses (403/429/503) mean the
  * host is alive but gate-keeping, which is 'degraded' rather than 'down'.
  */
-async function probeSource(info: KnownSource): Promise<{
+async function probeSource(info: KnownSource, source: string): Promise<{
   status: 'up' | 'down' | 'degraded';
   responseTime: number;
 }> {
   const start = Date.now();
 
   try {
-    const response = await fetch(info.healthUrl || info.url, {
+    const response = await sourceFetch(networkSourceFor(source), info.healthUrl || info.url, {
       method: info.healthMethod || 'HEAD',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
       signal: AbortSignal.timeout(5000),
     });
     const responseTime = Date.now() - start;
@@ -177,7 +190,7 @@ export async function refreshSourceStatuses(): Promise<void> {
       const info = knownSource(name);
       if (!info) return;
 
-      const { status, responseTime } = await probeSource(info);
+      const { status, responseTime } = await probeSource(info, name);
       results.set(name, status);
 
       try {
@@ -235,7 +248,7 @@ export async function checkSourceHealth(source: string): Promise<SourceStatus> {
       const info = knownSource(mirror);
       if (!info) continue;
 
-      const { status, responseTime } = await probeSource(info);
+      const { status, responseTime } = await probeSource(info, mirror);
       updateSourceStatus(mirror, status, responseTime);
 
       if (rank[status]! < rank[best]!) {
@@ -256,7 +269,7 @@ export async function checkSourceHealth(source: string): Promise<SourceStatus> {
     };
   }
 
-  const { status, responseTime } = await probeSource(sourceInfo);
+  const { status, responseTime } = await probeSource(sourceInfo, source);
   updateSourceStatus(source, status, responseTime);
 
   return {

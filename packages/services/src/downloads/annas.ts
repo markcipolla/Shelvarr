@@ -19,6 +19,7 @@ import {
   buildResolvedDownload,
   type ResolvedDownload,
 } from '../utils/streaming-download';
+import { sourceFetch } from '../utils/source-http';
 
 // Re-exported so callers (and tests) can reach the download surface through
 // this one module boundary, the same way they already do for search.
@@ -146,11 +147,8 @@ export async function searchAnnas(
     const domain = getAnnasDomain();
     const searchUrl = `https://${domain}/search?${params.toString()}`;
 
-    const response = await fetch(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-      },
+    const response = await sourceFetch('annas', searchUrl, {
+      headers: { 'Accept': 'text/html,application/xhtml+xml' },
       signal: AbortSignal.timeout(15000),
     });
 
@@ -255,11 +253,8 @@ export async function getAnnasDownloadLinks(md5: string): Promise<string[]> {
     const domain = getAnnasDomain();
     const detailUrl = `https://${domain}/md5/${md5}`;
 
-    const response = await fetch(detailUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-      },
+    const response = await sourceFetch('annas', detailUrl, {
+      headers: { 'Accept': 'text/html,application/xhtml+xml' },
       signal: AbortSignal.timeout(15000),
     });
 
@@ -317,9 +312,7 @@ function getAnnasCredentials(): AnnasConfig | null {
  * an error page, a login wall.
  */
 async function probeAnnasCandidate(url: string, md5: string): Promise<ResolvedDownload | null> {
-  const response = await fetchProbe(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-  });
+  const response = await fetchProbe(url, { source: 'annas' });
   if (!response) return null;
 
   const contentType = response.headers.get('content-type');
@@ -360,7 +353,7 @@ export async function resolveAnnasDownload(md5: string): Promise<ResolvedDownloa
     try {
       const domain = getAnnasDomain();
       const apiUrl = `https://${domain}/dyn/api/fast_download.json?md5=${md5}&key=${encodeURIComponent(credentials.apiKey)}`;
-      const response = await fetch(apiUrl, {
+      const response = await sourceFetch('annas', apiUrl, {
         headers: { 'Accept': 'application/json' },
         signal: AbortSignal.timeout(15000),
       });

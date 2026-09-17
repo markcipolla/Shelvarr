@@ -124,8 +124,17 @@ CREATE TABLE IF NOT EXISTS download_source_config (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source TEXT NOT NULL UNIQUE, -- ebooks: zlibrary, annas, libgen; comics: getcomics
   enabled INTEGER DEFAULT 1,
-  credentials TEXT, -- JSON: {email, password} for zlibrary
-  last_checked TEXT
+  -- JSON: {email, password} for zlibrary. Encrypted at rest (enc.v1.* — see
+  -- src/secrets.ts); rows written before that are plaintext and are re-written
+  -- encrypted the first time they are read.
+  credentials TEXT,
+  last_checked TEXT,
+  -- Optional per-source proxy, for ISPs that DNS-block these domains.
+  -- http://, https://, socks4://, socks5:// or socks5h://, with an optional
+  -- user:pass@. Encrypted at rest for the same reason credentials are.
+  proxy_url TEXT,
+  -- Optional per-source User-Agent override. NULL means the shared default.
+  user_agent TEXT
 );
 
 -- Cache for source status from open-slum.org

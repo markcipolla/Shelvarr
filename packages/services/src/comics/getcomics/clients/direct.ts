@@ -14,13 +14,13 @@
 
 import {
   DownloadLimitReachedError,
-  USER_AGENT,
   downloadToFile,
   LinkBrokenError,
   type DownloadResult,
   type DownloadToFileOptions,
   type ResolvedDownload,
 } from '../../../utils/streaming-download';
+import { sourceFetch } from '../../../utils/source-http';
 
 export {
   DownloadLimitReachedError,
@@ -81,8 +81,8 @@ export async function probeDownload(link: string, signal?: AbortSignal): Promise
 
   let response: Response;
   try {
-    response = await fetch(link, {
-      headers: { 'User-Agent': USER_AGENT, Range: 'bytes=0-0' },
+    response = await sourceFetch('getcomics', link, {
+      headers: { Range: 'bytes=0-0' },
       redirect: 'follow',
       signal: combined,
     });
