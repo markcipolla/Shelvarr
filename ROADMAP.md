@@ -122,6 +122,26 @@ to the next mirror rather than importing a broken file.
 
 **Depends on:** E2-2 (streaming), which is where the hash is computed.
 
+**Shipped 2026-09-17.** `downloadToFile` takes an opt-in `verify: { md5,
+extension }`: it hashes the bytes as they stream, sniffs the first bytes
+against the extension's signature (`PK\x03\x04` for epub/cbz/zip, `%PDF` for
+pdf) and rejects a stream that stops short of the advertised size. Any of the
+three throws the new typed `FileVerificationError`, deletes the file, and — in
+`downloadBookWithFallback` — blocklists that mirror under a new
+`failed-verification` reason before falling through to the next candidate.
+A resumed download hashes the bytes already on disk before the tail, and a
+`.partial` that is already the full size is checked rather than trusted.
+Verification is per-call, so the comic pipeline, which shares the downloader
+and has no expected hash, passes nothing and is unchanged. LibGen and Anna's
+identifiers are real md5s and are checked; Z-Library's is a numeric book id,
+so only a 32-hex identifier is used as an expected hash — Z-Library downloads
+still get the magic-byte and length checks.
+
+**Left open:** nothing blocking. Worth knowing: a source whose advertised
+extension is wrong (a pdf listed as an epub) now fails verification and gets
+blocklisted, recoverable by unblocking the link in the queue view; and
+Z-Library files have no hash to check against until that source exposes one.
+
 ### E1-6 · Wait out a daily limit instead of burning the queue against it
 **Size M.** Z-Library's free tier allows a handful of downloads a day; Anna's
 free tier is a waitlist with a countdown. Shelvarr has no concept of either,

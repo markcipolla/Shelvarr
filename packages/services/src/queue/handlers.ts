@@ -59,6 +59,7 @@ import * as metadataService from '../metadata';
 import {
   resolveLibgenDownloads,
   downloadToFile,
+  FileVerificationError,
   LinkBrokenError,
   DownloadLimitReachedError,
 } from '../downloads/libgen';
@@ -574,6 +575,11 @@ interface BookDownloadParams {
   libraryId: number;
   /** The source-scoped identifier (`${source}:${md5}`) blocklisted once every candidate fails. */
   downloadUrl: string;
+  /**
+   * The md5 the search result carried, when it is genuinely a hash (E1-5).
+   * Null for Z-Library, whose identifier is a numeric book id.
+   */
+  expectedMd5?: string | null;
   signal: AbortSignal;
 }
 
@@ -658,6 +664,7 @@ async function streamBookFromSource(params: BookDownloadParams): Promise<BookDow
     wantedBookId,
     libraryId,
     downloadUrl,
+    expectedMd5 = null,
     signal,
   } = params;
 
@@ -710,14 +717,19 @@ async function streamBookFromSource(params: BookDownloadParams): Promise<BookDow
   let lastPersisted = 0;
 
   // Try the chosen mirror, falling through to the next resolved candidate on
-  // a broken link or a host rate-limit — both come back as bytes never
-  // arrived, so there is nothing to resume, just a fresh mirror to try. Any
-  // other error (disk full, task cancelled, a bug) fails the download
-  // outright: another mirror would not help.
+  // a broken link, a host rate-limit, or bytes that turn out not to be the
+  // file we asked for — none of those leave anything worth resuming, just a
+  // fresh mirror to try. Any other error (disk full, task cancelled, a bug)
+  // fails the download outright: another mirror would not help.
   for (;;) {
     try {
       await downloadToFile(candidate, partialPath, {
         signal,
+        // Check the bytes before they can become a library book (E1-5): the
+        // md5 the search result carried, and the magic bytes the extension
+        // implies. A mirror that serves a truncated stream, a zero-padded
+        // body or somebody else's file fails here rather than importing.
+        verify: { md5: expectedMd5, extension: ext },
         onProgress: (bytes, total) => {
           if (bytes - lastPersisted < PROGRESS_PERSIST_BYTES) return;
           lastPersisted = bytes;
@@ -749,15 +761,21 @@ async function streamBookFromSource(params: BookDownloadParams): Promise<BookDow
 
       try { fs.unlinkSync(partialPath); } catch { /* ignore */ }
 
-      const fallbackWorthy = err instanceof LinkBrokenError || limit !== null;
+      const fallbackWorthy =
+        err instanceof LinkBrokenError || limit !== null || err instanceof FileVerificationError;
       if (!fallbackWorthy) throw err;
 
       const message = err instanceof Error ? err.message : String(err);
 
-      if (err instanceof LinkBrokenError) {
+      // A link that serves the wrong bytes is as dead as one that serves
+      // nothing — blocklisted either way, just under its own reason so the
+      // queue's blocklist view can tell "never arrived" from "arrived
+      // corrupt". A rate limit is the one fallback-worthy failure that says
+      // nothing bad about the mirror, so it is left off the list.
+      if (err instanceof LinkBrokenError || err instanceof FileVerificationError) {
         addToBookBlocklist({
           downloadUrl: candidate.url,
-          reason: 'link-broken',
+          reason: err instanceof FileVerificationError ? 'failed-verification' : 'link-broken',
           wantedBookId: wantedBookId ?? null,
           libraryId,
           title: bookTitle,
@@ -982,6 +1000,11 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
       wantedBookId: data.wantedBookId,
       libraryId: data.libraryId,
       downloadUrl,
+      // LibGen's and Anna's identifiers *are* the file's md5, so the finished
+      // download can be hashed against them (E1-5). Z-Library's `md5` field
+      // is its numeric book id — a real hash is 32 hex characters, and
+      // anything else is an identifier we have no expected hash for.
+      expectedMd5: /^[0-9a-f]{32}$/i.test(data.md5) ? data.md5.toLowerCase() : null,
       signal,
     });
 
