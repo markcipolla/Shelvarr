@@ -222,11 +222,17 @@ describe('Comic download retries', () => {
     const after = db.getComicDownload(download.id)!;
     assert.strictEqual(after.state, 'failed');
     assert.match(after.error ?? '', /410/);
+    assert.strictEqual(
+      after.failureReason,
+      'link-broken',
+      'the links were dead, which is not the same as the host refusing us'
+    );
     assert.ok(db.comicBlocklistContains(LINK_A));
     assert.ok(db.comicBlocklistContains(LINK_B));
 
     const history = db.getComicDownloadHistory(10, 501);
     assert.strictEqual(history.length, 1, 'a real failure is recorded in history');
+    assert.strictEqual(history[0]!['failure_reason'], 'link-broken');
   });
 
   it('puts a rate-limited download back in the queue rather than failing it', async () => {
@@ -271,7 +277,49 @@ describe('Comic download retries', () => {
     assert.strictEqual(after.state, 'failed');
     assert.strictEqual(after.attempts, 5);
     assert.match(after.error ?? '', /gave up after 5 attempts/);
-    assert.strictEqual(db.getComicDownloadHistory(10, 501).length, 1);
+    // The whole point of the card: the page can say "the host kept
+    // rate-limiting us" without reading the error string.
+    assert.strictEqual(after.failureReason, 'rate-limited');
+
+    const history = db.getComicDownloadHistory(10, 501);
+    assert.strictEqual(history.length, 1);
+    assert.strictEqual(history[0]!['failure_reason'], 'rate-limited');
+  });
+
+  it('clears the abandonment reason when the download is driven again', async () => {
+    stubFetch({ [LINK_A]: () => new Response('slow down', { status: 429 }) });
+
+    const download = db.addComicDownload({
+      volumeId: 501,
+      host: 'getcomics',
+      downloadLink: LINK_A,
+    });
+    db.execute('UPDATE comic_downloads SET attempts = 4 WHERE id = ?', [download.id]);
+    await runDownload(download.id);
+    assert.strictEqual(db.getComicDownload(download.id)!.failureReason, 'rate-limited');
+
+    db.resetComicDownloadForRetry(download.id);
+    const reset = db.getComicDownload(download.id)!;
+    assert.strictEqual(reset.state, 'queued');
+    assert.strictEqual(reset.failureReason, null, 'a queued download has not failed');
+  });
+
+  it('says the library folder was the problem, not the release', async () => {
+    stubFetch({ [LINK_A]: () => fileResponse('comic-bytes', LINK_A) });
+
+    const download = db.addComicDownload({
+      volumeId: 501,
+      host: 'getcomics',
+      downloadLink: LINK_A,
+    });
+    // Point the volume at a folder that cannot be created: a path under a
+    // regular file. Nothing is fetched, so this is not the release's fault.
+    const blocker = join(dataDir, 'not-a-folder');
+    writeFileSync(blocker, 'in the way');
+    db.execute('UPDATE comics SET folder = ? WHERE id = 501', [join(blocker, 'Hulk')]);
+
+    assert.strictEqual(await runDownload(download.id), 'failed');
+    assert.strictEqual(db.getComicDownload(download.id)!.failureReason, 'library-unwritable');
   });
 
   it('resumes a partial file rather than starting over', async () => {
@@ -617,6 +665,28 @@ describe('Comic download persistence', () => {
     assert.strictEqual(switched.downloadLink, 'https://pixeldrain.com/u/xyz');
     assert.deepStrictEqual(switched.alternateLinks, []);
     assert.strictEqual(switched.progress, 0, 'a different link is a different file');
+  });
+
+  it('keeps a failure reason only while the row is failed', () => {
+    const download = db.addComicDownload({
+      volumeId: 501,
+      host: 'getcomics',
+      downloadLink: LINK_A,
+    });
+
+    db.setComicDownloadState(download.id, 'failed', {
+      error: 'Download limit reached',
+      failureReason: 'rate-limited',
+    });
+    assert.strictEqual(db.getComicDownload(download.id)!.failureReason, 'rate-limited');
+
+    // Attempting it again is the row saying it has not failed yet.
+    db.startComicDownloadAttempt(download.id);
+    assert.strictEqual(db.getComicDownload(download.id)!.failureReason, null);
+
+    // And a state change that carries no reason does not inherit the old one.
+    db.setComicDownloadState(download.id, 'failed', { error: 'something else' });
+    assert.strictEqual(db.getComicDownload(download.id)!.failureReason, null);
   });
 
   // The scratch sweep and the download queue both date these, and a naked

@@ -481,6 +481,17 @@ row ends as a bare `failed` with an error string. Record *why* it was
 abandoned, distinctly from a link being dead, so the queue page can say
 "the host kept rate-limiting us" rather than showing a stack trace.
 
+**Shipped 2026-09-17.** `comic_downloads.failure_reason` and
+`comic_download_history.failure_reason` now hold one of `rate-limited`,
+`link-broken`, `download-failed`, `import-failed` or `library-unwritable`,
+set by the download handler as it gives up rather than parsed back out of the
+error string. It is cleared whenever the row is driven again, so it only ever
+describes the failure the row is in. `/comics/downloads` leads with the
+reason in plain words — "The host kept rate-limiting us, so we stopped
+asking" — and demotes the raw error to a muted line beneath it; history rows
+carry a short version of the same. Rows that failed before this existed have
+no reason and still show their error.
+
 ---
 
 ## E6 — Foundations

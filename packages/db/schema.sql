@@ -347,6 +347,10 @@ CREATE TABLE IF NOT EXISTS comic_downloads (
   attempts INTEGER NOT NULL DEFAULT 0,   -- how many times it has been tried
   file_path TEXT,                        -- final resting place after import
   error TEXT,
+  -- Why it failed, in a form the UI can phrase itself instead of showing the
+  -- raw error: rate-limited|link-broken|download-failed|import-failed|
+  -- library-unwritable. Null unless state = 'failed'.
+  failure_reason TEXT,
   -- Last sign of life: bumped on progress and on every state change. A
   -- non-terminal download whose heartbeat has gone cold was orphaned by a
   -- process that stopped, and is picked back up by the resume sweep.
@@ -367,6 +371,8 @@ CREATE TABLE IF NOT EXISTS comic_download_history (
   file_title TEXT,
   host TEXT,
   success INTEGER NOT NULL DEFAULT 1,
+  -- Same vocabulary as comic_downloads.failure_reason; null on a success.
+  failure_reason TEXT,
   downloaded_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
