@@ -65,6 +65,17 @@ import {
 import { resolveAnnasDownload } from '../downloads/annas';
 import { resolveZlibraryDownload } from '../downloads/zlibrary';
 import type { ResolvedDownload } from '../utils/streaming-download';
+import {
+  SourceLimitReachedError,
+  SourceUnavailableError,
+  assertSourceAvailable,
+  defaultLimitMs,
+  describeWait,
+  recordSourceLimit,
+  runWithSourceSlot,
+  sourceLabel,
+  sourcePolicy,
+} from '../downloads/source-limits';
 import { searchAllSources } from '../downloads/index';
 import { getSourceStatuses, refreshSourceStatuses } from '../downloads/source-status';
 import { applyReorganization, moveFile, generateNewPath, resolveTargetCollision } from '../organizer';
@@ -551,13 +562,26 @@ async function organizeNewBook(
   return { finalPath, organized };
 }
 
-/** Human-readable name for a download source, for error messages and blocklist entries. */
-function sourceLabel(source: 'libgen' | 'annas' | 'zlibrary'): string {
-  switch (source) {
-    case 'libgen': return 'LibGen';
-    case 'annas': return "Anna's Archive";
-    case 'zlibrary': return 'Z-Library';
-  }
+interface BookDownloadParams {
+  source: 'libgen' | 'annas' | 'zlibrary';
+  resolveCandidates: () => Promise<ResolvedDownload[]>;
+  bookDownloadId: number;
+  bookTitle: string;
+  bookAuthor: string | null;
+  libraryPath: string;
+  extension: string | undefined;
+  wantedBookId?: number;
+  libraryId: number;
+  /** The source-scoped identifier (`${source}:${md5}`) blocklisted once every candidate fails. */
+  downloadUrl: string;
+  signal: AbortSignal;
+}
+
+interface BookDownloadOutcome {
+  filename: string;
+  contentType: string;
+  size: number;
+  targetPath: string;
 }
 
 /**
@@ -574,21 +598,55 @@ function sourceLabel(source: 'libgen' | 'annas' | 'zlibrary'): string {
  * dedup-suffix handling, the scratch-then-move path, the progress-persist
  * throttle and the mirror-fallback loop itself are unchanged from the
  * libgen-only implementation this replaced.
+ *
+ * Wrapped, since E1-6, in the source's own gate: nothing runs while that
+ * source is waiting out a limit, only one download talks to it at a time,
+ * and requests to it are paced. A limit that surfaces from inside — a 429
+ * with a `Retry-After`, Z-Library's spent daily quota, Anna's waitlist — is
+ * recorded against the source and re-thrown as a `SourceLimitReachedError`,
+ * which the queue defers rather than fails, so the other nine books queued
+ * against the same quota never spend a request finding out what this one
+ * already knows.
  */
-async function downloadBookWithFallback(params: {
-  source: 'libgen' | 'annas' | 'zlibrary';
-  resolveCandidates: () => Promise<ResolvedDownload[]>;
-  bookDownloadId: number;
-  bookTitle: string;
-  bookAuthor: string | null;
-  libraryPath: string;
-  extension: string | undefined;
-  wantedBookId?: number;
-  libraryId: number;
-  /** The source-scoped identifier (`${source}:${md5}`) blocklisted once every candidate fails. */
-  downloadUrl: string;
-  signal: AbortSignal;
-}): Promise<{ filename: string; contentType: string; size: number; targetPath: string }> {
+async function downloadBookWithFallback(params: BookDownloadParams): Promise<BookDownloadOutcome> {
+  const { source } = params;
+
+  // Refuse up front if the source is already waiting something out. Checked
+  // here as well as inside `runWithSourceSlot` so that a deadline already on
+  // record isn't re-recorded below as if this download had just discovered
+  // it — which would overwrite the real reason with a restatement of itself.
+  assertSourceAvailable(source);
+
+  try {
+    return await runWithSourceSlot(source, () => streamBookFromSource(params));
+  } catch (err) {
+    // A resolver recognised a quota page or a 429 while resolving: it knows
+    // the source and the wait, so all that is left is to write it down where
+    // the rest of the queue will see it.
+    if (err instanceof SourceLimitReachedError) {
+      recordSourceLimit(source, err.retryAfterMs, err.message);
+      throw err;
+    }
+    // A busy slot is a fact about this process, not something to persist.
+    if (err instanceof SourceUnavailableError) throw err;
+
+    // A host refused the transfer itself. `DownloadLimitReachedError` names
+    // one link; this is where it becomes a fact about the whole source.
+    if (err instanceof DownloadLimitReachedError) {
+      const retryAfterMs = err.retryAfterMs ?? defaultLimitMs(source);
+      recordSourceLimit(source, retryAfterMs, err.message);
+      throw new SourceLimitReachedError(
+        source,
+        retryAfterMs,
+        `${err.message} — waiting ${describeWait(retryAfterMs)} before trying ${sourceLabel(source)} again`
+      );
+    }
+
+    throw err;
+  }
+}
+
+async function streamBookFromSource(params: BookDownloadParams): Promise<BookDownloadOutcome> {
   const {
     source,
     resolveCandidates,
@@ -668,12 +726,30 @@ async function downloadBookWithFallback(params: {
       });
       break;
     } catch (err) {
+      if (signal.aborted) {
+        try { fs.unlinkSync(partialPath); } catch { /* ignore */ }
+        throw new Error('Task cancelled');
+      }
+
+      const limit = err instanceof DownloadLimitReachedError ? err : null;
+
+      // A rate limit is the source's, not the link's. For a host whose free
+      // tier is a daily quota (Anna's, Z-Library) every other candidate is
+      // the same spent quota, so trying one is a wasted request; for a host
+      // that is merely busy (LibGen) it is worth a different mirror, but
+      // once they are all refusing us the source is the thing to wait out —
+      // and neither case is grounds for blocklisting a perfectly good link.
+      //
+      // The partial file stays on disk either way: the bytes already
+      // transferred are the one thing a limit doesn't invalidate, and the
+      // retry resumes from them.
+      if (limit && (sourcePolicy(source).dailyQuota || alternates.length === 0)) {
+        throw limit;
+      }
+
       try { fs.unlinkSync(partialPath); } catch { /* ignore */ }
 
-      if (signal.aborted) throw new Error('Task cancelled');
-
-      const fallbackWorthy =
-        err instanceof LinkBrokenError || err instanceof DownloadLimitReachedError;
+      const fallbackWorthy = err instanceof LinkBrokenError || limit !== null;
       if (!fallbackWorthy) throw err;
 
       const message = err instanceof Error ? err.message : String(err);
@@ -692,7 +768,9 @@ async function downloadBookWithFallback(params: {
 
       const next = alternates.shift();
       if (!next) {
-        // Every mirror this resolve found is now dead or rate-limited.
+        // Every mirror this resolve found is dead (a rate limit never gets
+        // this far — it throws above, because the source, not the link, is
+        // what needs waiting out).
         // Blocklist the book itself (by its source-scoped identifier, not
         // any one mirror) so auto-search doesn't queue the same md5 again
         // — mirrors createDownloadsFromPost blocklisting the article's
@@ -1005,6 +1083,16 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
       organized: finalPath !== targetPath,
     };
   } catch (err) {
+    // A source that is spent, or already busy with another download, isn't a
+    // failure: the download goes back to `queued` with its partial file
+    // intact and the task is deferred by the queue (E1-6). Deliberately not
+    // `recordFailure` — no history row, and the wanted book stays
+    // `searching`, because this download is still in flight, just waiting.
+    if (err instanceof SourceUnavailableError) {
+      setBookDownloadState(bookDownload.id, 'queued', { error: err.message });
+      throw err;
+    }
+
     recordFailure(err instanceof Error ? err.message : String(err));
     throw err;
   }

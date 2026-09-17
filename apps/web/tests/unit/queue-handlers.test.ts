@@ -40,9 +40,13 @@ class MockLinkBrokenError extends Error {
   }
 }
 
-/** Same shape as the real `DownloadLimitReachedError` from streaming-download.ts. */
+/**
+ * Same shape as the real `DownloadLimitReachedError` from
+ * streaming-download.ts, including the `retryAfterMs` it carries when the
+ * 429 came with a `Retry-After` header (E1-6).
+ */
 class MockDownloadLimitReachedError extends Error {
-  constructor(readonly host: string) {
+  constructor(readonly host: string, readonly retryAfterMs: number | null = null) {
     super(`Download limit reached for ${host}`);
     this.name = 'DownloadLimitReachedError';
   }
@@ -255,6 +259,7 @@ if (canRunTests) {
     bookBlocklistContains,
     addToBookBlocklist,
   } = await import('../../lib/db/index.js');
+  const { getSourceLimit } = await import('../../lib/services/downloads/source-limits.js');
   const {
     registerTaskHandler,
     enqueueTask,
@@ -649,6 +654,10 @@ if (canRunTests) {
       execute('DELETE FROM book_downloads', []);
       execute('DELETE FROM book_download_history', []);
       execute('DELETE FROM settings', []);
+      // A source deferral outlives the task that caused it (that is the whole
+      // point of E1-6), so it has to be cleared here or the first test to
+      // record one would gate every download test after it.
+      execute('DELETE FROM source_limits', []);
 
       // Create test library
       testLibPath = join(testDir, 'test-lib');
@@ -1162,6 +1171,158 @@ if (canRunTests) {
           assert.strictEqual(getTask(task.id)?.status, 'completed');
           assert.strictEqual(mockDownloadToFile.mock.calls.length, 2);
           assert.ok(bookBlocklistContains(first.url));
+        });
+      });
+
+      // E1-6. Z-Library's free tier allows a handful of downloads a day and
+      // Anna's is a waitlist: a spent quota is a fact about the source, not
+      // about the task that happened to discover it. These check that the
+      // discovery defers rather than fails, that it is remembered, and that
+      // it stops the rest of the queue walking into the same wall — without
+      // stopping a different source.
+      describe('per-source daily limits (E1-6)', () => {
+        /** A 429 carrying `Retry-After: 3600`, as the real downloader would report it. */
+        const rateLimitedIn = (ms: number) =>
+          new MockDownloadLimitReachedError('zlib.example', ms);
+
+        async function runZlibraryDownload(md5: string, title: string): Promise<number> {
+          const task = createTask('download', {
+            source: 'zlibrary',
+            md5,
+            title,
+            author: 'Limited Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(task.id);
+          return task.id;
+        }
+
+        it('defers the download instead of failing it, and keeps the partial file', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          downloadFailure = rateLimitedIn(3_600_000);
+
+          const taskId = await runZlibraryDownload('limit-1', 'Quota Book');
+
+          // The task goes back to pending for the retry queue, not to failed.
+          const task = getTask(taskId);
+          assert.strictEqual(task?.status, 'pending');
+          assert.ok(task?.error?.includes('Rate limited'), task?.error ?? 'no error recorded');
+          assert.ok(task?.error?.includes('Z-Library'), task?.error ?? 'no error recorded');
+
+          // And so does the download row — still queued, not failed, with no
+          // history row written for a download that hasn't finished.
+          const download = getBookDownloads({ libraryId: 1 })[0]!;
+          assert.strictEqual(download.state, 'queued');
+
+          // The bytes that did arrive are left on disk to resume from.
+          const partial = join(testLibPath, 'Limited Author - Quota Book.epub.partial');
+          assert.ok(existsSync(partial), 'the partial file should survive a deferral');
+
+          // The deadline the host asked for is recorded against the source.
+          const limit = getSourceLimit('zlibrary');
+          assert.ok(limit, 'a source limit should have been recorded');
+          assert.ok(limit.retryAfterMs > 3_000_000, `retryAfterMs was ${limit.retryAfterMs}`);
+
+          cancelTask(taskId);
+        });
+
+        it('stops everything else from that source before the deadline', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          downloadFailure = rateLimitedIn(3_600_000);
+          const firstId = await runZlibraryDownload('limit-2', 'First Book');
+
+          // The next book in the queue is fine, the source is not: it must
+          // defer without spending a single request finding that out.
+          downloadFailure = null;
+          mockResolveZlibraryDownload.mock.resetCalls();
+          mockDownloadToFile.mock.resetCalls();
+
+          const secondId = await runZlibraryDownload('limit-3', 'Second Book');
+
+          assert.strictEqual(
+            mockResolveZlibraryDownload.mock.calls.length,
+            0,
+            'a deferred source must not be contacted at all'
+          );
+          assert.strictEqual(mockDownloadToFile.mock.calls.length, 0);
+
+          const second = getTask(secondId);
+          assert.strictEqual(second?.status, 'pending');
+          assert.ok(second?.error?.includes('rate limited'), second?.error ?? 'no error recorded');
+
+          cancelTask(firstId);
+          cancelTask(secondId);
+        });
+
+        it('keeps working on other sources while one is waiting', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          downloadFailure = rateLimitedIn(3_600_000);
+          const deferredId = await runZlibraryDownload('limit-4', 'Waiting Book');
+
+          downloadFailure = null;
+          const libgenTask = createTask('download', {
+            source: 'libgen',
+            md5: 'abc123',
+            title: 'Unaffected Book',
+            author: 'Other Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(libgenTask.id);
+
+          assert.strictEqual(getTask(libgenTask.id)?.status, 'completed');
+          assert.strictEqual(getTask(deferredId)?.status, 'pending');
+
+          cancelTask(deferredId);
+        });
+
+        it('waits out a LibGen limit only once every mirror has refused', async () => {
+          const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+          registerAllHandlers();
+
+          // LibGen has no daily quota — a limit on one mirror is worth trying
+          // the next for, which is the opposite of the quota sources above.
+          const first: MockResolvedLink = {
+            url: 'https://libgen-1.example/get.php?md5=busy',
+            filename: 'busy-book.epub',
+            size: DEFAULT_CONTENT.length,
+            supportsRange: false,
+            contentType: 'application/epub+zip',
+          };
+          const second: MockResolvedLink = {
+            url: 'https://libgen-2.example/get.php?md5=busy',
+            filename: 'busy-book.epub',
+            size: DEFAULT_CONTENT.length,
+            supportsRange: false,
+            contentType: 'application/epub+zip',
+          };
+          resolvedDownloadList = [first, second];
+          downloadFailure = new MockDownloadLimitReachedError('libgen-1.example', 60_000);
+          downloadFailOnlyFirstAttempt = true;
+
+          const task = createTask('download', {
+            source: 'libgen',
+            md5: 'busy',
+            title: 'Busy Mirror Book',
+            author: 'Busy Author',
+            extension: 'epub',
+            libraryId: 1,
+          });
+          await runTask(task.id);
+
+          assert.strictEqual(getTask(task.id)?.status, 'completed');
+          assert.strictEqual(mockDownloadToFile.mock.calls.length, 2);
+          // A rate-limited mirror is not a dead one: nothing is blocklisted,
+          // and nothing is waited out, because the second mirror worked.
+          assert.ok(!bookBlocklistContains(first.url));
+          assert.strictEqual(getSourceLimit('libgen'), null);
         });
       });
 

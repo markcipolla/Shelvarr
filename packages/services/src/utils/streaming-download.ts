@@ -23,6 +23,7 @@ import { dirname } from 'path';
 import { mkdir } from 'fs/promises';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
+import { parseRetryAfter } from './pacing';
 
 export const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -35,9 +36,18 @@ export class LinkBrokenError extends Error {
   }
 }
 
-/** The host works but is rate-limiting us. Worth retrying later. */
+/**
+ * The host works but is rate-limiting us. Worth retrying later.
+ *
+ * `retryAfterMs` carries what the response's `Retry-After` header asked for,
+ * when it sent one. A caller that knows which *source* the host belongs to
+ * turns this into a per-source deferral (E1-6, `downloads/source-limits.ts`)
+ * so the rest of the queue waits out the same limit instead of each finding
+ * it the hard way; without a header it falls back to that source's own
+ * default wait.
+ */
 export class DownloadLimitReachedError extends Error {
-  constructor(readonly host: string) {
+  constructor(readonly host: string, readonly retryAfterMs: number | null = null) {
     super(`Download limit reached for ${host}`);
     this.name = 'DownloadLimitReachedError';
   }
@@ -215,7 +225,10 @@ export async function downloadToFile(
   });
 
   if (response.status === 429) {
-    throw new DownloadLimitReachedError(new URL(resolved.url).hostname);
+    throw new DownloadLimitReachedError(
+      new URL(resolved.url).hostname,
+      parseRetryAfter(response.headers.get('retry-after'))
+    );
   }
   if (!response.ok) {
     throw new LinkBrokenError(resolved.url, `Server returned ${response.status}`);

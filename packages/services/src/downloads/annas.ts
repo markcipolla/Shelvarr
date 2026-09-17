@@ -19,6 +19,8 @@ import {
   buildResolvedDownload,
   type ResolvedDownload,
 } from '../utils/streaming-download';
+import { parseRetryAfter } from '../utils/pacing';
+import { SourceLimitReachedError, defaultLimitMs } from './source-limits';
 
 // Re-exported so callers (and tests) can reach the download surface through
 // this one module boundary, the same way they already do for search.
@@ -263,6 +265,12 @@ export async function getAnnasDownloadLinks(md5: string): Promise<string[]> {
       signal: AbortSignal.timeout(15000),
     });
 
+    // Anna's free tier is a waitlist: once it says no, it says no to every
+    // book, so this is the source's limit rather than this link's (E1-6).
+    if (response.status === 429) {
+      throw annasLimitReached(response);
+    }
+
     if (!response.ok) {
       return links;
     }
@@ -282,10 +290,23 @@ export async function getAnnasDownloadLinks(md5: string): Promise<string[]> {
     }
   } catch (error) {
     if (error instanceof SourceBlockedError) throw error;
+    if (error instanceof SourceLimitReachedError) throw error;
     console.error("Anna's Archive download links error:", error);
   }
 
   return links;
+}
+
+/**
+ * Turn a refusal from Anna's Archive into a deadline for the whole source.
+ *
+ * Honours `Retry-After` when it's there; without one the free tier's
+ * waitlist is day-scoped, so `defaultLimitMs` waits until the daily reset
+ * rather than guessing at minutes.
+ */
+function annasLimitReached(response: Response): SourceLimitReachedError {
+  const retryAfterMs = parseRetryAfter(response.headers.get('retry-after')) ?? defaultLimitMs('annas');
+  return new SourceLimitReachedError('annas', retryAfterMs);
 }
 
 /** Anna's Archive credentials as stored in `download_source_config.credentials`. */
@@ -376,10 +397,15 @@ export async function resolveAnnasDownload(md5: string): Promise<ResolvedDownloa
         } else if (body?.error) {
           console.warn(`Anna's Archive fast_download API error for ${md5}: ${body.error}`);
         }
+      } else if (response.status === 429) {
+        // The membership's daily fast-download allowance is spent. Falling
+        // through to the free path would only queue behind the same account.
+        throw annasLimitReached(response);
       } else {
         console.warn(`Anna's Archive fast_download API failed: ${response.status}`);
       }
     } catch (error) {
+      if (error instanceof SourceLimitReachedError) throw error;
       console.error(`Anna's Archive fast_download API error for ${md5}:`, error);
     }
   }
