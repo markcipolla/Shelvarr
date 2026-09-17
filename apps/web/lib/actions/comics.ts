@@ -14,7 +14,11 @@ import {
   type ComicIssueProgress,
   sqlTimeToIso,
 } from '@/lib/db';
-import type { ComicVolumeSummary, ComicVolumeDetail } from '@shelvarr/types';
+import type {
+  ComicDownloadFailureReason,
+  ComicVolumeSummary,
+  ComicVolumeDetail,
+} from '@shelvarr/types';
 import { getReadingUserId } from '@/lib/auth';
 import { withComicReadState } from '@/lib/comics/readState';
 
@@ -280,6 +284,8 @@ export interface DownloadQueueView {
     /** Fallback links left to try if the current one dies. */
     alternates: number;
     error: string | null;
+    /** Why it failed, for the page to phrase; null unless it failed. */
+    failureReason: ComicDownloadFailureReason | null;
     createdAt: string;
   }>;
   history: Array<{
@@ -288,6 +294,7 @@ export interface DownloadQueueView {
     fileTitle: string | null;
     host: string | null;
     success: boolean;
+    failureReason: ComicDownloadFailureReason | null;
     downloadedAt: string;
   }>;
   blocklist: Array<{
@@ -329,6 +336,7 @@ export async function getComicDownloadQueue(): Promise<DownloadQueueView> {
       attempts: download.attempts,
       alternates: download.alternateLinks.length,
       error: download.error,
+      failureReason: download.failureReason,
       createdAt: download.createdAt,
     })),
     history: (
@@ -338,6 +346,7 @@ export async function getComicDownloadQueue(): Promise<DownloadQueueView> {
         file_title: string | null;
         host: string | null;
         success: number;
+        failure_reason: string | null;
         downloaded_at: string;
       }>
     ).map((entry) => ({
@@ -346,6 +355,7 @@ export async function getComicDownloadQueue(): Promise<DownloadQueueView> {
       fileTitle: entry.file_title,
       host: entry.host,
       success: entry.success === 1,
+      failureReason: (entry.failure_reason as ComicDownloadFailureReason | null) ?? null,
       downloadedAt: sqlTimeToIso(entry.downloaded_at),
     })),
     blocklist: getComicBlocklist(50).map((entry) => ({

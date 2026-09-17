@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { LiveEvent } from '@shelvarr/services';
+import type { ComicDownloadFailureReason } from '@shelvarr/types';
 import {
   cancelComicDownload,
   retryComicDownload,
@@ -14,6 +15,32 @@ import { formatByteProgress } from '@/lib/utils/bytes';
 import { formatRelativeTime } from '@/lib/utils/dates';
 import { useLiveRefresh } from '@/components/live/LiveEvents';
 import { useLiveDownloadProgress } from '@/components/live/useLiveProgress';
+
+/**
+ * What a failed download means, in words. The row also keeps the error it
+ * died on, but that is the detail underneath — this is the thing worth
+ * reading first.
+ */
+const FAILURE_COPY: Record<ComicDownloadFailureReason, string> = {
+  'rate-limited':
+    'The host kept rate-limiting us, so we stopped asking. The next search will look for another release.',
+  'link-broken':
+    'Every link for this release was dead. They are on the blocklist now, so searches will skip them.',
+  'download-failed': 'The transfer went wrong and there were no other links left to try.',
+  'import-failed':
+    'It downloaded, but could not be filed into the library. A retry picks up from the bytes already fetched.',
+  'library-unwritable':
+    'The volume’s folder could not be written to, so nothing was downloaded. Check who owns it.',
+};
+
+/** The same reasons in a few words, for a history line. */
+const FAILURE_LABEL: Record<ComicDownloadFailureReason, string> = {
+  'rate-limited': 'host kept rate-limiting us',
+  'link-broken': 'every link was dead',
+  'download-failed': 'the transfer went wrong',
+  'import-failed': 'could not be filed into the library',
+  'library-unwritable': 'folder was not writable',
+};
 
 const STATE_STYLES: Record<string, string> = {
   queued: 'bg-shelvarr-surface text-shelvarr-text-muted border-shelvarr-border',
@@ -119,8 +146,21 @@ export function DownloadQueue({ data }: { data: DownloadQueueView }) {
                       {download.volumeTitle ?? `Volume ${download.volumeId}`}
                     </Link>
                   </div>
-                  {download.error && (
-                    <p className="text-xs text-red-400 mt-1 truncate">{download.error}</p>
+                  {download.failureReason ? (
+                    <>
+                      <p className="text-xs text-red-400 mt-1">
+                        {FAILURE_COPY[download.failureReason]}
+                      </p>
+                      {download.error && (
+                        <p className="text-xs text-shelvarr-text-muted mt-1 truncate">
+                          {download.error}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    download.error && (
+                      <p className="text-xs text-red-400 mt-1 truncate">{download.error}</p>
+                    )
                   )}
                 </div>
 
@@ -165,6 +205,7 @@ export function DownloadQueue({ data }: { data: DownloadQueueView }) {
                   </p>
                   <p className="text-xs text-shelvarr-text-muted">
                     {entry.host ?? 'unknown host'} · {formatRelativeTime(entry.downloadedAt)}
+                    {entry.failureReason && ` · ${FAILURE_LABEL[entry.failureReason]}`}
                   </p>
                 </div>
                 <span className={entry.success ? 'text-green-400' : 'text-red-400'}>

@@ -21,6 +21,7 @@ import {
 import type { AddComicDownloadInput } from '@shelvarr/db';
 import type {
   ComicDownload,
+  ComicDownloadFailureReason,
   ComicDownloadLink,
   ComicDownloadState,
 } from '@shelvarr/types';
@@ -36,7 +37,11 @@ import { listenerCount, publish } from '../events/index';
 export function setDownloadState(
   id: number,
   state: ComicDownloadState,
-  extra: { error?: string | null; filePath?: string | null } = {}
+  extra: {
+    error?: string | null;
+    filePath?: string | null;
+    failureReason?: ComicDownloadFailureReason | null;
+  } = {}
 ): void {
   setComicDownloadState(id, state, extra);
 

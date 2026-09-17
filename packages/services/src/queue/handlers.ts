@@ -42,7 +42,11 @@ import {
   setDownloadState as setBookDownloadState,
   setDownloadProgress as updateBookDownloadProgress,
 } from '../downloads/download-events';
-import type { ComicDownloadLink, Library } from '@shelvarr/types';
+import type {
+  ComicDownloadFailureReason,
+  ComicDownloadLink,
+  Library,
+} from '@shelvarr/types';
 import * as getcomics from '../comics/getcomics/index';
 import * as comicLibrary from '../comics/library';
 import { ensureImportable, importComicDownload } from '../comics/import';
@@ -1535,8 +1539,16 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
     [download.volumeId]
   );
 
-  const fail = (message: string): never => {
-    setDownloadState(download.id, 'failed', { error: message });
+  /**
+   * End the download for good.
+   *
+   * `reason` is stored alongside the message so the queue page can say what
+   * happened in its own words — "the host kept rate-limiting us" reads very
+   * differently from "the link was dead", and neither is worth asking someone
+   * to work out from an error string.
+   */
+  const fail = (message: string, reason: ComicDownloadFailureReason): never => {
+    setDownloadState(download.id, 'failed', { error: message, failureReason: reason });
     addComicDownloadHistory({
       volumeId: download.volumeId,
       issueId: download.issueId,
@@ -1545,6 +1557,7 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
       webSubTitle: download.webSubTitle,
       host: download.host,
       success: false,
+      failureReason: reason,
     });
     throw new Error(message);
   };
@@ -1630,7 +1643,10 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
   try {
     await ensureImportable(namingVolume);
   } catch (error) {
-    return fail(error instanceof Error ? error.message : String(error));
+    return fail(
+      error instanceof Error ? error.message : String(error),
+      'library-unwritable'
+    );
   }
 
   const attempt = startComicDownloadAttempt(download.id);
@@ -1655,7 +1671,10 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
       // download back in the queue, and let the task be retried later.
       if (error instanceof getcomics.DownloadLimitReachedError) {
         if (attempt >= MAX_DOWNLOAD_ATTEMPTS) {
-          return fail(`${message} — gave up after ${attempt} attempts`);
+          return fail(
+            `${message} — gave up after ${attempt} attempts`,
+            'rate-limited'
+          );
         }
         const retryAfterMs = rateLimitBackoff(attempt);
         deferDownload(
@@ -1680,7 +1699,12 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
       }
 
       const next = alternates.shift();
-      if (!next) return fail(message);
+      if (!next) {
+        return fail(
+          message,
+          error instanceof getcomics.LinkBrokenError ? 'link-broken' : 'download-failed'
+        );
+      }
 
       console.warn(
         `[comic-download] ${candidate.link} failed (${message}); trying ${next.link}`
@@ -1726,7 +1750,7 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
     // another link would not help. They are left there on purpose: a retry
     // resumes from them instead of fetching the issue again, and the scratch
     // sweep clears them if the retry never comes.
-    return fail(error instanceof Error ? error.message : String(error));
+    return fail(error instanceof Error ? error.message : String(error), 'import-failed');
   }
 };
 

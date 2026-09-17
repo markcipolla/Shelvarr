@@ -14,6 +14,7 @@ import type {
   BlocklistReason,
   ComicBlocklistEntry,
   ComicDownload,
+  ComicDownloadFailureReason,
   ComicDownloadLink,
   ComicDownloadState,
   DownloadHost,
@@ -333,6 +334,9 @@ function runMigrations(database: Database.Database): void {
     // No DEFAULT: SQLite rejects a non-constant one in ALTER TABLE, so
     // existing rows are backfilled below instead.
     ['heartbeat_at', 'TEXT'],
+    // Why a download was abandoned. Rows that failed before this existed keep
+    // a null reason and are shown by their error string instead.
+    ['failure_reason', 'TEXT'],
   ];
   for (const [name, definition] of comicDownloadColumns) {
     if (comicDownloadsInfo.some((col) => col.name === name)) continue;
@@ -347,6 +351,16 @@ function runMigrations(database: Database.Database): void {
   database.exec(
     'CREATE INDEX IF NOT EXISTS idx_comic_downloads_heartbeat ON comic_downloads(state, heartbeat_at)'
   );
+
+  // History rows carry the same reason, so a failure still says why after the
+  // download row has been cleared out of the queue.
+  const comicDownloadHistoryInfo = database
+    .prepare('PRAGMA table_info(comic_download_history)')
+    .all() as Array<{ name: string }>;
+  if (!comicDownloadHistoryInfo.some((col) => col.name === 'failure_reason')) {
+    console.log('Running migration: adding failure_reason column to comic_download_history');
+    database.exec('ALTER TABLE comic_download_history ADD COLUMN failure_reason TEXT');
+  }
 
   const comicIssuesInfo = database.prepare('PRAGMA table_info(comic_issues)').all() as Array<{ name: string }>;
   if (!comicIssuesInfo.some((col) => col.name === 'comicvine_volume_id')) {
@@ -2135,6 +2149,7 @@ interface ComicDownloadRow {
   attempts: number;
   file_path: string | null;
   error: string | null;
+  failure_reason: string | null;
   heartbeat_at: string | null;
   created_at: string;
   completed_at: string | null;
@@ -2177,6 +2192,7 @@ function rowToComicDownload(row: ComicDownloadRow): ComicDownload {
     size: row.size,
     attempts: row.attempts ?? 0,
     error: row.error,
+    failureReason: (row.failure_reason as ComicDownloadFailureReason | null) ?? null,
     heartbeatAt: sqlTimeToIso(row.heartbeat_at),
     createdAt: sqlTimeToIso(row.created_at),
     completedAt: sqlTimeToIso(row.completed_at),
@@ -2270,10 +2286,21 @@ export function updateComicDownloadProgress(id: number, progress: number, size: 
   );
 }
 
+/**
+ * Move a download to a new state.
+ *
+ * `error` and `filePath` are merged — passing neither leaves what is there.
+ * `failureReason` is not: it only ever describes the failure the row is in
+ * right now, so anything other than a failure clears it.
+ */
 export function setComicDownloadState(
   id: number,
   state: ComicDownloadState,
-  extra: { error?: string | null; filePath?: string | null } = {}
+  extra: {
+    error?: string | null;
+    filePath?: string | null;
+    failureReason?: ComicDownloadFailureReason | null;
+  } = {}
 ): void {
   const terminal = state === 'completed' || state === 'failed' || state === 'cancelled';
   execute(
@@ -2281,10 +2308,18 @@ export function setComicDownloadState(
         SET state = ?,
             error = COALESCE(?, error),
             file_path = COALESCE(?, file_path),
+            failure_reason = ?,
             heartbeat_at = CURRENT_TIMESTAMP,
             completed_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE completed_at END
       WHERE id = ?`,
-    [state, extra.error ?? null, extra.filePath ?? null, terminal ? 1 : 0, id]
+    [
+      state,
+      extra.error ?? null,
+      extra.filePath ?? null,
+      state === 'failed' ? extra.failureReason ?? null : null,
+      terminal ? 1 : 0,
+      id,
+    ]
   );
 }
 
@@ -2298,7 +2333,7 @@ export function startComicDownloadAttempt(id: number): number {
   execute(
     `UPDATE comic_downloads
         SET state = 'downloading', attempts = attempts + 1, error = NULL,
-            heartbeat_at = CURRENT_TIMESTAMP
+            failure_reason = NULL, heartbeat_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
     [id]
   );
@@ -2317,7 +2352,7 @@ export function startComicDownloadAttempt(id: number): number {
 export function deferComicDownload(id: number, error: string): void {
   execute(
     `UPDATE comic_downloads
-        SET state = 'queued', error = ?, completed_at = NULL,
+        SET state = 'queued', error = ?, failure_reason = NULL, completed_at = NULL,
             heartbeat_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
     [error, id]
@@ -2387,7 +2422,8 @@ export function resetComicDownloadForRetry(id: number): void {
   execute(
     `UPDATE comic_downloads
         SET state = 'queued', progress = 0, attempts = 0, error = NULL,
-            file_path = NULL, completed_at = NULL, heartbeat_at = CURRENT_TIMESTAMP
+            failure_reason = NULL, file_path = NULL, completed_at = NULL,
+            heartbeat_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
     [id]
   );
@@ -2406,13 +2442,16 @@ export interface ComicDownloadHistoryEntry {
   fileTitle?: string | null;
   host?: DownloadHost | null;
   success: boolean;
+  /** Why it failed, on a failure — same vocabulary as the download row. */
+  failureReason?: ComicDownloadFailureReason | null;
 }
 
 export function addComicDownloadHistory(entry: ComicDownloadHistoryEntry): void {
   execute(
     `INSERT INTO comic_download_history
-       (volume_id, issue_id, web_link, web_title, web_sub_title, file_title, host, success)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (volume_id, issue_id, web_link, web_title, web_sub_title, file_title, host, success,
+        failure_reason)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       entry.volumeId,
       entry.issueId ?? null,
@@ -2422,6 +2461,7 @@ export function addComicDownloadHistory(entry: ComicDownloadHistoryEntry): void 
       entry.fileTitle ?? null,
       entry.host ?? null,
       entry.success ? 1 : 0,
+      entry.success ? null : entry.failureReason ?? null,
     ]
   );
 }
