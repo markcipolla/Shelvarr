@@ -19,7 +19,15 @@ import {
   getDownloadSourceConfigs,
   getDownloadSourceConfig,
   upsertDownloadSourceConfig,
+  MIRRORED_SOURCES,
+  normaliseMirrorDomain,
+  getSourceMirrors,
+  addSourceMirror,
+  setSourceMirrorEnabled,
+  deleteSourceMirror,
+  moveSourceMirror,
   type DownloadSourceConfig,
+  type SourceMirror,
 } from '@/lib/db';
 import { authenticateZLibrary } from '@/lib/services/downloads/zlibrary';
 import { enqueueTask } from '@/lib/services/queue';
@@ -133,6 +141,89 @@ export async function getDownloadConfigs(): Promise<DownloadSourceConfig[]> {
  */
 export async function getDownloadConfig(source: string): Promise<DownloadSourceConfig | null> {
   return getDownloadSourceConfig(source);
+}
+
+// ============ Mirror domains (E1-1) ============
+//
+// Shadow libraries rotate domains. Mirrors live in the `source_mirrors`
+// table rather than a code constant, so following a rotation is an edit in
+// Settings -> Download Sources, not a new release. Search and download read
+// the table on every call, so a mirror added here is live immediately — no
+// restart, nothing to invalidate.
+
+/** Every configured mirror, for the Settings UI. */
+export async function getSourceMirrorList(): Promise<SourceMirror[]> {
+  return getSourceMirrors();
+}
+
+/**
+ * Add a mirror domain to a source. Accepts what someone is likely to paste
+ * — a full URL, mixed case — and stores the bare hostname.
+ */
+export async function addDownloadSourceMirror(
+  source: string,
+  domain: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!MIRRORED_SOURCES.includes(source)) {
+    return { success: false, error: `${source} doesn't use mirror domains` };
+  }
+
+  const normalised = normaliseMirrorDomain(domain);
+  if (!normalised) {
+    return { success: false, error: `"${domain}" isn't a valid domain` };
+  }
+
+  try {
+    addSourceMirror(source, normalised);
+    revalidatePath('/settings');
+    return { success: true };
+  } catch (error) {
+    console.error('Error adding source mirror:', error);
+    return { success: false, error: 'Failed to add mirror' };
+  }
+}
+
+/** Turn a mirror off without forgetting it, or back on again. */
+export async function toggleDownloadSourceMirror(
+  id: number,
+  enabled: boolean
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    setSourceMirrorEnabled(id, enabled);
+    revalidatePath('/settings');
+    return { success: true };
+  } catch (error) {
+    console.error('Error toggling source mirror:', error);
+    return { success: false, error: 'Failed to update mirror' };
+  }
+}
+
+export async function removeDownloadSourceMirror(
+  id: number
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    deleteSourceMirror(id);
+    revalidatePath('/settings');
+    return { success: true };
+  } catch (error) {
+    console.error('Error removing source mirror:', error);
+    return { success: false, error: 'Failed to remove mirror' };
+  }
+}
+
+/** Move a mirror up or down its source's preference order. */
+export async function reorderDownloadSourceMirror(
+  id: number,
+  direction: 'up' | 'down'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    moveSourceMirror(id, direction);
+    revalidatePath('/settings');
+    return { success: true };
+  } catch (error) {
+    console.error('Error reordering source mirror:', error);
+    return { success: false, error: 'Failed to reorder mirror' };
+  }
 }
 
 /**

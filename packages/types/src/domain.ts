@@ -346,6 +346,29 @@ export interface DownloadSourceConfig {
   last_checked: string | null;
 }
 
+/**
+ * A mirror domain for one of the shadow-library sources.
+ *
+ * These used to be hardcoded constants in the download services, which made
+ * following a domain rotation (libgen.is -> .rs -> .st -> .vg -> .la) a code
+ * change and a new image. They live in the `source_mirrors` table instead,
+ * seeded from the shipped defaults on first run and editable in
+ * Settings -> Download Sources.
+ */
+export interface SourceMirror {
+  id: number;
+  /** Headline source this mirror belongs to: libgen, annas or zlibrary. */
+  source: string;
+  /** Bare hostname, no scheme and no trailing slash (e.g. `libgen.vg`). */
+  domain: string;
+  /** Lower sorts first. Ties break on insertion order. */
+  priority: number;
+  enabled: number;
+  /** `seed` for a shipped default, `user` for one added in Settings. */
+  added_by: string;
+  created_at: string;
+}
+
 export interface SourceStatusCache {
   id: number;
   source: string;

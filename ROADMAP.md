@@ -54,6 +54,34 @@ nothing a user may need to change at 11pm should require a rebuild.
 download without a restart; the seeded defaults match today's behaviour
 exactly.
 
+**Shipped 2026-09-17.** All four lists are gone. `source_mirrors` (`source`,
+`domain`, `priority`, `enabled`, `added_by`, `created_at`) is seeded on first
+run with exactly the domains the constants held, in the order they held them,
+and guarded by a `source_mirrors_seeded` marker so a mirror an operator
+removes stays removed across restarts. `packages/services/src/downloads/
+mirrors.ts` is the one place mirror choice is decided; `getLibGenDomains`,
+`getAnnasDomain` and `getZLibraryDomain` are now three lines each and read
+the table on every call, so a mirror added in Settings → Download Sources is
+searched and downloaded from on the next request with nothing restarted and
+no cache to invalidate. Health keys off the row — `source_status_cache` rows
+are `<source>:<domain>` (`libgen:libgen.la`) rather than the old `libgen_vg`
+/ `zlib_gl` constants, which is what let two copies of the list drift apart.
+Settings grew a per-source mirror editor: enable, reorder, remove, and add
+(a pasted URL is normalised to a bare host). Z-Library's per-account personal
+domain, which E4-5 noted the hardcoded list couldn't represent, can now just
+be added as a mirror.
+
+Two deliberate behaviour changes fall out of it. Anna's Archive and Z-Library
+are now aggregates over their mirrors the way LibGen already was, so their
+headline badge is the best of their mirrors rather than a single probe of
+`.org`/`.sk`. And each source keeps its old fallback domain — including
+Anna's odd `annas-archive.li`, which is not its highest-priority mirror — but
+only for as long as that domain is still one of the configured mirrors;
+remove it and the operator's own top mirror takes over. Left open: no
+per-mirror "last worked" or automatic demotion beyond the existing health
+ranking, and GetComics still takes its base URL from its own setting rather
+than a mirror row.
+
 ### E1-2 · Say "Cloudflare is blocking us", not "no results found"
 **Size S.** `probeSource` (`source-status.ts:133`) already treats 403/429/503
 as `degraded` rather than `down` — good. But the *search* paths don't: a

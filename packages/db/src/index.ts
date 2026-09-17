@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import type {
   WantedBook,
   DownloadSourceConfig,
+  SourceMirror,
   SourceStatusCache,
   ComicVolumeSummary,
   ComicVolumeDetail,
@@ -407,7 +408,48 @@ function runMigrations(database: Database.Database): void {
     database.exec('ALTER TABLE tasks ADD COLUMN not_before TEXT');
   }
 
+  seedSourceMirrors(database);
+
   migrateProgressToPerUser(database);
+}
+
+/**
+ * Seed `source_mirrors` with the domains that used to be hardcoded in the
+ * download services, and drop the status-cache rows keyed by the old
+ * per-mirror constants (`libgen_vg`, `annas_li`, `zlib_gl`, …) — health is
+ * keyed off the mirror row now.
+ *
+ * Guarded by a settings marker rather than "is the table empty", so an
+ * operator who deliberately removes every mirror of a source in Settings
+ * doesn't get them all back on the next restart.
+ */
+function seedSourceMirrors(database: Database.Database): void {
+  const marker = database
+    .prepare("SELECT value FROM settings WHERE key = 'source_mirrors_seeded'")
+    .get() as { value: string } | undefined;
+  if (marker) return;
+
+  console.log('Running migration: seeding source_mirrors from the shipped mirror defaults');
+
+  const insert = database.prepare(
+    `INSERT OR IGNORE INTO source_mirrors (source, domain, priority, enabled, added_by)
+     VALUES (?, ?, ?, 1, 'seed')`
+  );
+
+  for (const [source, domains] of Object.entries(DEFAULT_SOURCE_MIRRORS)) {
+    domains.forEach((domain, index) => insert.run(source, domain, index));
+  }
+
+  database
+    .prepare(
+      `DELETE FROM source_status_cache
+       WHERE source IN ('libgen_vg', 'libgen_la', 'libgen_bz', 'libgen_gl', 'annas_li', 'zlib_gl')`
+    )
+    .run();
+
+  database
+    .prepare("INSERT INTO settings (key, value) VALUES ('source_mirrors_seeded', '1')")
+    .run();
 }
 
 /**
@@ -815,6 +857,140 @@ export function isSourceEnabled(source: string): boolean {
   const sourceConfig = getDownloadSourceConfig(source);
   if (sourceConfig) return sourceConfig.enabled === 1;
   return !SHADOW_LIBRARY_SOURCES.has(source);
+}
+
+// ============ Source Mirror Functions ============
+
+/**
+ * The mirror domains Shelvarr ships with, in preference order — the same
+ * lists that used to be `LIBGEN_SOURCES`, `ANNAS_SOURCES` and `ZLIB_SOURCES`
+ * in the download services.
+ *
+ * They are seed data, not runtime configuration: after the first run the
+ * `source_mirrors` table is the only thing mirror selection reads. They stay
+ * here as the last-resort answer for a caller that asks before the database
+ * exists (a unit test, a probe during startup).
+ */
+export const DEFAULT_SOURCE_MIRRORS: Record<string, string[]> = {
+  libgen: ['libgen.vg', 'libgen.la', 'libgen.bz', 'libgen.gl'],
+  annas: ['annas-archive.org', 'annas-archive.li'],
+  zlibrary: ['z-library.sk', 'z-lib.gl'],
+};
+
+/** Sources that draw their domains from `source_mirrors`. */
+export const MIRRORED_SOURCES = Object.keys(DEFAULT_SOURCE_MIRRORS);
+
+/**
+ * Normalise whatever an operator pasted into Settings into a bare hostname:
+ * `https://LibGen.VG/index.php` -> `libgen.vg`. Returns null if what's left
+ * isn't a plausible hostname.
+ */
+export function normaliseMirrorDomain(input: string): string | null {
+  const trimmed = input.trim().toLowerCase();
+  if (!trimmed) return null;
+
+  const withoutScheme = trimmed.replace(/^[a-z][a-z0-9+.-]*:\/\//, '');
+  const host = withoutScheme.split('/')[0]!.split('?')[0]!.split('#')[0]!;
+  if (!host) return null;
+
+  // Hostname with at least one dot, optionally a port. No credentials, no
+  // spaces, no wildcards.
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(:\d{1,5})?$/.test(host)) {
+    return null;
+  }
+
+  return host;
+}
+
+/** Every mirror row for a source (enabled or not), in priority order. */
+export function getSourceMirrors(source?: string): SourceMirror[] {
+  return source
+    ? query<SourceMirror>(
+        'SELECT * FROM source_mirrors WHERE source = ? ORDER BY priority ASC, id ASC',
+        [source]
+      )
+    : query<SourceMirror>('SELECT * FROM source_mirrors ORDER BY source ASC, priority ASC, id ASC');
+}
+
+/** The mirrors a search or download may actually use, in priority order. */
+export function getEnabledSourceMirrors(source: string): SourceMirror[] {
+  return query<SourceMirror>(
+    'SELECT * FROM source_mirrors WHERE source = ? AND enabled = 1 ORDER BY priority ASC, id ASC',
+    [source]
+  );
+}
+
+export function getSourceMirror(id: number): SourceMirror | null {
+  return queryOne<SourceMirror>('SELECT * FROM source_mirrors WHERE id = ?', [id]);
+}
+
+/**
+ * Add a mirror, appended after the ones already configured for that source.
+ * Returns the existing row unchanged if the domain is already there, so
+ * re-adding one is a no-op rather than an error.
+ */
+export function addSourceMirror(
+  source: string,
+  domain: string,
+  addedBy: 'seed' | 'user' = 'user'
+): SourceMirror {
+  const existing = queryOne<SourceMirror>(
+    'SELECT * FROM source_mirrors WHERE source = ? AND domain = ?',
+    [source, domain]
+  );
+  if (existing) return existing;
+
+  const next = queryOne<{ nextPriority: number }>(
+    'SELECT COALESCE(MAX(priority), -1) + 1 AS nextPriority FROM source_mirrors WHERE source = ?',
+    [source]
+  );
+
+  execute(
+    'INSERT INTO source_mirrors (source, domain, priority, enabled, added_by) VALUES (?, ?, ?, 1, ?)',
+    [source, domain, next?.nextPriority ?? 0, addedBy]
+  );
+
+  return queryOne<SourceMirror>(
+    'SELECT * FROM source_mirrors WHERE source = ? AND domain = ?',
+    [source, domain]
+  )!;
+}
+
+export function setSourceMirrorEnabled(id: number, enabled: boolean): void {
+  execute('UPDATE source_mirrors SET enabled = ? WHERE id = ?', [enabled ? 1 : 0, id]);
+}
+
+export function deleteSourceMirror(id: number): void {
+  const mirror = getSourceMirror(id);
+  if (!mirror) return;
+
+  execute('DELETE FROM source_mirrors WHERE id = ?', [id]);
+  // The mirror's health row is keyed off the mirror, so it goes too.
+  execute('DELETE FROM source_status_cache WHERE source = ?', [`${mirror.source}:${mirror.domain}`]);
+}
+
+/**
+ * Move a mirror one place up or down its source's preference order, by
+ * swapping priorities with its neighbour. Priorities are rewritten as a
+ * dense 0..n-1 sequence first, so hand-edited or seeded gaps can't strand a
+ * row.
+ */
+export function moveSourceMirror(id: number, direction: 'up' | 'down'): void {
+  const mirror = getSourceMirror(id);
+  if (!mirror) return;
+
+  const ordered = getSourceMirrors(mirror.source);
+  const index = ordered.findIndex((m) => m.id === id);
+  const target = direction === 'up' ? index - 1 : index + 1;
+  if (index === -1 || target < 0 || target >= ordered.length) return;
+
+  const reordered = [...ordered];
+  reordered[index] = ordered[target]!;
+  reordered[target] = ordered[index]!;
+
+  for (const [position, row] of reordered.entries()) {
+    execute('UPDATE source_mirrors SET priority = ? WHERE id = ?', [position, row.id]);
+  }
 }
 
 // ============ Source Status Cache Functions ============

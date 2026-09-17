@@ -1654,8 +1654,11 @@ describe('Download Services', () => {
         assert.ok(['up', 'down', 'degraded'].includes(status.status));
       });
 
+      // Z-Library is an aggregate over its mirror rows (E1-1), so 'down'
+      // means every one of its mirrors is down — hence mockImplementation
+      // rather than mockImplementationOnce.
       it('should return down status when request fails', async () => {
-        mockFetch.mock.mockImplementationOnce(async () =>
+        mockFetch.mock.mockImplementation(async () =>
           new Response('', { status: 500 })
         );
 
@@ -1664,7 +1667,7 @@ describe('Download Services', () => {
       });
 
       it('should handle timeout errors', async () => {
-        mockFetch.mock.mockImplementationOnce(async () => {
+        mockFetch.mock.mockImplementation(async () => {
           throw new Error('Timeout');
         });
 

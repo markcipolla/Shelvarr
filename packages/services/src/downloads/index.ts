@@ -310,12 +310,20 @@ export { searchAnnas, getAnnasSearchUrl, getAnnasDownloadLinks } from './annas';
 export { searchLibGen, getLibGenSearchUrl, getLibGenDownloadUrl } from './libgen';
 export { getSourceStatuses, refreshSourceStatuses, checkSourceHealth } from './source-status';
 export { detectChallenge, SourceBlockedError, SourceParseError, getParserHealth } from './challenge';
+export {
+  mirrorStatusKey,
+  parseMirrorStatusKey,
+  configuredMirrorDomains,
+  rankedMirrorDomains,
+  preferredMirrorDomain,
+} from './mirrors';
 
 export type { ZLibraryResult } from './zlibrary';
 export type { AnnasResult } from './annas';
 export type { LibGenResult } from './libgen';
 export type { SourceStatus } from './source-status';
 export type { ParserHealth } from './challenge';
+export type { MirroredSource } from './mirrors';
 
 export default {
   searchAllSources,
