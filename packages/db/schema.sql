@@ -381,7 +381,7 @@ CREATE TABLE IF NOT EXISTS comic_blocklist (
   web_sub_title TEXT,
   download_link TEXT NOT NULL UNIQUE,
   host TEXT,
-  reason TEXT NOT NULL, -- link-broken|source-not-supported|no-working-links|added-by-user
+  reason TEXT NOT NULL, -- link-broken|source-not-supported|no-working-links|failed-verification|added-by-user
   added_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -455,7 +455,7 @@ CREATE TABLE IF NOT EXISTS book_blocklist (
   author TEXT,
   source TEXT,
   download_url TEXT NOT NULL UNIQUE,
-  reason TEXT NOT NULL, -- link-broken|no-working-links|added-by-user
+  reason TEXT NOT NULL, -- link-broken|no-working-links|failed-verification|added-by-user
   added_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 

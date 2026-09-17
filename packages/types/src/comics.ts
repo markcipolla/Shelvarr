@@ -146,6 +146,8 @@ export type BlocklistReason =
   | 'link-broken'
   | 'source-not-supported'
   | 'no-working-links'
+  /** The bytes arrived but hashed wrong, or weren't the file type they claimed (E1-5). */
+  | 'failed-verification'
   | 'added-by-user';
 
 export interface ComicBlocklistEntry {

@@ -16,11 +16,13 @@ import {
 } from './challenge';
 import {
   DownloadLimitReachedError,
+  FileVerificationError,
   LinkBrokenError,
   downloadToFile,
   probeDownloadUrl,
   type DownloadResult,
   type DownloadToFileOptions,
+  type DownloadVerification,
   type ResolvedDownload,
 } from '../utils/streaming-download';
 
@@ -28,10 +30,12 @@ import {
 // through this one module boundary, the same way they already do for search.
 export {
   DownloadLimitReachedError,
+  FileVerificationError,
   LinkBrokenError,
   downloadToFile,
   type DownloadResult,
   type DownloadToFileOptions,
+  type DownloadVerification,
   type ResolvedDownload,
 };
 
