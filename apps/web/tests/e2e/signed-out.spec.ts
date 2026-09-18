@@ -49,6 +49,13 @@ test.describe('Signed out', () => {
     expect((await response.json()).status).toBe('ok');
   });
 
+  test('still answers /up, which a deploy waits on', async ({ request }) => {
+    const response = await request.get('/up');
+
+    expect(response.status()).toBe(200);
+    expect((await response.text()).trim()).toBe('ok');
+  });
+
   test('says whether this server wants a login, and nothing more', async ({ request }) => {
     const response = await request.get('/api/auth/status');
 
