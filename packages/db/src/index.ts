@@ -3449,6 +3449,25 @@ export function getComicVolumeByComicvineId(comicvineId: number): ComicVolume | 
   return row ? rowToComicVolume(row) : null;
 }
 
+/**
+ * Volumes still mirrored from a previous manager, with the folder and
+ * ComicVine id it recorded for each.
+ *
+ * A library import uses this to recognise a folder it has already seen: the
+ * old manager's match is a fact, so there is nothing to guess at.
+ */
+export function getUnmigratedComicFolders(): Array<{
+  id: number;
+  folder: string;
+  comicvineId: number;
+}> {
+  return query<{ id: number; folder: string; comicvine_id: number }>(
+    `SELECT id, folder, comicvine_id FROM comics
+      WHERE managed = 0 AND deleted_at IS NULL
+        AND folder IS NOT NULL AND folder != '' AND comicvine_id IS NOT NULL`
+  ).map((row) => ({ id: row.id, folder: row.folder, comicvineId: row.comicvine_id }));
+}
+
 export interface UpsertManagedVolumeInput {
   /** Omit to create a new volume; supply to refresh an existing one. */
   id?: number;

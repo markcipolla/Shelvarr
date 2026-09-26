@@ -13,10 +13,11 @@ import { readdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { basename, join } from 'path';
 
-import { getComicVolumeByComicvineId } from '@shelvarr/db';
+import { getComicVolumeByComicvineId, getUnmigratedComicFolders } from '@shelvarr/db';
 import type { ComicVolumeMetadata, FilenameData } from '@shelvarr/types';
 
 import { createLogger } from '../utils/logger';
+import { remapComicPath } from './archive';
 import { getComicVine } from './library';
 import { addVolume } from './library';
 import { extractFilenameData } from './getcomics/parse';
@@ -59,7 +60,9 @@ export async function findImportGroups(
   if (!existsSync(rootPath)) throw new Error(`No such folder: ${rootPath}`);
 
   const groups: ImportGroup[] = [];
-  const maxGroups = options.maxGroups ?? 500;
+  // ponytail: a flat ceiling, high enough for a real library — raise it or
+  // report the truncation if anyone's collection outgrows it.
+  const maxGroups = options.maxGroups ?? 2000;
 
   async function walk(directory: string): Promise<void> {
     if (groups.length >= maxGroups) return;
@@ -150,10 +153,31 @@ function candidateRank(candidate: ComicVolumeMetadata, info: FilenameData): numb
   return score;
 }
 
+/** Trailing separators aside, the same folder is the same folder. */
+function sameFolderKey(folder: string): string {
+  return folder.replace(/[\\/]+$/, '');
+}
+
+/**
+ * Folders already in the library as un-migrated mirrors, keyed by where they
+ * are on this machine — a recorded folder can be under another mount, which is
+ * what COMIC_PATH_MAP translates.
+ */
+function mirroredFoldersByPath(): Map<string, { id: number; comicvineId: number }> {
+  const mirrored = new Map<string, { id: number; comicvineId: number }>();
+  for (const volume of getUnmigratedComicFolders()) {
+    mirrored.set(sameFolderKey(remapComicPath(volume.folder)), {
+      id: volume.id,
+      comicvineId: volume.comicvineId,
+    });
+  }
+  return mirrored;
+}
+
 /**
  * Search ComicVine for each group and rank the candidates.
  *
- * One search per group, spaced by the client's own rate limiting — a library
+ * One lookup per group, spaced by the client's own rate limiting — a library
  * of 200 volumes therefore takes a few minutes. That's why this runs as a
  * background task rather than inline in a request.
  */
@@ -166,17 +190,35 @@ export async function proposeLibraryImport(
 ): Promise<ImportProposal[]> {
   const client = await getComicVine(options.signal);
   const proposals: ImportProposal[] = [];
+  const mirrored = mirroredFoldersByPath();
 
   for (const [index, group] of groups.entries()) {
     if (options.signal?.aborted) break;
 
+    // A folder we already mirror carries the ComicVine id its previous manager
+    // matched it to, so fetch that volume by id rather than guessing from the
+    // title — which is the whole of the migration path off another manager.
+    const known = mirrored.get(sameFolderKey(group.folder)) ?? null;
     let candidates: ComicVolumeMetadata[] = [];
-    if (group.info.series) {
-      const query = group.info.year
-        ? `${group.info.series} ${group.info.year}`
-        : group.info.series;
+    if (known) {
       try {
-        candidates = await client.searchVolumes(query);
+        candidates = await client.searchVolumes(`4050-${known.comicvineId}`);
+      } catch (error) {
+        log.warn('ComicVine lookup failed for a mirrored volume', {
+          folder: group.folder,
+          comicvineId: known.comicvineId,
+          error,
+        });
+      }
+    }
+    const byId = candidates.length > 0;
+
+    // The year is deliberately left out of the query: ComicVine matches on
+    // every word, so searching "Gear School 2007" for a volume whose name is
+    // just "Gear School" comes back empty. It ranks the results instead.
+    if (!byId && group.info.series) {
+      try {
+        candidates = await client.searchVolumes(group.info.series);
       } catch (error) {
         log.warn('ComicVine search failed for group', { folder: group.folder, error });
       }
@@ -186,18 +228,19 @@ export async function proposeLibraryImport(
 
     // Only suggest automatically when the title actually matches — a wrong
     // auto-match is worse than no suggestion, because it silently adopts
-    // someone's library into the wrong series.
+    // someone's library into the wrong series. A volume fetched by id is not a
+    // guess, so it stands even when the filenames parsed to something else.
     const best = candidates[0];
     const suggested =
-      best && matchTitle(best.title, group.info.series) ? best : null;
+      best && (byId || matchTitle(best.title, group.info.series)) ? best : null;
 
     proposals.push({
       ...group,
       candidates: candidates.slice(0, 10),
       suggested,
-      alreadyAdded: suggested
-        ? getComicVolumeByComicvineId(suggested.comicvineId)?.id ?? null
-        : null,
+      alreadyAdded:
+        known?.id ??
+        (suggested ? getComicVolumeByComicvineId(suggested.comicvineId)?.id ?? null : null),
     });
 
     options.onProgress?.(index + 1, groups.length);

@@ -606,6 +606,101 @@ describe('Comic library', () => {
       );
     });
   });
+
+  describe('proposing matches', () => {
+    const originalFetch = global.fetch;
+    /** Every ComicVine URL the proposal pass asked for. */
+    let requested: string[];
+
+    /** A folder holding one file, named so it parses to `series` (`year`). */
+    function seedFolder(name: string, series: string, year: number): string {
+      const folder = join(root, 'propose', name);
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(join(folder, `${series} (${year}) Issue 001.cbz`), 'x');
+      return folder;
+    }
+
+    before(() => {
+      db.setSetting('comicvine_api_key', 'test-key');
+    });
+
+    beforeEach(() => {
+      requested = [];
+      rmSync(join(root, 'propose'), { recursive: true, force: true });
+      global.fetch = mock.fn(async (url: URL | string) => {
+        const href = String(url);
+        requested.push(href);
+        const volume = {
+          id: 42821,
+          name: 'Gear School',
+          start_year: '2007',
+          description: '',
+          publisher: { name: 'Image' },
+          site_detail_url: 'https://comicvine.example/gear-school/',
+          aliases: '',
+          count_of_issues: 1,
+        };
+        // A fetch by id returns the one volume; a search returns a list.
+        const results = href.includes('/volume/') ? volume : [volume];
+        return new Response(JSON.stringify({ status_code: 1, error: 'OK', results }), {
+          status: 200,
+        });
+      }) as unknown as typeof fetch;
+    });
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+    });
+
+    it('takes the ComicVine id a mirrored folder already carries', async () => {
+      // Deliberately parses to something ComicVine would never match, so the
+      // only way to the right volume is the id the mirror recorded.
+      const folder = seedFolder('Gear School', 'GS Digest', 2007);
+      db.upsertComicVolume({
+        id: 991,
+        slug: 'gear-school',
+        comicvine_id: 42821,
+        title: 'Gear School',
+        year: 2007,
+        publisher: 'Image',
+        volume_number: 1,
+        description: '',
+        monitored: true,
+        monitor_new_issues: false,
+        folder,
+        issue_count: 1,
+        issue_count_monitored: 1,
+        issues_downloaded: 1,
+        issues_downloaded_monitored: 1,
+        total_size: 1,
+      });
+
+      const groups = await importLibrary.findImportGroups(join(root, 'propose'));
+      const [proposal] = await importLibrary.proposeLibraryImport(groups);
+
+      assert.strictEqual(proposal!.suggested?.comicvineId, 42821);
+      assert.strictEqual(proposal!.alreadyAdded, 991);
+      assert.ok(
+        requested.some((href) => href.includes('/volume/4050-42821')),
+        `expected a lookup by id, got ${requested.join(', ')}`
+      );
+      assert.ok(
+        !requested.some((href) => href.includes('/search')),
+        'a known folder should not need a search at all'
+      );
+    });
+
+    it('searches by title alone, so the year cannot empty the search', async () => {
+      seedFolder('Gear School', 'Gear School', 2007);
+
+      const groups = await importLibrary.findImportGroups(join(root, 'propose'));
+      const [proposal] = await importLibrary.proposeLibraryImport(groups);
+
+      const search = requested.find((href) => href.includes('/search'))!;
+      assert.strictEqual(new URL(search).searchParams.get('query'), 'Gear School');
+      assert.strictEqual(proposal!.suggested?.comicvineId, 42821);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
