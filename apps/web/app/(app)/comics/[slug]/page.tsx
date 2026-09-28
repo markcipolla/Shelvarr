@@ -97,7 +97,7 @@ export default async function ComicDetailPage({ params }: PageProps) {
           {/* Library jobs only apply to volumes Shelvarr owns. Anything else
               is a leftover mirror waiting to be migrated. */}
           {result.managed ? (
-            <VolumeActions volumeId={volumeId} />
+            <VolumeActions volumeId={volumeId} title={volume.title} />
           ) : (
             <p className="text-xs text-shelvarr-text-muted">
               This volume has not been migrated yet, so Shelvarr cannot manage it. Migrate it

@@ -202,6 +202,34 @@ export async function addComicVolumeAction(
   }
 }
 
+/**
+ * Re-point a volume at a different ComicVine volume.
+ *
+ * The comic answer to a wrong match: the volume keeps its files and read
+ * progress, and its URL follows the corrected title, so the caller navigates
+ * to the slug that comes back.
+ */
+export async function fixComicMatchAction(
+  volumeId: number,
+  comicvineId: number
+): Promise<{ success: boolean; slug?: string; error?: string }> {
+  const { comicLibrary } = await import('@shelvarr/services');
+  const { revalidatePath } = await import('next/cache');
+
+  try {
+    await comicLibrary.fixVolumeMatch(volumeId, comicvineId);
+    revalidatePath('/comics');
+    const slug = getComicSlug(volumeId) ?? String(volumeId);
+    revalidatePath(`/comics/${slug}`);
+    return { success: true, slug };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fix the match',
+    };
+  }
+}
+
 type VolumeJob = 'refresh' | 'scan' | 'rename' | 'search';
 
 const VOLUME_JOB_TASKS: Record<VolumeJob, string> = {

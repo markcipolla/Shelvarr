@@ -1308,6 +1308,118 @@ describe('Adding and refreshing a volume', () => {
     );
   });
 
+  /** ComicVine answering for a different volume than `mockComicVine` does. */
+  function mockOtherComicVine() {
+    global.fetch = mock.fn(async (url: URL | string) => {
+      const href = String(url);
+
+      if (href.includes('/volume/')) {
+        return new Response(
+          JSON.stringify({
+            status_code: 1,
+            error: 'OK',
+            results: {
+              id: 55555,
+              name: 'The Immortal Hulk',
+              start_year: '2020',
+              description: '',
+              image: { small_url: 'https://comicvine.example/other.jpg' },
+              publisher: { name: 'Marvel' },
+              site_detail_url: '',
+              aliases: '',
+              count_of_issues: 2,
+            },
+          }),
+          { status: 200 }
+        );
+      }
+
+      if (href.includes('/issues/')) {
+        return new Response(
+          JSON.stringify({
+            status_code: 1,
+            error: 'OK',
+            number_of_total_results: 2,
+            results: [1, 2].map((number) => ({
+              id: 800000 + number,
+              volume: { id: 55555 },
+              issue_number: String(number),
+              name: `Other ${number}`,
+              cover_date: '2020-06-13',
+              store_date: '2020-06-01',
+              description: '',
+            })),
+          }),
+          { status: 200 }
+        );
+      }
+
+      return new Response(new Uint8Array([9, 9, 9, 9]), { status: 200 });
+    }) as unknown as typeof fetch;
+  }
+
+  it('re-points a wrongly matched volume, keeping its id, folder and files', async () => {
+    mockComicVine(3);
+    const rootFolder = await library.addRootFolder(join(e2eRoot, 'lib'));
+    const added = await library.addVolume({ comicvineId: 42821, rootFolderId: rootFolder.id });
+    const slugBefore = e2eDb.getComicSlug(added.volumeId);
+
+    mockOtherComicVine();
+    const fixed = await library.fixVolumeMatch(added.volumeId, 55555);
+
+    assert.strictEqual(fixed.title, 'The Immortal Hulk');
+    const volume = e2eDb.getComicVolume(added.volumeId)!;
+    assert.strictEqual(volume.comicvineId, 55555, 'the row now carries the chosen volume');
+    assert.strictEqual(volume.folder, added.folder, 'and stays where its files are');
+
+    const detail = e2eDb.getManagedComicDetail(added.volumeId)!;
+    assert.deepStrictEqual(
+      detail.issues.map((issue) => issue.title),
+      ['Other 1', 'Other 2'],
+      'the old match\'s issues are gone'
+    );
+
+    assert.notStrictEqual(e2eDb.getComicSlug(added.volumeId), slugBefore, 'the URL follows');
+    assert.strictEqual(
+      e2eDb.getComicVolumeCover(added.volumeId)!.length,
+      4,
+      'and so does the cover'
+    );
+  });
+
+  it('refuses a match the library already holds', async () => {
+    mockComicVine(2);
+    const rootFolder = await library.addRootFolder(join(e2eRoot, 'lib'));
+    const added = await library.addVolume({ comicvineId: 42821, rootFolderId: rootFolder.id });
+
+    // A second volume already matched to what we are about to pick.
+    e2eDb.upsertComicVolume({
+      id: 992,
+      slug: 'the-immortal-hulk',
+      comicvine_id: 55555,
+      title: 'The Immortal Hulk',
+      year: 2020,
+      publisher: 'Marvel',
+      volume_number: 1,
+      description: '',
+      monitored: true,
+      monitor_new_issues: false,
+      folder: join(e2eRoot, 'lib', 'The Immortal Hulk'),
+      issue_count: 2,
+      issue_count_monitored: 2,
+      issues_downloaded: 0,
+      issues_downloaded_monitored: 0,
+      total_size: 0,
+    });
+
+    mockOtherComicVine();
+    await assert.rejects(
+      () => library.fixVolumeMatch(added.volumeId, 55555),
+      /already in the library/
+    );
+    assert.strictEqual(e2eDb.getComicVolume(added.volumeId)!.comicvineId, 42821, 'left alone');
+  });
+
   it('tombstones a deleted volume but keeps the files by default', async () => {
     mockComicVine(2);
     const rootFolder = await library.addRootFolder(join(e2eRoot, 'lib'));
