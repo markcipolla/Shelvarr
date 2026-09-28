@@ -190,6 +190,17 @@ describe('ComicVine client', () => {
       );
     });
 
+    it('does not mistake a network failure for a rate limit', async () => {
+      global.fetch = mock.fn(async () => {
+        throw new TypeError('fetch failed');
+      }) as unknown as typeof fetch;
+
+      await assert.rejects(() => new cv.ComicVine({ apiKey: 'key' }).searchVolumes('hulk'), {
+        name: 'Error',
+        message: /ComicVine request failed: fetch failed/,
+      });
+    });
+
     it('refuses to construct without a key', () => {
       assert.throws(() => new cv.ComicVine({ apiKey: '' }), cv.InvalidComicVineApiKeyError);
     });
