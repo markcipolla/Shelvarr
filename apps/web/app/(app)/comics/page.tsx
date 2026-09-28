@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { getComics } from '@/lib/actions/comics';
 import { ComicGrid, ComicEmptyState } from '@/components/comics/ComicGrid';
 import { LiveRefresh } from '@/components/live/LiveRefresh';
+import { DownloadsLink } from '@/components/downloads/DownloadsLink';
+import { getActiveDownloadCounts } from '@/lib/actions/downloads';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +17,10 @@ export default async function ComicsPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const search = params.search || '';
 
-  const result = await getComics(search || undefined);
+  const [result, activeDownloads] = await Promise.all([
+    getComics(search || undefined),
+    getActiveDownloadCounts(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -29,6 +34,7 @@ export default async function ComicsPage({ searchParams }: PageProps) {
           'comic_refresh',
           'comic_update_all',
         ]}
+        downloads
       />
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-white">Comics</h1>
@@ -36,12 +42,7 @@ export default async function ComicsPage({ searchParams }: PageProps) {
           <span className="text-shelvarr-text-muted">
             {result.volumes.length} {result.volumes.length === 1 ? 'volume' : 'volumes'}
           </span>
-          <Link
-            href="/comics/downloads"
-            className="px-3 py-1.5 text-sm rounded-lg border border-shelvarr-border text-white hover:border-blue-500"
-          >
-            Downloads
-          </Link>
+          <DownloadsLink href="/comics/downloads" active={activeDownloads.comics} />
           <Link
             href="/comics/add"
             className="px-3 py-1.5 text-sm rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium"

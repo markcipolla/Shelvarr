@@ -2561,6 +2561,9 @@ export function getComicDownload(id: number): ComicDownload | null {
   return row ? rowToComicDownload(row) : null;
 }
 
+/** A download still on its way: not yet finished, failed or cancelled. */
+const ACTIVE_DOWNLOAD_STATES = ['queued', 'downloading', 'importing'] as const;
+
 export function getComicDownloads(options: { state?: ComicDownloadState; volumeId?: number; limit?: number } = {}): ComicDownload[] {
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -2581,6 +2584,22 @@ export function getComicDownloads(options: { state?: ComicDownloadState; volumeI
     `SELECT * FROM comic_downloads ${where} ORDER BY id ASC LIMIT ?`,
     params
   ).map(rowToComicDownload);
+}
+
+/**
+ * How many downloads are in flight for each of these volumes, so a grid can
+ * mark the ones that are still filling up. One query covers a whole page.
+ */
+export function getActiveComicDownloadCounts(volumeIds: number[]): Map<number, number> {
+  if (volumeIds.length === 0) return new Map();
+  const rows = query<{ volume_id: number; count: number }>(
+    `SELECT volume_id, COUNT(*) AS count FROM comic_downloads
+      WHERE state IN (${ACTIVE_DOWNLOAD_STATES.map(() => '?').join(', ')})
+        AND volume_id IN (${volumeIds.map(() => '?').join(', ')})
+      GROUP BY volume_id`,
+    [...ACTIVE_DOWNLOAD_STATES, ...volumeIds]
+  );
+  return new Map(rows.map((r) => [r.volume_id, r.count]));
 }
 
 /** Whether a link is already queued or running — avoids duplicate downloads. */
@@ -3059,6 +3078,17 @@ export function switchBookDownloadLink(id: number, remaining: BookDownloadLink[]
       WHERE id = ?`,
     [remaining.length ? JSON.stringify(remaining) : null, id]
   );
+}
+
+/** How many downloads are queued or running right now, per library kind. */
+export function countActiveDownloads(): { books: number; comics: number } {
+  const placeholders = ACTIVE_DOWNLOAD_STATES.map(() => '?').join(', ');
+  const count = (table: 'book_downloads' | 'comic_downloads') =>
+    queryOne<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM ${table} WHERE state IN (${placeholders})`,
+      [...ACTIVE_DOWNLOAD_STATES]
+    )?.count ?? 0;
+  return { books: count('book_downloads'), comics: count('comic_downloads') };
 }
 
 export interface BookDownloadHistoryEntry {

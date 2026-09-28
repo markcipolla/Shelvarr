@@ -519,6 +519,15 @@ export interface BookDownloadQueueView {
 }
 
 /** The book download queue, recent history, and the blocklist. */
+/**
+ * How many downloads are queued or running, for the badge on the Books and
+ * Comics index headers. Cheap enough to run on every index render.
+ */
+export async function getActiveDownloadCounts(): Promise<{ books: number; comics: number }> {
+  const { countActiveDownloads } = await import('@/lib/db');
+  return countActiveDownloads();
+}
+
 export async function getBookDownloadQueue(): Promise<BookDownloadQueueView> {
   const {
     getBookBlocklist,
