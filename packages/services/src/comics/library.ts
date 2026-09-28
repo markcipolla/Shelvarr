@@ -8,7 +8,7 @@
 
 import { existsSync } from 'fs';
 import { mkdir, rm } from 'fs/promises';
-import { join } from 'path';
+import { dirname, join } from 'path';
 
 import {
   addComicRootFolder,
@@ -21,6 +21,7 @@ import {
   getComicVolumeCover,
   getComicVolumeFileStats,
   getComicVolumeFolders,
+  getComicVolumeIdentities,
   getManagedComicVolumes,
   getSetting,
   refreshComicVolumeStats,
@@ -32,7 +33,7 @@ import {
   upsertManagedComicVolume,
   execute,
 } from '@shelvarr/db';
-import type { ComicFolderOwner } from '@shelvarr/db';
+import type { ComicFolderOwner, ComicVolumeIdentity } from '@shelvarr/db';
 import type {
   ComicRootFolder,
   ComicVolume,
@@ -107,34 +108,48 @@ function tombstoneVolume(volumeId: number): void {
   execute('DELETE FROM comic_files WHERE volume_id = ?', [volumeId]);
 }
 
-export interface MergeDuplicateFoldersResult {
+export interface MergeDuplicateVolumesResult {
   /** Folders that were held by more than one volume. */
   folders: number;
+  /** ComicVine ids held by more than one volume, folders aside. */
+  ids: number;
   /** Volume rows tombstoned as the redundant copy. */
   removed: number;
   /** Kept volumes pointed at a ComicVine id a dropped mirror carried. */
   retargeted: number;
+  /** Duplicates left for a human: more than one copy holds files of its own. */
+  unresolved: Array<{ comicvineId: number; title: string; folders: string[] }>;
 }
 
 /**
- * One folder, one volume.
+ * One folder, one volume; one ComicVine volume, one row.
  *
- * Until adding a volume checked the folder as well as the ComicVine id, a
- * folder could end up held by two rows — typically a mirror from a previous
- * manager plus a volume created from a wrong title match — and the comics page
- * listed the same series twice, each with a share of its files.
+ * Two ways the comics page ends up listing the same series twice, and one pass
+ * for each.
  *
- * The keeper is the row with the most to lose: a volume Shelvarr owns before a
- * mirror, then the one with the most files, then the most issues. Where a
- * dropped mirror disagreed about which ComicVine volume this is, the mirror
- * wins: the previous manager's match is a fact, and the row that displaced it
- * was a guess. Losers are tombstoned rather than deleted, like any other
- * removed volume.
+ * **Sharing a folder.** Until adding a volume checked the folder as well as the
+ * ComicVine id, a folder could end up held by two rows — typically a mirror
+ * from a previous manager plus a volume created from a wrong title match —
+ * each with a share of its files. The keeper is the row with the most to lose:
+ * a volume Shelvarr owns before a mirror, then the one with the most files,
+ * then the most issues. Where a dropped mirror disagreed about which ComicVine
+ * volume this is, the mirror wins: the previous manager's match is a fact, and
+ * the row that displaced it was a guess.
  *
+ * **Sharing a ComicVine id from different folders.** The same volume adopted
+ * twice under two paths — a legacy folder and the one it was migrated to, a
+ * rename the old manager made, a second import of a moved library. Here the
+ * folders differ, so the pass above cannot see it, and dropping a copy that
+ * holds files would lose track of those files while leaving them on disk for
+ * the next import to adopt all over again. So only copies holding nothing are
+ * dropped; a genuine two-folder split is reported as `unresolved` for someone
+ * to settle by removing one.
+ *
+ * Losers are tombstoned rather than deleted, like any other removed volume.
  * Free of ComicVine requests, so it runs at the top of every library scan
  * rather than waiting to be asked.
  */
-export function mergeDuplicateComicFolders(): MergeDuplicateFoldersResult {
+export function mergeDuplicateComicVolumes(): MergeDuplicateVolumesResult {
   const byFolder = new Map<string, ComicFolderOwner[]>();
   for (const volume of getComicVolumeFolders()) {
     const key = sameFolderKey(remapComicPath(volume.folder));
@@ -143,7 +158,13 @@ export function mergeDuplicateComicFolders(): MergeDuplicateFoldersResult {
     else byFolder.set(key, [volume]);
   }
 
-  const result: MergeDuplicateFoldersResult = { folders: 0, removed: 0, retargeted: 0 };
+  const result: MergeDuplicateVolumesResult = {
+    folders: 0,
+    ids: 0,
+    removed: 0,
+    retargeted: 0,
+    unresolved: [],
+  };
 
   for (const [folder, group] of byFolder) {
     if (group.length < 2) continue;
@@ -183,8 +204,78 @@ export function mergeDuplicateComicFolders(): MergeDuplicateFoldersResult {
     });
   }
 
-  if (result.removed > 0) log.info('Duplicate folders merged', { ...result });
+  // Second pass: the same ComicVine volume held by rows in different folders.
+  for (const [comicvineId, group] of groupByComicvineId()) {
+    if (group.length < 2) continue;
+    result.ids += 1;
+
+    // The row whose files are really there wins, mirror or not: pointing the
+    // library at a folder that no longer exists is the worse outcome.
+    const onDisk = new Map(group.map((volume) => [volume.id, holdsFilesOnDisk(volume)]));
+    const ranked = [...group].sort((a, b) => {
+      const byDisk = Number(onDisk.get(b.id)) - Number(onDisk.get(a.id));
+      if (byDisk !== 0) return byDisk;
+      if (a.managed !== b.managed) return a.managed ? -1 : 1;
+      if (a.issueCount !== b.issueCount) return b.issueCount - a.issueCount;
+      return a.id - b.id;
+    });
+
+    const [keeper, ...dropped] = ranked as [ComicVolumeIdentity, ...ComicVolumeIdentity[]];
+
+    // Files under a folder the keeper does not hold: someone has to say which
+    // folder is the volume, and guessing would strand the other one.
+    if (dropped.some((volume) => onDisk.get(volume.id))) {
+      result.unresolved.push({
+        comicvineId,
+        title: keeper.title,
+        folders: group.map((volume) => volume.folder ?? '(no folder)'),
+      });
+      continue;
+    }
+
+    for (const volume of dropped) {
+      tombstoneVolume(volume.id);
+      result.removed += 1;
+    }
+
+    log.info('Merged volumes sharing a ComicVine id', {
+      comicvineId,
+      kept: keeper.id,
+      dropped: dropped.map((volume) => volume.id),
+    });
+  }
+
+  if (result.removed > 0 || result.unresolved.length > 0) {
+    log.info('Duplicate volumes merged', { ...result });
+  }
   return result;
+}
+
+/**
+ * Whether a copy still has its files where it says they are.
+ *
+ * A row can claim files that have since moved: a mirror keeps the previous
+ * manager's paths, and folders get renamed. Gone is only believed when the
+ * parent directory is there — a library that isn't mounted has to read as
+ * "cannot tell", or a dedupe would tombstone the whole shelf.
+ */
+function holdsFilesOnDisk(volume: ComicVolumeIdentity): boolean {
+  if (!volume.holdsFiles || volume.folder === null) return false;
+
+  const folder = remapComicPath(volume.folder);
+  if (existsSync(folder)) return true;
+  return !existsSync(dirname(folder));
+}
+
+/** Live volumes carrying a ComicVine id, gathered by the id they carry. */
+function groupByComicvineId(): Map<number, ComicVolumeIdentity[]> {
+  const byId = new Map<number, ComicVolumeIdentity[]>();
+  for (const volume of getComicVolumeIdentities()) {
+    const group = byId.get(volume.comicvineId);
+    if (group) group.push(volume);
+    else byId.set(volume.comicvineId, [volume]);
+  }
+  return byId;
 }
 
 // region Root folders

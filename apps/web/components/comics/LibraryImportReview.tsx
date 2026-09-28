@@ -244,8 +244,8 @@ export function LibraryImportReview({
 
       {run.merged > 0 && (
         <p className="text-xs text-shelvarr-text-muted">
-          Tidied away {run.merged} duplicate volume{run.merged === 1 ? '' : 's'} that shared a
-          folder with another.
+          Tidied away {run.merged} duplicate volume{run.merged === 1 ? '' : 's'} that another
+          row already held.
         </p>
       )}
 

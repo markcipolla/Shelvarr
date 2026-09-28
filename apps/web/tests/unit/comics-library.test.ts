@@ -717,6 +717,26 @@ describe('Comic library', () => {
       assert.deepStrictEqual(requested, []);
     });
 
+    it('keeps the match of a folder it owns, so removing the volume re-offers it', async () => {
+      const folder = seedFolder('Gear School', 'GS Digest', 2007);
+      const rootFolder = db.addComicRootFolder(join(root, 'propose'));
+      const volumeId = db.upsertManagedComicVolume({
+        metadata: metadata({ comicvineId: 42821, title: 'Gear School', year: 2007 }),
+        rootFolderId: rootFolder.id,
+        folder,
+      });
+
+      const groups = await importLibrary.findImportGroups(join(root, 'propose'));
+      const proposal = (await importLibrary.proposeLibraryImport(groups)).proposals[0]!;
+
+      // Still in the library, so the review will not offer it — but the match
+      // is recorded, which is what lets the folder go back on offer the moment
+      // the volume is removed, with no rescan and no ComicVine request.
+      assert.strictEqual(proposal.alreadyAdded, volumeId);
+      assert.strictEqual(proposal.suggested?.comicvineId, 42821);
+      assert.deepStrictEqual(requested, []);
+    });
+
     it('searches by title alone, so the year cannot empty the search', async () => {
       seedFolder('Gear School', 'Gear School', 2007);
 
@@ -800,7 +820,7 @@ describe('Comic library', () => {
     });
   });
 
-  describe('duplicate folders', () => {
+  describe('duplicate volumes', () => {
     it('keeps one volume per folder, preferring the mirror\'s ComicVine id', async () => {
       const { volumeId, folder } = seedVolume('20th Century Men', 6, { comicvineId: 9999 });
 
@@ -826,7 +846,7 @@ describe('Comic library', () => {
       });
 
       const library = await import('@shelvarr/services/comics/library');
-      const result = library.mergeDuplicateComicFolders();
+      const result = library.mergeDuplicateComicVolumes();
 
       assert.strictEqual(result.folders, 1);
       assert.strictEqual(result.removed, 1);
@@ -840,7 +860,122 @@ describe('Comic library', () => {
       assert.strictEqual(kept.lastCvFetch, 0);
 
       // Idempotent: nothing left to merge.
-      assert.strictEqual(library.mergeDuplicateComicFolders().removed, 0);
+      assert.strictEqual(library.mergeDuplicateComicVolumes().removed, 0);
+    });
+
+    it('drops an empty copy of a volume already held under another folder', async () => {
+      // The same ComicVine volume adopted twice: once where its files are, once
+      // under a path that has nothing. Different folders, so the pass above
+      // cannot see them.
+      const withFiles = seedVolume('Immortal Hulk', 3);
+      db.upsertComicFile({
+        volumeId: withFiles.volumeId,
+        filepath: join(withFiles.folder, 'Immortal Hulk (2018) Issue 001.cbz'),
+        size: 1,
+      });
+      const empty = db.upsertManagedComicVolume({
+        metadata: metadata(),
+        rootFolderId: withFiles.rootFolderId,
+        folder: join(root, 'library', 'Immortal Hulk (2018)'),
+      });
+
+      const library = await import('@shelvarr/services/comics/library');
+      const result = library.mergeDuplicateComicVolumes();
+
+      assert.strictEqual(result.ids, 1);
+      assert.strictEqual(result.removed, 1);
+      assert.deepStrictEqual(result.unresolved, []);
+      assert.strictEqual(db.getComicVolume(empty), null);
+      assert.ok(db.getComicVolume(withFiles.volumeId));
+
+      assert.strictEqual(library.mergeDuplicateComicVolumes().removed, 0);
+    });
+
+    it('drops a copy whose files are not where it says they are', async () => {
+      // The prod-shaped case: a mirror from a previous manager still carrying
+      // the paths that manager recorded, for a folder since reorganised away.
+      const kept = seedVolume('Immortal Hulk', 3);
+      db.upsertComicFile({
+        volumeId: kept.volumeId,
+        filepath: join(kept.folder, 'Immortal Hulk (2018) Issue 001.cbz'),
+        size: 1,
+      });
+      db.upsertComicVolume({
+        id: 992,
+        slug: 'immortal-hulk-mirror',
+        comicvine_id: 42821,
+        title: 'Immortal Hulk',
+        year: 2018,
+        publisher: 'Marvel',
+        volume_number: 1,
+        description: '',
+        monitored: true,
+        monitor_new_issues: false,
+        // Under the same root, so the root being mounted is not in doubt —
+        // this folder itself is simply gone.
+        folder: join(root, 'library', 'Immortal Hulk v1 (2018)'),
+        issue_count: 3,
+        issue_count_monitored: 3,
+        issues_downloaded: 3,
+        issues_downloaded_monitored: 3,
+        total_size: 3,
+      });
+      db.upsertComicIssue({
+        id: 9001,
+        volume_id: 992,
+        comicvine_id: 700001,
+        issue_number: '1',
+        calculated_issue_number: 1,
+        title: 'Or Is He Both?',
+        date: '2018-06-06',
+        description: '',
+        monitored: true,
+        files: [join(root, 'library', 'Immortal Hulk v1 (2018)', 'Issue 001.cbz')],
+      });
+
+      const library = await import('@shelvarr/services/comics/library');
+      const result = library.mergeDuplicateComicVolumes();
+
+      assert.strictEqual(result.removed, 1);
+      assert.deepStrictEqual(result.unresolved, []);
+      assert.strictEqual(db.getComicVolume(992), null);
+      assert.ok(db.getComicVolume(kept.volumeId));
+    });
+
+    it('leaves a volume split across two folders for a human to settle', async () => {
+      // Both copies know about files, so which folder is the volume is a
+      // question about someone's disk, not one to guess at.
+      const first = seedVolume('Immortal Hulk', 3);
+      db.upsertComicFile({
+        volumeId: first.volumeId,
+        filepath: join(first.folder, 'Immortal Hulk (2018) Issue 001.cbz'),
+        size: 1,
+      });
+      const secondFolder = join(root, 'library', 'Immortal Hulk (2018)');
+      mkdirSync(secondFolder, { recursive: true });
+      const second = db.upsertManagedComicVolume({
+        metadata: metadata(),
+        rootFolderId: first.rootFolderId,
+        folder: secondFolder,
+      });
+      db.upsertComicFile({
+        volumeId: second,
+        filepath: join(secondFolder, 'Immortal Hulk (2018) Issue 002.cbz'),
+        size: 1,
+      });
+
+      const library = await import('@shelvarr/services/comics/library');
+      const result = library.mergeDuplicateComicVolumes();
+
+      assert.strictEqual(result.ids, 1);
+      assert.strictEqual(result.removed, 0);
+      assert.strictEqual(result.unresolved.length, 1);
+      assert.strictEqual(result.unresolved[0]!.comicvineId, 42821);
+      assert.deepStrictEqual(result.unresolved[0]!.folders.sort(), [first.folder, secondFolder].sort());
+
+      // Neither row is touched.
+      assert.ok(db.getComicVolume(first.volumeId));
+      assert.ok(db.getComicVolume(second));
     });
   });
 });
