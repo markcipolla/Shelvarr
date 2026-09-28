@@ -590,6 +590,49 @@ export async function refreshVolume(
     matchedFiles: scan.matched,
   };
 }
+/**
+ * Point a volume at a different ComicVine volume, when the match is wrong.
+ *
+ * The row keeps its id, its folder and the read progress hanging off it, and
+ * takes on another volume's metadata and issues — which is the whole point:
+ * deleting and re-adding would lose all three. The cover and the slug are
+ * cleared first because both were derived from the match being replaced, so
+ * the refresh below fetches the new cover and regenerates the URL.
+ */
+export async function fixVolumeMatch(
+  volumeId: number,
+  comicvineId: number | string,
+  options: { signal?: AbortSignal } = {}
+): Promise<RefreshVolumeResult & { title: string }> {
+  const volume = getComicVolume(volumeId);
+  if (!volume) throw new Error(`Comic volume ${volumeId} not found`);
+
+  const client = await getComicVine(options.signal);
+  const metadata = await client.fetchVolume(comicvineId);
+
+  // One ComicVine volume, one row: matching onto a volume the library already
+  // holds would make exactly the duplicate the tidy pass exists to clean up.
+  const existing = getComicVolumeByComicvineId(metadata.comicvineId);
+  if (existing && existing.id !== volumeId) {
+    throw new Error(`${metadata.title} is already in the library`);
+  }
+
+  execute('UPDATE comics SET slug = NULL WHERE id = ?', [volumeId]);
+  setComicVolumeCover(volumeId, null);
+
+  const result = await refreshVolume(volumeId, {
+    metadata,
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
+
+  log.info('Fixed volume match', {
+    volumeId,
+    from: volume.comicvineId,
+    to: metadata.comicvineId,
+  });
+
+  return { ...result, title: metadata.title };
+}
 // endregion
 
 // region Mutations
