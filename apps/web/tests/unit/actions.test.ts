@@ -52,6 +52,7 @@ if (canRunTests) {
     beforeEach(() => {
       initDatabase();
       execute('DELETE FROM books', []);
+      execute('DELETE FROM comics', []);
     });
 
     afterEach(() => {
@@ -71,6 +72,8 @@ if (canRunTests) {
 
         assert.strictEqual(result.books, 0);
         assert.strictEqual(result.unmatched, 0);
+        assert.strictEqual(result.comics, 0);
+        assert.strictEqual(result.comicIssues, 0);
       });
 
       it('should count matched and unmatched books correctly', async () => {
@@ -94,6 +97,24 @@ if (canRunTests) {
 
         assert.strictEqual(result.books, 1);
         assert.strictEqual(result.unmatched, 1);
+      });
+
+      it('should count comic volumes and the issues held for them', async () => {
+        execute(`
+          INSERT INTO comics (id, title, issue_count, issues_downloaded)
+          VALUES (1, 'Saga', 60, 54), (2, 'Paper Girls', 30, 12)
+        `, []);
+        // A removed volume stops counting, for itself and its issues.
+        execute(`
+          INSERT INTO comics (id, title, issue_count, issues_downloaded, deleted_at)
+          VALUES (3, 'Gone', 10, 10, CURRENT_TIMESTAMP)
+        `, []);
+
+        const { getSidebarCounts } = await import('../../lib/actions/stats.js');
+        const result = await getSidebarCounts();
+
+        assert.strictEqual(result.comics, 2);
+        assert.strictEqual(result.comicIssues, 66);
       });
     });
   });

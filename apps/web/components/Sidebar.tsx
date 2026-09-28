@@ -12,16 +12,17 @@ interface NavItem {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  countKey?: keyof SidebarCounts;
+  // Several keys render as one badge, e.g. comics as "volumes · issues".
+  countKeys?: Array<keyof SidebarCounts>;
   countColor?: 'blue' | 'orange';
 }
 
 const navItems: NavItem[] = [
   { href: '/', label: 'Home', icon: HomeIcon },
   { href: '/libraries', label: 'Libraries', icon: FolderIcon },
-  { href: '/books', label: 'Books', icon: BookIcon, countKey: 'books', countColor: 'blue' },
-  { href: '/comics', label: 'Comics', icon: ComicIcon },
-  { href: '/unmatched', label: 'Unmatched', icon: UnmatchedIcon, countKey: 'unmatched', countColor: 'orange' },
+  { href: '/books', label: 'Books', icon: BookIcon, countKeys: ['books'], countColor: 'blue' },
+  { href: '/comics', label: 'Comics', icon: ComicIcon, countKeys: ['comics', 'comicIssues'], countColor: 'blue' },
+  { href: '/unmatched', label: 'Unmatched', icon: UnmatchedIcon, countKeys: ['unmatched'], countColor: 'orange' },
   { href: '/duplicates', label: 'Duplicates', icon: DuplicatesIcon },
   { href: '/wanted', label: 'Wanted', icon: WantedIcon },
   { href: '/series', label: 'Series', icon: SeriesIcon },
@@ -92,7 +93,9 @@ export function Sidebar({ counts }: SidebarProps) {
             {navItems.map((item) => {
               const isActive = pathname === item.href ||
                 (item.href !== '/' && pathname.startsWith(item.href));
-              const count = item.countKey && counts ? counts[item.countKey] : undefined;
+              const badge = counts && item.countKeys
+                ? item.countKeys.map((key) => counts[key] ?? 0).filter((n) => n > 0).join(' · ')
+                : '';
 
               return (
                 <li key={item.href} className="relative">
@@ -113,7 +116,7 @@ export function Sidebar({ counts }: SidebarProps) {
                       <item.icon className="w-5 h-5 flex-shrink-0" />
                       {!isCollapsed && <span>{item.label}</span>}
                     </div>
-                    {!isCollapsed && count !== undefined && count > 0 && (
+                    {!isCollapsed && badge && (
                       <span
                         className={`px-2 py-0.5 text-xs font-medium rounded-full ${
                           isActive
@@ -123,11 +126,11 @@ export function Sidebar({ counts }: SidebarProps) {
                               : 'bg-blue-500/20 text-blue-400'
                         }`}
                       >
-                        {count}
+                        {badge}
                       </span>
                     )}
                     {/* Show count as dot when collapsed */}
-                    {isCollapsed && count !== undefined && count > 0 && (
+                    {isCollapsed && badge && (
                       <span
                         className={`absolute top-1 right-1 w-2 h-2 rounded-full ${
                           item.countColor === 'orange' ? 'bg-orange-400' : 'bg-blue-400'

@@ -19,6 +19,8 @@ export default async function ComicsPage({ searchParams }: PageProps) {
 
   const result = await getComics(search || undefined);
 
+  const issueCount = result.volumes.reduce((total, volume) => total + volume.issues_downloaded, 0);
+
   return (
     <div className="space-y-6">
       {/* Volumes arrive from an import and fill up from downloads and scans. */}
@@ -38,6 +40,8 @@ export default async function ComicsPage({ searchParams }: PageProps) {
         <div className="flex items-center gap-4">
           <span className="text-shelvarr-text-muted">
             {result.volumes.length} {result.volumes.length === 1 ? 'volume' : 'volumes'}
+            {' · '}
+            {issueCount} {issueCount === 1 ? 'issue' : 'issues'}
           </span>
           <SearchAllButton />
           <Link

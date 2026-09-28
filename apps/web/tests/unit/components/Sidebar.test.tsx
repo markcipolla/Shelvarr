@@ -738,7 +738,7 @@ describe('Sidebar Component', () => {
     });
 
     it('should handle very large count numbers', () => {
-      const counts = { books: 999999, unmatched: 888888 };
+      const counts = { books: 999999, unmatched: 888888, comics: 0, comicIssues: 0 };
 
       render(
         <SidebarProvider>
