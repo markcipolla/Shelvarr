@@ -8,6 +8,10 @@ import {
   startComicLibraryImport,
   type ScheduleView,
 } from '@/lib/actions/settings';
+import {
+  tidyComicDuplicatesAction,
+  type UnresolvedComicDuplicate,
+} from '@/lib/actions/comics';
 import { RecurringJobs } from '@/components/settings/RecurringJobs';
 import { FolderPicker } from '@/components/ui/FolderPicker';
 
@@ -41,6 +45,13 @@ export function ComicsTab({
   const [importPath, setImportPath] = useState('');
   const [importMessage, setImportMessage] = useState<string | null>(null);
 
+  const [tidying, setTidying] = useState(false);
+  const [duplicates, setDuplicates] = useState<{
+    removed: number;
+    unresolved: UnresolvedComicDuplicate[];
+    error?: string;
+  } | null>(null);
+
   const handleAddFolder = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!newFolder.trim()) return;
@@ -61,6 +72,20 @@ export function ComicsTab({
     if (!result.success) setFolderError(result.error ?? 'Failed to remove root folder');
     router.refresh();
     setBusyFolder(false);
+  };
+
+  const handleTidyDuplicates = async () => {
+    setTidying(true);
+    setDuplicates(null);
+
+    const result = await tidyComicDuplicatesAction();
+    setDuplicates({
+      removed: result.removed,
+      unresolved: result.unresolved,
+      ...(result.error ? { error: result.error } : {}),
+    });
+    router.refresh();
+    setTidying(false);
   };
 
   const handleImport = async (event: React.FormEvent) => {
@@ -175,6 +200,63 @@ export function ComicsTab({
           </a>
           .
         </p>
+      </section>
+
+      {/* Duplicates ------------------------------------------------------- */}
+      <section>
+        <h2 className="text-lg font-semibold text-white mb-1">Duplicates</h2>
+        <p className="text-shelvarr-text-muted mb-4 text-sm">
+          A volume can end up listed twice: two rows holding one folder, or one ComicVine volume
+          adopted under two paths. A copy holding no files is removed; where both copies hold
+          files, the folders are listed for you to settle. Costs no ComicVine requests, and
+          every library scan does it too.
+        </p>
+
+        <button
+          type="button"
+          onClick={handleTidyDuplicates}
+          disabled={tidying}
+          className="px-4 py-2 bg-shelvarr-surface border border-shelvarr-border hover:border-blue-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium"
+        >
+          {tidying ? 'Checking…' : 'Find and tidy duplicates'}
+        </button>
+
+        {duplicates?.error && <p className="mt-2 text-sm text-red-400">{duplicates.error}</p>}
+
+        {duplicates && !duplicates.error && (
+          <p className="mt-2 text-sm text-shelvarr-text-muted">
+            {duplicates.removed === 0
+              ? 'Nothing to tidy — no volume is listed twice.'
+              : `Removed ${duplicates.removed} duplicate volume${
+                  duplicates.removed === 1 ? '' : 's'
+                }. The files are untouched.`}
+          </p>
+        )}
+
+        {duplicates && duplicates.unresolved.length > 0 && (
+          <div className="mt-3 bg-amber-500/10 border border-amber-500/40 rounded-lg p-4 space-y-2">
+            <p className="text-amber-300 text-sm">
+              {duplicates.unresolved.length} volume
+              {duplicates.unresolved.length === 1 ? ' is' : 's are'} held twice with files under
+              each folder. Open each and remove the copy pointing at the folder you don&apos;t
+              want — which is a choice about your files, so Shelvarr will not guess it.
+            </p>
+            <ul className="space-y-1 text-xs text-shelvarr-text-muted">
+              {duplicates.unresolved.map((duplicate) => (
+                <li key={duplicate.comicvineId}>
+                  <a
+                    href={`/comics?search=${encodeURIComponent(duplicate.title)}`}
+                    className="text-shelvarr-primary hover:underline"
+                  >
+                    {duplicate.title}
+                  </a>
+                  {' — '}
+                  <span className="font-mono">{duplicate.folders.join('  ·  ')}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
     </div>
   );

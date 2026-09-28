@@ -269,16 +269,14 @@ export async function proposeLibraryImport(
       options.onProgress?.(index + 1, groups.length);
     };
 
-    // Shelvarr already owns this folder: there is nothing to match and nothing
-    // to offer, and importing it again would only cost requests.
-    if (owner?.managed) {
-      add([], null, owner.id);
-      continue;
-    }
-
-    // Mirrored from a previous manager. Its ComicVine id is a fact rather than
-    // a guess, and the row holds everything the review prints, so taking it
-    // over costs no lookup at all — that is the whole of the migration path.
+    // A volume already holds this folder. Its ComicVine id is a fact rather
+    // than a guess, and the row holds everything the review prints, so this
+    // costs no lookup at all: taking over a mirror from a previous manager is
+    // the whole of the migration path, and keeping the candidate for a volume
+    // Shelvarr owns is what puts the folder back on offer, with no rescan and
+    // no request, if that volume is later removed. Whether the review offers
+    // it or shows it as already in the library is decided when the page is
+    // read, not here.
     if (owner) {
       const candidate = candidateFromOwner(owner);
       add([candidate], candidate, owner.id);

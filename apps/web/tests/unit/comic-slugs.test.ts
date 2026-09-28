@@ -191,4 +191,10 @@ describe('Comic slugs in the database', () => {
     assert.strictEqual(slugs.get(2), 'paper-girls-2015');
     assert.strictEqual(slugs.get(3), undefined);
   });
+
+  it('leaves a removed volume out of a batch, like any other lookup', () => {
+    db.upsertComicVolumes([makeVolume({ id: 1, title: 'Saga', year: 2012 })]);
+    db.softDeleteComic(1);
+    assert.strictEqual(db.getComicSlugs([1]).has(1), false);
+  });
 });

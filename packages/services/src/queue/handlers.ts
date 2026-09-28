@@ -2216,10 +2216,10 @@ const comicLibraryImportHandler: TaskHandler = async (taskId, onProgress, signal
   );
   if (!data.path) throw new Error('Library import task has no path');
 
-  // Before working out what anything is, make sure no folder is held by two
-  // volumes: a duplicate would make the proposal for that folder depend on
-  // which of the two rows happened to be read last.
-  const merged = comicLibrary.mergeDuplicateComicFolders();
+  // Before working out what anything is, make sure no folder — and no
+  // ComicVine volume — is held by two rows: a duplicate would make the
+  // proposal for that folder depend on which row happened to be read last.
+  const merged = comicLibrary.mergeDuplicateComicVolumes();
 
   const groups = await findImportGroups(data.path, {
     ...(data.maxGroups !== undefined ? { maxGroups: data.maxGroups } : {}),

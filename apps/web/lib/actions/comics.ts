@@ -264,6 +264,43 @@ export async function deleteComicVolumeAction(
   }
 }
 
+/** A duplicate the tidy would not settle on its own. */
+export interface UnresolvedComicDuplicate {
+  comicvineId: number;
+  title: string;
+  folders: string[];
+}
+
+/**
+ * Find volumes the library lists twice and drop the redundant copies.
+ *
+ * The same thing a library scan does before it proposes anything, offered on
+ * its own because it costs no ComicVine requests and nobody should have to
+ * rescan 800 folders to tidy a duplicate.
+ */
+export async function tidyComicDuplicatesAction(): Promise<{
+  success: boolean;
+  removed: number;
+  unresolved: UnresolvedComicDuplicate[];
+  error?: string;
+}> {
+  const { comicLibrary } = await import('@shelvarr/services');
+  const { revalidatePath } = await import('next/cache');
+
+  try {
+    const result = comicLibrary.mergeDuplicateComicVolumes();
+    revalidatePath('/comics');
+    return { success: true, removed: result.removed, unresolved: result.unresolved };
+  } catch (error) {
+    return {
+      success: false,
+      removed: 0,
+      unresolved: [],
+      error: error instanceof Error ? error.message : 'Failed to tidy duplicates',
+    };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Download queue
 // ---------------------------------------------------------------------------
@@ -553,7 +590,8 @@ export async function getLatestLibraryImport(): Promise<LibraryImportRun | null>
 
   // The proposals were serialised when the scan ran, before any of them had
   // been adopted, so slugs and ownership are resolved now rather than read
-  // back out of a stale result blob.
+  // back out of a stale result blob. A volume removed since then is no longer
+  // in the library, which puts its folder back on offer.
   const { isComicVolumeManaged } = await import('@/lib/db');
   const slugs = getComicSlugs(
     proposals
@@ -570,15 +608,21 @@ export async function getLatestLibraryImport(): Promise<LibraryImportRun | null>
     error: row.error,
     quotaSpent,
     merged,
-    proposals: proposals.map((proposal) => ({
-      ...proposal,
-      // Results written before the flag existed were all answers of some sort.
-      checked: proposal.checked !== false,
-      alreadyAddedSlug:
-        proposal.alreadyAdded === null ? null : slugs.get(proposal.alreadyAdded) ?? null,
-      alreadyAddedManaged:
-        proposal.alreadyAdded === null ? false : isComicVolumeManaged(proposal.alreadyAdded),
-    })),
+    proposals: proposals.map((proposal) => {
+      const alreadyAdded =
+        proposal.alreadyAdded !== null && slugs.has(proposal.alreadyAdded)
+          ? proposal.alreadyAdded
+          : null;
+
+      return {
+        ...proposal,
+        // Results written before the flag existed were all answers of some sort.
+        checked: proposal.checked !== false,
+        alreadyAdded,
+        alreadyAddedSlug: alreadyAdded === null ? null : slugs.get(alreadyAdded) ?? null,
+        alreadyAddedManaged: alreadyAdded === null ? false : isComicVolumeManaged(alreadyAdded),
+      };
+    }),
   };
 }
 

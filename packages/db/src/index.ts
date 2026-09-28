@@ -2014,14 +2014,19 @@ export function getComicSlug(volumeId: number): string | null {
   return row.slug || String(volumeId);
 }
 
-/** Slugs for a batch of volumes, for lists that link out by id. */
+/**
+ * Slugs for a batch of volumes, for lists that link out by id.
+ *
+ * Removed volumes are left out rather than given a link that 404s, so a
+ * missing entry also answers "is this volume still in the library?".
+ */
 export function getComicSlugs(volumeIds: number[]): Map<number, string> {
   const slugs = new Map<number, string>();
   if (volumeIds.length === 0) return slugs;
 
   const placeholders = volumeIds.map(() => '?').join(', ');
   const rows = query<{ id: number; slug: string | null }>(
-    `SELECT id, slug FROM comics WHERE id IN (${placeholders})`,
+    `SELECT id, slug FROM comics WHERE id IN (${placeholders}) AND deleted_at IS NULL`,
     volumeIds
   );
   for (const row of rows) slugs.set(row.id, row.slug || String(row.id));
@@ -3500,6 +3505,59 @@ export function getComicVolumeFolders(): ComicFolderOwner[] {
     publisher: row.publisher,
     volumeNumber: row.volume_number ?? 1,
     issueCount: row.issue_count ?? 0,
+  }));
+}
+
+/** A volume seen as one of possibly several copies of the same ComicVine id. */
+export interface ComicVolumeIdentity {
+  id: number;
+  comicvineId: number;
+  title: string;
+  folder: string | null;
+  /** False for a volume still mirrored from a previous manager. */
+  managed: boolean;
+  issueCount: number;
+  /**
+   * Whether the row claims any file on disk: `comic_files` for a volume
+   * Shelvarr owns, the mirrored issue paths for one it has not taken over yet.
+   * A copy that holds nothing is the one safe to drop.
+   */
+  holdsFiles: boolean;
+}
+
+/**
+ * Every volume in the library that carries a ComicVine id, for spotting the
+ * same volume held by more than one row.
+ *
+ * Unlike `getComicVolumeFolders` this does not need a folder: a duplicate that
+ * never got one is exactly the kind that has to be found.
+ */
+export function getComicVolumeIdentities(): ComicVolumeIdentity[] {
+  return query<{
+    id: number;
+    comicvine_id: number;
+    title: string;
+    folder: string | null;
+    managed: number;
+    issue_count: number | null;
+    holds_files: number;
+  }>(
+    `SELECT c.id, c.comicvine_id, c.title, c.folder, c.managed, c.issue_count,
+            (EXISTS (SELECT 1 FROM comic_files f WHERE f.volume_id = c.id)
+             OR EXISTS (SELECT 1 FROM comic_issues i
+                         WHERE i.volume_id = c.id AND i.deleted_at IS NULL
+                           AND i.files IS NOT NULL AND i.files NOT IN ('', '[]'))) AS holds_files
+       FROM comics c
+      WHERE c.deleted_at IS NULL AND c.comicvine_id IS NOT NULL
+      ORDER BY c.id ASC`
+  ).map((row) => ({
+    id: row.id,
+    comicvineId: row.comicvine_id,
+    title: row.title,
+    folder: row.folder,
+    managed: row.managed === 1,
+    issueCount: row.issue_count ?? 0,
+    holdsFiles: row.holds_files === 1,
   }));
 }
 
