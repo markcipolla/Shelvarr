@@ -988,6 +988,31 @@ describe('Comic library', () => {
       assert.ok(db.getComicVolume(first.volumeId));
       assert.ok(db.getComicVolume(second));
     });
+
+    it('reports two ComicVine volumes whose titles only differ by punctuation', async () => {
+      const first = seedVolume('The Expanse - Dragon Tooth', 2, {
+        comicvineId: 149581,
+        title: 'The Expanse - Dragon Tooth',
+      });
+      seedVolume('The Expanse Dragon Tooth', 2, {
+        comicvineId: 158373,
+        title: 'The Expanse: Dragon Tooth',
+      });
+      // A sequel is not a duplicate: the digit keeps it out of the group.
+      seedVolume('The Magic Order', 2, { comicvineId: 118385, title: 'The Magic Order' });
+      seedVolume('The Magic Order 2', 2, { comicvineId: 140006, title: 'The Magic Order 2' });
+
+      const library = await import('@shelvarr/services/comics/library');
+      const candidates = library.findComicDuplicateCandidates();
+
+      assert.strictEqual(candidates.length, 1);
+      assert.deepStrictEqual(
+        candidates[0]!.volumes.map((volume) => volume.comicvineId).sort(),
+        [149581, 158373]
+      );
+      // Reported only — nothing was merged away.
+      assert.ok(db.getComicVolume(first.volumeId));
+    });
   });
 });
 
