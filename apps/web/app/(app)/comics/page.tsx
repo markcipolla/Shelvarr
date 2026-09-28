@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { getComics } from '@/lib/actions/comics';
 import { ComicGrid, ComicEmptyState } from '@/components/comics/ComicGrid';
+import { SearchAllButton } from '@/components/comics/SearchAllButton';
+import { SeriesSearch } from '@/components/series/SeriesSearch';
 import { LiveRefresh } from '@/components/live/LiveRefresh';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +30,7 @@ export default async function ComicsPage({ searchParams }: PageProps) {
           'comic_download',
           'comic_refresh',
           'comic_update_all',
+          'comic_search_all',
         ]}
       />
       <div className="flex items-center justify-between">
@@ -36,6 +39,7 @@ export default async function ComicsPage({ searchParams }: PageProps) {
           <span className="text-shelvarr-text-muted">
             {result.volumes.length} {result.volumes.length === 1 ? 'volume' : 'volumes'}
           </span>
+          <SearchAllButton />
           <Link
             href="/comics/downloads"
             className="px-3 py-1.5 text-sm rounded-lg border border-shelvarr-border text-white hover:border-blue-500"
@@ -50,6 +54,8 @@ export default async function ComicsPage({ searchParams }: PageProps) {
           </Link>
         </div>
       </div>
+
+      <SeriesSearch currentSearch={search} basePath="/comics" placeholder="Search comics..." />
 
       {result.volumes.length === 0 ? (
         <ComicEmptyState>

@@ -230,6 +230,32 @@ export async function runComicVolumeJob(
   return { success: true, taskId: task.id };
 }
 
+/**
+ * Queue the library-wide sweep: search every volume that is still missing
+ * issues and queue a download for whatever turns up.
+ *
+ * `enqueueOnce` because this spends an hourly external request budget — a
+ * second copy started by an impatient second click does the same work twice.
+ */
+export async function searchAllComicsAction(): Promise<{
+  success: boolean;
+  taskId?: number;
+  alreadyRunning?: boolean;
+  error?: string;
+}> {
+  const { queue } = await import('@shelvarr/services');
+
+  try {
+    const { task, alreadyRunning } = queue.enqueueOnce('comic_search_all', {});
+    return { success: true, taskId: task.id, alreadyRunning };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to queue search',
+    };
+  }
+}
+
 /** What a rename would do, so the user can look before leaping. */
 export async function previewComicRename(volumeId: number) {
   const { comicRename } = await import('@shelvarr/services');

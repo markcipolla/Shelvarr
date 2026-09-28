@@ -5,9 +5,16 @@ import { useRouter } from 'next/navigation';
 
 interface SeriesSearchProps {
   currentSearch: string;
+  /** Where the search submits to. Comics are series too, so they share this. */
+  basePath?: string;
+  placeholder?: string;
 }
 
-export function SeriesSearch({ currentSearch }: SeriesSearchProps) {
+export function SeriesSearch({
+  currentSearch,
+  basePath = '/series',
+  placeholder = 'Search series...',
+}: SeriesSearchProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState(currentSearch);
@@ -15,7 +22,7 @@ export function SeriesSearch({ currentSearch }: SeriesSearchProps) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     startTransition(() => {
-      router.push(search ? `/series?search=${encodeURIComponent(search)}` : '/series');
+      router.push(search ? `${basePath}?search=${encodeURIComponent(search)}` : basePath);
     });
   };
 
@@ -26,7 +33,7 @@ export function SeriesSearch({ currentSearch }: SeriesSearchProps) {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search series..."
+          placeholder={placeholder}
           className="w-full bg-shelvarr-surface border border-shelvarr-border rounded-lg pl-10 pr-4 py-2 text-white placeholder-shelvarr-text-muted focus:outline-none focus:border-blue-500"
         />
         <svg
@@ -57,7 +64,7 @@ export function SeriesSearch({ currentSearch }: SeriesSearchProps) {
           onClick={() => {
             setSearch('');
             startTransition(() => {
-              router.push('/series');
+              router.push(basePath);
             });
           }}
           className="px-3 py-2 text-shelvarr-text-muted hover:text-white transition-colors"
