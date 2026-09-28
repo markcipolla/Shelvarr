@@ -19,7 +19,8 @@ export type TaskType = 'scan' | 'metadata' | 'book_metadata' | 'organize' | 'dow
   | 'book_scan_all' | 'book_organize_all' | 'book_resume' | 'book_search_all' | 'book_import'
   | 'comic_search' | 'comic_download' | 'comic_refresh' | 'comic_scan'
   | 'comic_rename' | 'comic_update_all' | 'comic_search_all'
-  | 'comic_library_import' | 'comic_resume' | 'auth_prune' | 'source_health';
+  | 'comic_library_import' | 'comic_library_apply' | 'comic_resume' | 'auth_prune'
+  | 'source_health';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface Task {
@@ -92,6 +93,13 @@ let retryProcessorRunning = false;
 const RETRY_DELAY_MS = 10000; // 10 seconds between retries
 
 /**
+ * How long to wait out ComicVine's request budget, which is about 200 requests
+ * per resource per hour. An extra minute on the hour so the retry lands after
+ * the window has actually rolled over rather than on its edge.
+ */
+export const COMICVINE_QUOTA_DELAY_MS = 61 * 60 * 1000;
+
+/**
  * Longest the processor sleeps in one go while waiting for the next entry to
  * come due. Waiting is sliced rather than slept through so that a task
  * deferred for hours — a spent daily quota, say — doesn't hold up a task
@@ -127,6 +135,10 @@ export class RateLimitedError extends Error {
  */
 function rateLimitDelay(error: unknown, message: string): number | null {
   if (error instanceof RateLimitedError) return error.retryAfterMs;
+  // ComicVine's budget is per hour, so there is no point coming back sooner.
+  if (error instanceof Error && error.name === 'ComicVineRateLimitError') {
+    return COMICVINE_QUOTA_DELAY_MS;
+  }
   // A whole source is spent, or is already busy with one download (E1-6).
   // Carries its own deadline, which can be hours rather than seconds.
   const sourceDelay = deferralDelay(error);
@@ -711,6 +723,43 @@ export function enqueueTask(type: TaskType, initialData?: Record<string, unknown
   });
 
   return task;
+}
+
+/**
+ * Create a task unless one of the same type is already pending or running.
+ *
+ * These sweeps are all one-at-a-time by nature: a second copy of a library
+ * import does the same work twice against an API with an hourly request
+ * budget, which is exactly how a double-clicked Import button spent a whole
+ * hour's worth of quota in nineteen seconds.
+ *
+ * ponytail: checked rather than locked, so two requests in the same tick could
+ * still both get through. Wrap the check and the insert in one transaction if
+ * that ever actually happens; a double click is tens of milliseconds apart and
+ * the first insert has committed by then.
+ */
+export function enqueueOnce(
+  type: TaskType,
+  initialData?: Record<string, unknown>
+): { task: Task; alreadyRunning: boolean } {
+  const active = queryOne<TaskRow>(
+    `SELECT * FROM tasks WHERE type = ? AND status IN ('pending', 'running')
+      ORDER BY id DESC LIMIT 1`,
+    [type]
+  );
+  if (active) return { task: rowToTask(active), alreadyRunning: true };
+  return { task: enqueueTask(type, initialData), alreadyRunning: false };
+}
+
+/**
+ * Replace a task's stored configuration.
+ *
+ * A task that is deferred and retried re-reads its data when it runs again, so
+ * a handler that got partway through can write back what is left to do and
+ * have the retry pick up from there rather than starting over.
+ */
+export function setTaskData(taskId: number, data: Record<string, unknown>): void {
+  execute('UPDATE tasks SET result = ? WHERE id = ?', [JSON.stringify(data), taskId]);
 }
 
 /**

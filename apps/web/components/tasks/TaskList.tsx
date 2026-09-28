@@ -68,6 +68,7 @@ function TaskRow({ task }: { task: Task }) {
     comic_search_all: 'Search All Comics',
     comic_resume: 'Resume Interrupted Downloads',
     comic_library_import: 'Comic Library Import',
+    comic_library_apply: 'Comic Library Adoption',
     auth_prune: 'Session Cleanup',
     source_health: 'Source Health Check',
   }[task.type] || task.type;

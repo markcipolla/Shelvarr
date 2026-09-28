@@ -23,6 +23,7 @@ export default async function ComicsPage({ searchParams }: PageProps) {
       <LiveRefresh
         taskTypes={[
           'comic_library_import',
+          'comic_library_apply',
           'comic_scan',
           'comic_download',
           'comic_refresh',

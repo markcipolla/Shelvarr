@@ -2,6 +2,7 @@ import Link from 'next/link';
 import {
   getComicRootFoldersAction,
   getLatestLibraryImport,
+  getLatestLibraryImportApply,
 } from '@/lib/actions/comics';
 import { LibraryImportReview } from '@/components/comics/LibraryImportReview';
 import { LiveRefresh } from '@/components/live/LiveRefresh';
@@ -9,15 +10,16 @@ import { LiveRefresh } from '@/components/live/LiveRefresh';
 export const dynamic = 'force-dynamic';
 
 export default async function LibraryImportPage() {
-  const [run, rootFolders] = await Promise.all([
+  const [run, apply, rootFolders] = await Promise.all([
     getLatestLibraryImport(),
+    getLatestLibraryImportApply(),
     getComicRootFoldersAction(),
   ]);
 
   return (
     <div className="space-y-6">
-      {/* The import run is rebuilt as folders are matched. */}
-      <LiveRefresh taskTypes={['comic_library_import']} />
+      {/* The scan's proposals and the import's progress both move on their own. */}
+      <LiveRefresh taskTypes={['comic_library_import', 'comic_library_apply']} />
       <Link href="/comics" className="text-shelvarr-text-muted hover:text-white text-sm inline-block">
         ← Back to Comics
       </Link>
@@ -29,7 +31,7 @@ export default async function LibraryImportPage() {
         </p>
       </div>
 
-      <LibraryImportReview run={run} rootFolders={rootFolders} />
+      <LibraryImportReview run={run} apply={apply} rootFolders={rootFolders} />
     </div>
   );
 }

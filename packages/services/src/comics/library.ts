@@ -20,16 +20,19 @@ import {
   getComicVolumeByComicvineId,
   getComicVolumeCover,
   getComicVolumeFileStats,
+  getComicVolumeFolders,
   getManagedComicVolumes,
   getSetting,
   refreshComicVolumeStats,
   replaceComicIssuesFromMetadata,
+  retargetComicVolume,
   setComicVolumeCover,
   setComicVolumeFolder,
   setComicVolumeMonitored,
   upsertManagedComicVolume,
   execute,
 } from '@shelvarr/db';
+import type { ComicFolderOwner } from '@shelvarr/db';
 import type {
   ComicRootFolder,
   ComicVolume,
@@ -40,6 +43,7 @@ import type {
 
 import { describeWriteFailure } from '../utils/fs-errors';
 import { createLogger } from '../utils/logger';
+import { remapComicPath } from './archive';
 import { ComicVine, InvalidComicVineApiKeyError } from './comicvine/index';
 import { generateVolumeFolderName } from './naming';
 import { scanVolumeFiles } from './scan';
@@ -69,6 +73,118 @@ export async function getComicVine(signal?: AbortSignal): Promise<ComicVine> {
 /** Whether a ComicVine key has been configured at all. */
 export async function isComicVineConfigured(): Promise<boolean> {
   return Boolean(await getSetting<string>('comicvine_api_key', null));
+}
+
+/** Trailing separators aside, the same folder is the same folder. */
+export function sameFolderKey(folder: string): string {
+  return folder.replace(/[\\/]+$/, '');
+}
+
+/**
+ * Volumes that already hold a folder, keyed by where that folder is on this
+ * machine — a recorded folder can be under another mount, which is what
+ * COMIC_PATH_MAP translates.
+ */
+export function comicFolderOwners(): Map<string, ComicFolderOwner> {
+  const owners = new Map<string, ComicFolderOwner>();
+  for (const volume of getComicVolumeFolders()) {
+    owners.set(sameFolderKey(remapComicPath(volume.folder)), volume);
+  }
+  return owners;
+}
+
+/**
+ * Take a volume out of the library without losing it.
+ *
+ * The row is tombstoned rather than deleted so the native app's cached ids and
+ * any read progress stay meaningful; its file rows go, because they describe
+ * what is on disk now and nothing else references them.
+ */
+function tombstoneVolume(volumeId: number): void {
+  execute('UPDATE comics SET deleted_at = CURRENT_TIMESTAMP, monitored = 0 WHERE id = ?', [
+    volumeId,
+  ]);
+  execute('DELETE FROM comic_files WHERE volume_id = ?', [volumeId]);
+}
+
+export interface MergeDuplicateFoldersResult {
+  /** Folders that were held by more than one volume. */
+  folders: number;
+  /** Volume rows tombstoned as the redundant copy. */
+  removed: number;
+  /** Kept volumes pointed at a ComicVine id a dropped mirror carried. */
+  retargeted: number;
+}
+
+/**
+ * One folder, one volume.
+ *
+ * Until adding a volume checked the folder as well as the ComicVine id, a
+ * folder could end up held by two rows — typically a mirror from a previous
+ * manager plus a volume created from a wrong title match — and the comics page
+ * listed the same series twice, each with a share of its files.
+ *
+ * The keeper is the row with the most to lose: a volume Shelvarr owns before a
+ * mirror, then the one with the most files, then the most issues. Where a
+ * dropped mirror disagreed about which ComicVine volume this is, the mirror
+ * wins: the previous manager's match is a fact, and the row that displaced it
+ * was a guess. Losers are tombstoned rather than deleted, like any other
+ * removed volume.
+ *
+ * Free of ComicVine requests, so it runs at the top of every library scan
+ * rather than waiting to be asked.
+ */
+export function mergeDuplicateComicFolders(): MergeDuplicateFoldersResult {
+  const byFolder = new Map<string, ComicFolderOwner[]>();
+  for (const volume of getComicVolumeFolders()) {
+    const key = sameFolderKey(remapComicPath(volume.folder));
+    const group = byFolder.get(key);
+    if (group) group.push(volume);
+    else byFolder.set(key, [volume]);
+  }
+
+  const result: MergeDuplicateFoldersResult = { folders: 0, removed: 0, retargeted: 0 };
+
+  for (const [folder, group] of byFolder) {
+    if (group.length < 2) continue;
+    result.folders += 1;
+
+    const files = new Map(
+      group.map((volume) => [volume.id, getComicVolumeFileStats(volume.id).downloadedCount])
+    );
+    const ranked = [...group].sort((a, b) => {
+      if (a.managed !== b.managed) return a.managed ? -1 : 1;
+      const byFiles = (files.get(b.id) ?? 0) - (files.get(a.id) ?? 0);
+      if (byFiles !== 0) return byFiles;
+      if (a.issueCount !== b.issueCount) return b.issueCount - a.issueCount;
+      return a.id - b.id;
+    });
+
+    const [keeper, ...dropped] = ranked as [ComicFolderOwner, ...ComicFolderOwner[]];
+
+    const mirror = dropped.find(
+      (volume) => !volume.managed && volume.comicvineId !== keeper.comicvineId
+    );
+    if (mirror) {
+      retargetComicVolume(keeper.id, mirror.comicvineId);
+      result.retargeted += 1;
+    }
+
+    for (const volume of dropped) {
+      tombstoneVolume(volume.id);
+      result.removed += 1;
+    }
+
+    log.info('Merged volumes sharing a folder', {
+      folder,
+      kept: keeper.id,
+      dropped: dropped.map((volume) => volume.id),
+      ...(mirror ? { retargetedTo: mirror.comicvineId } : {}),
+    });
+  }
+
+  if (result.removed > 0) log.info('Duplicate folders merged', { ...result });
+  return result;
 }
 
 // region Root folders
@@ -148,17 +264,43 @@ export async function addVolume(input: AddVolumeInput): Promise<AddVolumeResult>
   const client = await getComicVine(input.signal);
   const metadata = await client.fetchVolume(input.comicvineId);
 
-  const existing = getComicVolumeByComicvineId(metadata.comicvineId);
+  // One volume per folder, and one volume per ComicVine id. A second row for
+  // either means two volumes fighting over the same files — a leftover mirror
+  // plus an early wrong match is how the same series ended up listed twice —
+  // so adopt whichever row is already there instead of inserting another.
+  const existing =
+    (input.folder ? comicFolderOwners().get(sameFolderKey(input.folder)) ?? null : null) ??
+    getComicVolumeByComicvineId(metadata.comicvineId);
+
   if (existing) {
-    log.info('Volume already in library; refreshing instead', {
-      volumeId: existing.id,
-      comicvineId: metadata.comicvineId,
+    if (existing.comicvineId !== metadata.comicvineId) {
+      log.info('Retargeting the volume that already holds this folder', {
+        volumeId: existing.id,
+        from: existing.comicvineId,
+        to: metadata.comicvineId,
+      });
+    } else {
+      log.info('Volume already in library; refreshing instead', {
+        volumeId: existing.id,
+        comicvineId: metadata.comicvineId,
+      });
+    }
+
+    // Importing a folder is also a claim on it: a mirror still pointing at the
+    // previous manager's path has to follow its files here, or the rescan
+    // below finds nothing.
+    if (input.folder && existing.folder !== input.folder) {
+      setComicVolumeFolder(existing.id, input.folder, true);
+    }
+
+    const refreshed = await refreshVolume(existing.id, {
+      metadata,
+      ...(input.signal ? { signal: input.signal } : {}),
     });
-    const refreshed = await refreshVolume(existing.id, { signal: input.signal });
     return {
       volumeId: existing.id,
       title: metadata.title,
-      folder: existing.folder ?? '',
+      folder: input.folder ?? existing.folder ?? '',
       issueCount: refreshed.issueCount,
       matchedFiles: refreshed.matchedFiles,
     };
@@ -226,16 +368,28 @@ export interface RefreshVolumeResult {
  */
 export async function refreshVolume(
   volumeId: number,
-  options: { signal?: AbortSignal; skipScan?: boolean } = {}
+  options: {
+    signal?: AbortSignal;
+    skipScan?: boolean;
+    /**
+     * Metadata the caller has already fetched. Saves fetching the volume and
+     * its issues a second time, and is how an import retargets a row: the
+     * metadata's ComicVine id wins over whatever the row carried.
+     */
+    metadata?: ComicVolumeMetadata;
+  } = {}
 ): Promise<RefreshVolumeResult> {
   const volume = getComicVolume(volumeId);
   if (!volume) throw new Error(`Comic volume ${volumeId} not found`);
-  if (!volume.comicvineId) {
-    throw new Error(`Comic volume ${volumeId} has no ComicVine id to refresh from`);
-  }
 
-  const client = await getComicVine(options.signal);
-  const metadata = await client.fetchVolume(volume.comicvineId);
+  let metadata = options.metadata;
+  if (!metadata) {
+    if (!volume.comicvineId) {
+      throw new Error(`Comic volume ${volumeId} has no ComicVine id to refresh from`);
+    }
+    const client = await getComicVine(options.signal);
+    metadata = await client.fetchVolume(volume.comicvineId);
+  }
 
   upsertManagedComicVolume({
     id: volumeId,
@@ -251,6 +405,9 @@ export async function refreshVolume(
   });
 
   if (getComicVolumeCover(volumeId) === null) {
+    // Cover images come from ComicVine's CDN rather than its API, so this one
+    // is free of the request budget.
+    const client = await getComicVine(options.signal);
     setComicVolumeCover(volumeId, await client.fetchCover(metadata.coverLink));
   }
 
@@ -312,11 +469,7 @@ export async function deleteVolume(
     }
   }
 
-  execute(
-    "UPDATE comics SET deleted_at = CURRENT_TIMESTAMP, monitored = 0 WHERE id = ?",
-    [volumeId]
-  );
-  execute('DELETE FROM comic_files WHERE volume_id = ?', [volumeId]);
+  tombstoneVolume(volumeId);
 
   log.info('Deleted volume', { volumeId, deletedFiles: Boolean(options.deleteFiles) });
 }

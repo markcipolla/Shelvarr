@@ -219,7 +219,36 @@ describe('ComicVine client', () => {
       assert.ok(path.includes('/search'));
     });
 
-    it('returns nothing for an empty query without calling out', async () => {
+    it('paces two clients against each other, not just its own loop', async () => {
+    // The bug this pins: a client is built per operation, so per-instance
+    // pacing meant an import of 200 volumes fired 200 requests as fast as the
+    // network allowed and spent ComicVine's hourly budget in seconds.
+    const { resetSourcePacing } = await import('@shelvarr/services/utils/pacing');
+    const flag = 'SHELVARR_DISABLE_REQUEST_PACING';
+    const original = process.env[flag];
+    delete process.env[flag];
+    resetSourcePacing('comicvine');
+
+    global.fetch = mock.fn(async () => cvResponse({ results: [] })) as unknown as typeof fetch;
+
+    try {
+      const started = Date.now();
+      await Promise.all([
+        new cv.ComicVine({ apiKey: 'k', baseUrl: 'https://cv.example' }).searchVolumes('a'),
+        new cv.ComicVine({ apiKey: 'k', baseUrl: 'https://cv.example' }).searchVolumes('b'),
+      ]);
+      assert.ok(
+        Date.now() - started >= 900,
+        `two clients went out ${Date.now() - started}ms apart`
+      );
+    } finally {
+      if (original === undefined) delete process.env[flag];
+      else process.env[flag] = original;
+      resetSourcePacing('comicvine');
+    }
+  });
+
+  it('returns nothing for an empty query without calling out', async () => {
       const fetchMock = mock.fn(async () => cvResponse({ results: [] }));
       global.fetch = fetchMock as unknown as typeof fetch;
 
@@ -676,29 +705,142 @@ describe('Comic library', () => {
       });
 
       const groups = await importLibrary.findImportGroups(join(root, 'propose'));
-      const [proposal] = await importLibrary.proposeLibraryImport(groups);
+      const { proposals } = await importLibrary.proposeLibraryImport(groups);
+      const proposal = proposals[0]!;
 
-      assert.strictEqual(proposal!.suggested?.comicvineId, 42821);
-      assert.strictEqual(proposal!.alreadyAdded, 991);
-      assert.ok(
-        requested.some((href) => href.includes('/volume/4050-42821')),
-        `expected a lookup by id, got ${requested.join(', ')}`
-      );
-      assert.ok(
-        !requested.some((href) => href.includes('/search')),
-        'a known folder should not need a search at all'
-      );
+      assert.strictEqual(proposal.suggested?.comicvineId, 42821);
+      assert.strictEqual(proposal.suggested?.title, 'Gear School');
+      assert.strictEqual(proposal.alreadyAdded, 991);
+      // The row holds the id and everything the review prints, so a folder the
+      // library already recognises costs no request at all — the whole point,
+      // given ComicVine's hourly budget.
+      assert.deepStrictEqual(requested, []);
     });
 
     it('searches by title alone, so the year cannot empty the search', async () => {
       seedFolder('Gear School', 'Gear School', 2007);
 
       const groups = await importLibrary.findImportGroups(join(root, 'propose'));
-      const [proposal] = await importLibrary.proposeLibraryImport(groups);
+      const { proposals } = await importLibrary.proposeLibraryImport(groups);
 
       const search = requested.find((href) => href.includes('/search'))!;
       assert.strictEqual(new URL(search).searchParams.get('query'), 'Gear School');
-      assert.strictEqual(proposal!.suggested?.comicvineId, 42821);
+      assert.strictEqual(proposals[0]!.suggested?.comicvineId, 42821);
+      assert.strictEqual(proposals[0]!.checked, true);
+    });
+
+    it('leaves the rest unchecked when the hourly quota runs out', async () => {
+      seedFolder('A Series', 'A Series', 2001);
+      seedFolder('B Series', 'B Series', 2002);
+      seedFolder('C Series', 'C Series', 2003);
+
+      // ComicVine answers the first search and then reports its quota spent.
+      let answered = 0;
+      global.fetch = mock.fn(async (url: URL | string) => {
+        requested.push(String(url));
+        if (answered++ > 0) {
+          return new Response(JSON.stringify({ status_code: 107, error: 'Rate limit' }), {
+            status: 200,
+          });
+        }
+        return new Response(
+          JSON.stringify({
+            status_code: 1,
+            error: 'OK',
+            results: [
+              {
+                id: 42821,
+                name: 'A Series',
+                start_year: '2001',
+                description: '',
+                publisher: { name: 'Image' },
+                site_detail_url: '',
+                aliases: '',
+                count_of_issues: 1,
+              },
+            ],
+          }),
+          { status: 200 }
+        );
+      }) as unknown as typeof fetch;
+
+      const groups = await importLibrary.findImportGroups(join(root, 'propose'));
+      const { proposals, quotaSpent } = await importLibrary.proposeLibraryImport(groups);
+
+      assert.strictEqual(quotaSpent, true);
+      assert.strictEqual(proposals.length, 3, 'every folder is still listed');
+      assert.strictEqual(proposals[0]!.checked, true);
+      assert.deepStrictEqual(
+        proposals.slice(1).map((proposal) => proposal.checked),
+        [false, false]
+      );
+      // Two requests: the one that worked and the one that hit the wall. The
+      // third folder is not asked at all.
+      assert.strictEqual(requested.length, 2);
+
+      // Scanning again reuses the answer it has and only asks about the rest.
+      requested = [];
+      const reuse = new Map(
+        proposals
+          .filter((proposal) => proposal.checked)
+          .map((proposal) => [
+            proposal.folder,
+            {
+              candidates: proposal.candidates,
+              suggestedComicvineId: proposal.suggested?.comicvineId ?? null,
+            },
+          ])
+      );
+      const second = await importLibrary.proposeLibraryImport(groups, { reuse });
+      assert.strictEqual(second.proposals[0]!.suggested?.comicvineId, 42821);
+      assert.ok(
+        !requested.some((href) => href.includes('A%20Series') || href.includes('A+Series')),
+        `the answered folder should not be asked again, got ${requested.join(', ')}`
+      );
+    });
+  });
+
+  describe('duplicate folders', () => {
+    it('keeps one volume per folder, preferring the mirror\'s ComicVine id', async () => {
+      const { volumeId, folder } = seedVolume('20th Century Men', 6, { comicvineId: 9999 });
+
+      // The mirror left behind by the previous manager, pointing at the volume
+      // it had matched, under the same folder.
+      db.upsertComicVolume({
+        id: 991,
+        slug: '20th-century-men-mirror',
+        comicvine_id: 42821,
+        title: '20th Century Men',
+        year: 2022,
+        publisher: 'Image',
+        volume_number: 1,
+        description: '',
+        monitored: true,
+        monitor_new_issues: false,
+        folder,
+        issue_count: 6,
+        issue_count_monitored: 6,
+        issues_downloaded: 0,
+        issues_downloaded_monitored: 0,
+        total_size: 0,
+      });
+
+      const library = await import('@shelvarr/services/comics/library');
+      const result = library.mergeDuplicateComicFolders();
+
+      assert.strictEqual(result.folders, 1);
+      assert.strictEqual(result.removed, 1);
+      assert.strictEqual(result.retargeted, 1);
+
+      // The volume Shelvarr owns survives, pointed at the id the mirror carried
+      // and marked stale so the next refresh rewrites its metadata.
+      assert.strictEqual(db.getComicVolume(991), null);
+      const kept = db.getComicVolume(volumeId)!;
+      assert.strictEqual(kept.comicvineId, 42821);
+      assert.strictEqual(kept.lastCvFetch, 0);
+
+      // Idempotent: nothing left to merge.
+      assert.strictEqual(library.mergeDuplicateComicFolders().removed, 0);
     });
   });
 });
@@ -889,6 +1031,110 @@ describe('Adding and refreshing a volume', () => {
     } finally {
       e2eDb.setSetting('comicvine_api_key', 'test-key');
     }
+  });
+
+  it('adopts the volume already holding the folder instead of adding a second', async () => {
+    mockComicVine(3);
+    const rootFolder = await library.addRootFolder(join(e2eRoot, 'lib'));
+    const folder = join(e2eRoot, 'lib', '20th Century Men');
+    mkdirSync(folder, { recursive: true });
+
+    // A mirror from a previous manager, pointing at a different ComicVine
+    // volume than the one being imported.
+    e2eDb.upsertComicVolume({
+      id: 991,
+      slug: '20th-century-men',
+      comicvine_id: 55555,
+      title: '20th Century Men',
+      year: 2022,
+      publisher: 'Image',
+      volume_number: 1,
+      description: '',
+      monitored: true,
+      monitor_new_issues: false,
+      folder,
+      issue_count: 6,
+      issue_count_monitored: 6,
+      issues_downloaded: 0,
+      issues_downloaded_monitored: 0,
+      total_size: 0,
+    });
+
+    const added = await library.addVolume({
+      comicvineId: 42821,
+      rootFolderId: rootFolder.id,
+      folder,
+    });
+
+    assert.strictEqual(added.volumeId, 991, 'the row already on the folder is the one adopted');
+    assert.strictEqual(e2eDb.getManagedComicVolumes().length, 1, 'no duplicate volume');
+    const volume = e2eDb.getComicVolume(991)!;
+    assert.strictEqual(volume.comicvineId, 42821, 'retargeted at what was imported');
+    assert.strictEqual(volume.folder, folder, 'and it follows its files here');
+  });
+
+  it('stops an import at the quota and says what is left rather than failing the rest', async () => {
+    const importLib = await import('@shelvarr/services/comics/import-library');
+    const rootFolder = await library.addRootFolder(join(e2eRoot, 'lib'));
+
+    // ComicVine answers for the first volume, then reports its quota spent.
+    let volumeFetches = 0;
+    global.fetch = mock.fn(async (url: URL | string) => {
+      const href = String(url);
+      if (href.includes('/volume/') && ++volumeFetches > 1) {
+        return new Response(JSON.stringify({ status_code: 107, error: 'Rate limit' }), {
+          status: 200,
+        });
+      }
+      if (href.includes('/volume/')) {
+        return new Response(
+          JSON.stringify({
+            status_code: 1,
+            error: 'OK',
+            results: {
+              id: 42821,
+              name: 'Immortal Hulk',
+              start_year: '2018',
+              description: '',
+              image: { small_url: 'https://comicvine.example/cover.jpg' },
+              publisher: { name: 'Marvel' },
+              site_detail_url: '',
+              aliases: '',
+              count_of_issues: 1,
+            },
+          }),
+          { status: 200 }
+        );
+      }
+      if (href.includes('/issues/')) {
+        return new Response(
+          JSON.stringify({ status_code: 1, error: 'OK', number_of_total_results: 0, results: [] }),
+          { status: 200 }
+        );
+      }
+      return new Response(new Uint8Array([1]), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const first = join(e2eRoot, 'lib', 'First');
+    const second = join(e2eRoot, 'lib', 'Second');
+    const third = join(e2eRoot, 'lib', 'Third');
+
+    const result = await importLib.applyLibraryImport(
+      [
+        { folder: first, comicvineId: 42821 },
+        { folder: second, comicvineId: 42822 },
+        { folder: third, comicvineId: 42823 },
+      ],
+      rootFolder.id
+    );
+
+    assert.strictEqual(result.imported.length, 1);
+    assert.deepStrictEqual(result.failed, [], 'a spent quota is not a failure');
+    assert.deepStrictEqual(
+      result.remaining.map((selection) => selection.folder),
+      [second, third],
+      'what was not tried comes back to be resumed'
+    );
   });
 
   it('tombstones a deleted volume but keeps the files by default', async () => {

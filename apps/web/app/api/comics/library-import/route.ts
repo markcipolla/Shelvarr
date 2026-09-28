@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
-import { validateApiAuth, comicLibrary, comicLibraryImport, queue } from '@shelvarr/services';
+import { validateApiAuth, comicLibrary, queue } from '@shelvarr/services';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,18 +27,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'No ComicVine API key configured' }, { status: 503 });
   }
 
-  return NextResponse.json(
-    {
-      task: queue.enqueueTask('comic_library_import', {
-        path: body.path,
-        maxGroups: body.maxGroups,
-      }),
-    },
-    { status: 202 }
-  );
+  const { task, alreadyRunning } = queue.enqueueOnce('comic_library_import', {
+    path: body.path,
+    maxGroups: body.maxGroups,
+  });
+
+  return NextResponse.json({ task, alreadyRunning }, { status: 202 });
 }
 
-/** Adopt the chosen folders. Each keeps the folder it is already in. */
+/**
+ * Adopt the chosen folders. Each keeps the folder it is already in.
+ *
+ * Queued: every volume costs ComicVine requests out of an hourly budget, so a
+ * large import runs past it and the task resumes itself once it rolls over.
+ */
 export async function PUT(request: NextRequest) {
   if (!validateApiAuth(request.headers)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -58,14 +60,10 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: 'No comic root folder configured' }, { status: 400 });
   }
 
-  try {
-    return NextResponse.json(
-      await comicLibraryImport.applyLibraryImport(body.selections, rootFolderId)
-    );
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Library import failed' },
-      { status: 502 }
-    );
-  }
+  const { task, alreadyRunning } = queue.enqueueOnce('comic_library_apply', {
+    selections: body.selections,
+    rootFolderId,
+  });
+
+  return NextResponse.json({ task, alreadyRunning }, { status: 202 });
 }

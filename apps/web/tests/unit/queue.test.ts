@@ -40,6 +40,8 @@ if (canRunTests) {
     cancelTask,
     cleanupOldTasks,
     getTaskStats,
+    enqueueOnce,
+    setTaskData,
   } = await import('../../lib/services/queue/index.js');
   type TaskType = 'scan' | 'metadata' | 'organize' | 'download' | 'author_sync';
 
@@ -106,6 +108,30 @@ if (canRunTests) {
           createdAt >= before - 1000 && createdAt <= after + 1000,
           `createdAt ${task.createdAt} is not within a second of now`
         );
+      });
+    });
+
+    describe('enqueueOnce', () => {
+      it('hands back the task already in flight instead of starting a second', () => {
+        // What a double-clicked Import button used to do: two copies of the
+        // same sweep, racing each other through one hourly API budget.
+        const first = createTask('comic_library_apply');
+        const { task, alreadyRunning } = enqueueOnce('comic_library_apply', { selections: [] });
+
+        assert.strictEqual(alreadyRunning, true);
+        assert.strictEqual(task.id, first.id);
+        assert.strictEqual(getTasks({ type: 'comic_library_apply' }).tasks.length, 1);
+      });
+    });
+
+    describe('setTaskData', () => {
+      it('replaces the configuration a retry will read', () => {
+        const task = createTask('comic_library_apply', { selections: ['a', 'b'] });
+        setTaskData(task.id, { selections: ['b'], imported: 1 });
+
+        const data = getTask(task.id)!.data as { selections: string[]; imported: number };
+        assert.deepStrictEqual(data.selections, ['b']);
+        assert.strictEqual(data.imported, 1);
       });
     });
 

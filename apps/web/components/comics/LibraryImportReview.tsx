@@ -5,9 +5,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   applyLibraryImportAction,
+  type LibraryImportApply,
   type LibraryImportRun,
   type ImportProposalView,
 } from '@/lib/actions/comics';
+import { startComicLibraryImport } from '@/lib/actions/settings';
 
 interface RootFolder {
   id: number;
@@ -35,6 +37,11 @@ function isImportable(proposal: ImportProposalView): boolean {
   return bestGuess(proposal) !== null;
 }
 
+/** Whether ComicVine was asked about this folder and had nothing. */
+function isMiss(proposal: ImportProposalView): boolean {
+  return proposal.checked && proposal.candidates.length === 0;
+}
+
 function candidateLabel(candidate: ImportProposalView['candidates'][number]): string {
   return [
     candidate.title,
@@ -48,9 +55,11 @@ function candidateLabel(candidate: ImportProposalView['candidates'][number]): st
 
 export function LibraryImportReview({
   run,
+  apply,
   rootFolders,
 }: {
   run: LibraryImportRun | null;
+  apply: LibraryImportApply | null;
   rootFolders: RootFolder[];
 }) {
   const router = useRouter();
@@ -67,13 +76,18 @@ export function LibraryImportReview({
     return initial;
   });
 
-  const [applying, setApplying] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [rootFolderId, setRootFolderId] = useState(rootFolders[0]?.id);
-  const [result, setResult] = useState<{
-    imported: number;
-    failed: Array<{ folder: string; error: string }>;
-  } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // The import itself is a background task, so its state comes from the server
+  // rather than from this component — it outlives the page.
+  const importRunning = apply?.status === 'pending' || apply?.status === 'running';
+  // A pending task carrying an error has already run and been put back by the
+  // rate-limit retry queue; a pending task without one has simply not started.
+  const importDeferred = apply?.status === 'pending' && Boolean(apply.error);
+  const applying = starting || importRunning;
+  const unchecked = (run?.proposals ?? []).filter((proposal) => !proposal.checked).length;
 
   const selected = useMemo(
     () =>
@@ -96,18 +110,27 @@ export function LibraryImportReview({
   );
 
   const handleApply = async (selection: typeof selected) => {
-    setApplying(true);
+    setStarting(true);
     setError(null);
-    setResult(null);
 
     const response = await applyLibraryImportAction(selection, rootFolderId);
-    if (response.success) {
-      setResult({ imported: response.imported ?? 0, failed: response.failed ?? [] });
+    if (response.alreadyRunning) {
+      setError('An import is already running — this selection was not started.');
+    } else if (response.success) {
       router.refresh();
     } else {
       setError(response.error ?? 'Import failed');
     }
-    setApplying(false);
+    setStarting(false);
+  };
+
+  /** Scan again for the folders the last scan ran out of quota before reaching. */
+  const handleContinueScan = async () => {
+    if (!run?.path) return;
+    setStarting(true);
+    await startComicLibraryImport(run.path);
+    router.refresh();
+    setStarting(false);
   };
 
   const handleImportAllBestGuesses = async () => {
@@ -219,22 +242,58 @@ export function LibraryImportReview({
         </div>
       )}
 
-      {result && (
-        <div className="bg-green-600/10 border border-green-500/40 rounded-lg p-4 space-y-2">
-          <p className="text-green-400 text-sm">
-            Imported {result.imported} volume{result.imported === 1 ? '' : 's'}.
+      {run.merged > 0 && (
+        <p className="text-xs text-shelvarr-text-muted">
+          Tidied away {run.merged} duplicate volume{run.merged === 1 ? '' : 's'} that shared a
+          folder with another.
+        </p>
+      )}
+
+      {unchecked > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/40 rounded-lg p-4 space-y-2">
+          <p className="text-amber-300 text-sm">
+            ComicVine&apos;s hourly request budget ran out with {unchecked} folder
+            {unchecked === 1 ? '' : 's'} still unasked. They are not misses — scanning
+            again keeps everything found so far and only asks about those.
           </p>
-          {result.failed.length > 0 && (
+          <button
+            type="button"
+            onClick={handleContinueScan}
+            disabled={applying}
+            className="px-3 py-1.5 text-sm rounded-lg border border-amber-500/40 text-amber-200 hover:border-amber-300 disabled:opacity-50"
+          >
+            Continue scanning
+          </button>
+        </div>
+      )}
+
+      {apply && (
+        <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-4 space-y-2">
+          {importRunning ? (
+            <p className="text-white text-sm">
+              {importDeferred
+                ? `Waiting out ComicVine's hourly budget — ${apply.imported} imported, ${apply.remaining} to go. This carries on by itself.`
+                : `Importing ${apply.total ? `${apply.progress} of ${apply.total}` : ''}…`}
+            </p>
+          ) : (
+            <p className="text-green-400 text-sm">
+              Imported {apply.imported} volume{apply.imported === 1 ? '' : 's'}.
+            </p>
+          )}
+          {apply.failed.length > 0 && (
             <div className="text-sm text-red-400">
-              <p>{result.failed.length} failed:</p>
+              <p>{apply.failed.length} failed:</p>
               <ul className="mt-1 space-y-0.5 text-xs">
-                {result.failed.map((entry) => (
+                {apply.failed.map((entry) => (
                   <li key={entry.folder}>
                     {folderLabel(entry.folder)} — {entry.error}
                   </li>
                 ))}
               </ul>
             </div>
+          )}
+          {apply.status === 'failed' && apply.error && (
+            <p className="text-sm text-red-400">{apply.error}</p>
           )}
         </div>
       )}
@@ -278,7 +337,12 @@ export function LibraryImportReview({
                       open it
                     </Link>
                   </p>
-                ) : proposal.candidates.length === 0 ? (
+                ) : !proposal.checked ? (
+                  <p className="text-xs text-amber-400 mt-2">
+                    Not asked yet — ComicVine&apos;s hourly budget ran out. Scan again to
+                    match this one.
+                  </p>
+                ) : isMiss(proposal) ? (
                   <p className="text-xs text-yellow-400 mt-2">
                     ComicVine had no match. Add this one by hand from the Add Comic page.
                   </p>
