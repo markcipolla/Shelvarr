@@ -16,6 +16,7 @@ import { SourceStatusBadge } from './SourceStatusBadge';
 import { useToast } from '@/components/ui/Toast';
 import { LoadingSpinner } from '@/components/ui/Icons';
 import { useLiveEvents } from '@/components/live/LiveEvents';
+import { buildBookSearchQuery } from '@/lib/utils/search-query';
 
 // These are external, unofficial book sources (shadow libraries) — they are
 // off by default and only searched once an operator opts in from Settings.
@@ -71,6 +72,14 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [noSourcesEnabled, setNoSourcesEnabled] = useState(false);
 
+  // The query is editable: the catalogue title is a starting guess, and a
+  // search that comes back empty is usually one word away from working.
+  // `query` is what's in the box, `submittedQuery` is what was searched.
+  const [query, setQuery] = useState(() => buildBookSearchQuery(book.title, book.author));
+  const [submittedQuery, setSubmittedQuery] = useState(() =>
+    buildBookSearchQuery(book.title, book.author)
+  );
+
   // "I already have this file" (E4-3) — a manual upload, separate from the
   // shadow-library search above. Two of those three sources can't be
   // downloaded from directly yet, and even once they can, someone will
@@ -96,9 +105,7 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
         }
 
         // Get search links immediately
-        const links = await getDownloadSearchLinks(
-          `${book.title} ${book.author || ''}`.trim()
-        );
+        const links = await getDownloadSearchLinks(submittedQuery);
         setSearchLinks(links);
 
         // Get source statuses
@@ -119,8 +126,9 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
         }
 
         // Search all sources
-        const query = `${book.title} ${book.author || ''}`.trim();
-        const response = await searchDownloads(query, { isbn: book.isbn || undefined });
+        const response = await searchDownloads(submittedQuery, {
+          isbn: book.isbn || undefined,
+        });
 
         if (response.success && response.results) {
           setResults(response.results);
@@ -136,7 +144,7 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
     };
 
     loadData();
-  }, [book, selectedLibraryId]);
+  }, [book, selectedLibraryId, submittedQuery]);
 
   const filteredResults =
     activeTab === 'all'
@@ -270,12 +278,29 @@ export function DownloadSourcesModal({ book, onClose }: DownloadSourcesModalProp
       <div className="relative bg-shelvarr-surface border border-shelvarr-border rounded-lg w-full max-w-4xl max-h-[80vh] overflow-hidden z-50">
         <div className="p-4 border-b border-shelvarr-border">
           <h2 className="text-lg font-semibold text-white">Find Downloads</h2>
-          <p className="text-sm text-shelvarr-text-muted mt-1">
-            Searching for: <span className="text-white">{book.title}</span>
-            {book.author && (
-              <span className="text-shelvarr-text-muted"> by {book.author}</span>
-            )}
-          </p>
+          <form
+            className="mt-2 flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setSubmittedQuery(query.trim());
+            }}
+          >
+            <input
+              type="search"
+              aria-label="Search terms"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Title and author"
+              className="flex-1 bg-shelvarr-bg border border-shelvarr-border rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+            />
+            <button
+              type="submit"
+              disabled={loading || !query.trim() || query.trim() === submittedQuery}
+              className="bg-shelvarr-surface border border-shelvarr-border hover:border-shelvarr-primary disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded text-sm font-medium transition-colors"
+            >
+              Search
+            </button>
+          </form>
         </div>
 
         {/* Library Selector */}

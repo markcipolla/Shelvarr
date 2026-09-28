@@ -12,6 +12,7 @@ import assert from 'node:assert';
 import '../../../tests/setup-react.js';
 import React from 'react';
 import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 // Mock next/link: it needs an app-router context we don't set up here.
 const Link = ({ href, children, ...props }: any) => (
@@ -90,6 +91,44 @@ describe('DownloadSourcesModal', () => {
     assert.ok(screen.getByText(/LibGen, Anna's Archive and Z-Library/));
     assert.ok(screen.getByRole('link', { name: /Settings.*Download Sources/i }));
     assert.strictEqual(mockSearchDownloads.mock.callCount(), 0);
+  });
+
+  it('seeds the search box with the cleaned title and author', async () => {
+    mockGetDownloadConfigs.mock.mockImplementation(async () => [
+      { source: 'libgen', enabled: 1 },
+    ]);
+
+    render(
+      <DownloadSourcesModal
+        book={{ ...book, title: "The Mercy of Gods: Captive's War, Book 1", author: 'James S. A. Corey' }}
+        onClose={() => {}}
+      />
+    );
+
+    await waitFor(() => assert.strictEqual(mockSearchDownloads.mock.callCount(), 1));
+    assert.strictEqual(
+      mockSearchDownloads.mock.calls[0].arguments[0],
+      'The Mercy of Gods James S. A. Corey'
+    );
+    const input = screen.getByRole('searchbox', { name: /search terms/i }) as HTMLInputElement;
+    assert.strictEqual(input.value, 'The Mercy of Gods James S. A. Corey');
+  });
+
+  it('re-searches with a refined query', async () => {
+    mockGetDownloadConfigs.mock.mockImplementation(async () => [
+      { source: 'libgen', enabled: 1 },
+    ]);
+
+    render(<DownloadSourcesModal book={book} onClose={() => {}} />);
+    await waitFor(() => assert.strictEqual(mockSearchDownloads.mock.callCount(), 1));
+
+    const input = screen.getByRole('searchbox', { name: /search terms/i });
+    await userEvent.clear(input);
+    await userEvent.type(input, 'dune messiah');
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+
+    await waitFor(() => assert.strictEqual(mockSearchDownloads.mock.callCount(), 2));
+    assert.strictEqual(mockSearchDownloads.mock.calls[1].arguments[0], 'dune messiah');
   });
 
   it('searches normally once a shadow library source is enabled', async () => {
