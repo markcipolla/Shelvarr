@@ -3,6 +3,9 @@ import { getLibraries } from '@/lib/actions/libraries';
 import { BookGrid } from '@/components/books/BookGrid';
 import { BooksFilter } from '@/components/books/BooksFilter';
 import { Pagination } from '@/components/books/Pagination';
+import { DownloadsLink } from '@/components/downloads/DownloadsLink';
+import { LiveRefresh } from '@/components/live/LiveRefresh';
+import { getActiveDownloadCounts } from '@/lib/actions/downloads';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,18 +23,24 @@ export default async function BooksPage({ searchParams }: PageProps) {
   const libraryId = params.library ? parseInt(params.library, 10) : undefined;
   const search = params.search || '';
 
-  const [booksResult, libraries] = await Promise.all([
+  const [booksResult, libraries, activeDownloads] = await Promise.all([
     getBooks({ page, pageSize: 20, libraryId, search, matchedOnly: true }),
     getLibraries(),
+    getActiveDownloadCounts(),
   ]);
 
   return (
     <div className="space-y-6">
+      {/* A finished download lands as a new book, so the shelf itself moves. */}
+      <LiveRefresh downloads />
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-white">Books</h1>
-        <span className="text-shelvarr-text-muted">
-          {booksResult.total} total
-        </span>
+        <div className="flex items-center gap-4">
+          <span className="text-shelvarr-text-muted">
+            {booksResult.total} total
+          </span>
+          <DownloadsLink href="/downloads" active={activeDownloads.books} />
+        </div>
       </div>
 
       <BooksFilter

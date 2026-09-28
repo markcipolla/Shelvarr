@@ -4,7 +4,7 @@ import { query, searchBooksFts, searchComicsFts, buildFtsQuery, listComicVolumes
 import * as metadataService from '@/lib/services/metadata';
 import type { Book } from '@/types';
 import type { ComicVolumeSummary } from '@shelvarr/types';
-import { withComicReadState, type ComicVolumeWithReadState } from '@/lib/comics/readState';
+import { withComicCardState, type ComicVolumeCardState } from '@/lib/comics/cardState';
 
 export interface LocalSearchResult {
   type: 'book' | 'author' | 'series' | 'comic';
@@ -200,8 +200,8 @@ export async function searchLocalBooks(searchQuery: string, limit = 20): Promise
 export async function searchLocalComicsList(
   searchQuery: string,
   limit = 20
-): Promise<ComicVolumeWithReadState[]> {
-  return withComicReadState(searchLocalComics(searchQuery, limit));
+): Promise<ComicVolumeCardState[]> {
+  return withComicCardState(searchLocalComics(searchQuery, limit));
 }
 
 /**

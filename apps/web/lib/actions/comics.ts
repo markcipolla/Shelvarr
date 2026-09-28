@@ -20,11 +20,13 @@ import type {
   ComicVolumeDetail,
 } from '@shelvarr/types';
 import { getReadingUserId } from '@/lib/auth';
-import { withComicReadState } from '@/lib/comics/readState';
+import { withComicCardState } from '@/lib/comics/cardState';
 
 export interface ComicsListResult {
   /** `read` is the signed-in person's: every issue of the volume, finished. */
-  volumes: Array<ComicVolumeSummary & { managed?: boolean; read?: boolean }>;
+  volumes: Array<
+    ComicVolumeSummary & { managed?: boolean; read?: boolean; downloading?: number }
+  >;
 }
 
 export interface ComicDetailResult {
@@ -39,12 +41,12 @@ export interface ComicDetailResult {
 
 export async function getComics(search?: string): Promise<ComicsListResult> {
   const volumes = listComicVolumes({ ...(search ? { search } : {}) });
-  return { volumes: await withComicReadState(volumes) };
+  return { volumes: await withComicCardState(volumes) };
 }
 
 export async function getRecentComics(limit: number): Promise<ComicsListResult> {
   const volumes = listComicVolumes({ sort: 'recently_added' }).slice(0, limit);
-  return { volumes: await withComicReadState(volumes) };
+  return { volumes: await withComicCardState(volumes) };
 }
 
 /**

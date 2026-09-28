@@ -3,11 +3,17 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import type { ComicVolumeSummary } from '@shelvarr/types';
-import { BookIcon, CheckIcon } from '@/components/ui/Icons';
+import { BookIcon, CheckIcon, LoadingSpinner } from '@/components/ui/Icons';
 import { BookCover } from '@/components/ui/BookCover';
 
-/** A volume, plus whether the reader has finished every issue of it. */
-export type ComicVolumeCardData = ComicVolumeSummary & { read?: boolean };
+/**
+ * A volume, plus whether the reader has finished every issue of it and how
+ * many of its downloads are still on their way.
+ */
+export type ComicVolumeCardData = ComicVolumeSummary & {
+  read?: boolean;
+  downloading?: number;
+};
 
 interface ComicGridProps {
   volumes: ComicVolumeCardData[];
@@ -51,6 +57,15 @@ export function ComicCard({ volume, progressLabel, overlay }: ComicCardProps) {
         {volume.issue_count > 0 && (
           <div className="absolute top-2 right-2 bg-shelvarr-primary/90 text-white text-xs font-bold px-2 py-1 rounded">
             {volume.issues_downloaded}/{volume.issue_count}
+          </div>
+        )}
+        {!!volume.downloading && (
+          <div className="absolute bottom-2 right-2 flex items-center gap-1 bg-blue-600/90 text-white text-xs font-semibold px-2 py-1 rounded shadow-md ring-1 ring-black/20">
+            <LoadingSpinner className="w-3 h-3 animate-spin" />
+            {volume.downloading > 1 && volume.downloading}
+            <span className="sr-only">
+              {volume.downloading} download{volume.downloading === 1 ? '' : 's'} in flight
+            </span>
           </div>
         )}
         {progressLabel && (
