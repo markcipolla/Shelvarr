@@ -20,7 +20,7 @@ import type {
 import { createLogger } from '../../utils/logger';
 import { extractIssueNumber, extractVolumeNumber } from '../getcomics/parse';
 import { forceRange, normaliseString, normaliseYear } from '../getcomics/normalise';
-import { pace } from '../../utils/pacing';
+import { paceSource } from '../../utils/pacing';
 
 const log = createLogger('comicvine');
 
@@ -171,7 +171,6 @@ export class ComicVine {
   private readonly dateType: ComicVineDateType;
   private readonly baseUrl: string;
   private readonly signal: AbortSignal | undefined;
-  private nextRequestAt = 0;
 
   constructor(options: ComicVineOptions) {
     if (!options.apiKey) throw new InvalidComicVineApiKeyError();
@@ -181,11 +180,16 @@ export class ComicVine {
     this.signal = options.signal;
   }
 
-  /** Space requests out so a burst can't trip the hourly limit. */
+  /**
+   * Space requests out so a burst can't trip the hourly limit.
+   *
+   * Paced by source rather than per client: a client is built per operation —
+   * `addVolume` builds one per volume — so per-instance state meant no pacing
+   * at all across an import, and two operations running at once each thought
+   * they had the whole budget. One shared gate is what the limit actually is.
+   */
   private async brake(): Promise<void> {
-    const wait = this.nextRequestAt - Date.now();
-    this.nextRequestAt = Math.max(Date.now(), this.nextRequestAt) + BRAKE_TIME_MS;
-    if (wait > 0) await pace(wait);
+    await paceSource('comicvine', BRAKE_TIME_MS);
   }
 
   private async call<T>(

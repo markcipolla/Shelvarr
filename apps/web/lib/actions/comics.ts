@@ -459,6 +459,12 @@ export interface ImportProposalView {
   year: number | null;
   fileCount: number;
   suggestedComicvineId: number | null;
+  /**
+   * False when the scan never got to ask ComicVine about this folder, because
+   * the hourly quota ran out. Distinct from "asked and found nothing": one is
+   * fixed by scanning again, the other is not.
+   */
+  checked: boolean;
   alreadyAdded: number | null;
   /** Slug of `alreadyAdded`, so the review can link straight at the volume. */
   alreadyAddedSlug?: string | null;
@@ -478,7 +484,24 @@ export interface LibraryImportRun {
   progress: number;
   total: number | null;
   error: string | null;
+  /** True when the scan stopped asking because ComicVine's quota ran out. */
+  quotaSpent: boolean;
+  /** Redundant volume rows the scan tidied away, one folder having held two. */
+  merged: number;
   proposals: ImportProposalView[];
+}
+
+/** An import that is running, waiting out the quota, or finished. */
+export interface LibraryImportApply {
+  taskId: number;
+  status: string;
+  progress: number;
+  total: number | null;
+  error: string | null;
+  imported: number;
+  failed: Array<{ folder: string; error: string }>;
+  /** Selections still to attempt when this is waiting out the quota. */
+  remaining: number;
 }
 
 /**
@@ -509,14 +532,20 @@ export async function getLatestLibraryImport(): Promise<LibraryImportRun | null>
 
   let path: string | null = null;
   let proposals: ImportProposalView[] = [];
+  let quotaSpent = false;
+  let merged = 0;
   if (row.result) {
     try {
       const parsed = JSON.parse(row.result) as {
         path?: string;
+        quotaSpent?: boolean;
+        merged?: number;
         proposals?: ImportProposalView[];
       };
       path = parsed.path ?? null;
       proposals = parsed.proposals ?? [];
+      quotaSpent = parsed.quotaSpent === true;
+      merged = parsed.merged ?? 0;
     } catch {
       // A half-written result just means there is nothing to review yet.
     }
@@ -539,8 +568,12 @@ export async function getLatestLibraryImport(): Promise<LibraryImportRun | null>
     progress: row.progress,
     total: row.total,
     error: row.error,
+    quotaSpent,
+    merged,
     proposals: proposals.map((proposal) => ({
       ...proposal,
+      // Results written before the flag existed were all answers of some sort.
+      checked: proposal.checked !== false,
       alreadyAddedSlug:
         proposal.alreadyAdded === null ? null : slugs.get(proposal.alreadyAdded) ?? null,
       alreadyAddedManaged:
@@ -549,17 +582,77 @@ export async function getLatestLibraryImport(): Promise<LibraryImportRun | null>
   };
 }
 
-/** Adopt the chosen folders. Each keeps the folder it is already in. */
+/**
+ * The import the review page last started: running, waiting out ComicVine's
+ * quota, or finished.
+ */
+export async function getLatestLibraryImportApply(): Promise<LibraryImportApply | null> {
+  const { queryOne: dbQueryOne } = await import('@/lib/db');
+
+  const row = dbQueryOne<{
+    id: number;
+    status: string;
+    progress: number;
+    total: number | null;
+    result: string | null;
+    error: string | null;
+  }>(
+    `SELECT id, status, progress, total, result, error
+       FROM tasks
+      WHERE type = 'comic_library_apply'
+      ORDER BY id DESC
+      LIMIT 1`
+  );
+  if (!row) return null;
+
+  // The result column holds the task's configuration until it finishes, and
+  // its outcome afterwards. Both shapes are read the same way: whatever counts
+  // are in there are the ones to show.
+  let imported = 0;
+  let failed: Array<{ folder: string; error: string }> = [];
+  let remaining = 0;
+  if (row.result) {
+    try {
+      const parsed = JSON.parse(row.result) as {
+        imported?: number;
+        failed?: Array<{ folder: string; error: string }>;
+        remaining?: number;
+        selections?: unknown[];
+      };
+      imported = parsed.imported ?? 0;
+      failed = parsed.failed ?? [];
+      remaining = parsed.remaining ?? parsed.selections?.length ?? 0;
+    } catch {
+      // Nothing to report yet.
+    }
+  }
+
+  return {
+    taskId: row.id,
+    status: row.status,
+    progress: row.progress,
+    total: row.total,
+    error: row.error,
+    imported,
+    failed,
+    remaining,
+  };
+}
+
+/**
+ * Adopt the chosen folders. Each keeps the folder it is already in.
+ *
+ * Queued rather than done here: hundreds of volumes is far longer than a
+ * request should take, and each one costs ComicVine requests out of an hourly
+ * budget — so the task stops when the budget runs out and resumes itself an
+ * hour later. One import at a time, since a second would spend the same budget
+ * on the same volumes.
+ */
 export async function applyLibraryImportAction(
   selections: Array<{ folder: string; comicvineId: number }>,
   rootFolderId?: number
-): Promise<{
-  success: boolean;
-  imported?: number;
-  failed?: Array<{ folder: string; error: string }>;
-  error?: string;
-}> {
-  const { comicLibrary, comicLibraryImport } = await import('@shelvarr/services');
+): Promise<{ success: boolean; taskId?: number; alreadyRunning?: boolean; error?: string }> {
+  const { comicLibrary, queue } = await import('@shelvarr/services');
   const { revalidatePath } = await import('next/cache');
 
   if (selections.length === 0) {
@@ -571,19 +664,11 @@ export async function applyLibraryImportAction(
     return { success: false, error: 'Add a comic root folder in Settings → Comics first' };
   }
 
-  try {
-    const result = await comicLibraryImport.applyLibraryImport(selections, targetRoot);
-    revalidatePath('/comics');
-    revalidatePath('/comics/import');
-    return {
-      success: true,
-      imported: result.imported.length,
-      failed: result.failed,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Library import failed',
-    };
-  }
+  const { task, alreadyRunning } = queue.enqueueOnce('comic_library_apply', {
+    selections,
+    rootFolderId: targetRoot,
+  });
+  revalidatePath('/comics');
+  revalidatePath('/comics/import');
+  return { success: true, taskId: task.id, alreadyRunning };
 }

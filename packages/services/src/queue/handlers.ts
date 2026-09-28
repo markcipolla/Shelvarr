@@ -3,7 +3,14 @@
  * Register handlers for different task types
  */
 
-import { registerTaskHandler, enqueueTask, RateLimitedError, type TaskHandler } from './index';
+import {
+  registerTaskHandler,
+  enqueueTask,
+  setTaskData,
+  COMICVINE_QUOTA_DELAY_MS,
+  RateLimitedError,
+  type TaskHandler,
+} from './index';
 import { scanLibrary, updateBook, addBook, getBookById } from '../scanner';
 import { getAllLibraries, getLibraryById } from '../library';
 import { pruneExpired } from '../auth/sessions';
@@ -53,7 +60,14 @@ import { ensureImportable, importComicDownload } from '../comics/import';
 import { sweepComicScratch } from '../comics/scratch';
 import { scanVolumeFiles } from '../comics/scan';
 import { applyVolumeRename } from '../comics/rename';
-import { findImportGroups, proposeLibraryImport } from '../comics/import-library';
+import {
+  applyLibraryImport,
+  findImportGroups,
+  proposeLibraryImport,
+  type ImportCandidate,
+  type ImportSelection,
+  type ReusableProposal,
+} from '../comics/import-library';
 import { getServiceConfig } from '../config';
 import * as metadataService from '../metadata';
 import {
@@ -2134,12 +2148,66 @@ const bookSearchAllHandler: TaskHandler = async (taskId, onProgress, signal) => 
   return { searched: wantedBooks.length, queued, failed, libraryId: library.id };
 };
 
+/** One folder's worth of a scan's stored result. */
+interface StoredProposal {
+  folder: string;
+  series: string;
+  year: number | null;
+  fileCount: number;
+  suggestedComicvineId: number | null;
+  alreadyAdded: number | null;
+  candidates: ImportCandidate[];
+  checked: boolean;
+}
+
+/**
+ * What the last completed scan of `path` worked out, keyed by folder.
+ *
+ * Only folders it actually got an answer for: the ones it never asked, because
+ * the quota ran out, are what the next scan is for.
+ */
+function reusableProposals(path: string): Map<string, ReusableProposal> {
+  const row = queryOne<{ result: string | null }>(
+    `SELECT result FROM tasks
+      WHERE type = 'comic_library_import' AND status = 'completed'
+      ORDER BY id DESC LIMIT 1`
+  );
+  const reuse = new Map<string, ReusableProposal>();
+  if (!row?.result) return reuse;
+
+  let parsed: { path?: string; proposals?: StoredProposal[] };
+  try {
+    parsed = JSON.parse(row.result) as { path?: string; proposals?: StoredProposal[] };
+  } catch {
+    return reuse;
+  }
+  if (parsed.path !== path) return reuse;
+
+  for (const proposal of parsed.proposals ?? []) {
+    // `checked` is absent in results written before it existed; those were all
+    // answers of some sort, so treat a missing flag as checked.
+    if (proposal.checked === false) continue;
+    // A miss is worth asking again — ComicVine gains volumes, and remembering
+    // "nothing there" forever would leave a folder unmatchable through the UI.
+    // Only an answer with something in it is worth keeping.
+    if ((proposal.candidates ?? []).length === 0) continue;
+    reuse.set(proposal.folder, {
+      candidates: proposal.candidates ?? [],
+      suggestedComicvineId: proposal.suggestedComicvineId ?? null,
+    });
+  }
+  return reuse;
+}
+
 /**
  * Walk a folder tree and work out which ComicVine volume each folder is.
  *
  * Proposals are returned rather than applied — adopting the wrong series would
- * be tedious to undo, so a human confirms. One ComicVine search per folder
- * means this is slow by design.
+ * be tedious to undo, so a human confirms.
+ *
+ * Folders nothing in the library recognises cost one ComicVine search each,
+ * and ComicVine's budget is hourly, so a big library runs out. Running this
+ * again keeps what the last scan answered and only asks about the rest.
  */
 const comicLibraryImportHandler: TaskHandler = async (taskId, onProgress, signal) => {
   const data = comicTaskData<{ path?: string; maxGroups?: number }>(
@@ -2148,38 +2216,96 @@ const comicLibraryImportHandler: TaskHandler = async (taskId, onProgress, signal
   );
   if (!data.path) throw new Error('Library import task has no path');
 
+  // Before working out what anything is, make sure no folder is held by two
+  // volumes: a duplicate would make the proposal for that folder depend on
+  // which of the two rows happened to be read last.
+  const merged = comicLibrary.mergeDuplicateComicFolders();
+
   const groups = await findImportGroups(data.path, {
     ...(data.maxGroups !== undefined ? { maxGroups: data.maxGroups } : {}),
   });
   onProgress(0, groups.length);
 
-  const proposals = await proposeLibraryImport(groups, {
+  const { proposals, quotaSpent } = await proposeLibraryImport(groups, {
     signal,
+    reuse: reusableProposals(data.path),
     onProgress: (done, total) => onProgress(done, total),
   });
 
   // Candidates are kept — trimmed to what the review UI shows — so choosing a
-  // different match costs no further ComicVine searches. Descriptions are
-  // dropped: they are by far the largest field and the UI does not use them.
+  // different match costs no further ComicVine searches.
+  const stored: StoredProposal[] = proposals.map((proposal) => ({
+    folder: proposal.folder,
+    series: proposal.info.series,
+    year: proposal.info.year,
+    fileCount: proposal.files.length,
+    suggestedComicvineId: proposal.suggested?.comicvineId ?? null,
+    alreadyAdded: proposal.alreadyAdded,
+    candidates: proposal.candidates,
+    checked: proposal.checked,
+  }));
+
   return {
     path: data.path,
-    proposals: proposals.map((proposal) => ({
-      folder: proposal.folder,
-      series: proposal.info.series,
-      year: proposal.info.year,
-      fileCount: proposal.files.length,
-      suggestedComicvineId: proposal.suggested?.comicvineId ?? null,
-      alreadyAdded: proposal.alreadyAdded,
-      candidates: proposal.candidates.map((candidate) => ({
-        comicvineId: candidate.comicvineId,
-        title: candidate.title,
-        year: candidate.year,
-        volumeNumber: candidate.volumeNumber,
-        publisher: candidate.publisher,
-        issueCount: candidate.issueCount,
-      })),
-    })),
+    quotaSpent,
+    merged: merged.removed,
+    unchecked: stored.filter((proposal) => !proposal.checked).length,
+    proposals: stored,
   };
+};
+
+/**
+ * Adopt the folders someone confirmed on the review page.
+ *
+ * A task rather than an inline call for two reasons: adopting hundreds of
+ * volumes takes far longer than a request should, and a task can be deferred
+ * and resumed. Each volume costs at least two ComicVine requests, so the
+ * hourly budget runs out well before a large library is through — what is left
+ * is written back as this task's own data and retried when the hour rolls
+ * over, so an import of any size finishes on its own.
+ */
+const comicLibraryApplyHandler: TaskHandler = async (taskId, onProgress, signal) => {
+  const data = comicTaskData<{
+    selections?: ImportSelection[];
+    rootFolderId?: number;
+    /** Carried across retries, so the counts are for the whole import. */
+    imported?: number;
+    failed?: Array<{ folder: string; error: string }>;
+  }>(taskId, 'library import selections');
+
+  const selections = data.selections ?? [];
+  if (selections.length === 0) throw new Error('Library import task has no selections');
+  if (data.rootFolderId === undefined) {
+    throw new Error('Library import task has no root folder');
+  }
+
+  const previouslyImported = data.imported ?? 0;
+  const previouslyFailed = data.failed ?? [];
+
+  onProgress(0, selections.length);
+  const result = await applyLibraryImport(selections, data.rootFolderId, {
+    signal,
+    onProgress: (done, total) => onProgress(done, total),
+  });
+
+  const imported = previouslyImported + result.imported.length;
+  const failed = [...previouslyFailed, ...result.failed];
+
+  if (result.remaining.length > 0 && !signal.aborted) {
+    // The retry re-reads this, so it resumes rather than starting over.
+    setTaskData(taskId, {
+      selections: result.remaining,
+      rootFolderId: data.rootFolderId,
+      imported,
+      failed,
+    });
+    throw new RateLimitedError(
+      `ComicVine's hourly quota is spent — ${imported} imported, ${result.remaining.length} to go`,
+      COMICVINE_QUOTA_DELAY_MS
+    );
+  }
+
+  return { imported, failed, remaining: result.remaining.length };
 };
 
 /** Housekeeping for expired sessions and unused sign-in codes. */
@@ -2224,6 +2350,7 @@ export function registerAllHandlers(): void {
   registerTaskHandler('comic_search_all', comicSearchAllHandler);
   registerTaskHandler('comic_resume', comicResumeHandler);
   registerTaskHandler('comic_library_import', comicLibraryImportHandler);
+  registerTaskHandler('comic_library_apply', comicLibraryApplyHandler);
 
   registerTaskHandler('author_sync', async (_taskId, onProgress) => {
     onProgress(1, 1);

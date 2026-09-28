@@ -3449,23 +3449,58 @@ export function getComicVolumeByComicvineId(comicvineId: number): ComicVolume | 
   return row ? rowToComicVolume(row) : null;
 }
 
-/**
- * Volumes still mirrored from a previous manager, with the folder and
- * ComicVine id it recorded for each.
- *
- * A library import uses this to recognise a folder it has already seen: the
- * old manager's match is a fact, so there is nothing to guess at.
- */
-export function getUnmigratedComicFolders(): Array<{
+/** A volume that already holds a folder, and enough of it to offer as a match. */
+export interface ComicFolderOwner {
   id: number;
   folder: string;
   comicvineId: number;
-}> {
-  return query<{ id: number; folder: string; comicvine_id: number }>(
-    `SELECT id, folder, comicvine_id FROM comics
-      WHERE managed = 0 AND deleted_at IS NULL
+  /** False for a volume still mirrored from a previous manager. */
+  managed: boolean;
+  title: string;
+  year: number | null;
+  publisher: string | null;
+  volumeNumber: number;
+  issueCount: number;
+}
+
+/**
+ * Every volume that claims a folder, with the match it already carries.
+ *
+ * Two jobs, both about not doing work twice. A library import uses it to
+ * recognise a folder it has already seen — the old manager's ComicVine match
+ * is a fact, and its title and year came from ComicVine in the first place, so
+ * there is nothing to guess at and nothing to look up. And adding a volume
+ * uses it to find the row that already holds a folder, so a folder can never
+ * end up with two volumes fighting over its files.
+ */
+export function getComicVolumeFolders(): ComicFolderOwner[] {
+  return query<{
+    id: number;
+    folder: string;
+    comicvine_id: number;
+    managed: number;
+    title: string;
+    year: number | null;
+    publisher: string | null;
+    volume_number: number | null;
+    issue_count: number | null;
+  }>(
+    `SELECT id, folder, comicvine_id, managed, title, year, publisher,
+            volume_number, issue_count
+       FROM comics
+      WHERE deleted_at IS NULL
         AND folder IS NOT NULL AND folder != '' AND comicvine_id IS NOT NULL`
-  ).map((row) => ({ id: row.id, folder: row.folder, comicvineId: row.comicvine_id }));
+  ).map((row) => ({
+    id: row.id,
+    folder: row.folder,
+    comicvineId: row.comicvine_id,
+    managed: row.managed === 1,
+    title: row.title,
+    year: row.year,
+    publisher: row.publisher,
+    volumeNumber: row.volume_number ?? 1,
+    issueCount: row.issue_count ?? 0,
+  }));
 }
 
 export interface UpsertManagedVolumeInput {
@@ -3682,6 +3717,21 @@ export function setComicVolumeCover(id: number, cover: Buffer | null): void {
 export function getComicVolumeCover(id: number): Buffer | null {
   const row = queryOne<{ cover: Buffer | null }>('SELECT cover FROM comics WHERE id = ?', [id]);
   return row?.cover ?? null;
+}
+
+/**
+ * Point a volume at a different ComicVine volume.
+ *
+ * `last_cv_fetch` is zeroed rather than the metadata being rewritten here: the
+ * new id's title, year and issues have to come from ComicVine, and the
+ * recurring refresh is what has the request budget for that.
+ */
+export function retargetComicVolume(id: number, comicvineId: number): void {
+  execute(
+    `UPDATE comics SET comicvine_id = ?, last_cv_fetch = 0, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?`,
+    [comicvineId, id]
+  );
 }
 
 /** Volumes whose ComicVine data is older than `maxAgeHours`, staleest first. */
