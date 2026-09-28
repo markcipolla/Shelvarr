@@ -124,8 +124,36 @@ CREATE TABLE IF NOT EXISTS download_source_config (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source TEXT NOT NULL UNIQUE, -- ebooks: zlibrary, annas, libgen; comics: getcomics
   enabled INTEGER DEFAULT 1,
-  credentials TEXT, -- JSON: {email, password} for zlibrary
-  last_checked TEXT
+  -- JSON: {email, password} for zlibrary. Encrypted at rest (enc.v1.* — see
+  -- src/secrets.ts); rows written before that are plaintext and are re-written
+  -- encrypted the first time they are read.
+  credentials TEXT,
+  last_checked TEXT,
+  -- Optional per-source proxy, for ISPs that DNS-block these domains.
+  -- http://, https://, socks4://, socks5:// or socks5h://, with an optional
+  -- user:pass@. Encrypted at rest for the same reason credentials are.
+  proxy_url TEXT,
+  -- Optional per-source User-Agent override. NULL means the shared default.
+  user_agent TEXT
+);
+
+-- Mirror domains for the shadow-library sources (libgen, annas, zlibrary).
+--
+-- These were hardcoded constants in the download services, so following a
+-- domain rotation meant shipping a new image. The table is seeded from those
+-- same shipped defaults on first run and edited in Settings -> Download
+-- Sources; `source_status_cache` keys each mirror's health off the row
+-- (`<source>:<domain>`), so a mirror added at 11pm is probed and ranked
+-- exactly like a seeded one.
+CREATE TABLE IF NOT EXISTS source_mirrors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source TEXT NOT NULL, -- libgen, annas, zlibrary
+  domain TEXT NOT NULL, -- bare hostname, no scheme
+  priority INTEGER NOT NULL DEFAULT 0, -- lower sorts first
+  enabled INTEGER NOT NULL DEFAULT 1,
+  added_by TEXT NOT NULL DEFAULT 'user', -- seed | user
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (source, domain)
 );
 
 -- Cache for source status from open-slum.org
@@ -135,6 +163,20 @@ CREATE TABLE IF NOT EXISTS source_status_cache (
   status TEXT NOT NULL, -- up, down, degraded
   response_time INTEGER, -- ms
   last_updated TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Daily limits and rate limits a download source is currently waiting out
+-- (E1-6). One row per source while it is spent; the row is deleted once the
+-- deadline passes. Kept in the database rather than in memory so a restart
+-- mid-wait doesn't hand the whole queue back a quota it has already spent —
+-- the same reasoning as tasks.not_before.
+CREATE TABLE IF NOT EXISTS source_limits (
+  source TEXT PRIMARY KEY, -- libgen, annas, zlibrary, getcomics
+  -- Naked-UTC timestamp (see the Timestamps note in packages/db/src/index.ts)
+  -- before which nothing from this source should be downloaded.
+  retry_after TEXT NOT NULL,
+  reason TEXT,
+  recorded_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Read progress (page-based, for the reader API)
@@ -247,6 +289,51 @@ CREATE TABLE IF NOT EXISTS epub_progression (
   UNIQUE(book_id, user_id, device_id)
 );
 
+-- How someone likes their reader set up: type size, typeface, line height,
+-- margins, light/sepia/dark.
+--
+-- Deliberately NOT per-device, which is the whole difference between this and
+-- epub_progression above. Where you are in a book is a property of the copy
+-- in your hands; how big you like the type is a property of your eyes, and
+-- should follow you from the laptop to the tablet without being set twice.
+--
+-- Stored as one JSON blob rather than a column per setting: this is a bag of
+-- presentation preferences that will keep growing, it is only ever read and
+-- written whole, and nothing ever queries or aggregates across it. The
+-- reader normalises and clamps whatever comes back, so an older or newer
+-- client's extra keys are harmless.
+--
+-- user_id 0 is the shared shelf, same convention as read_progress.
+CREATE TABLE IF NOT EXISTS reader_preferences (
+  user_id INTEGER PRIMARY KEY,
+  preferences TEXT NOT NULL, -- JSON
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Bookmarks and highlights. Both are "a place in a book that matters to one
+-- person", differing only in whether they span a range of text, so they share
+-- a table and are told apart by `kind`.
+--
+-- Per-user and per-book, but not per-device: a passage you highlighted on the
+-- sofa should be there on the train.
+--
+-- cfi is an EPUB CFI — a range for a highlight, a point for a bookmark. It is
+-- opaque to the server; only the reader interprets it.
+CREATE TABLE IF NOT EXISTS reader_annotations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL DEFAULT 0,
+  kind TEXT NOT NULL, -- bookmark|highlight
+  cfi TEXT NOT NULL,
+  -- The selected text for a highlight, or the chapter/position label for a
+  -- bookmark, so the list is readable without re-opening every location.
+  text TEXT,
+  colour TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(book_id, user_id, kind, cfi)
+);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_books_library ON books(library_id);
 CREATE INDEX IF NOT EXISTS idx_books_title ON books(title);
@@ -260,6 +347,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_wanted_books_status ON wanted_books(status);
 CREATE INDEX IF NOT EXISTS idx_wanted_books_title ON wanted_books(title);
 CREATE INDEX IF NOT EXISTS idx_source_status_cache_source ON source_status_cache(source);
+CREATE INDEX IF NOT EXISTS idx_source_mirrors_source ON source_mirrors(source, priority);
 CREATE INDEX IF NOT EXISTS idx_read_progress_book ON read_progress(book_id);
 CREATE INDEX IF NOT EXISTS idx_hardcover_status_status ON hardcover_reading_status(status_id);
 CREATE INDEX IF NOT EXISTS idx_comic_read_progress_issue ON comic_read_progress(issue_id);
@@ -347,6 +435,10 @@ CREATE TABLE IF NOT EXISTS comic_downloads (
   attempts INTEGER NOT NULL DEFAULT 0,   -- how many times it has been tried
   file_path TEXT,                        -- final resting place after import
   error TEXT,
+  -- Why it failed, in a form the UI can phrase itself instead of showing the
+  -- raw error: rate-limited|link-broken|download-failed|import-failed|
+  -- library-unwritable. Null unless state = 'failed'.
+  failure_reason TEXT,
   -- Last sign of life: bumped on progress and on every state change. A
   -- non-terminal download whose heartbeat has gone cold was orphaned by a
   -- process that stopped, and is picked back up by the resume sweep.
@@ -367,6 +459,8 @@ CREATE TABLE IF NOT EXISTS comic_download_history (
   file_title TEXT,
   host TEXT,
   success INTEGER NOT NULL DEFAULT 1,
+  -- Same vocabulary as comic_downloads.failure_reason; null on a success.
+  failure_reason TEXT,
   downloaded_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -381,7 +475,7 @@ CREATE TABLE IF NOT EXISTS comic_blocklist (
   web_sub_title TEXT,
   download_link TEXT NOT NULL UNIQUE,
   host TEXT,
-  reason TEXT NOT NULL, -- link-broken|source-not-supported|no-working-links|added-by-user
+  reason TEXT NOT NULL, -- link-broken|source-not-supported|no-working-links|failed-verification|added-by-user
   added_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -455,7 +549,7 @@ CREATE TABLE IF NOT EXISTS book_blocklist (
   author TEXT,
   source TEXT,
   download_url TEXT NOT NULL UNIQUE,
-  reason TEXT NOT NULL, -- link-broken|no-working-links|added-by-user
+  reason TEXT NOT NULL, -- link-broken|no-working-links|failed-verification|added-by-user
   added_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -101,6 +101,26 @@ export type ComicDownloadState =
   | 'failed'
   | 'cancelled';
 
+/**
+ * Why a download ended up `failed`.
+ *
+ * Recorded on the row as it fails, so the queue page can explain what
+ * happened without anyone having to parse the error string — and so
+ * "the host would not stop rate-limiting us" reads differently from
+ * "every link for this release is dead".
+ */
+export type ComicDownloadFailureReason =
+  /** The host kept refusing us, and we stopped asking after the attempt limit. */
+  | 'rate-limited'
+  /** Every link for this release was dead; they are all blocklisted now. */
+  | 'link-broken'
+  /** The transfer went wrong some other way, and no links were left to try. */
+  | 'download-failed'
+  /** The file arrived but could not be moved into the library. */
+  | 'import-failed'
+  /** The volume's folder could not be written to, so nothing was fetched. */
+  | 'library-unwritable';
+
 /** A queued or in-flight download. */
 export interface ComicDownload {
   id: number;
@@ -129,6 +149,12 @@ export interface ComicDownload {
   /** How many times this download has been attempted. */
   attempts: number;
   error: string | null;
+  /**
+   * Why it failed, in a form the UI can phrase itself. Null unless the
+   * download is `failed` — and null on failures recorded before this was
+   * kept, which fall back to showing `error`.
+   */
+  failureReason: ComicDownloadFailureReason | null;
   /** Last sign of life, used to spot downloads orphaned by a restart. */
   heartbeatAt: string | null;
   createdAt: string;
@@ -146,6 +172,8 @@ export type BlocklistReason =
   | 'link-broken'
   | 'source-not-supported'
   | 'no-working-links'
+  /** The bytes arrived but hashed wrong, or weren't the file type they claimed (E1-5). */
+  | 'failed-verification'
   | 'added-by-user';
 
 export interface ComicBlocklistEntry {

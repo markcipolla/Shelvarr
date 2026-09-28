@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { MetadataSourcesTab } from './MetadataSourcesTab';
 import { DownloadSourcesTab } from './DownloadSourcesTab';
 import { AboutTab } from './AboutTab';
-import type { DownloadSourceConfig } from '@/lib/db';
+import type { DownloadSourceConfig, SourceMirror } from '@/lib/db';
 import type { SourceStatus as DownloadSourceStatus } from '@/lib/services/downloads';
 import type { MetadataSourceStatus } from '@/lib/actions/settings';
 
@@ -12,6 +12,7 @@ interface SettingsTabsProps {
   sources: MetadataSourceStatus[];
   downloadConfigs?: DownloadSourceConfig[];
   downloadStatuses?: DownloadSourceStatus[];
+  downloadMirrors?: SourceMirror[];
   comicVineDateType?: string;
 }
 
@@ -21,6 +22,7 @@ export function SettingsTabs({
   sources,
   downloadConfigs = [],
   downloadStatuses = [],
+  downloadMirrors = [],
   comicVineDateType = 'cover_date',
 }: SettingsTabsProps) {
   const [activeTab, setActiveTab] = useState<TabId>('sources');
@@ -55,7 +57,13 @@ export function SettingsTabs({
         {activeTab === 'sources' && (
           <MetadataSourcesTab sources={sources} comicVineDateType={comicVineDateType} />
         )}
-        {activeTab === 'downloads' && <DownloadSourcesTab configs={downloadConfigs} statuses={downloadStatuses} />}
+        {activeTab === 'downloads' && (
+          <DownloadSourcesTab
+            configs={downloadConfigs}
+            statuses={downloadStatuses}
+            mirrors={downloadMirrors}
+          />
+        )}
         {activeTab === 'about' && <AboutTab />}
       </div>
     </div>

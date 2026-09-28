@@ -355,6 +355,7 @@ export function listComicDownloads(options: { state?: string; limit?: number } =
   }>(
     `SELECT cd.id, cd.volume_id AS volumeId, c.title AS volumeTitle, cd.issue_id AS issueId,
             cd.host, cd.state, cd.progress, cd.size, cd.attempts, cd.error,
+            cd.failure_reason AS failureReason,
             cd.web_title AS webTitle, cd.heartbeat_at AS heartbeatAt,
             cd.created_at AS createdAt, cd.completed_at AS completedAt
        FROM comic_downloads cd

@@ -14,12 +14,11 @@ import {
   type ComicIssueProgress,
   sqlTimeToIso,
 } from '@/lib/db';
-import type { ComicVolumeSummary, ComicVolumeDetail } from '@shelvarr/types';
 import type {
-  ImportSearchFailure,
-  StoredImportCandidate,
-  StoredImportProposal,
-} from '@shelvarr/services';
+  ComicDownloadFailureReason,
+  ComicVolumeSummary,
+  ComicVolumeDetail,
+} from '@shelvarr/types';
 import { getReadingUserId } from '@/lib/auth';
 import { withComicReadState } from '@/lib/comics/readState';
 
@@ -265,6 +264,43 @@ export async function deleteComicVolumeAction(
   }
 }
 
+/** A duplicate the tidy would not settle on its own. */
+export interface UnresolvedComicDuplicate {
+  comicvineId: number;
+  title: string;
+  folders: string[];
+}
+
+/**
+ * Find volumes the library lists twice and drop the redundant copies.
+ *
+ * The same thing a library scan does before it proposes anything, offered on
+ * its own because it costs no ComicVine requests and nobody should have to
+ * rescan 800 folders to tidy a duplicate.
+ */
+export async function tidyComicDuplicatesAction(): Promise<{
+  success: boolean;
+  removed: number;
+  unresolved: UnresolvedComicDuplicate[];
+  error?: string;
+}> {
+  const { comicLibrary } = await import('@shelvarr/services');
+  const { revalidatePath } = await import('next/cache');
+
+  try {
+    const result = comicLibrary.mergeDuplicateComicVolumes();
+    revalidatePath('/comics');
+    return { success: true, removed: result.removed, unresolved: result.unresolved };
+  } catch (error) {
+    return {
+      success: false,
+      removed: 0,
+      unresolved: [],
+      error: error instanceof Error ? error.message : 'Failed to tidy duplicates',
+    };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Download queue
 // ---------------------------------------------------------------------------
@@ -285,6 +321,8 @@ export interface DownloadQueueView {
     /** Fallback links left to try if the current one dies. */
     alternates: number;
     error: string | null;
+    /** Why it failed, for the page to phrase; null unless it failed. */
+    failureReason: ComicDownloadFailureReason | null;
     createdAt: string;
   }>;
   history: Array<{
@@ -293,6 +331,7 @@ export interface DownloadQueueView {
     fileTitle: string | null;
     host: string | null;
     success: boolean;
+    failureReason: ComicDownloadFailureReason | null;
     downloadedAt: string;
   }>;
   blocklist: Array<{
@@ -334,6 +373,7 @@ export async function getComicDownloadQueue(): Promise<DownloadQueueView> {
       attempts: download.attempts,
       alternates: download.alternateLinks.length,
       error: download.error,
+      failureReason: download.failureReason,
       createdAt: download.createdAt,
     })),
     history: (
@@ -343,6 +383,7 @@ export async function getComicDownloadQueue(): Promise<DownloadQueueView> {
         file_title: string | null;
         host: string | null;
         success: number;
+        failure_reason: string | null;
         downloaded_at: string;
       }>
     ).map((entry) => ({
@@ -351,6 +392,7 @@ export async function getComicDownloadQueue(): Promise<DownloadQueueView> {
       fileTitle: entry.file_title,
       host: entry.host,
       success: entry.success === 1,
+      failureReason: (entry.failure_reason as ComicDownloadFailureReason | null) ?? null,
       downloadedAt: sqlTimeToIso(entry.downloaded_at),
     })),
     blocklist: getComicBlocklist(50).map((entry) => ({
@@ -439,17 +481,28 @@ export async function unblockComicLink(id: number): Promise<{ success: boolean }
 // Library import review
 // ---------------------------------------------------------------------------
 
-export type ImportCandidateView = StoredImportCandidate;
+export interface ImportCandidateView {
+  comicvineId: number;
+  title: string;
+  year: number | null;
+  volumeNumber: number;
+  publisher: string | null;
+  issueCount: number;
+}
 
-/**
- * A stored proposal plus the bits resolved at read time.
- *
- * `failure` and `failureMessage` are optional here rather than required as the
- * scan writes them: a result recorded before the scan tracked why a search came
- * back empty has neither, and an absent reason reads as "ComicVine answered".
- */
-export interface ImportProposalView
-  extends Omit<StoredImportProposal, 'failure' | 'failureMessage'> {
+export interface ImportProposalView {
+  folder: string;
+  series: string;
+  year: number | null;
+  fileCount: number;
+  suggestedComicvineId: number | null;
+  /**
+   * False when the scan never got to ask ComicVine about this folder, because
+   * the hourly quota ran out. Distinct from "asked and found nothing": one is
+   * fixed by scanning again, the other is not.
+   */
+  checked: boolean;
+  alreadyAdded: number | null;
   /** Slug of `alreadyAdded`, so the review can link straight at the volume. */
   alreadyAddedSlug?: string | null;
   /**
@@ -458,13 +511,7 @@ export interface ImportProposalView
    * review offers it rather than skipping it.
    */
   alreadyAddedManaged?: boolean;
-  /**
-   * Why `candidates` is empty, when the reason is not "ComicVine had no
-   * match". Absent on results recorded before the scan tracked this.
-   */
-  failure?: ImportSearchFailure | null;
-  /** The message behind `failure: 'error'`. */
-  failureMessage?: string | null;
+  candidates: ImportCandidateView[];
 }
 
 export interface LibraryImportRun {
@@ -474,7 +521,24 @@ export interface LibraryImportRun {
   progress: number;
   total: number | null;
   error: string | null;
+  /** True when the scan stopped asking because ComicVine's quota ran out. */
+  quotaSpent: boolean;
+  /** Redundant volume rows the scan tidied away, one folder having held two. */
+  merged: number;
   proposals: ImportProposalView[];
+}
+
+/** An import that is running, waiting out the quota, or finished. */
+export interface LibraryImportApply {
+  taskId: number;
+  status: string;
+  progress: number;
+  total: number | null;
+  error: string | null;
+  imported: number;
+  failed: Array<{ folder: string; error: string }>;
+  /** Selections still to attempt when this is waiting out the quota. */
+  remaining: number;
 }
 
 /**
@@ -505,14 +569,20 @@ export async function getLatestLibraryImport(): Promise<LibraryImportRun | null>
 
   let path: string | null = null;
   let proposals: ImportProposalView[] = [];
+  let quotaSpent = false;
+  let merged = 0;
   if (row.result) {
     try {
       const parsed = JSON.parse(row.result) as {
         path?: string;
+        quotaSpent?: boolean;
+        merged?: number;
         proposals?: ImportProposalView[];
       };
       path = parsed.path ?? null;
       proposals = parsed.proposals ?? [];
+      quotaSpent = parsed.quotaSpent === true;
+      merged = parsed.merged ?? 0;
     } catch {
       // A half-written result just means there is nothing to review yet.
     }
@@ -520,7 +590,8 @@ export async function getLatestLibraryImport(): Promise<LibraryImportRun | null>
 
   // The proposals were serialised when the scan ran, before any of them had
   // been adopted, so slugs and ownership are resolved now rather than read
-  // back out of a stale result blob.
+  // back out of a stale result blob. A volume removed since then is no longer
+  // in the library, which puts its folder back on offer.
   const { isComicVolumeManaged } = await import('@/lib/db');
   const slugs = getComicSlugs(
     proposals
@@ -535,27 +606,97 @@ export async function getLatestLibraryImport(): Promise<LibraryImportRun | null>
     progress: row.progress,
     total: row.total,
     error: row.error,
-    proposals: proposals.map((proposal) => ({
-      ...proposal,
-      alreadyAddedSlug:
-        proposal.alreadyAdded === null ? null : slugs.get(proposal.alreadyAdded) ?? null,
-      alreadyAddedManaged:
-        proposal.alreadyAdded === null ? false : isComicVolumeManaged(proposal.alreadyAdded),
-    })),
+    quotaSpent,
+    merged,
+    proposals: proposals.map((proposal) => {
+      const alreadyAdded =
+        proposal.alreadyAdded !== null && slugs.has(proposal.alreadyAdded)
+          ? proposal.alreadyAdded
+          : null;
+
+      return {
+        ...proposal,
+        // Results written before the flag existed were all answers of some sort.
+        checked: proposal.checked !== false,
+        alreadyAdded,
+        alreadyAddedSlug: alreadyAdded === null ? null : slugs.get(alreadyAdded) ?? null,
+        alreadyAddedManaged: alreadyAdded === null ? false : isComicVolumeManaged(alreadyAdded),
+      };
+    }),
   };
 }
 
-/** Adopt the chosen folders. Each keeps the folder it is already in. */
+/**
+ * The import the review page last started: running, waiting out ComicVine's
+ * quota, or finished.
+ */
+export async function getLatestLibraryImportApply(): Promise<LibraryImportApply | null> {
+  const { queryOne: dbQueryOne } = await import('@/lib/db');
+
+  const row = dbQueryOne<{
+    id: number;
+    status: string;
+    progress: number;
+    total: number | null;
+    result: string | null;
+    error: string | null;
+  }>(
+    `SELECT id, status, progress, total, result, error
+       FROM tasks
+      WHERE type = 'comic_library_apply'
+      ORDER BY id DESC
+      LIMIT 1`
+  );
+  if (!row) return null;
+
+  // The result column holds the task's configuration until it finishes, and
+  // its outcome afterwards. Both shapes are read the same way: whatever counts
+  // are in there are the ones to show.
+  let imported = 0;
+  let failed: Array<{ folder: string; error: string }> = [];
+  let remaining = 0;
+  if (row.result) {
+    try {
+      const parsed = JSON.parse(row.result) as {
+        imported?: number;
+        failed?: Array<{ folder: string; error: string }>;
+        remaining?: number;
+        selections?: unknown[];
+      };
+      imported = parsed.imported ?? 0;
+      failed = parsed.failed ?? [];
+      remaining = parsed.remaining ?? parsed.selections?.length ?? 0;
+    } catch {
+      // Nothing to report yet.
+    }
+  }
+
+  return {
+    taskId: row.id,
+    status: row.status,
+    progress: row.progress,
+    total: row.total,
+    error: row.error,
+    imported,
+    failed,
+    remaining,
+  };
+}
+
+/**
+ * Adopt the chosen folders. Each keeps the folder it is already in.
+ *
+ * Queued rather than done here: hundreds of volumes is far longer than a
+ * request should take, and each one costs ComicVine requests out of an hourly
+ * budget — so the task stops when the budget runs out and resumes itself an
+ * hour later. One import at a time, since a second would spend the same budget
+ * on the same volumes.
+ */
 export async function applyLibraryImportAction(
   selections: Array<{ folder: string; comicvineId: number }>,
   rootFolderId?: number
-): Promise<{
-  success: boolean;
-  imported?: number;
-  failed?: Array<{ folder: string; error: string }>;
-  error?: string;
-}> {
-  const { comicLibrary, comicLibraryImport } = await import('@shelvarr/services');
+): Promise<{ success: boolean; taskId?: number; alreadyRunning?: boolean; error?: string }> {
+  const { comicLibrary, queue } = await import('@shelvarr/services');
   const { revalidatePath } = await import('next/cache');
 
   if (selections.length === 0) {
@@ -567,43 +708,11 @@ export async function applyLibraryImportAction(
     return { success: false, error: 'Add a comic root folder in Settings → Comics first' };
   }
 
-  try {
-    const result = await comicLibraryImport.applyLibraryImport(selections, targetRoot);
-    revalidatePath('/comics');
-    revalidatePath('/comics/import');
-    return {
-      success: true,
-      imported: result.imported.length,
-      failed: result.failed,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Library import failed',
-    };
-  }
-}
-
-/**
- * Run the scan again over the same folder tree.
- *
- * Folders the last scan already answered for keep their answer, so this costs
- * ComicVine searches only for the ones it never reached — which is what makes a
- * library larger than ComicVine's hourly quota finishable, an hour at a time.
- */
-export async function rescanLibraryImportAction(
-  path: string
-): Promise<{ success: boolean; taskId?: number; error?: string }> {
-  const { comicLibrary, queue } = await import('@shelvarr/services');
-  const { revalidatePath } = await import('next/cache');
-
-  if (!path) return { success: false, error: 'No folder to scan' };
-
-  if (!(await comicLibrary.isComicVineConfigured())) {
-    return { success: false, error: 'Add a ComicVine API key in Settings → Metadata first' };
-  }
-
-  const task = queue.enqueueTask('comic_library_import', { path });
+  const { task, alreadyRunning } = queue.enqueueOnce('comic_library_apply', {
+    selections,
+    rootFolderId: targetRoot,
+  });
+  revalidatePath('/comics');
   revalidatePath('/comics/import');
-  return { success: true, taskId: task.id };
+  return { success: true, taskId: task.id, alreadyRunning };
 }

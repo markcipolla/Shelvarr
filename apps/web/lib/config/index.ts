@@ -22,7 +22,9 @@ const logFileDisabled =
 if (!logFileDisabled) configureLogFile(logFile);
 
 // Initialize shared packages
-initDatabase(config.dbPath);
+// The data directory is passed explicitly: it is where the key that encrypts
+// stored credentials lives, and DB_PATH can point somewhere else entirely.
+initDatabase(config.dbPath, { dataDir: config.dataDir });
 initServiceConfig(config);
 
 // A task left at `running` when the process died has nothing left to finish

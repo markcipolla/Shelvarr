@@ -42,11 +42,12 @@ services:
       - SMTP_FROM=${SMTP_FROM:-}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      # The image declares this too; it is spelled out here so it is visible.
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/up"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 30s
 
 volumes:
   shelvarr_data:

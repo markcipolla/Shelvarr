@@ -342,8 +342,49 @@ export interface DownloadSourceConfig {
   id: number;
   source: string;
   enabled: number;
+  /**
+   * Credentials JSON, already decrypted by the read path. Encrypted at rest —
+   * never write this column directly, go through `upsertDownloadSourceConfig`.
+   */
   credentials: string | null;
   last_checked: string | null;
+  /**
+   * Optional proxy for this source's requests only: http(s)://, socks4://,
+   * socks5:// or socks5h://, with an optional `user:pass@`. Decrypted by the
+   * read path, like `credentials`.
+   */
+  proxy_url: string | null;
+  /** Optional per-source User-Agent override; null means the shared default. */
+  user_agent: string | null;
+}
+
+/** The network settings a source's HTTP requests are made with. */
+export interface SourceNetworkSettings {
+  proxyUrl: string | null;
+  userAgent: string | null;
+}
+
+/**
+ * A mirror domain for one of the shadow-library sources.
+ *
+ * These used to be hardcoded constants in the download services, which made
+ * following a domain rotation (libgen.is -> .rs -> .st -> .vg -> .la) a code
+ * change and a new image. They live in the `source_mirrors` table instead,
+ * seeded from the shipped defaults on first run and editable in
+ * Settings -> Download Sources.
+ */
+export interface SourceMirror {
+  id: number;
+  /** Headline source this mirror belongs to: libgen, annas or zlibrary. */
+  source: string;
+  /** Bare hostname, no scheme and no trailing slash (e.g. `libgen.vg`). */
+  domain: string;
+  /** Lower sorts first. Ties break on insertion order. */
+  priority: number;
+  enabled: number;
+  /** `seed` for a shipped default, `user` for one added in Settings. */
+  added_by: string;
+  created_at: string;
 }
 
 export interface SourceStatusCache {

@@ -246,14 +246,17 @@ export async function removeComicRootFolderAction(id: number) {
 
 /**
  * Kick off a library import scan. Returns the task id so the UI can follow it
- * on the tasks page — it makes one ComicVine search per folder, so a large
- * library takes minutes.
+ * on the tasks page — it makes one ComicVine search per folder it does not
+ * already recognise, so a large library takes minutes.
+ *
+ * One scan at a time: a second one would ask ComicVine the same questions out
+ * of the same hourly budget.
  */
 export async function startComicLibraryImport(path: string) {
   const { queue } = await import('@shelvarr/services');
-  const task = queue.enqueueTask('comic_library_import', { path });
+  const { task, alreadyRunning } = queue.enqueueOnce('comic_library_import', { path });
   revalidatePath('/settings');
-  return { success: true, taskId: task.id };
+  return { success: true, taskId: task.id, alreadyRunning };
 }
 
 // ---------------------------------------------------------------------------

@@ -5,6 +5,14 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('API Health', () => {
+  test('answers /up in plain text, which is what the container probes', async ({ request }) => {
+    const response = await request.get('/up');
+
+    expect(response.status()).toBe(200);
+    expect(response.headers()['content-type']).toContain('text/plain');
+    expect((await response.text()).trim()).toBe('ok');
+  });
+
   test('should have healthy API', async ({ request }) => {
     const response = await request.get('/api/health');
     expect(response.ok()).toBeTruthy();

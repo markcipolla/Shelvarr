@@ -5,6 +5,11 @@
 
 import { query, queryOne, execute, insertReturning, sqlTimeToIso, isoToSqlTime } from '@shelvarr/db';
 import { createLogger } from '../utils/logger';
+import {
+  SourceUnavailableError,
+  clearExpiredSourceLimits,
+  deferralDelay,
+} from '../downloads/source-limits';
 import { listenerCount, publish } from '../events/index';
 import type { TaskEvent } from '../events/index';
 
@@ -14,7 +19,8 @@ export type TaskType = 'scan' | 'metadata' | 'book_metadata' | 'organize' | 'dow
   | 'book_scan_all' | 'book_organize_all' | 'book_resume' | 'book_search_all' | 'book_import'
   | 'comic_search' | 'comic_download' | 'comic_refresh' | 'comic_scan'
   | 'comic_rename' | 'comic_update_all' | 'comic_search_all'
-  | 'comic_library_import' | 'comic_resume' | 'auth_prune' | 'source_health';
+  | 'comic_library_import' | 'comic_library_apply' | 'comic_resume' | 'auth_prune'
+  | 'source_health';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface Task {
@@ -87,6 +93,21 @@ let retryProcessorRunning = false;
 const RETRY_DELAY_MS = 10000; // 10 seconds between retries
 
 /**
+ * How long to wait out ComicVine's request budget, which is about 200 requests
+ * per resource per hour. An extra minute on the hour so the retry lands after
+ * the window has actually rolled over rather than on its edge.
+ */
+export const COMICVINE_QUOTA_DELAY_MS = 61 * 60 * 1000;
+
+/**
+ * Longest the processor sleeps in one go while waiting for the next entry to
+ * come due. Waiting is sliced rather than slept through so that a task
+ * deferred for hours — a spent daily quota, say — doesn't hold up a task
+ * deferred for seconds that arrives behind it.
+ */
+const RETRY_POLL_SLICE_MS = 15_000;
+
+/**
  * A rate limit the handler wants waited out for a specific length of time.
  *
  * Handlers that know what they hit — a host's download limit, say, which is
@@ -101,14 +122,27 @@ export class RateLimitedError extends Error {
 }
 
 /**
- * Whether an error means "come back later" rather than "this failed".
+ * Whether an error means "come back later" rather than "this failed", and if
+ * so, how long "later" is.
  *
- * Matched by name rather than by type so the queue doesn't have to import the
- * download clients that raise them: `DownloadLimitReachedError` says only
- * "Download limit reached for <host>", with no status code to sniff for.
+ * Three shapes, in descending order of how much the thrower knew:
+ * `RateLimitedError` and the source-scoped errors behind `deferralDelay`
+ * carry their own wait; `DownloadLimitReachedError` is matched by name rather
+ * than by type, so the queue doesn't have to import the download clients that
+ * raise it, and says only "Download limit reached for <host>" with no status
+ * code to sniff for; anything else is a last-resort look for a 429 in the
+ * message.
  */
 function rateLimitDelay(error: unknown, message: string): number | null {
   if (error instanceof RateLimitedError) return error.retryAfterMs;
+  // ComicVine's budget is per hour, so there is no point coming back sooner.
+  if (error instanceof Error && error.name === 'ComicVineRateLimitError') {
+    return COMICVINE_QUOTA_DELAY_MS;
+  }
+  // A whole source is spent, or is already busy with one download (E1-6).
+  // Carries its own deadline, which can be hours rather than seconds.
+  const sourceDelay = deferralDelay(error);
+  if (sourceDelay !== null) return sourceDelay;
   if (error instanceof Error && error.name === 'DownloadLimitReachedError') {
     return RETRY_DELAY_MS;
   }
@@ -133,17 +167,33 @@ async function processRetryQueue(): Promise<void> {
   if (retryProcessorRunning) return;
   retryProcessorRunning = true;
 
+  /** Which task the processor last said it was waiting on, so it says it once. */
+  let waitingFor: number | null = null;
+
   while (retryQueue.length > 0) {
-    // Take whichever task is due soonest, waiting for it if it isn't due yet.
+    // Whichever task is due soonest, without taking it off the queue yet.
     retryQueue.sort((a, b) => a.notBefore - b.notBefore);
+    const soonest = retryQueue[0];
+    if (!soonest) continue;
+
+    // Wait in slices rather than sleeping the whole way to the deadline: a
+    // source-level deferral (E1-6) can be hours out, and sleeping through it
+    // with the entry already shifted off the queue would mean a task
+    // deferred ten seconds from now sat behind it. Re-sorting each slice
+    // lets a sooner arrival overtake a long wait.
+    const wait = soonest.notBefore - Date.now();
+    if (wait > 0) {
+      if (waitingFor !== soonest.taskId) {
+        waitingFor = soonest.taskId;
+        log.info('Waiting before retry', { taskId: soonest.taskId, delayMs: wait });
+      }
+      await sleep(Math.min(wait, RETRY_POLL_SLICE_MS));
+      continue;
+    }
+
+    waitingFor = null;
     const entry = retryQueue.shift();
     if (!entry) continue;
-
-    const wait = entry.notBefore - Date.now();
-    if (wait > 0) {
-      log.info('Waiting before retry', { taskId: entry.taskId, delayMs: wait });
-      await sleep(wait);
-    }
 
     // Check if task still exists and is pending
     const task = getTask(entry.taskId);
@@ -271,6 +321,12 @@ export function rebuildRetryQueueFromDatabase(): number {
   if (rows.length > 0) {
     log.info('Rebuilt retry queue from database', { count: rows.length });
   }
+
+  // Per-source deadlines (E1-6) survive a restart in their own table and are
+  // read at the point of use, so there is nothing to rebuild — only spent
+  // rows to tidy away, which is cheapest to do here, once, at boot.
+  const expired = clearExpiredSourceLimits();
+  if (expired > 0) log.info('Cleared expired source limits', { count: expired });
 
   if (retryQueue.length > 0 && !retryProcessorRunning) {
     processRetryQueue().catch(err => {
@@ -631,11 +687,16 @@ export async function runTask(taskId: number): Promise<void> {
       if (retryAfterMs !== null) {
         log.info('Rate limited, adding to retry queue', { taskId, type: task.type, retryAfterMs });
 
-        // Update task to pending with a note about queue position
+        // Update task to pending with a note about queue position. A
+        // source-scoped deferral says which source and for how long, which is
+        // the difference between "stuck" and "waiting" to someone reading the
+        // tasks page; the "queued for retry (#n)" part stays in the string
+        // either way, because that is what the page parses a position out of.
         const queuePosition = retryQueue.length + 1;
+        const reason = error instanceof SourceUnavailableError ? `: ${error.message}` : '';
         execute(
           "UPDATE tasks SET status = 'pending', error = ? WHERE id = ?",
-          [`Rate limited - queued for retry (#${queuePosition})`, taskId]
+          [`Rate limited - queued for retry (#${queuePosition})${reason}`, taskId]
         );
         runningTasks.delete(taskId);
         emitTaskChange('deferred', taskId);
@@ -662,6 +723,43 @@ export function enqueueTask(type: TaskType, initialData?: Record<string, unknown
   });
 
   return task;
+}
+
+/**
+ * Create a task unless one of the same type is already pending or running.
+ *
+ * These sweeps are all one-at-a-time by nature: a second copy of a library
+ * import does the same work twice against an API with an hourly request
+ * budget, which is exactly how a double-clicked Import button spent a whole
+ * hour's worth of quota in nineteen seconds.
+ *
+ * ponytail: checked rather than locked, so two requests in the same tick could
+ * still both get through. Wrap the check and the insert in one transaction if
+ * that ever actually happens; a double click is tens of milliseconds apart and
+ * the first insert has committed by then.
+ */
+export function enqueueOnce(
+  type: TaskType,
+  initialData?: Record<string, unknown>
+): { task: Task; alreadyRunning: boolean } {
+  const active = queryOne<TaskRow>(
+    `SELECT * FROM tasks WHERE type = ? AND status IN ('pending', 'running')
+      ORDER BY id DESC LIMIT 1`,
+    [type]
+  );
+  if (active) return { task: rowToTask(active), alreadyRunning: true };
+  return { task: enqueueTask(type, initialData), alreadyRunning: false };
+}
+
+/**
+ * Replace a task's stored configuration.
+ *
+ * A task that is deferred and retried re-reads its data when it runs again, so
+ * a handler that got partway through can write back what is left to do and
+ * have the retry pick up from there rather than starting over.
+ */
+export function setTaskData(taskId: number, data: Record<string, unknown>): void {
+  execute('UPDATE tasks SET result = ? WHERE id = ?', [JSON.stringify(data), taskId]);
 }
 
 /**

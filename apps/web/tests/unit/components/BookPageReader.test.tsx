@@ -142,6 +142,15 @@ describe('BookPageReader Component', () => {
     render(<BookPageReader book={book} onClose={() => {}} />);
     await waitFor(() => assert.ok(screen.getByText('1 / 5')));
 
+    // The page indicator appearing means React has committed the DOM, not that
+    // it has run passive effects — and the keydown listener is registered in
+    // one, closed over the page count the same async load set. Dispatching in
+    // that window hits either no listener or one whose `goToPage` still sees
+    // pageCount 0 and early-returns, so the key is silently swallowed. Flush
+    // effects first; under a loaded CI runner that window is wide enough to
+    // fail on.
+    await act(async () => {});
+
     act(() => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
     });

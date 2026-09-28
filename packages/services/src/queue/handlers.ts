@@ -3,7 +3,14 @@
  * Register handlers for different task types
  */
 
-import { registerTaskHandler, enqueueTask, RateLimitedError, type TaskHandler } from './index';
+import {
+  registerTaskHandler,
+  enqueueTask,
+  setTaskData,
+  COMICVINE_QUOTA_DELAY_MS,
+  RateLimitedError,
+  type TaskHandler,
+} from './index';
 import { scanLibrary, updateBook, addBook, getBookById } from '../scanner';
 import { getAllLibraries, getLibraryById } from '../library';
 import { pruneExpired } from '../auth/sessions';
@@ -42,7 +49,11 @@ import {
   setDownloadState as setBookDownloadState,
   setDownloadProgress as updateBookDownloadProgress,
 } from '../downloads/download-events';
-import type { ComicDownloadLink, Library } from '@shelvarr/types';
+import type {
+  ComicDownloadFailureReason,
+  ComicDownloadLink,
+  Library,
+} from '@shelvarr/types';
 import * as getcomics from '../comics/getcomics/index';
 import * as comicLibrary from '../comics/library';
 import { ensureImportable, importComicDownload } from '../comics/import';
@@ -50,23 +61,36 @@ import { sweepComicScratch } from '../comics/scratch';
 import { scanVolumeFiles } from '../comics/scan';
 import { applyVolumeRename } from '../comics/rename';
 import {
+  applyLibraryImport,
   findImportGroups,
-  mergeScanResults,
-  planLibraryImportScan,
   proposeLibraryImport,
-  type StoredImportProposal,
+  type ImportCandidate,
+  type ImportSelection,
+  type ReusableProposal,
 } from '../comics/import-library';
 import { getServiceConfig } from '../config';
 import * as metadataService from '../metadata';
 import {
   resolveLibgenDownloads,
   downloadToFile,
+  FileVerificationError,
   LinkBrokenError,
   DownloadLimitReachedError,
 } from '../downloads/libgen';
 import { resolveAnnasDownload } from '../downloads/annas';
 import { resolveZlibraryDownload } from '../downloads/zlibrary';
 import type { ResolvedDownload } from '../utils/streaming-download';
+import {
+  SourceLimitReachedError,
+  SourceUnavailableError,
+  assertSourceAvailable,
+  defaultLimitMs,
+  describeWait,
+  recordSourceLimit,
+  runWithSourceSlot,
+  sourceLabel,
+  sourcePolicy,
+} from '../downloads/source-limits';
 import { searchAllSources } from '../downloads/index';
 import { getSourceStatuses, refreshSourceStatuses } from '../downloads/source-status';
 import { applyReorganization, moveFile, generateNewPath, resolveTargetCollision } from '../organizer';
@@ -553,13 +577,31 @@ async function organizeNewBook(
   return { finalPath, organized };
 }
 
-/** Human-readable name for a download source, for error messages and blocklist entries. */
-function sourceLabel(source: 'libgen' | 'annas' | 'zlibrary'): string {
-  switch (source) {
-    case 'libgen': return 'LibGen';
-    case 'annas': return "Anna's Archive";
-    case 'zlibrary': return 'Z-Library';
-  }
+interface BookDownloadParams {
+  source: 'libgen' | 'annas' | 'zlibrary';
+  resolveCandidates: () => Promise<ResolvedDownload[]>;
+  bookDownloadId: number;
+  bookTitle: string;
+  bookAuthor: string | null;
+  libraryPath: string;
+  extension: string | undefined;
+  wantedBookId?: number;
+  libraryId: number;
+  /** The source-scoped identifier (`${source}:${md5}`) blocklisted once every candidate fails. */
+  downloadUrl: string;
+  /**
+   * The md5 the search result carried, when it is genuinely a hash (E1-5).
+   * Null for Z-Library, whose identifier is a numeric book id.
+   */
+  expectedMd5?: string | null;
+  signal: AbortSignal;
+}
+
+interface BookDownloadOutcome {
+  filename: string;
+  contentType: string;
+  size: number;
+  targetPath: string;
 }
 
 /**
@@ -576,21 +618,55 @@ function sourceLabel(source: 'libgen' | 'annas' | 'zlibrary'): string {
  * dedup-suffix handling, the scratch-then-move path, the progress-persist
  * throttle and the mirror-fallback loop itself are unchanged from the
  * libgen-only implementation this replaced.
+ *
+ * Wrapped, since E1-6, in the source's own gate: nothing runs while that
+ * source is waiting out a limit, only one download talks to it at a time,
+ * and requests to it are paced. A limit that surfaces from inside — a 429
+ * with a `Retry-After`, Z-Library's spent daily quota, Anna's waitlist — is
+ * recorded against the source and re-thrown as a `SourceLimitReachedError`,
+ * which the queue defers rather than fails, so the other nine books queued
+ * against the same quota never spend a request finding out what this one
+ * already knows.
  */
-async function downloadBookWithFallback(params: {
-  source: 'libgen' | 'annas' | 'zlibrary';
-  resolveCandidates: () => Promise<ResolvedDownload[]>;
-  bookDownloadId: number;
-  bookTitle: string;
-  bookAuthor: string | null;
-  libraryPath: string;
-  extension: string | undefined;
-  wantedBookId?: number;
-  libraryId: number;
-  /** The source-scoped identifier (`${source}:${md5}`) blocklisted once every candidate fails. */
-  downloadUrl: string;
-  signal: AbortSignal;
-}): Promise<{ filename: string; contentType: string; size: number; targetPath: string }> {
+async function downloadBookWithFallback(params: BookDownloadParams): Promise<BookDownloadOutcome> {
+  const { source } = params;
+
+  // Refuse up front if the source is already waiting something out. Checked
+  // here as well as inside `runWithSourceSlot` so that a deadline already on
+  // record isn't re-recorded below as if this download had just discovered
+  // it — which would overwrite the real reason with a restatement of itself.
+  assertSourceAvailable(source);
+
+  try {
+    return await runWithSourceSlot(source, () => streamBookFromSource(params));
+  } catch (err) {
+    // A resolver recognised a quota page or a 429 while resolving: it knows
+    // the source and the wait, so all that is left is to write it down where
+    // the rest of the queue will see it.
+    if (err instanceof SourceLimitReachedError) {
+      recordSourceLimit(source, err.retryAfterMs, err.message);
+      throw err;
+    }
+    // A busy slot is a fact about this process, not something to persist.
+    if (err instanceof SourceUnavailableError) throw err;
+
+    // A host refused the transfer itself. `DownloadLimitReachedError` names
+    // one link; this is where it becomes a fact about the whole source.
+    if (err instanceof DownloadLimitReachedError) {
+      const retryAfterMs = err.retryAfterMs ?? defaultLimitMs(source);
+      recordSourceLimit(source, retryAfterMs, err.message);
+      throw new SourceLimitReachedError(
+        source,
+        retryAfterMs,
+        `${err.message} — waiting ${describeWait(retryAfterMs)} before trying ${sourceLabel(source)} again`
+      );
+    }
+
+    throw err;
+  }
+}
+
+async function streamBookFromSource(params: BookDownloadParams): Promise<BookDownloadOutcome> {
   const {
     source,
     resolveCandidates,
@@ -602,6 +678,7 @@ async function downloadBookWithFallback(params: {
     wantedBookId,
     libraryId,
     downloadUrl,
+    expectedMd5 = null,
     signal,
   } = params;
 
@@ -654,14 +731,21 @@ async function downloadBookWithFallback(params: {
   let lastPersisted = 0;
 
   // Try the chosen mirror, falling through to the next resolved candidate on
-  // a broken link or a host rate-limit — both come back as bytes never
-  // arrived, so there is nothing to resume, just a fresh mirror to try. Any
-  // other error (disk full, task cancelled, a bug) fails the download
-  // outright: another mirror would not help.
+  // a broken link, a host rate-limit, or bytes that turn out not to be the
+  // file we asked for — none of those leave anything worth resuming, just a
+  // fresh mirror to try. Any other error (disk full, task cancelled, a bug)
+  // fails the download outright: another mirror would not help.
   for (;;) {
     try {
       await downloadToFile(candidate, partialPath, {
         signal,
+        // Check the bytes before they can become a library book (E1-5): the
+        // md5 the search result carried, and the magic bytes the extension
+        // implies. A mirror that serves a truncated stream, a zero-padded
+        // body or somebody else's file fails here rather than importing.
+        verify: { md5: expectedMd5, extension: ext },
+        // Route the transfer through this source's proxy and User-Agent (E1-7).
+        source,
         onProgress: (bytes, total) => {
           if (bytes - lastPersisted < PROGRESS_PERSIST_BYTES) return;
           lastPersisted = bytes;
@@ -670,20 +754,44 @@ async function downloadBookWithFallback(params: {
       });
       break;
     } catch (err) {
+      if (signal.aborted) {
+        try { fs.unlinkSync(partialPath); } catch { /* ignore */ }
+        throw new Error('Task cancelled');
+      }
+
+      const limit = err instanceof DownloadLimitReachedError ? err : null;
+
+      // A rate limit is the source's, not the link's. For a host whose free
+      // tier is a daily quota (Anna's, Z-Library) every other candidate is
+      // the same spent quota, so trying one is a wasted request; for a host
+      // that is merely busy (LibGen) it is worth a different mirror, but
+      // once they are all refusing us the source is the thing to wait out —
+      // and neither case is grounds for blocklisting a perfectly good link.
+      //
+      // The partial file stays on disk either way: the bytes already
+      // transferred are the one thing a limit doesn't invalidate, and the
+      // retry resumes from them.
+      if (limit && (sourcePolicy(source).dailyQuota || alternates.length === 0)) {
+        throw limit;
+      }
+
       try { fs.unlinkSync(partialPath); } catch { /* ignore */ }
 
-      if (signal.aborted) throw new Error('Task cancelled');
-
       const fallbackWorthy =
-        err instanceof LinkBrokenError || err instanceof DownloadLimitReachedError;
+        err instanceof LinkBrokenError || limit !== null || err instanceof FileVerificationError;
       if (!fallbackWorthy) throw err;
 
       const message = err instanceof Error ? err.message : String(err);
 
-      if (err instanceof LinkBrokenError) {
+      // A link that serves the wrong bytes is as dead as one that serves
+      // nothing — blocklisted either way, just under its own reason so the
+      // queue's blocklist view can tell "never arrived" from "arrived
+      // corrupt". A rate limit is the one fallback-worthy failure that says
+      // nothing bad about the mirror, so it is left off the list.
+      if (err instanceof LinkBrokenError || err instanceof FileVerificationError) {
         addToBookBlocklist({
           downloadUrl: candidate.url,
-          reason: 'link-broken',
+          reason: err instanceof FileVerificationError ? 'failed-verification' : 'link-broken',
           wantedBookId: wantedBookId ?? null,
           libraryId,
           title: bookTitle,
@@ -694,7 +802,9 @@ async function downloadBookWithFallback(params: {
 
       const next = alternates.shift();
       if (!next) {
-        // Every mirror this resolve found is now dead or rate-limited.
+        // Every mirror this resolve found is dead (a rate limit never gets
+        // this far — it throws above, because the source, not the link, is
+        // what needs waiting out).
         // Blocklist the book itself (by its source-scoped identifier, not
         // any one mirror) so auto-search doesn't queue the same md5 again
         // — mirrors createDownloadsFromPost blocklisting the article's
@@ -906,6 +1016,11 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
       wantedBookId: data.wantedBookId,
       libraryId: data.libraryId,
       downloadUrl,
+      // LibGen's and Anna's identifiers *are* the file's md5, so the finished
+      // download can be hashed against them (E1-5). Z-Library's `md5` field
+      // is its numeric book id — a real hash is 32 hex characters, and
+      // anything else is an identifier we have no expected hash for.
+      expectedMd5: /^[0-9a-f]{32}$/i.test(data.md5) ? data.md5.toLowerCase() : null,
       signal,
     });
 
@@ -1007,6 +1122,16 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
       organized: finalPath !== targetPath,
     };
   } catch (err) {
+    // A source that is spent, or already busy with another download, isn't a
+    // failure: the download goes back to `queued` with its partial file
+    // intact and the task is deferred by the queue (E1-6). Deliberately not
+    // `recordFailure` — no history row, and the wanted book stays
+    // `searching`, because this download is still in flight, just waiting.
+    if (err instanceof SourceUnavailableError) {
+      setBookDownloadState(bookDownload.id, 'queued', { error: err.message });
+      throw err;
+    }
+
     recordFailure(err instanceof Error ? err.message : String(err));
     throw err;
   }
@@ -1541,8 +1666,16 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
     [download.volumeId]
   );
 
-  const fail = (message: string): never => {
-    setDownloadState(download.id, 'failed', { error: message });
+  /**
+   * End the download for good.
+   *
+   * `reason` is stored alongside the message so the queue page can say what
+   * happened in its own words — "the host kept rate-limiting us" reads very
+   * differently from "the link was dead", and neither is worth asking someone
+   * to work out from an error string.
+   */
+  const fail = (message: string, reason: ComicDownloadFailureReason): never => {
+    setDownloadState(download.id, 'failed', { error: message, failureReason: reason });
     addComicDownloadHistory({
       volumeId: download.volumeId,
       issueId: download.issueId,
@@ -1551,6 +1684,7 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
       webSubTitle: download.webSubTitle,
       host: download.host,
       success: false,
+      failureReason: reason,
     });
     throw new Error(message);
   };
@@ -1600,6 +1734,7 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
 
     const result = await getcomics.downloadToFile(resolved, scratchPath, {
       signal: downloadSignal,
+      source: 'getcomics',
       onProgress: (bytes, total) => {
         onProgress(bytes, total ?? 0);
         if (bytes - lastPersist < 1_000_000) return;
@@ -1636,7 +1771,10 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
   try {
     await ensureImportable(namingVolume);
   } catch (error) {
-    return fail(error instanceof Error ? error.message : String(error));
+    return fail(
+      error instanceof Error ? error.message : String(error),
+      'library-unwritable'
+    );
   }
 
   const attempt = startComicDownloadAttempt(download.id);
@@ -1661,7 +1799,10 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
       // download back in the queue, and let the task be retried later.
       if (error instanceof getcomics.DownloadLimitReachedError) {
         if (attempt >= MAX_DOWNLOAD_ATTEMPTS) {
-          return fail(`${message} — gave up after ${attempt} attempts`);
+          return fail(
+            `${message} — gave up after ${attempt} attempts`,
+            'rate-limited'
+          );
         }
         const retryAfterMs = rateLimitBackoff(attempt);
         deferDownload(
@@ -1686,7 +1827,12 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
       }
 
       const next = alternates.shift();
-      if (!next) return fail(message);
+      if (!next) {
+        return fail(
+          message,
+          error instanceof getcomics.LinkBrokenError ? 'link-broken' : 'download-failed'
+        );
+      }
 
       console.warn(
         `[comic-download] ${candidate.link} failed (${message}); trying ${next.link}`
@@ -1732,7 +1878,7 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
     // another link would not help. They are left there on purpose: a retry
     // resumes from them instead of fetching the issue again, and the scratch
     // sweep clears them if the retry never comes.
-    return fail(error instanceof Error ? error.message : String(error));
+    return fail(error instanceof Error ? error.message : String(error), 'import-failed');
   }
 };
 
@@ -2002,48 +2148,66 @@ const bookSearchAllHandler: TaskHandler = async (taskId, onProgress, signal) => 
   return { searched: wantedBooks.length, queued, failed, libraryId: library.id };
 };
 
+/** One folder's worth of a scan's stored result. */
+interface StoredProposal {
+  folder: string;
+  series: string;
+  year: number | null;
+  fileCount: number;
+  suggestedComicvineId: number | null;
+  alreadyAdded: number | null;
+  candidates: ImportCandidate[];
+  checked: boolean;
+}
+
 /**
- * The proposals the last completed scan of `path` left behind.
+ * What the last completed scan of `path` worked out, keyed by folder.
  *
- * A scan's task row holds its input configuration until the handler returns,
- * at which point the return value replaces it — so only a completed run has
- * proposals to offer, and a run of some other folder has nothing to say about
- * this one.
+ * Only folders it actually got an answer for: the ones it never asked, because
+ * the quota ran out, are what the next scan is for.
  */
-function previousScanProposals(taskId: number, path: string): StoredImportProposal[] {
+function reusableProposals(path: string): Map<string, ReusableProposal> {
   const row = queryOne<{ result: string | null }>(
     `SELECT result FROM tasks
       WHERE type = 'comic_library_import' AND status = 'completed'
-        AND id != ? AND result IS NOT NULL
-      ORDER BY id DESC LIMIT 1`,
-    [taskId]
+      ORDER BY id DESC LIMIT 1`
   );
-  if (!row?.result) return [];
+  const reuse = new Map<string, ReusableProposal>();
+  if (!row?.result) return reuse;
 
+  let parsed: { path?: string; proposals?: StoredProposal[] };
   try {
-    const parsed = JSON.parse(row.result) as {
-      path?: string;
-      proposals?: StoredImportProposal[];
-    };
-    if (parsed.path !== path || !Array.isArray(parsed.proposals)) return [];
-    return parsed.proposals;
+    parsed = JSON.parse(row.result) as { path?: string; proposals?: StoredProposal[] };
   } catch {
-    return [];
+    return reuse;
   }
+  if (parsed.path !== path) return reuse;
+
+  for (const proposal of parsed.proposals ?? []) {
+    // `checked` is absent in results written before it existed; those were all
+    // answers of some sort, so treat a missing flag as checked.
+    if (proposal.checked === false) continue;
+    // A miss is worth asking again — ComicVine gains volumes, and remembering
+    // "nothing there" forever would leave a folder unmatchable through the UI.
+    // Only an answer with something in it is worth keeping.
+    if ((proposal.candidates ?? []).length === 0) continue;
+    reuse.set(proposal.folder, {
+      candidates: proposal.candidates ?? [],
+      suggestedComicvineId: proposal.suggestedComicvineId ?? null,
+    });
+  }
+  return reuse;
 }
 
 /**
  * Walk a folder tree and work out which ComicVine volume each folder is.
  *
  * Proposals are returned rather than applied — adopting the wrong series would
- * be tedious to undo, so a human confirms. One ComicVine search per folder
- * means this is slow by design.
+ * be tedious to undo, so a human confirms.
  *
- * Re-running this resumes rather than restarts: folders the last scan of the
- * same path already got an answer for keep it, and only the ones it never
- * reached are searched. That is what makes a library bigger than ComicVine's
- * hourly quota finishable — each re-run spends the new hour's quota on new
- * folders instead of re-asking about the same first two hundred.
+ * Folders nothing in the library recognises cost one ComicVine search each,
+ * and ComicVine's budget is hourly, so a big library runs out. Running this
+ * again keeps what the last scan answered and only asks about the rest.
  */
 const comicLibraryImportHandler: TaskHandler = async (taskId, onProgress, signal) => {
   const data = comicTaskData<{ path?: string; maxGroups?: number }>(
@@ -2052,34 +2216,96 @@ const comicLibraryImportHandler: TaskHandler = async (taskId, onProgress, signal
   );
   if (!data.path) throw new Error('Library import task has no path');
 
+  // Before working out what anything is, make sure no folder — and no
+  // ComicVine volume — is held by two rows: a duplicate would make the
+  // proposal for that folder depend on which row happened to be read last.
+  const merged = comicLibrary.mergeDuplicateComicVolumes();
+
   const groups = await findImportGroups(data.path, {
     ...(data.maxGroups !== undefined ? { maxGroups: data.maxGroups } : {}),
   });
+  onProgress(0, groups.length);
 
-  const plan = planLibraryImportScan(groups, previousScanProposals(taskId, data.path));
-
-  // Carried folders are already done, so progress starts where the last run
-  // left off rather than replaying from zero.
-  onProgress(plan.carried.length, groups.length);
-
-  const searched = await proposeLibraryImport(plan.toSearch, {
+  const { proposals, quotaSpent } = await proposeLibraryImport(groups, {
     signal,
-    onProgress: (done) => onProgress(plan.carried.length + done, groups.length),
+    reuse: reusableProposals(data.path),
+    onProgress: (done, total) => onProgress(done, total),
   });
 
   // Candidates are kept — trimmed to what the review UI shows — so choosing a
-  // different match costs no further ComicVine searches, and so the next run
-  // can tell which folders it is allowed to skip.
-  const proposals = mergeScanResults(groups, plan, searched);
+  // different match costs no further ComicVine searches.
+  const stored: StoredProposal[] = proposals.map((proposal) => ({
+    folder: proposal.folder,
+    series: proposal.info.series,
+    year: proposal.info.year,
+    fileCount: proposal.files.length,
+    suggestedComicvineId: proposal.suggested?.comicvineId ?? null,
+    alreadyAdded: proposal.alreadyAdded,
+    candidates: proposal.candidates,
+    checked: proposal.checked,
+  }));
 
   return {
     path: data.path,
-    // A folder with no candidates because ComicVine stopped answering is not
-    // the same as one ComicVine has never heard of, so the reason travels with
-    // the proposal rather than being flattened into an empty candidate list.
-    unsearched: proposals.filter((proposal) => proposal.failure !== null).length,
-    proposals,
+    quotaSpent,
+    merged: merged.removed,
+    unchecked: stored.filter((proposal) => !proposal.checked).length,
+    proposals: stored,
   };
+};
+
+/**
+ * Adopt the folders someone confirmed on the review page.
+ *
+ * A task rather than an inline call for two reasons: adopting hundreds of
+ * volumes takes far longer than a request should, and a task can be deferred
+ * and resumed. Each volume costs at least two ComicVine requests, so the
+ * hourly budget runs out well before a large library is through — what is left
+ * is written back as this task's own data and retried when the hour rolls
+ * over, so an import of any size finishes on its own.
+ */
+const comicLibraryApplyHandler: TaskHandler = async (taskId, onProgress, signal) => {
+  const data = comicTaskData<{
+    selections?: ImportSelection[];
+    rootFolderId?: number;
+    /** Carried across retries, so the counts are for the whole import. */
+    imported?: number;
+    failed?: Array<{ folder: string; error: string }>;
+  }>(taskId, 'library import selections');
+
+  const selections = data.selections ?? [];
+  if (selections.length === 0) throw new Error('Library import task has no selections');
+  if (data.rootFolderId === undefined) {
+    throw new Error('Library import task has no root folder');
+  }
+
+  const previouslyImported = data.imported ?? 0;
+  const previouslyFailed = data.failed ?? [];
+
+  onProgress(0, selections.length);
+  const result = await applyLibraryImport(selections, data.rootFolderId, {
+    signal,
+    onProgress: (done, total) => onProgress(done, total),
+  });
+
+  const imported = previouslyImported + result.imported.length;
+  const failed = [...previouslyFailed, ...result.failed];
+
+  if (result.remaining.length > 0 && !signal.aborted) {
+    // The retry re-reads this, so it resumes rather than starting over.
+    setTaskData(taskId, {
+      selections: result.remaining,
+      rootFolderId: data.rootFolderId,
+      imported,
+      failed,
+    });
+    throw new RateLimitedError(
+      `ComicVine's hourly quota is spent — ${imported} imported, ${result.remaining.length} to go`,
+      COMICVINE_QUOTA_DELAY_MS
+    );
+  }
+
+  return { imported, failed, remaining: result.remaining.length };
 };
 
 /** Housekeeping for expired sessions and unused sign-in codes. */
@@ -2124,6 +2350,7 @@ export function registerAllHandlers(): void {
   registerTaskHandler('comic_search_all', comicSearchAllHandler);
   registerTaskHandler('comic_resume', comicResumeHandler);
   registerTaskHandler('comic_library_import', comicLibraryImportHandler);
+  registerTaskHandler('comic_library_apply', comicLibraryApplyHandler);
 
   registerTaskHandler('author_sync', async (_taskId, onProgress) => {
     onProgress(1, 1);

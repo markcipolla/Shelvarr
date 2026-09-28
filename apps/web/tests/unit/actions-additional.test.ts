@@ -40,7 +40,7 @@ if (canRunTests) {
   process.env['DB_PATH'] = join(testDir, 'test.db');
   process.env['LIBRARY_ROOT'] = testDir;
 
-  const { initDatabase, closeDatabase, execute, query, queryOne } = await import('../../lib/db/index.js');
+  const { initDatabase, closeDatabase, execute, query, queryOne, getDownloadSourceConfig } = await import('../../lib/db/index.js');
 
   // ============================================================================
   // BOOKS ACTIONS TESTS
@@ -421,10 +421,17 @@ if (canRunTests) {
 
         assert.ok(result.success);
 
+        // Stored encrypted (E1-7): the password must not be greppable in the
+        // database file, so the raw column is ciphertext and the plaintext is
+        // only reachable through the read path.
         const config = queryOne<{ credentials: string }>('SELECT credentials FROM download_source_config WHERE source = ?', ['zlibrary']);
         assert.ok(config?.credentials);
-        const creds = JSON.parse(config.credentials);
+        assert.ok(!config.credentials.includes('password123'));
+        assert.throws(() => JSON.parse(config.credentials));
+
+        const creds = JSON.parse(getDownloadSourceConfig('zlibrary')!.credentials!);
         assert.strictEqual(creds.email, 'test@example.com');
+        assert.strictEqual(creds.password, 'password123');
       });
     });
 
@@ -470,9 +477,7 @@ if (canRunTests) {
 
         assert.ok(result.success);
 
-        const config = queryOne<{ credentials: string }>('SELECT credentials FROM download_source_config WHERE source = ?', ['zlibrary']);
-        assert.ok(config?.credentials);
-        const creds = JSON.parse(config.credentials);
+        const creds = JSON.parse(getDownloadSourceConfig('zlibrary')!.credentials!);
         assert.strictEqual(creds.email, 'test@example.com');
       });
     });

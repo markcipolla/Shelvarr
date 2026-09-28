@@ -1,0 +1,58 @@
+schema: spec-driven
+
+context: |
+  Shelvarr: self-hosted *arr-style book and comic library manager (GPL-3.0-only).
+  Owns comics end to end (GetComics sourcing); Kapowarr is optional. Book downloads
+  come from shadow libraries (LibGen, Anna's Archive, Z-Library) — never trust the
+  host or the response, and never let a failure look like an empty result.
+
+  Monorepo (pnpm 9, Node >= 24):
+    apps/web     Next.js 16 App Router, React 19, TypeScript, Tailwind (@shelvarr/web)
+    apps/native  Expo / React Native "Stackarr", zustand state (@shelvarr/native)
+    packages/db        better-sqlite3; canonical schema in packages/db/schema.sql
+    packages/services  shared service clients
+    packages/types     shared types
+  Server actions live in apps/web/lib/actions/. Deployed via Docker.
+
+  Conventions:
+  - Config is injected (initDatabase(dbPath), initServiceConfig(config)); no global imports.
+  - Anything the Settings UI configures has no env-var fallback; env parsing is only in loadConfigFromEnv().
+  - SQLite CURRENT_TIMESTAMP is naked UTC: convert at the boundary with sqlTimeToIso/isoToSqlTime.
+  - Live updates use SSE + React (never Hotwire).
+  - Tests: node:test + @testing-library/react + jsdom; Playwright for E2E.
+  - Planning history and epic/card IDs (E1-1 etc.) live in ROADMAP.md.
+  - Write user-facing titles in terms of what changes for the person using it.
+
+  Spec domains: create them as changes need them, e.g. books, comics, downloads,
+  sources, library-files, reader, settings, native-app.
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing

@@ -143,7 +143,9 @@ your admin account. From there:
 
 [`docker-compose.ghcr.yml`](./docker-compose.ghcr.yml) is a fuller example with
 every setting, and [`.env.example`](./.env.example) shows how to set them from
-a `.env` file.
+a `.env` file. Deploying onto Docker Swarm — Dokploy, say — has its own notes
+in [docs/dokploy.md](./docs/dokploy.md), which covers redeploying without
+dropping requests.
 
 ### Build from source
 

@@ -25,10 +25,9 @@ import {
 } from './match';
 import { sortSearchResults } from './rank';
 import { pace } from '../../utils/pacing';
+import { sourceFetch } from '../../utils/source-http';
 
 const DEFAULT_BASE_URL = 'https://getcomics.org';
-const USER_AGENT =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 /** WordPress caps `per_page` at 100. */
 const MAX_PER_PAGE = 100;
@@ -64,8 +63,8 @@ async function fetchWithRetry(url: string, signal?: AbortSignal): Promise<Respon
     const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
 
     try {
-      const response = await fetch(url, {
-        headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+      const response = await sourceFetch('getcomics', url, {
+        headers: { Accept: 'application/json' },
         signal: combined,
       });
       if (!RETRY_STATUSES.has(response.status)) return response;

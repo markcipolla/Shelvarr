@@ -47,6 +47,7 @@ export default async function HomePage() {
           'comic_scan',
           'comic_download',
           'comic_library_import',
+          'comic_library_apply',
         ]}
       />
 

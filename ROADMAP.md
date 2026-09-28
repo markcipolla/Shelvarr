@@ -54,6 +54,34 @@ nothing a user may need to change at 11pm should require a rebuild.
 download without a restart; the seeded defaults match today's behaviour
 exactly.
 
+**Shipped 2026-09-17.** All four lists are gone. `source_mirrors` (`source`,
+`domain`, `priority`, `enabled`, `added_by`, `created_at`) is seeded on first
+run with exactly the domains the constants held, in the order they held them,
+and guarded by a `source_mirrors_seeded` marker so a mirror an operator
+removes stays removed across restarts. `packages/services/src/downloads/
+mirrors.ts` is the one place mirror choice is decided; `getLibGenDomains`,
+`getAnnasDomain` and `getZLibraryDomain` are now three lines each and read
+the table on every call, so a mirror added in Settings → Download Sources is
+searched and downloaded from on the next request with nothing restarted and
+no cache to invalidate. Health keys off the row — `source_status_cache` rows
+are `<source>:<domain>` (`libgen:libgen.la`) rather than the old `libgen_vg`
+/ `zlib_gl` constants, which is what let two copies of the list drift apart.
+Settings grew a per-source mirror editor: enable, reorder, remove, and add
+(a pasted URL is normalised to a bare host). Z-Library's per-account personal
+domain, which E4-5 noted the hardcoded list couldn't represent, can now just
+be added as a mirror.
+
+Two deliberate behaviour changes fall out of it. Anna's Archive and Z-Library
+are now aggregates over their mirrors the way LibGen already was, so their
+headline badge is the best of their mirrors rather than a single probe of
+`.org`/`.sk`. And each source keeps its old fallback domain — including
+Anna's odd `annas-archive.li`, which is not its highest-priority mirror — but
+only for as long as that domain is still one of the configured mirrors;
+remove it and the operator's own top mirror takes over. Left open: no
+per-mirror "last worked" or automatic demotion beyond the existing health
+ranking, and GetComics still takes its base URL from its own setting rather
+than a mirror row.
+
 ### E1-2 · Say "Cloudflare is blocking us", not "no results found"
 **Size S.** `probeSource` (`source-status.ts:133`) already treats 403/429/503
 as `degraded` rather than `down` — good. But the *search* paths don't: a
@@ -122,6 +150,26 @@ to the next mirror rather than importing a broken file.
 
 **Depends on:** E2-2 (streaming), which is where the hash is computed.
 
+**Shipped 2026-09-17.** `downloadToFile` takes an opt-in `verify: { md5,
+extension }`: it hashes the bytes as they stream, sniffs the first bytes
+against the extension's signature (`PK\x03\x04` for epub/cbz/zip, `%PDF` for
+pdf) and rejects a stream that stops short of the advertised size. Any of the
+three throws the new typed `FileVerificationError`, deletes the file, and — in
+`downloadBookWithFallback` — blocklists that mirror under a new
+`failed-verification` reason before falling through to the next candidate.
+A resumed download hashes the bytes already on disk before the tail, and a
+`.partial` that is already the full size is checked rather than trusted.
+Verification is per-call, so the comic pipeline, which shares the downloader
+and has no expected hash, passes nothing and is unchanged. LibGen and Anna's
+identifiers are real md5s and are checked; Z-Library's is a numeric book id,
+so only a 32-hex identifier is used as an expected hash — Z-Library downloads
+still get the magic-byte and length checks.
+
+**Left open:** nothing blocking. Worth knowing: a source whose advertised
+extension is wrong (a pdf listed as an epub) now fails verification and gets
+blocklisted, recoverable by unblocking the link in the queue view; and
+Z-Library files have no hash to check against until that source exposes one.
+
 ### E1-6 · Wait out a daily limit instead of burning the queue against it
 **Size M.** Z-Library's free tier allows a handful of downloads a day; Anna's
 free tier is a waitlist with a countdown. Shelvarr has no concept of either,
@@ -139,6 +187,43 @@ working on other sources.
 
 **Depends on:** E2-1. **Mirrors:** the comic `DownloadLimitReachedError` work.
 
+**Shipped 2026-09-17.** `downloads/source-limits.ts` is the new home for
+everything a source-wide limit implies: a `SourceLimitReachedError` and a
+`SourceBusyError` the queue *defers* on (`deferralDelay` feeds
+`rateLimitDelay`, so the task goes back to `pending` with its own deadline
+rather than the flat 10-second one), a deadline recorded in a new
+`source_limits` table, a concurrency cap of one per source, and per-source
+pacing via `paceSource`/`parseRetryAfter`, added to `utils/pacing.ts`.
+`downloadToFile` now carries the 429's `Retry-After` on
+`DownloadLimitReachedError`; `downloadBookWithFallback` runs inside the
+source's gate and turns that into the source's deadline — immediately for a
+daily-quota source (Anna's, Z-Library), and only once every mirror has
+refused for LibGen, which is merely busy rather than spent. A deferred book
+download goes back to `queued` with its partial file intact and no history
+row, and the wanted book stays `searching`, because it is still in flight.
+The resolvers recognise the quota themselves too: a 429 from Anna's detail
+page or `fast_download.json` (which no longer falls through to the free path
+— same account, same limit), and from Z-Library either a 429 or the
+daily-limit notice that replaces the download button.
+
+Deadlines live in the database, so, as with E6-2's `not_before`, a restart
+mid-wait doesn't hand the queue back a spent quota; nothing needs rebuilding
+at boot because the deadline is read at the point of use, and
+`rebuildRetryQueueFromDatabase` just sweeps expired rows on the way past.
+Two things were fixed alongside: the retry processor now waits in slices
+instead of sleeping the whole way to the soonest deadline (a 12-hour source
+deferral would otherwise have head-of-line-blocked a 10-second one behind
+it), and a rate-limited mirror is no longer blocklisted as a dead link.
+
+Still open: comics still use their own per-task `DownloadLimitReachedError`
+backoff rather than this (the machinery is source-keyed and `getcomics` has
+a policy here, so adopting it is small, but it is not this card); a 429 seen
+while *probing* a candidate is still invisible, because `fetchProbe` reports
+any non-2xx as "this candidate didn't work"; Anna's waitlist countdown is
+only read when it comes with a `Retry-After` or a 429, not parsed off the
+page; and there is no Settings UI for a limit in force — it shows up only as
+the deferred task's error text.
+
 ### E1-7 · Let me put these sources behind a proxy, and keep my password out of the database
 **Size M.** Two related gaps:
 - Many ISPs DNS-block these domains outright. There's no proxy setting
@@ -155,6 +240,47 @@ credentials at rest with a key derived from a value in the data directory.
 
 **Acceptance:** a configured proxy is used for that source's requests only;
 existing plaintext credentials are migrated on first read.
+
+**Shipped 2026-09-17.** `download_source_config` gained `proxy_url` and
+`user_agent`, both per source, both editable under Settings → Download
+Sources (every source card now expands to a Network section; a proxied source
+is badged in the header).
+
+Secrets are encrypted at rest with AES-256-GCM, keyed by HKDF from a random
+32-byte seed in `<dataDir>/.secret-key` (mode 0600, created atomically with
+`wx` so racing server processes agree). Values carry an `enc.v1.` prefix, so
+the read path recognises a plaintext row, hands the caller what it asked for,
+and rewrites the row encrypted in place — a live database upgrades on first
+read with nothing to run. `proxy_url` is encrypted too, since it can carry
+`user:pass@`. A value that will not decrypt (key lost) reads as "no
+credentials" and is left on disk rather than throwing. `getDownloadConfigs`
+now redacts credentials before they leave the server, which they previously
+did not: the settings page only ever needed "is this configured".
+
+The proxy client is written against Node's `net`/`tls`/`http`/`https` — **no
+new dependency**, deliberately, given E6-4. Both proxy families end in a
+connected socket, which `http.request({ createConnection })` will speak HTTP
+over, so only the tunnel setup is proxy-specific: HTTP CONNECT (with Basic
+proxy auth), SOCKS5 (RFC 1928 + 1929 user/pass), SOCKS4/4a. A plain-http
+target through an http proxy uses absolute-URI forwarding instead, since many
+proxies only allow CONNECT to 443. `proxyFetch` covers what the callers use:
+GET/POST/HEAD, string/`URLSearchParams`/buffer bodies, redirect following,
+abort signals and gzip/deflate/br. A source with no proxy set never touches
+any of it and stays on the global `fetch`.
+
+The six copies of the hardcoded User-Agent are gone; every source request now
+goes through `utils/source-http.ts`, which resolves that source's User-Agent
+and proxy on each call. LibGen/Anna's/Z-Library mirrors (`libgen_vg`,
+`annas_li`, `zlib_gl`) share their parent source's settings, which is the
+point — a mirror list exists because individual domains get blocked.
+
+**Left open:** the CONNECT handshake is tested directly, but there is no test
+of an https origin end-to-end through a proxy, which would need a TLS origin
+and a certificate fixture. `proxyFetch` is HTTP/1.1 only (the global `fetch`
+keeps h2 for unproxied requests) and rejects streaming request bodies, which
+nothing sends. There is no "test this proxy" button in Settings — a bad proxy
+URL is rejected at save time by the parser, but an unreachable one only shows
+up on the next request.
 
 ### E1-8 · Ask before searching a shadow library, rather than assuming
 **Size S.** `isSourceEnabled` (`packages/db/src/index.ts:766`) returns `true`
@@ -342,6 +468,72 @@ Settings persist per user, so they follow you between devices — and per the
 existing brand notes, no serif fonts in the chrome, though the *book* should
 absolutely offer one.
 
+**Shipped 2026-09-17.** Everything on the list above is in, and reader
+preferences are per user rather than per device — a new `reader_preferences`
+table keyed on user id alone, behind `GET`/`PUT /api/reader/preferences`,
+deliberately not localStorage and deliberately not keyed by device the way
+`epub_progression` is. Pick a type size on the laptop and the tablet already
+agrees.
+
+Built:
+
+- **Typography.** Text size (70–250%), typeface (as published / serif /
+  sans / mono), line height, side margins, and alignment (as published /
+  ragged right / justified). The serif stack is offered to the *book*; the
+  chrome stays sans-serif, including the panel itself — the one exception is
+  the typeface buttons, which preview the face they name.
+- **Themes.** Light, sepia and dark, applied to the book's own iframe *and*
+  to react-reader's frame. react-reader hard-codes a white reading area and
+  grey arrows inline, which CSS cannot override, so
+  `lib/reader/readerStyles.ts` rebuilds its whole `readerStyles` object from
+  the chosen palette.
+- **Hide the header.** Collapses to a faint two-button overlay (show /
+  close) and a hairline progress rule.
+- **Keyboard navigation.** →/Page Down/Space forward, ←/Page Up/⇧Space back,
+  `B` bookmark, `F` or `/` search, `D` display settings, `H` header, `Esc`
+  closes the panel and then the book. Passing react-reader's
+  `handleKeyPress` prop switches off its own arrow handling, so keys behave
+  identically inside the book's iframe and outside it. The shortcuts are
+  listed in the display panel, because an unlisted shortcut is an unused one.
+- **Progress and time remaining.** `book.locations.generate()` runs once in
+  the background; `lib/reader/progress.ts` does the arithmetic over the
+  result, deriving chapter boundaries from the location CFIs themselves (the
+  spine base is the part before the `!`). Gives "60% through the book · about
+  12 minutes left in this chapter", with reading speed configurable because
+  240 wpm is not everyone. **This also lifts E3-1's documented scope cut:**
+  the reader now sends a real 0–1 `progression` instead of a hard-coded 0, so
+  finishing a book can finally trigger the Hardcover completion sync.
+- **Bookmarks, highlights and in-book search**, in one panel. A new
+  `reader_annotations` table (per user, per book, not per device) behind
+  `/api/books/[id]/annotations`; highlights are drawn with
+  `rendition.annotations.highlight`; search uses react-reader 2.0's own
+  `searchQuery`/`onSearchResults`.
+
+Offline caching (E3-6) and progression save/restore (E3-1) are untouched and
+still covered by their original tests.
+
+**Deferred, and why:**
+
+- **Paginated ("page-turn") mode.** Not on the card's list, and switching
+  `flow` at runtime means either `rendition.flow()` against the continuous
+  manager or remounting react-reader with a new key — both are real risks to
+  the offline-buffer and restore-position paths for a setting nobody asked
+  for here. Scrolled/continuous stays.
+- **Highlight colours and notes.** The schema has `colour` and the UI has
+  one highlight colour. A colour picker and a note attached to a highlight
+  are the obvious next increment; nothing needs to change in storage for it.
+- **Bookmark de-duplication by proximity.** A bookmark matches on the exact
+  CFI, so in scrolled mode two bookmarks a paragraph apart are two bookmarks.
+  A fuzzy rule sounds better and behaves worse (it quietly refuses to
+  bookmark the next screenful), so exact matching stands until someone
+  complains.
+- **Search result highlighting in the text.** Results jump you to the right
+  place; the matched phrase isn't tinted when you land.
+- **Preferences for the PDF and page-based readers.** `PdfReader` hands off
+  to the browser's own viewer and `BookPageReader`/`ComicReader` render
+  images, so none of the typography settings mean anything there. The theme
+  might; that is a separate, smaller card.
+
 ### E3-6 · Make an opened book available offline
 **Size M. Redefined 2026-09-16** — this was "start reading before the whole
 book has downloaded" (progressive/streaming loading). Decided against: the
@@ -481,6 +673,17 @@ row ends as a bare `failed` with an error string. Record *why* it was
 abandoned, distinctly from a link being dead, so the queue page can say
 "the host kept rate-limiting us" rather than showing a stack trace.
 
+**Shipped 2026-09-17.** `comic_downloads.failure_reason` and
+`comic_download_history.failure_reason` now hold one of `rate-limited`,
+`link-broken`, `download-failed`, `import-failed` or `library-unwritable`,
+set by the download handler as it gives up rather than parsed back out of the
+error string. It is cleared whenever the row is driven again, so it only ever
+describes the failure the row is in. `/comics/downloads` leads with the
+reason in plain words — "The host kept rate-limiting us, so we stopped
+asking" — and demotes the raw error to a muted line beneath it; history rows
+carry a short version of the same. Rows that failed before this existed have
+no reason and still show their error.
+
 ---
 
 ## E6 — Foundations
@@ -525,21 +728,31 @@ warnings rather than guessed at. Resolve them deliberately.
 
 ## Suggested order
 
-**Status as of 2026-09-16: 31 of 32 original cards shipped.** E2, E4 and E6
-are done. E3 is done except E3-5 (reader polish) — E3-6 (redefined above as
-offline caching, not streaming) shipped too. E5 is done except E5-2.
+**Status as of 2026-09-17: every card on this roadmap has shipped.** E1 was
+the last epic still open; its four remaining cards — E1-1 (mirror domains in
+a `source_mirrors` table, editable in Settings), E1-5 (md5 and magic-byte
+verification while the bytes stream), E1-6 (per-source daily-quota deferral,
+concurrency cap and pacing) and E1-7 (per-source proxy and User-Agent, plus
+credentials encrypted at rest) — landed together with E3-5 (reader polish)
+and E5-2 (why a comic download was abandoned).
 
-**E1 is not fully done, despite an earlier version of this section claiming
-otherwise** — that was wrong, corrected 2026-09-16. Shipped: E1-2, E1-3,
-E1-4, E1-8 (challenge/parse-failure detection, scheduled health probes,
-shadow sources off by default). Still open: **E1-1** (mirror lists are still
-hardcoded constants, not a `source_mirrors` table), **E1-5** (downloaded
-files still aren't md5-verified), **E1-6** (no daily-quota deferral —
-`DownloadLimitReachedError` triggers mirror fallback within one download,
-per E2-3, but there's no per-source backoff across the whole queue), and
-**E1-7** (no proxy setting; `download_source_config.credentials` is still
-plaintext). None of these block anything already shipped — E4-5 shipped
-without them, on the task-level retry E2-3 already had, and is more fragile
-for it, most visibly around E1-6.
+That closes the gap the 2026-09-16 correction called out: E4-5 shipped
+against E1-2/E1-3/E2-2 and was knowingly fragile without E1-1 and E1-6. Both
+are now in, and Anna's Archive and Z-Library read their mirror domains from
+the table and defer on a spent quota rather than burning the queue against
+it.
 
-**What's left:** E1-1, E1-5, E1-6, E1-7, E3-5, E5-2. None block each other.
+**What's left: nothing on this roadmap.** Follow-ups noted on the cards
+above, none of them carded yet:
+
+- Extend the offline cache to `BookPageReader`/`ComicReader` page images
+  (E3-6) — needs those `<img src>` fetches converted to blob-URL management.
+- A watched folder that imports what appears in it (E4-3) — the manual
+  upload half shipped; this is the other half.
+- Measure the GetComics host mix before widening `SUPPORTED_HOSTS` (E5-1's
+  instrumentation is in; the decision it was meant to inform is still open).
+- Comics still use per-task rate-limit backoff rather than E1-6's
+  source-wide deferral; the machinery is source-keyed and `getcomics`
+  already has a policy, so adopting it is small.
+- PWA offline navigation (a manifest and a service worker caching the app
+  shell), explicitly out of scope for E3-6.

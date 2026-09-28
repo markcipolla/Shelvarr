@@ -18,14 +18,23 @@
  * range-capable HTTP responses.
  */
 
-import { createWriteStream, existsSync, statSync, unlinkSync } from 'fs';
+import { createHash, type Hash } from 'crypto';
+import { createReadStream, createWriteStream, existsSync, statSync, unlinkSync } from 'fs';
 import { dirname } from 'path';
 import { mkdir } from 'fs/promises';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
+import { parseRetryAfter } from './pacing';
 
-export const USER_AGENT =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+import { DEFAULT_USER_AGENT, sourceFetch, sourceHeaders } from './source-http';
+
+/**
+ * Kept as the name callers already import. The string itself, and the
+ * per-source override that can replace it, live in `source-http.ts` — pass a
+ * `source` to the functions below and they will use that source's own
+ * User-Agent and proxy instead.
+ */
+export const USER_AGENT = DEFAULT_USER_AGENT;
 
 /** The link doesn't lead to a file (dead, removed, or an error page). */
 export class LinkBrokenError extends Error {
@@ -35,12 +44,84 @@ export class LinkBrokenError extends Error {
   }
 }
 
-/** The host works but is rate-limiting us. Worth retrying later. */
+/**
+ * The host works but is rate-limiting us. Worth retrying later.
+ *
+ * `retryAfterMs` carries what the response's `Retry-After` header asked for,
+ * when it sent one. A caller that knows which *source* the host belongs to
+ * turns this into a per-source deferral (E1-6, `downloads/source-limits.ts`)
+ * so the rest of the queue waits out the same limit instead of each finding
+ * it the hard way; without a header it falls back to that source's own
+ * default wait.
+ */
 export class DownloadLimitReachedError extends Error {
-  constructor(readonly host: string) {
+  constructor(readonly host: string, readonly retryAfterMs: number | null = null) {
     super(`Download limit reached for ${host}`);
     this.name = 'DownloadLimitReachedError';
   }
+}
+
+/** Which check a downloaded file failed. */
+export type VerificationFailure =
+  /** Fewer bytes arrived than the server said the file has. */
+  | 'truncated'
+  /** The first bytes aren't the signature the extension calls for. */
+  | 'wrong-file-type'
+  /** The bytes hash to something other than the md5 the search result carried. */
+  | 'md5-mismatch';
+
+/**
+ * The bytes arrived, but they aren't the file we asked for (E1-5). Deliberately
+ * *not* a subclass of `LinkBrokenError`: the link resolved and the host served
+ * something, so the two say different things about a mirror — even though both
+ * mean "give up on this one and try the next".
+ */
+export class FileVerificationError extends Error {
+  constructor(
+    readonly link: string,
+    readonly reason: VerificationFailure,
+    message: string
+  ) {
+    super(message);
+    this.name = 'FileVerificationError';
+  }
+}
+
+/**
+ * Magic bytes by file extension. Only the formats Shelvarr actually downloads
+ * are listed; an extension that isn't here simply isn't sniffed, so adding a
+ * new one is additive rather than a behaviour change for the rest.
+ */
+const MAGIC_SIGNATURES: Record<string, { bytes: readonly number[]; label: string }> = {
+  // epub and cbz are both ZIP containers.
+  epub: { bytes: [0x50, 0x4b, 0x03, 0x04], label: 'PK\\x03\\x04 (a ZIP container)' },
+  cbz: { bytes: [0x50, 0x4b, 0x03, 0x04], label: 'PK\\x03\\x04 (a ZIP container)' },
+  zip: { bytes: [0x50, 0x4b, 0x03, 0x04], label: 'PK\\x03\\x04 (a ZIP container)' },
+  pdf: { bytes: [0x25, 0x50, 0x44, 0x46], label: '%PDF' },
+};
+
+/** The signature an extension's files must start with, or null if unknown. */
+function signatureFor(extension: string | null | undefined): { bytes: Buffer; label: string } | null {
+  if (!extension) return null;
+  const signature = MAGIC_SIGNATURES[extension.toLowerCase().replace(/^\./, '')];
+  return signature ? { bytes: Buffer.from(signature.bytes), label: signature.label } : null;
+}
+
+/**
+ * What a caller knows about the file *before* it arrives, so the download can
+ * be checked against it. Opt-in per call: comics resolve from GetComics posts
+ * that carry no hash and no reliable extension, so they pass nothing here and
+ * behave exactly as they did before E1-5.
+ */
+export interface DownloadVerification {
+  /**
+   * Lowercase hex md5 the complete file must hash to. LibGen and Anna's
+   * results carry a real one; Z-Library's identifier is a numeric book id, so
+   * callers must only pass a value that is genuinely a hash.
+   */
+  md5?: string | null;
+  /** Extension whose magic bytes the file must start with (`epub`, `cbz`, `pdf`). */
+  extension?: string | null;
 }
 
 /** A link resolved to something we can actually stream. */
@@ -61,6 +142,18 @@ export interface DownloadToFileOptions {
   signal?: AbortSignal;
   /** Resume from a partial file if one is already on disk. Default true. */
   resume?: boolean;
+  /**
+   * What the finished file has to be, checked while the bytes stream past
+   * (E1-5). Omitted — as the comic pipeline omits it — nothing is verified.
+   */
+  verify?: DownloadVerification;
+  /**
+   * Which download source this is for, so the request uses that source's
+   * configured proxy and User-Agent. Omitted means a direct request with the
+   * shared default User-Agent, which is what every caller did before proxies
+   * existed.
+   */
+  source?: string;
 }
 
 export interface DownloadResult {
@@ -96,20 +189,22 @@ export async function fetchProbe(
   options: {
     headers?: Record<string, string>;
     fetchFn?: (url: string, init: RequestInit) => Promise<Response | null>;
+    /** Use this source's proxy and User-Agent. See `DownloadToFileOptions`. */
+    source?: string;
   } = {}
 ): Promise<Response | null> {
   const doFetch =
     options.fetchFn ??
     (async (u: string, init: RequestInit) => {
       try {
-        return await fetch(u, init);
+        return await sourceFetch(options.source, u, init);
       } catch {
         return null;
       }
     });
 
   const response = await doFetch(url, {
-    headers: { 'User-Agent': USER_AGENT, 'Accept': '*/*', 'Range': 'bytes=0-0', ...options.headers },
+    headers: { ...sourceHeaders(options.source), 'Accept': '*/*', 'Range': 'bytes=0-0', ...options.headers },
     redirect: 'follow',
   });
   if (!response) return null;
@@ -162,6 +257,8 @@ export async function probeDownloadUrl(
     headers?: Record<string, string>;
     fallbackFilename: string;
     fetchFn?: (url: string, init: RequestInit) => Promise<Response | null>;
+    /** Use this source's proxy and User-Agent. See `DownloadToFileOptions`. */
+    source?: string;
   }
 ): Promise<ResolvedDownload | null> {
   const response = await fetchProbe(url, options);
@@ -179,16 +276,75 @@ export async function probeDownloadUrl(
   return buildResolvedDownload(response, url, options.fallbackFilename);
 }
 
+/** How many leading bytes are kept for magic-byte sniffing. */
+const SNIFF_BYTES = 8;
+
+/**
+ * Feed bytes already on disk into a running hash, returning the file's first
+ * bytes for sniffing. Resuming a partial file means the stream only carries
+ * the tail, so the head has to be read back to hash the whole thing.
+ */
+async function digestExistingBytes(file: string, hash: Hash | null): Promise<Buffer> {
+  let head: Buffer = Buffer.alloc(0);
+  for await (const chunk of createReadStream(file) as AsyncIterable<Buffer>) {
+    hash?.update(chunk);
+    if (head.length < SNIFF_BYTES) {
+      head = Buffer.concat([head, chunk]).subarray(0, SNIFF_BYTES);
+    }
+  }
+  return head;
+}
+
 /**
  * Stream a resolved download to `destination`, resuming from a partial file
  * when the server supports it.
+ *
+ * With `options.verify` set (E1-5), the bytes are hashed as they go and
+ * checked against the md5 the search result carried, the first bytes are
+ * sniffed against the extension's magic signature, and a stream that stops
+ * short of the advertised size is rejected. Any of those failing throws
+ * `FileVerificationError` and deletes the file, so a bad mirror can never
+ * leave something importable behind.
  */
 export async function downloadToFile(
   resolved: ResolvedDownload,
   destination: string,
   options: DownloadToFileOptions = {}
 ): Promise<DownloadResult> {
-  const { onProgress, signal, resume = true } = options;
+  const { onProgress, signal, resume = true, verify, source: networkSource } = options;
+
+  const verifying = verify !== undefined;
+  const expectedMd5 = verify?.md5 ? verify.md5.trim().toLowerCase() : null;
+  const signature = signatureFor(verify?.extension);
+
+  /** Bin a file that failed verification: it is not worth resuming or keeping. */
+  const discard = (): void => {
+    try { unlinkSync(destination); } catch { /* nothing to remove */ }
+  };
+
+  /** Bin the file — it is not the file — and hand the caller a typed error. */
+  const rejectFile = (reason: VerificationFailure, message: string): FileVerificationError => {
+    discard();
+    return new FileVerificationError(resolved.url, reason, message);
+  };
+
+  /**
+   * Compare the first bytes seen so far against the expected signature, once
+   * there are enough of them to tell. Returns null while still undecided.
+   * Deliberately does not delete anything: mid-stream the write stream may
+   * not even have opened the file yet, so the deleting is left to whoever
+   * catches the error once the pipeline has torn down.
+   */
+  const sniff = (head: Buffer): FileVerificationError | null => {
+    if (!signature || head.length < signature.bytes.length) return null;
+    if (head.subarray(0, signature.bytes.length).equals(signature.bytes)) return null;
+    return new FileVerificationError(
+      resolved.url,
+      'wrong-file-type',
+      `File does not start with ${signature.label} — it is not ${verify?.extension} ` +
+        `(got ${head.subarray(0, signature.bytes.length).toString('hex')})`
+    );
+  };
 
   await mkdir(dirname(destination), { recursive: true });
 
@@ -198,6 +354,27 @@ export async function downloadToFile(
     // A file that's already complete needs no work; an over-long one is
     // corrupt, so start again.
     if (resolved.size !== null && existing === resolved.size) {
+      // Complete-length is not the same as correct: a partial left by an
+      // earlier run against a bad mirror can be exactly the right size and
+      // still be junk, so it gets the same checks a fresh stream would.
+      if (verifying) {
+        const completeHash = expectedMd5 ? createHash('md5') : null;
+        const head = await digestExistingBytes(destination, completeHash);
+        const badMagic = sniff(head);
+        if (badMagic) {
+          discard();
+          throw badMagic;
+        }
+        if (completeHash && expectedMd5) {
+          const digest = completeHash.digest('hex');
+          if (digest !== expectedMd5) {
+            throw rejectFile(
+              'md5-mismatch',
+              `Existing file hashes to ${digest}, expected ${expectedMd5}`
+            );
+          }
+        }
+      }
       onProgress?.(existing, resolved.size);
       return { path: destination, bytes: existing };
     }
@@ -205,17 +382,20 @@ export async function downloadToFile(
     else startByte = existing;
   }
 
-  const headers: Record<string, string> = { 'User-Agent': USER_AGENT };
+  const headers: Record<string, string> = {};
   if (startByte > 0) headers['Range'] = `bytes=${startByte}-`;
 
-  const response = await fetch(resolved.url, {
+  const response = await sourceFetch(networkSource, resolved.url, {
     headers,
     redirect: 'follow',
     ...(signal ? { signal } : {}),
   });
 
   if (response.status === 429) {
-    throw new DownloadLimitReachedError(new URL(resolved.url).hostname);
+    throw new DownloadLimitReachedError(
+      new URL(resolved.url).hostname,
+      parseRetryAfter(response.headers.get('retry-after'))
+    );
   }
   if (!response.ok) {
     throw new LinkBrokenError(resolved.url, `Server returned ${response.status}`);
@@ -228,15 +408,71 @@ export async function downloadToFile(
   const resumed = startByte > 0 && response.status === 206;
   if (startByte > 0 && !resumed) startByte = 0;
 
+  // A resumed download only streams the tail, so the hash and the sniff
+  // window have to be primed from what is already on disk. A restarted one
+  // overwrites that file, so it starts clean.
+  const hash = verifying && expectedMd5 ? createHash('md5') : null;
+  let head: Buffer = Buffer.alloc(0);
+  if (verifying && resumed) {
+    head = await digestExistingBytes(destination, hash);
+    const badMagic = sniff(head);
+    if (badMagic) {
+      discard();
+      throw badMagic;
+    }
+  }
+
   let downloaded = startByte;
   const source = Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]);
   source.on('data', (chunk: Buffer) => {
     downloaded += chunk.length;
+    if (hash) hash.update(chunk);
+    if (signature && head.length < SNIFF_BYTES) {
+      head = Buffer.concat([head, chunk]).subarray(0, SNIFF_BYTES);
+      // Stop the moment the file announces itself as something else — an
+      // error page or the wrong file is worth abandoning now, not after
+      // pulling a few hundred megabytes of it.
+      const badMagic = sniff(head);
+      if (badMagic) {
+        source.destroy(badMagic);
+        return;
+      }
+    }
     onProgress?.(downloaded, resolved.size);
   });
 
   const sink = createWriteStream(destination, resumed ? { flags: 'a' } : { flags: 'w' });
-  await pipeline(source, sink, ...(signal ? [{ signal }] : []));
+  try {
+    await pipeline(source, sink, ...(signal ? [{ signal }] : []));
+  } catch (err) {
+    // A sniff that tripped mid-stream surfaces here as the
+    // FileVerificationError the data handler destroyed the source with; now
+    // that both streams have torn down, the bytes it rejected can go. Every
+    // other stream failure keeps its partial for a later resume.
+    if (err instanceof FileVerificationError) discard();
+    throw err;
+  }
+
+  if (verifying) {
+    if (resolved.size !== null && downloaded !== resolved.size) {
+      throw rejectFile(
+        'truncated',
+        `Download stopped at ${downloaded} of ${resolved.size} bytes`
+      );
+    }
+    if (signature && head.length < signature.bytes.length) {
+      throw rejectFile(
+        'wrong-file-type',
+        `File is only ${downloaded} bytes — too short to be ${verify?.extension}`
+      );
+    }
+    if (hash && expectedMd5) {
+      const digest = hash.digest('hex');
+      if (digest !== expectedMd5) {
+        throw rejectFile('md5-mismatch', `File hashes to ${digest}, expected ${expectedMd5}`);
+      }
+    }
+  }
 
   return { path: destination, bytes: downloaded };
 }

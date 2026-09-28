@@ -76,5 +76,17 @@ RUN mkdir -p /app/data && chown -R shelvarr:shelvarr /app
 # it and run as a fixed uid instead.
 EXPOSE 3000
 
+# Baked into the image so every runtime gets it without being told: plain
+# `docker run`, Compose (which also declares one, and overrides this), and
+# Docker Swarm — which is what Dokploy deploys onto, and which will not do a
+# zero-downtime rollout without a health check to wait on.
+#
+# Shell form, so PORT is read at runtime rather than frozen at build. wget is
+# busybox's, since the runtime image carries no curl. /up answers 503 until the
+# database opens, so a container that cannot reach its data volume never
+# reports healthy and never takes traffic.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD wget -q --spider "http://127.0.0.1:${PORT:-3000}/up" || exit 1
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["node", "apps/web/server.js"]

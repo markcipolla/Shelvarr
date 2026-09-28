@@ -14,12 +14,11 @@ import { existsSync } from 'fs';
 import { basename, join } from 'path';
 
 import { getComicVolumeByComicvineId } from '@shelvarr/db';
+import type { ComicFolderOwner } from '@shelvarr/db';
 import type { ComicVolumeMetadata, FilenameData } from '@shelvarr/types';
 
 import { createLogger } from '../utils/logger';
-import { ComicVineRateLimitError } from './comicvine';
-import { getComicVine } from './library';
-import { addVolume } from './library';
+import { addVolume, comicFolderOwners, getComicVine, sameFolderKey } from './library';
 import { extractFilenameData } from './getcomics/parse';
 import { matchTitle, matchYear } from './getcomics/match';
 import { SCANNABLE_EXTENSIONS } from './scan';
@@ -37,42 +36,13 @@ export interface ImportGroup {
 }
 
 /**
- * Why a folder has no candidates, when the reason is something other than
- * ComicVine genuinely knowing nothing about it.
+ * A ComicVine volume a folder might be, trimmed to what the review shows.
  *
- * `null` is the only value that means "ComicVine was asked and had no match" —
- * everything else means we never got an answer, which is a different thing to
- * tell the user.
+ * Deliberately not `ComicVolumeMetadata`: a candidate can come from a row we
+ * already have rather than from a request, and the review only ever prints
+ * these six fields.
  */
-export type ImportSearchFailure =
-  /** ComicVine locked us out mid-scan; this folder's search is the one that hit it. */
-  | 'rate-limited'
-  /** The lockout was already in force, so this folder was never searched. */
-  | 'not-searched'
-  /** The search threw for some other reason (network, bad key, CV error). */
-  | 'error';
-
-/** A group with the ComicVine volumes it might be. */
-export interface ImportProposal extends ImportGroup {
-  /** Candidate matches, best first. Empty when ComicVine had nothing. */
-  candidates: ComicVolumeMetadata[];
-  /** The candidate we'd pick automatically, if we're confident enough. */
-  suggested: ComicVolumeMetadata | null;
-  /** Local volume id when this folder is already in the library. */
-  alreadyAdded: number | null;
-  /** Set when `candidates` is empty because the search never answered. */
-  failure: ImportSearchFailure | null;
-  /** The message behind `failure: 'error'`. */
-  failureMessage: string | null;
-}
-
-// region Stored proposals
-/**
- * A candidate as a scan writes it into its task result: the fields the review
- * page shows, and no more. Descriptions in particular are dropped — they are by
- * far the largest field and nothing reads them back.
- */
-export interface StoredImportCandidate {
+export interface ImportCandidate {
   comicvineId: number;
   title: string;
   year: number | null;
@@ -81,65 +51,21 @@ export interface StoredImportCandidate {
   issueCount: number;
 }
 
-/**
- * A proposal as a scan writes it into its task result.
- *
- * This is the only record a scan leaves behind, so it is also what the *next*
- * scan reads to work out which folders it can skip. One definition, shared by
- * the writer, the reader and the review page, keeps those three from drifting.
- */
-export interface StoredImportProposal {
-  folder: string;
-  series: string;
-  year: number | null;
-  fileCount: number;
-  suggestedComicvineId: number | null;
+/** A group with the ComicVine volumes it might be. */
+export interface ImportProposal extends ImportGroup {
+  /** Candidate matches, best first. Empty when ComicVine had nothing. */
+  candidates: ImportCandidate[];
+  /** The candidate we'd pick automatically, if we're confident enough. */
+  suggested: ImportCandidate | null;
+  /** Local volume id when this folder is already in the library. */
   alreadyAdded: number | null;
-  failure: ImportSearchFailure | null;
-  failureMessage: string | null;
-  candidates: StoredImportCandidate[];
+  /**
+   * False when this folder was never put to ComicVine — the hourly quota ran
+   * out first. "Not asked yet" and "asked, nothing there" look identical
+   * otherwise, and the difference is whether scanning again would help.
+   */
+  checked: boolean;
 }
-
-/** Trim a freshly searched proposal down to what gets stored. */
-export function toStoredProposal(proposal: ImportProposal): StoredImportProposal {
-  return {
-    folder: proposal.folder,
-    series: proposal.info.series,
-    year: proposal.info.year,
-    fileCount: proposal.files.length,
-    suggestedComicvineId: proposal.suggested?.comicvineId ?? null,
-    alreadyAdded: proposal.alreadyAdded,
-    failure: proposal.failure,
-    failureMessage: proposal.failureMessage,
-    candidates: proposal.candidates.map((candidate) => ({
-      comicvineId: candidate.comicvineId,
-      title: candidate.title,
-      year: candidate.year,
-      volumeNumber: candidate.volumeNumber,
-      publisher: candidate.publisher,
-      issueCount: candidate.issueCount,
-    })),
-  };
-}
-
-/** What a folder looks like before anyone has searched for it. */
-function unsearchedProposal(
-  group: ImportGroup,
-  failure: ImportSearchFailure = 'not-searched'
-): StoredImportProposal {
-  return {
-    folder: group.folder,
-    series: group.info.series,
-    year: group.info.year,
-    fileCount: group.files.length,
-    suggestedComicvineId: null,
-    alreadyAdded: null,
-    failure,
-    failureMessage: null,
-    candidates: [],
-  };
-}
-// endregion
 
 /**
  * Group the files under `rootPath` by the folder that holds them.
@@ -155,7 +81,9 @@ export async function findImportGroups(
   if (!existsSync(rootPath)) throw new Error(`No such folder: ${rootPath}`);
 
   const groups: ImportGroup[] = [];
-  const maxGroups = options.maxGroups ?? 500;
+  // ponytail: a flat ceiling, high enough for a real library — raise it or
+  // report the truncation if anyone's collection outgrows it.
+  const maxGroups = options.maxGroups ?? 2000;
 
   async function walk(directory: string): Promise<void> {
     if (groups.length >= maxGroups) return;
@@ -246,170 +174,179 @@ function candidateRank(candidate: ComicVolumeMetadata, info: FilenameData): numb
   return score;
 }
 
+/** The match a volume already carries, offered as the candidate for its folder. */
+function candidateFromOwner(owner: ComicFolderOwner): ImportCandidate {
+  return {
+    comicvineId: owner.comicvineId,
+    title: owner.title,
+    year: owner.year,
+    volumeNumber: owner.volumeNumber,
+    publisher: owner.publisher,
+    issueCount: owner.issueCount,
+  };
+}
+
+/** Trim ComicVine metadata to what the review shows. */
+function candidateFromMetadata(metadata: ComicVolumeMetadata): ImportCandidate {
+  return {
+    comicvineId: metadata.comicvineId,
+    title: metadata.title,
+    year: metadata.year,
+    volumeNumber: metadata.volumeNumber,
+    publisher: metadata.publisher,
+    issueCount: metadata.issueCount,
+  };
+}
+
 /**
- * Search ComicVine for each group and rank the candidates.
+ * Whether an error is ComicVine's hourly quota rather than a real failure.
  *
- * One search per group, spaced by the client's own rate limiting — a library
- * of 200 volumes therefore takes a few minutes. That's why this runs as a
- * background task rather than inline in a request.
+ * Matched by name rather than by type: the same error class loaded twice —
+ * which dynamic imports in tests do — would fail an `instanceof`.
+ */
+function isQuotaSpent(error: unknown): boolean {
+  return error instanceof Error && error.name === 'ComicVineRateLimitError';
+}
+
+/** What a previous scan already worked out about a folder. */
+export interface ReusableProposal {
+  candidates: ImportCandidate[];
+  suggestedComicvineId: number | null;
+}
+
+export interface ProposeLibraryImportResult {
+  proposals: ImportProposal[];
+  /** True when ComicVine's hourly quota ran out before every folder was asked. */
+  quotaSpent: boolean;
+}
+
+/**
+ * Work out what each folder is, asking ComicVine only where we have to.
  *
- * ComicVine's hourly cap is low enough that a big library will hit it. When it
- * does, the scan stops searching: every later request would fail the same way,
- * and hammering a service that has just locked us out only lengthens the
- * lockout. The remaining folders come back marked `not-searched` so the review
- * can say so instead of pretending ComicVine had no match for them.
+ * ComicVine allows about 200 requests per resource per hour, so a request is
+ * the scarce thing here, not time. Three of the four answers cost nothing:
+ * a folder Shelvarr already owns needs no match at all, a folder mirrored from
+ * a previous manager already carries the id that manager matched it to (and
+ * its title and year came from ComicVine in the first place), and a folder a
+ * previous scan already answered is passed in through `reuse`. Only a folder
+ * nobody has ever matched costs a search.
+ *
+ * When the quota does run out, the remaining folders come back `checked:
+ * false` rather than as empty matches, and scanning again picks up where this
+ * one stopped.
  */
 export async function proposeLibraryImport(
   groups: ImportGroup[],
   options: {
     signal?: AbortSignal;
     onProgress?: (done: number, total: number) => void;
+    /** Folder -> what the previous scan of this path found for it. */
+    reuse?: Map<string, ReusableProposal>;
   } = {}
-): Promise<ImportProposal[]> {
-  const client = await getComicVine(options.signal);
+): Promise<ProposeLibraryImportResult> {
   const proposals: ImportProposal[] = [];
-  let rateLimited = false;
+  const owners = comicFolderOwners();
+  const reuse = options.reuse ?? new Map<string, ReusableProposal>();
+
+  /** Built on first use: a scan can get all the way through without one. */
+  let client: Awaited<ReturnType<typeof getComicVine>> | null = null;
+  let quotaSpent = false;
 
   for (const [index, group] of groups.entries()) {
     if (options.signal?.aborted) break;
 
-    let candidates: ComicVolumeMetadata[] = [];
-    let failure: ImportSearchFailure | null = rateLimited ? 'not-searched' : null;
-    let failureMessage: string | null = null;
+    const key = sameFolderKey(group.folder);
+    const owner = owners.get(key) ?? null;
+    const reused = reuse.get(key);
 
-    if (!rateLimited && group.info.series) {
-      const query = group.info.year
-        ? `${group.info.series} ${group.info.year}`
-        : group.info.series;
-      try {
-        candidates = await client.searchVolumes(query);
-      } catch (error) {
-        if (error instanceof ComicVineRateLimitError) {
-          rateLimited = true;
-          failure = 'rate-limited';
-          log.warn('ComicVine rate limit reached; leaving the rest of the scan unsearched', {
-            folder: group.folder,
-            searched: index,
-            total: groups.length,
-          });
-        } else {
-          failure = 'error';
-          failureMessage = error instanceof Error ? error.message : String(error);
-          log.warn('ComicVine search failed for group', { folder: group.folder, error });
-        }
-      }
+    const add = (
+      candidates: ImportCandidate[],
+      suggested: ImportCandidate | null,
+      alreadyAdded: number | null,
+      checked = true
+    ) => {
+      proposals.push({ ...group, candidates, suggested, alreadyAdded, checked });
+      options.onProgress?.(index + 1, groups.length);
+    };
+
+    // A volume already holds this folder. Its ComicVine id is a fact rather
+    // than a guess, and the row holds everything the review prints, so this
+    // costs no lookup at all: taking over a mirror from a previous manager is
+    // the whole of the migration path, and keeping the candidate for a volume
+    // Shelvarr owns is what puts the folder back on offer, with no rescan and
+    // no request, if that volume is later removed. Whether the review offers
+    // it or shows it as already in the library is decided when the page is
+    // read, not here.
+    if (owner) {
+      const candidate = candidateFromOwner(owner);
+      add([candidate], candidate, owner.id);
+      continue;
     }
 
-    candidates.sort((a, b) => candidateRank(a, group.info) - candidateRank(b, group.info));
+    // Answered by an earlier scan of this path. Keeping it is what makes a
+    // scan resumable after the quota runs out.
+    if (reused) {
+      const candidates = reused.candidates;
+      const suggested =
+        candidates.find((c) => c.comicvineId === reused.suggestedComicvineId) ?? null;
+      add(
+        candidates,
+        suggested,
+        suggested ? getComicVolumeByComicvineId(suggested.comicvineId)?.id ?? null : null
+      );
+      continue;
+    }
+
+    // Out of requests for this hour. Left unchecked on purpose: reporting it
+    // as "no match" would send someone off to add by hand a volume ComicVine
+    // has, and would be remembered as an answer by the next scan.
+    if (quotaSpent) {
+      add([], null, null, false);
+      continue;
+    }
+
+    if (!group.info.series) {
+      add([], null, null);
+      continue;
+    }
+
+    // The year is deliberately left out of the query: ComicVine matches on
+    // every word, so searching "Gear School 2007" for a volume whose name is
+    // just "Gear School" comes back empty. It ranks the results instead.
+    let found: ComicVolumeMetadata[] = [];
+    try {
+      client ??= await getComicVine(options.signal);
+      found = await client.searchVolumes(group.info.series);
+    } catch (error) {
+      if (isQuotaSpent(error)) {
+        log.warn('ComicVine hourly quota spent; leaving the rest of the scan unchecked', {
+          folder: group.folder,
+          remaining: groups.length - index,
+        });
+        quotaSpent = true;
+        add([], null, null, false);
+        continue;
+      }
+      log.warn('ComicVine search failed for group', { folder: group.folder, error });
+    }
+
+    found.sort((a, b) => candidateRank(a, group.info) - candidateRank(b, group.info));
 
     // Only suggest automatically when the title actually matches — a wrong
     // auto-match is worse than no suggestion, because it silently adopts
     // someone's library into the wrong series.
-    const best = candidates[0];
+    const best = found[0];
     const suggested =
-      best && matchTitle(best.title, group.info.series) ? best : null;
+      best && matchTitle(best.title, group.info.series) ? candidateFromMetadata(best) : null;
 
-    proposals.push({
-      ...group,
-      candidates: candidates.slice(0, 10),
+    add(
+      found.slice(0, 10).map(candidateFromMetadata),
       suggested,
-      alreadyAdded: suggested
-        ? getComicVolumeByComicvineId(suggested.comicvineId)?.id ?? null
-        : null,
-      failure,
-      failureMessage,
-    });
-
-    options.onProgress?.(index + 1, groups.length);
+      suggested ? getComicVolumeByComicvineId(suggested.comicvineId)?.id ?? null : null
+    );
   }
 
-  return proposals;
-}
-
-/** How a resumed scan splits the folders it found. */
-export interface ScanPlan {
-  /** Folders that still need a ComicVine search. */
-  toSearch: ImportGroup[];
-  /** Folders an earlier scan already answered for, rebuilt from what's on disk now. */
-  carried: StoredImportProposal[];
-}
-
-/**
- * Work out what a re-run of the scan actually has to search.
- *
- * ComicVine's hourly cap is far below what a large library needs, so a scan of
- * one gets throttled partway through every time. Starting from scratch on each
- * re-run would spend the whole next hour's quota re-asking about the folders
- * that already have an answer, and the scan would never reach the end. So a
- * folder is searched again only if the last scan never got an answer for it:
- * `failure: null` is an answer, including "ComicVine has no match for this".
- *
- * `groups` is the authority on what exists. A folder in `previous` that is no
- * longer on disk is dropped, and a folder that has appeared since is searched.
- */
-export function planLibraryImportScan(
-  groups: ImportGroup[],
-  previous: StoredImportProposal[]
-): ScanPlan {
-  const answered = new Map(
-    previous
-      .filter((proposal) => proposal.failure === null)
-      .map((proposal) => [proposal.folder, proposal])
-  );
-
-  const plan: ScanPlan = { toSearch: [], carried: [] };
-  for (const group of groups) {
-    const prior = answered.get(group.folder);
-    if (!prior) {
-      plan.toSearch.push(group);
-      continue;
-    }
-
-    // The answer is reused, but everything the folder itself says is re-read:
-    // files may have been added since, and the volume may have been imported,
-    // in which case the review should say so rather than offer it again.
-    plan.carried.push({
-      ...unsearchedProposal(group),
-      suggestedComicvineId: prior.suggestedComicvineId,
-      alreadyAdded:
-        prior.suggestedComicvineId === null
-          ? null
-          : getComicVolumeByComicvineId(prior.suggestedComicvineId)?.id ?? null,
-      failure: null,
-      candidates: prior.candidates,
-    });
-  }
-
-  if (plan.carried.length > 0) {
-    log.info('Resuming a library import scan', {
-      carried: plan.carried.length,
-      toSearch: plan.toSearch.length,
-    });
-  }
-
-  return plan;
-}
-
-/**
- * Merge a resumed scan's carried-over proposals with what it just searched,
- * back into the folder order the review page lists them in.
- *
- * A folder in neither set was cut short by cancellation, so it is recorded as
- * unsearched rather than dropped — the list stays a complete picture of the
- * tree, and the next re-run picks it up.
- */
-export function mergeScanResults(
-  groups: ImportGroup[],
-  plan: ScanPlan,
-  searched: ImportProposal[]
-): StoredImportProposal[] {
-  const byFolder = new Map<string, StoredImportProposal>();
-  for (const proposal of plan.carried) byFolder.set(proposal.folder, proposal);
-  for (const proposal of searched) {
-    byFolder.set(proposal.folder, toStoredProposal(proposal));
-  }
-
-  return groups.map((group) => byFolder.get(group.folder) ?? unsearchedProposal(group));
+  return { proposals, quotaSpent };
 }
 
 export interface ImportSelection {
@@ -420,6 +357,11 @@ export interface ImportSelection {
 export interface ImportResult {
   imported: Array<{ folder: string; volumeId: number; matchedFiles: number }>;
   failed: Array<{ folder: string; error: string }>;
+  /**
+   * Selections not attempted, because ComicVine's hourly quota ran out. The
+   * caller is expected to come back for these rather than count them failed.
+   */
+  remaining: ImportSelection[];
 }
 
 /**
@@ -428,16 +370,24 @@ export interface ImportResult {
  * Each volume keeps the folder it's already in (`customFolder`), so importing
  * never moves anyone's files. Run a rename afterwards if you want them
  * reorganised.
+ *
+ * Adopting a volume costs at least two ComicVine requests, so a big import
+ * runs out of quota partway through. That stops the loop rather than burning
+ * through the rest collecting the same error 200 times: what has not been
+ * tried comes back as `remaining` for the caller to resume with.
  */
 export async function applyLibraryImport(
   selections: ImportSelection[],
   rootFolderId: number,
   options: { signal?: AbortSignal; onProgress?: (done: number, total: number) => void } = {}
 ): Promise<ImportResult> {
-  const result: ImportResult = { imported: [], failed: [] };
+  const result: ImportResult = { imported: [], failed: [], remaining: [] };
 
   for (const [index, selection] of selections.entries()) {
-    if (options.signal?.aborted) break;
+    if (options.signal?.aborted) {
+      result.remaining = selections.slice(index);
+      break;
+    }
 
     try {
       const added = await addVolume({
@@ -452,6 +402,14 @@ export async function applyLibraryImport(
         matchedFiles: added.matchedFiles,
       });
     } catch (error) {
+      if (isQuotaSpent(error)) {
+        result.remaining = selections.slice(index);
+        log.warn('ComicVine hourly quota spent mid-import', {
+          imported: result.imported.length,
+          remaining: result.remaining.length,
+        });
+        break;
+      }
       result.failed.push({
         folder: selection.folder,
         error: error instanceof Error ? error.message : String(error),
@@ -464,6 +422,7 @@ export async function applyLibraryImport(
   log.info('Library import finished', {
     imported: result.imported.length,
     failed: result.failed.length,
+    remaining: result.remaining.length,
   });
 
   return result;
