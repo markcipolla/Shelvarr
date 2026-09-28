@@ -204,6 +204,34 @@ export async function addComicVolumeAction(
   }
 }
 
+/**
+ * Re-point a volume at a different ComicVine volume.
+ *
+ * The comic answer to a wrong match: the volume keeps its files and read
+ * progress, and its URL follows the corrected title, so the caller navigates
+ * to the slug that comes back.
+ */
+export async function fixComicMatchAction(
+  volumeId: number,
+  comicvineId: number
+): Promise<{ success: boolean; slug?: string; error?: string }> {
+  const { comicLibrary } = await import('@shelvarr/services');
+  const { revalidatePath } = await import('next/cache');
+
+  try {
+    await comicLibrary.fixVolumeMatch(volumeId, comicvineId);
+    revalidatePath('/comics');
+    const slug = getComicSlug(volumeId) ?? String(volumeId);
+    revalidatePath(`/comics/${slug}`);
+    return { success: true, slug };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fix the match',
+    };
+  }
+}
+
 type VolumeJob = 'refresh' | 'scan' | 'rename' | 'search';
 
 const VOLUME_JOB_TASKS: Record<VolumeJob, string> = {
@@ -230,6 +258,32 @@ export async function runComicVolumeJob(
   const task = queue.enqueueTask(type as never, { volumeId });
   revalidatePath(`/comics/${getComicSlug(volumeId) ?? volumeId}`);
   return { success: true, taskId: task.id };
+}
+
+/**
+ * Queue the library-wide sweep: search every volume that is still missing
+ * issues and queue a download for whatever turns up.
+ *
+ * `enqueueOnce` because this spends an hourly external request budget — a
+ * second copy started by an impatient second click does the same work twice.
+ */
+export async function searchAllComicsAction(): Promise<{
+  success: boolean;
+  taskId?: number;
+  alreadyRunning?: boolean;
+  error?: string;
+}> {
+  const { queue } = await import('@shelvarr/services');
+
+  try {
+    const { task, alreadyRunning } = queue.enqueueOnce('comic_search_all', {});
+    return { success: true, taskId: task.id, alreadyRunning };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to queue search',
+    };
+  }
 }
 
 /** What a rename would do, so the user can look before leaping. */

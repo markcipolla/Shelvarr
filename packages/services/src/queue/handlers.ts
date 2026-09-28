@@ -92,6 +92,7 @@ import {
   sourcePolicy,
 } from '../downloads/source-limits';
 import { searchAllSources } from '../downloads/index';
+import { buildBookSearchQuery } from '../utils/search-query';
 import { getSourceStatuses, refreshSourceStatuses } from '../downloads/source-status';
 import { applyReorganization, moveFile, generateNewPath, resolveTargetCollision } from '../organizer';
 import { getOrCreateAuthor, fetchAuthorMetadata, getAuthorByName } from '../authors';
@@ -2114,9 +2115,9 @@ const bookSearchAllHandler: TaskHandler = async (taskId, onProgress, signal) => 
     if (signal.aborted) break;
     try {
       // Same query shape the manual download modal builds from a wanted
-      // book (title + author, see DownloadSourcesModal.tsx), so auto-search
-      // finds what a person searching by hand would find.
-      const searchQuery = `${book.title} ${book.author || ''}`.trim();
+      // book (see DownloadSourcesModal.tsx), so auto-search finds what a
+      // person searching by hand would find.
+      const searchQuery = buildBookSearchQuery(book.title, book.author);
       const { results } = await searchAllSources(searchQuery, { isbn: book.isbn || undefined });
 
       if (results.length > 0) {

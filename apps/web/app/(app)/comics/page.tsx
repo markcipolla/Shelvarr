@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { getComics } from '@/lib/actions/comics';
 import { ComicGrid, ComicEmptyState } from '@/components/comics/ComicGrid';
+import { SearchAllButton } from '@/components/comics/SearchAllButton';
+import { SeriesSearch } from '@/components/series/SeriesSearch';
 import { LiveRefresh } from '@/components/live/LiveRefresh';
 import { DownloadsLink } from '@/components/downloads/DownloadsLink';
 import { getActiveDownloadCounts } from '@/lib/actions/downloads';
@@ -22,6 +24,8 @@ export default async function ComicsPage({ searchParams }: PageProps) {
     getActiveDownloadCounts(),
   ]);
 
+  const issueCount = result.volumes.reduce((total, volume) => total + volume.issues_downloaded, 0);
+
   return (
     <div className="space-y-6">
       {/* Volumes arrive from an import and fill up from downloads and scans. */}
@@ -33,6 +37,7 @@ export default async function ComicsPage({ searchParams }: PageProps) {
           'comic_download',
           'comic_refresh',
           'comic_update_all',
+          'comic_search_all',
         ]}
         downloads
       />
@@ -41,7 +46,10 @@ export default async function ComicsPage({ searchParams }: PageProps) {
         <div className="flex items-center gap-4">
           <span className="text-shelvarr-text-muted">
             {result.volumes.length} {result.volumes.length === 1 ? 'volume' : 'volumes'}
+            {' · '}
+            {issueCount} {issueCount === 1 ? 'issue' : 'issues'}
           </span>
+          <SearchAllButton />
           <DownloadsLink href="/comics/downloads" active={activeDownloads.comics} />
           <Link
             href="/comics/add"
@@ -51,6 +59,8 @@ export default async function ComicsPage({ searchParams }: PageProps) {
           </Link>
         </div>
       </div>
+
+      <SeriesSearch currentSearch={search} basePath="/comics" placeholder="Search comics..." />
 
       {result.volumes.length === 0 ? (
         <ComicEmptyState>
