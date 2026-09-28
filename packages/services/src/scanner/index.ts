@@ -11,7 +11,7 @@ import type { Book } from '@shelvarr/types';
 
 const log = createLogger('scanner');
 
-interface BookRow {
+export interface BookRow {
   id: number;
   library_id: number;
   file_path: string;
@@ -63,7 +63,8 @@ function computeHardcoverStatus(row: BookRow): Pick<Book, 'hardcoverStatus'> {
   return { hardcoverStatus: hardcoverStatusLabel(row.hc_status) };
 }
 
-function rowToBook(row: BookRow): Book {
+/** Map a raw `books` row to the camelCase shape the rest of the app reads. */
+export function rowToBook(row: BookRow): Book {
   return {
     id: row.id,
     libraryId: row.library_id,

@@ -17,6 +17,7 @@ import {
 import { dirname, basename, extname, join } from 'path';
 import { query, queryOne, execute, addWantedBook, isBookWanted } from '@shelvarr/db';
 import type { Book } from '@shelvarr/types';
+import { rowToBook, type BookRow } from '../scanner/index';
 import {
   DEFAULT_ORGANIZE_TEMPLATE,
   applyTemplate,
@@ -338,46 +339,6 @@ export function generateNewPath(
   return join(libraryPath, applyTemplate(template, vars));
 }
 
-// Database row type (snake_case)
-interface BookRow {
-  id: number;
-  library_id: number;
-  file_path: string;
-  title: string | null;
-  authors: string | null;
-  series: string | null;
-  series_name: string | null;
-  series_number: number | null;
-  isbn: string | null;
-  publish_date: string | null;
-}
-
-// Convert database row to Book type
-function rowToBook(row: BookRow): Book {
-  return {
-    id: row.id,
-    libraryId: row.library_id,
-    filePath: row.file_path,
-    fileHash: null,
-    fileSize: null,
-    title: row.title,
-    authors: row.authors,
-    series: row.series,
-    seriesName: row.series_name,
-    seriesNumber: row.series_number,
-    isbn: row.isbn,
-    publisher: null,
-    publishDate: row.publish_date,
-    description: null,
-    coverUrl: null,
-    extension: null,
-    metadataSource: null,
-    metadataId: null,
-    createdAt: '',
-    updatedAt: '',
-  };
-}
-
 /**
  * Preview reorganization for a library.
  */
@@ -677,17 +638,14 @@ export async function updateBookHash(bookId: number): Promise<string | null> {
  */
 export async function findDuplicatesByHash(libraryId?: number): Promise<DuplicateGroup[]> {
   // First, ensure all books have hashes
-  let booksToHash: Book[];
-  if (libraryId) {
-    booksToHash = await query<Book>(
-      'SELECT id, file_path FROM books WHERE library_id = ? AND (file_hash IS NULL OR file_hash = \'\')',
-      [libraryId]
-    );
-  } else {
-    booksToHash = await query<Book>(
-      'SELECT id, file_path FROM books WHERE file_hash IS NULL OR file_hash = \'\''
-    );
-  }
+  const booksToHash = libraryId
+    ? await query<{ id: number }>(
+        'SELECT id FROM books WHERE library_id = ? AND (file_hash IS NULL OR file_hash = \'\')',
+        [libraryId]
+      )
+    : await query<{ id: number }>(
+        'SELECT id FROM books WHERE file_hash IS NULL OR file_hash = \'\''
+      );
 
   // Calculate missing hashes
   for (const book of booksToHash) {
@@ -718,14 +676,18 @@ export async function findDuplicatesByHash(libraryId?: number): Promise<Duplicat
   const groups: DuplicateGroup[] = [];
 
   for (const { file_hash } of duplicateHashes) {
-    const books = await query<Book>(
-      'SELECT * FROM books WHERE file_hash = ?',
-      [file_hash]
-    );
+    // Scoped the same way the grouping above was, so a library-scoped run
+    // cannot hand back a copy that lives in a different library.
+    const rows = libraryId
+      ? await query<BookRow>(
+          'SELECT * FROM books WHERE file_hash = ? AND library_id = ? ORDER BY id',
+          [file_hash, libraryId]
+        )
+      : await query<BookRow>('SELECT * FROM books WHERE file_hash = ? ORDER BY id', [file_hash]);
 
     groups.push({
       hash: file_hash,
-      books,
+      books: rows.map(rowToBook),
       similarity: 1.0, // Exact match
     });
   }
@@ -805,12 +767,12 @@ export async function findDuplicatesBySimilarity(
   libraryId?: number,
   threshold: number = 0.8
 ): Promise<DuplicateGroup[]> {
-  let books: Book[];
-  if (libraryId) {
-    books = await query<Book>('SELECT * FROM books WHERE library_id = ?', [libraryId]);
-  } else {
-    books = await query<Book>('SELECT * FROM books');
-  }
+  const rows = libraryId
+    ? await query<BookRow>('SELECT * FROM books WHERE library_id = ? ORDER BY id', [libraryId])
+    : await query<BookRow>('SELECT * FROM books ORDER BY id');
+  // Mapped, not cast: the similarity score reads `fileSize`, which only exists
+  // once the snake_case row has been through `rowToBook`.
+  const books: Book[] = rows.map(rowToBook);
 
   const groups: DuplicateGroup[] = [];
   const processed = new Set<number>();

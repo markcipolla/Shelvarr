@@ -267,6 +267,75 @@ function holdsFilesOnDisk(volume: ComicVolumeIdentity): boolean {
   return !existsSync(dirname(folder));
 }
 
+/** A shelf that reads as the same series twice, for a human to judge. */
+export interface ComicDuplicateCandidate {
+  /** The shared title, as the first volume in the group spells it. */
+  title: string;
+  volumes: Array<{
+    id: number;
+    comicvineId: number;
+    title: string;
+    folder: string | null;
+    issueCount: number;
+    holdsFiles: boolean;
+  }>;
+}
+
+/**
+ * Titles that collapse to the same thing once punctuation stops mattering.
+ *
+ * "The Expanse - Dragon Tooth" and "The Expanse Dragon Tooth" are one series
+ * under two ComicVine ids; the dash is the only difference, and no amount of
+ * id- or folder-matching will ever see it. Digits stay in the key on purpose,
+ * so "The Magic Order 2" never collides with "The Magic Order".
+ */
+function duplicateTitleKey(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/^the /, '')
+    .trim();
+}
+
+/**
+ * Volumes that look like the same series recorded twice.
+ *
+ * Reported, never merged. `mergeDuplicateComicVolumes` settles the copies it
+ * can prove are the same — one folder, or one ComicVine id. What is left is
+ * two *different* ComicVine volumes that happen to describe one shelf, and
+ * telling a genuine duplicate from a genuine reissue is a judgement call:
+ * dropping the wrong one loses the issues it holds.
+ */
+export function findComicDuplicateCandidates(): ComicDuplicateCandidate[] {
+  const byTitle = new Map<string, ComicVolumeIdentity[]>();
+  for (const volume of getComicVolumeIdentities()) {
+    const key = duplicateTitleKey(volume.title);
+    if (!key) continue;
+    const group = byTitle.get(key);
+    if (group) group.push(volume);
+    else byTitle.set(key, [volume]);
+  }
+
+  const candidates: ComicDuplicateCandidate[] = [];
+  for (const group of byTitle.values()) {
+    if (group.length < 2) continue;
+    const first = group[0] as ComicVolumeIdentity;
+    candidates.push({
+      title: first.title,
+      volumes: group.map((volume) => ({
+        id: volume.id,
+        comicvineId: volume.comicvineId,
+        title: volume.title,
+        folder: volume.folder,
+        issueCount: volume.issueCount,
+        holdsFiles: holdsFilesOnDisk(volume),
+      })),
+    });
+  }
+
+  return candidates.sort((a, b) => a.title.localeCompare(b.title));
+}
+
 /** Live volumes carrying a ComicVine id, gathered by the id they carry. */
 function groupByComicvineId(): Map<number, ComicVolumeIdentity[]> {
   const byId = new Map<number, ComicVolumeIdentity[]>();
