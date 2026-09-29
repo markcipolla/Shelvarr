@@ -13,6 +13,8 @@
  * through to "no results" as it does today, which is not a regression.
  */
 
+import { sourceFetch } from '../utils/source-http';
+
 // Substrings commonly found in Cloudflare/Turnstile (and similar) challenge
 // or interstitial pages. Matched case-insensitively against the response body.
 const CHALLENGE_BODY_MARKERS = [
@@ -26,6 +28,51 @@ const CHALLENGE_BODY_MARKERS = [
   'DDoS protection by Cloudflare',
   'cloudflare-static',
 ];
+
+/**
+ * Fetch a source's HTML page, telling a bot check apart from a real failure.
+ *
+ * The body is read before the status is judged, which is the whole point:
+ * a challenge page is not always served with a 200. Z-Library answers its
+ * `Just a moment` interstitial with a 503, and every caller here used to
+ * bail on `!response.ok` first — so the one signal that says "we are being
+ * blocked" was thrown away unread, and a blocked source looked exactly like
+ * a book nobody has.
+ *
+ * Returns the HTML, or null when the source answered with an error status
+ * and nothing that looks like a challenge (a genuinely broken mirror).
+ *
+ * @throws SourceBlockedError when the response looks like a bot check,
+ * whatever status it carried.
+ */
+export async function fetchSourcePage(
+  source: string,
+  url: string,
+  init: RequestInit = {}
+): Promise<string | null> {
+  const response = await sourceFetch(source, url, init);
+  const html = await response.text();
+
+  if (detectChallenge(html, response)) {
+    throw new SourceBlockedError(source, `${hostOf(url)} is behind a bot check right now`);
+  }
+
+  if (!response.ok) {
+    console.warn(`${source} request to ${hostOf(url)} failed: ${response.status}`);
+    return null;
+  }
+
+  return html;
+}
+
+/** Bare hostname for a message, without throwing on a malformed URL. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
 
 /**
  * Returns true if the response/body looks like a bot-protection challenge

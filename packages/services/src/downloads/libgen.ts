@@ -9,6 +9,7 @@ import { pace } from '../utils/pacing';
 import { rankedMirrorDomains } from './mirrors';
 import {
   detectChallenge,
+  fetchSourcePage,
   SourceBlockedError,
   SourceParseError,
   recordParseSuccess,
@@ -95,166 +96,214 @@ export function getLibGenSearchUrl(query: string): string {
 }
 
 /**
- * Search LibGen using their JSON API
+ * Search LibGen for a book.
+ *
+ * The title and author go first, always. An ISBN used to replace them
+ * outright, which quietly threw the search away: LibGen records carry
+ * whichever ISBN their uploader happened to have, so a catalogue ISBN misses
+ * the very editions a word search finds — and the query someone typed into
+ * the search box never reached LibGen at all. It is a decent second guess
+ * once the words have come up empty, so that is where it runs now.
  */
 export async function searchLibGen(
   query: string,
   options?: { isbn?: string }
 ): Promise<LibGenResult[]> {
-  const results: LibGenResult[] = [];
+  const results = await searchLibGenTerm(query, query);
+  if (results.length > 0 || !options?.isbn) return results;
 
-  try {
-    // If ISBN provided, search by ISBN instead of title
-    const searchQuery = options?.isbn ? options.isbn.replace(/[-\s]/g, '') : query;
-    const encoded = encodeURIComponent(searchQuery);
+  return searchLibGenTerm(options.isbn.replace(/[-\s]/g, ''), query);
+}
 
-    // Get search results from the HTML search page
-    const domain = getLibGenDomain();
+/**
+ * One search, tried against each mirror in turn until one answers with a
+ * results page. `term` is what LibGen matches on; `query` is only what the
+ * results' `searchUrl` should point a human at.
+ */
+async function searchLibGenTerm(term: string, query: string): Promise<LibGenResult[]> {
+  const encoded = encodeURIComponent(term);
+  let blocked: SourceBlockedError | null = null;
+  let unrecognised: string | null = null;
+
+  // Walk every mirror, not just the best-ranked one. The download side has
+  // always done this (see resolveLibgenDownload); search hadn't, so a single
+  // dead mirror at the head of the list turned every search into "no results"
+  // while three working mirrors sat untried behind it.
+  for (const domain of getLibGenDomains()) {
     const searchPageUrl = `https://${domain}/index.php?req=${encoded}&lg_topic=libgen&open=0&view=simple&res=25&phrase=1&column=def`;
 
-    const response = await sourceFetch('libgen', searchPageUrl, {
-      headers: { 'Accept': 'text/html,application/xhtml+xml' },
-      signal: AbortSignal.timeout(15000),
+    let html: string | null;
+    try {
+      html = await fetchSourcePage('libgen', searchPageUrl, {
+        headers: { 'Accept': 'text/html,application/xhtml+xml' },
+        signal: AbortSignal.timeout(15000),
+      });
+    } catch (error) {
+      // One blocked mirror is not all of them; remember it in case every
+      // mirror turns out to be blocked, and keep going.
+      if (error instanceof SourceBlockedError) {
+        blocked = error;
+        continue;
+      }
+      console.warn(`LibGen search on ${domain} errored:`, error);
+      continue;
+    }
+
+    // Answered, but with an error status — try the next mirror.
+    if (html === null) continue;
+
+    // Answered with markup we don't recognise. Another mirror may be on a
+    // different build, so this is worth a retry elsewhere before concluding
+    // the parser is out of date.
+    if (!looksLikeLibGenResultsPage(html)) {
+      unrecognised = domain;
+      continue;
+    }
+
+    // A recognisable results page is a real answer, even when it lists
+    // nothing: the mirrors share an index, so an empty page means the book
+    // is not there rather than that this mirror is broken.
+    recordParseSuccess('libgen');
+    return parseLibGenRows(html, query);
+  }
+
+  if (blocked) throw blocked;
+
+  if (unrecognised) {
+    recordParseFailure('libgen');
+    throw new SourceParseError(
+      'libgen',
+      `${unrecognised}'s page structure wasn't recognised — the LibGen parser may need updating`
+    );
+  }
+
+  // No mirror answered at all. The source_health job probes them every 15
+  // minutes and the UI already shows LibGen's status from that, so this is a
+  // log line rather than a second way of saying the same thing.
+  console.warn('No LibGen mirror answered the search');
+  return [];
+}
+
+/**
+ * Turn one mirror's results table into results. `query` only decides where
+ * each result's `searchUrl` points a human.
+ *
+ * LibGen+ table structure (first cell layout, 2026):
+ *   <td>
+ *     [optional <b>Series Name N<a href="edition.php?id=...">...</a></b><br>]
+ *     <a href="edition.php?id=...">Title <i>...</i></a>
+ *     <br><a href="edition.php?id=..."><i><font color="green">ISBNs</font></i></a>
+ *     ...badges...
+ *   </td>
+ *   <td>Author</td> <td>Publisher</td> <td><nobr>Year</nobr></td>
+ *   <td>Language</td> <td>Pages</td>
+ *   <td><nobr><a>Size</a></nobr></td> <td>ext</td>
+ *   <td>...md5=XXX...</td>
+ */
+function parseLibGenRows(html: string, query: string): LibGenResult[] {
+  const results: LibGenResult[] = [];
+
+  // Find all table rows that contain book data (have md5 links)
+  const rowPattern = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  let rowMatch;
+
+  while ((rowMatch = rowPattern.exec(html)) !== null) {
+    const rowHtml = rowMatch[1] || '';
+
+    // Must have MD5 to be a valid result row
+    const md5Match = rowHtml.match(/md5=([a-f0-9]{32})/i);
+    if (!md5Match) continue;
+
+    const md5 = md5Match[1]!.toLowerCase();
+
+    // Extract all <td> contents
+    const tdPattern = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+    const cells: string[] = [];
+    let tdMatch;
+
+    while ((tdMatch = tdPattern.exec(rowHtml)) !== null) {
+      cells.push(tdMatch[1] || '');
+    }
+
+    // Need at least 8 cells for a valid row
+    if (cells.length < 8) continue;
+
+    // Helper to strip HTML and clean text
+    const stripHtml = (html: string) => {
+      return html
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/\s+/g, ' ')
+        .trim();
+    };
+
+    // Extract title from first cell. Preferred source is the first
+    // <a href="edition.php?id=..."> link with non-empty visible text —
+    // that holds the actual title. When a series is present the <b> tag
+    // wraps the series name + issue number (not the title), so we skip it.
+    // Anchor on `href=` rather than `<a ...href=` because the preceding
+    // `title="…"` attribute may contain a literal `<br>`, which breaks a
+    // naive `<a[^>]*` match.
+    let title = 'Unknown';
+    const firstCell = cells[0] || '';
+    const editionLinkPattern = /href="[^"]*edition\.php[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+    let linkMatch;
+    while ((linkMatch = editionLinkPattern.exec(firstCell)) !== null) {
+      const text = stripHtml(linkMatch[1] || '');
+      if (text) {
+        title = text;
+        break;
+      }
+    }
+    // Fallback for older table formats where title lived in <b>…</b>.
+    if (title === 'Unknown') {
+      const boldMatch = firstCell.match(/<b>([^<]+)/i);
+      if (boldMatch) {
+        title = boldMatch[1]!.trim().replace(/\s+\d+\s*$/, '').trim();
+      }
+    }
+
+    // Extract size from cell that contains MB/KB
+    let size = 'Unknown';
+    const sizeCell = cells.find(c => /\d+\s*(MB|KB|GB)/i.test(c));
+    if (sizeCell) {
+      const sizeMatch = sizeCell.match(/(\d+\s*(MB|KB|GB))/i);
+      if (sizeMatch) size = sizeMatch[1]!;
+    }
+
+    // Extension is typically the cell before md5 cell, or look for common extensions
+    let extension = 'pdf';
+    const extCell = cells.find(c => /^(epub|pdf|mobi|azw3?|djvu|fb2|txt|doc|rtf)$/i.test(stripHtml(c)));
+    if (extCell) extension = stripHtml(extCell).toLowerCase();
+
+    // Clean author, publisher, etc. using stripHtml
+    const author = stripHtml(cells[1] || '') || 'Unknown';
+    const publisher = stripHtml(cells[2] || '');
+    const yearRaw = stripHtml(cells[3] || '');
+    const year = yearRaw.replace(/\D/g, '');
+    const language = stripHtml(cells[4] || '');
+    const pages = stripHtml(cells[5] || '');
+
+    results.push({
+      id: md5,
+      md5,
+      title,
+      author,
+      publisher: publisher || undefined,
+      year: year || undefined,
+      language: language || undefined,
+      pages: pages || undefined,
+      size,
+      extension,
+      downloadUrl: getLibGenDownloadUrl(md5),
+      searchUrl: getLibGenSearchUrl(query),
     });
 
-    if (!response.ok) {
-      console.warn(`LibGen search failed: ${response.status}`);
-      return results;
-    }
-
-    const html = await response.text();
-
-    if (detectChallenge(html, response)) {
-      throw new SourceBlockedError('libgen', `${domain} is behind a bot check right now`);
-    }
-
-    // LibGen+ table structure (first cell layout, 2026):
-    //   <td>
-    //     [optional <b>Series Name N<a href="edition.php?id=...">...</a></b><br>]
-    //     <a href="edition.php?id=...">Title <i>...</i></a>
-    //     <br><a href="edition.php?id=..."><i><font color="green">ISBNs</font></i></a>
-    //     ...badges...
-    //   </td>
-    //   <td>Author</td> <td>Publisher</td> <td><nobr>Year</nobr></td>
-    //   <td>Language</td> <td>Pages</td>
-    //   <td><nobr><a>Size</a></nobr></td> <td>ext</td>
-    //   <td>...md5=XXX...</td>
-
-    // Find all table rows that contain book data (have md5 links)
-    const rowPattern = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-    let rowMatch;
-
-    while ((rowMatch = rowPattern.exec(html)) !== null) {
-      const rowHtml = rowMatch[1] || '';
-
-      // Must have MD5 to be a valid result row
-      const md5Match = rowHtml.match(/md5=([a-f0-9]{32})/i);
-      if (!md5Match) continue;
-
-      const md5 = md5Match[1]!.toLowerCase();
-
-      // Extract all <td> contents
-      const tdPattern = /<td[^>]*>([\s\S]*?)<\/td>/gi;
-      const cells: string[] = [];
-      let tdMatch;
-
-      while ((tdMatch = tdPattern.exec(rowHtml)) !== null) {
-        cells.push(tdMatch[1] || '');
-      }
-
-      // Need at least 8 cells for a valid row
-      if (cells.length < 8) continue;
-
-      // Helper to strip HTML and clean text
-      const stripHtml = (html: string) => {
-        return html
-          .replace(/<[^>]+>/g, ' ')
-          .replace(/&nbsp;/g, ' ')
-          .replace(/&amp;/g, '&')
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .replace(/&quot;/g, '"')
-          .replace(/\s+/g, ' ')
-          .trim();
-      };
-
-      // Extract title from first cell. Preferred source is the first
-      // <a href="edition.php?id=..."> link with non-empty visible text —
-      // that holds the actual title. When a series is present the <b> tag
-      // wraps the series name + issue number (not the title), so we skip it.
-      // Anchor on `href=` rather than `<a ...href=` because the preceding
-      // `title="…"` attribute may contain a literal `<br>`, which breaks a
-      // naive `<a[^>]*` match.
-      let title = 'Unknown';
-      const firstCell = cells[0] || '';
-      const editionLinkPattern = /href="[^"]*edition\.php[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
-      let linkMatch;
-      while ((linkMatch = editionLinkPattern.exec(firstCell)) !== null) {
-        const text = stripHtml(linkMatch[1] || '');
-        if (text) {
-          title = text;
-          break;
-        }
-      }
-      // Fallback for older table formats where title lived in <b>…</b>.
-      if (title === 'Unknown') {
-        const boldMatch = firstCell.match(/<b>([^<]+)/i);
-        if (boldMatch) {
-          title = boldMatch[1]!.trim().replace(/\s+\d+\s*$/, '').trim();
-        }
-      }
-
-      // Extract size from cell that contains MB/KB
-      let size = 'Unknown';
-      const sizeCell = cells.find(c => /\d+\s*(MB|KB|GB)/i.test(c));
-      if (sizeCell) {
-        const sizeMatch = sizeCell.match(/(\d+\s*(MB|KB|GB))/i);
-        if (sizeMatch) size = sizeMatch[1]!;
-      }
-
-      // Extension is typically the cell before md5 cell, or look for common extensions
-      let extension = 'pdf';
-      const extCell = cells.find(c => /^(epub|pdf|mobi|azw3?|djvu|fb2|txt|doc|rtf)$/i.test(stripHtml(c)));
-      if (extCell) extension = stripHtml(extCell).toLowerCase();
-
-      // Clean author, publisher, etc. using stripHtml
-      const author = stripHtml(cells[1] || '') || 'Unknown';
-      const publisher = stripHtml(cells[2] || '');
-      const yearRaw = stripHtml(cells[3] || '');
-      const year = yearRaw.replace(/\D/g, '');
-      const language = stripHtml(cells[4] || '');
-      const pages = stripHtml(cells[5] || '');
-
-      results.push({
-        id: md5,
-        md5,
-        title,
-        author,
-        publisher: publisher || undefined,
-        year: year || undefined,
-        language: language || undefined,
-        pages: pages || undefined,
-        size,
-        extension,
-        downloadUrl: getLibGenDownloadUrl(md5),
-        searchUrl: getLibGenSearchUrl(query),
-      });
-
-      if (results.length >= 15) break;
-    }
-
-    if (results.length === 0 && !looksLikeLibGenResultsPage(html)) {
-      recordParseFailure('libgen');
-      throw new SourceParseError(
-        'libgen',
-        `${domain}'s page structure wasn't recognised — the LibGen parser may need updating`
-      );
-    }
-
-    recordParseSuccess('libgen');
-  } catch (error) {
-    if (error instanceof SourceBlockedError || error instanceof SourceParseError) throw error;
-    console.error('LibGen search error:', error);
+    if (results.length >= 15) break;
   }
 
   return results;

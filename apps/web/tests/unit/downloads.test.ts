@@ -628,13 +628,37 @@ describe('Download Services', () => {
     });
 
     describe('searchLibGen', () => {
-      it('should return empty array when fetch fails', async () => {
-        mockFetch.mock.mockImplementationOnce(async () =>
-          new Response('', { status: 500 })
-        );
+      it('should return empty array when every mirror fails', async () => {
+        mockFetch.mock.mockImplementation(async () => new Response('', { status: 500 }));
 
         const results = await libgen.searchLibGen('test');
         assert.strictEqual(results.length, 0);
+        assert.ok(mockFetch.mock.calls.length > 1, 'expected every mirror to be tried');
+      });
+
+      it('should fall over to the next mirror when the first one is dead', async () => {
+        const html = `
+          <table>
+            <tr>
+              <td><a href="edition.php?id=1">Second Mirror Book</a></td>
+              <td>John Doe</td>
+              <td>Test Publisher</td>
+              <td><nobr>2023</nobr></td>
+              <td>English</td>
+              <td>250</td>
+              <td><nobr><a>5 MB</a></nobr></td>
+              <td>epub</td>
+              <td><a href="ads.php?md5=abcdef1234567890abcdef1234567890">Download</a></td>
+            </tr>
+          </table>
+        `;
+
+        mockFetch.mock.mockImplementationOnce(async () => new Response('', { status: 502 }));
+        mockFetch.mock.mockImplementationOnce(async () => new Response(html, { status: 200 }));
+
+        const results = await libgen.searchLibGen('test');
+        assert.strictEqual(results.length, 1);
+        assert.strictEqual(results[0]?.title, 'Second Mirror Book');
       });
 
       it('should throw SourceBlockedError when the response is a bot-protection challenge', async () => {
@@ -710,14 +734,48 @@ describe('Download Services', () => {
         assert.strictEqual(results[0]?.author, 'John Doe');
       });
 
-      it('should search by ISBN when provided', async () => {
-        mockFetch.mock.mockImplementationOnce(async () =>
+      it('should search the title and author first, not the ISBN', async () => {
+        const html = `
+          <table>
+            <tr>
+              <td><a href="edition.php?id=1">Test Book Title</a></td>
+              <td>John Doe</td>
+              <td>Test Publisher</td>
+              <td><nobr>2023</nobr></td>
+              <td>English</td>
+              <td>250</td>
+              <td><nobr><a>5 MB</a></nobr></td>
+              <td>epub</td>
+              <td><a href="ads.php?md5=abcdef1234567890abcdef1234567890">Download</a></td>
+            </tr>
+          </table>
+        `;
+
+        mockFetch.mock.mockImplementationOnce(async () => new Response(html, { status: 200 }));
+
+        const results = await libgen.searchLibGen('Test Book Title John Doe', {
+          isbn: '978-0-123456-78-9',
+        });
+
+        assert.strictEqual(results.length, 1);
+        assert.strictEqual(mockFetch.mock.calls.length, 1, 'ISBN should not be searched as well');
+        const callUrl = mockFetch.mock.calls[0]?.arguments[0] as string;
+        assert.ok(callUrl.includes(encodeURIComponent('Test Book Title John Doe')));
+        assert.ok(!callUrl.includes('9780123456789'));
+      });
+
+      it('should fall back to the ISBN when the title finds nothing', async () => {
+        mockFetch.mock.mockImplementation(async () =>
           new Response('<table></table>', { status: 200 })
         );
 
         await libgen.searchLibGen('test', { isbn: '978-0-123456-78-9' });
-        const callUrl = mockFetch.mock.calls[0]?.arguments[0] as string;
-        assert.ok(callUrl.includes('9780123456789'));
+
+        assert.strictEqual(mockFetch.mock.calls.length, 2);
+        const firstUrl = mockFetch.mock.calls[0]?.arguments[0] as string;
+        const secondUrl = mockFetch.mock.calls[1]?.arguments[0] as string;
+        assert.ok(firstUrl.includes('test'));
+        assert.ok(secondUrl.includes('9780123456789'));
       });
 
       it('should skip rows without MD5', async () => {
@@ -777,7 +835,7 @@ describe('Download Services', () => {
       });
 
       it('should handle fetch errors gracefully', async () => {
-        mockFetch.mock.mockImplementationOnce(async () => {
+        mockFetch.mock.mockImplementation(async () => {
           throw new Error('Network error');
         });
 
@@ -1185,6 +1243,21 @@ describe('Download Services', () => {
         const html = '<html><head><title>Just a moment...</title></head><body><div class="cf-turnstile"></div></body></html>';
         mockFetch.mock.mockImplementationOnce(async () =>
           new Response(html, { status: 200 })
+        );
+
+        await assert.rejects(
+          () => zlib.searchZLibrary('test'),
+          (err: unknown) => err instanceof SourceBlockedError
+        );
+      });
+
+      it('should report a 503 bot check as blocked, not as no results', async () => {
+        // What Z-Library actually serves: the `Just a moment` interstitial
+        // under a 503. Judging the status before reading the body turned
+        // this into a silent empty result set.
+        const html = '<html><head><title>Just a moment...</title></head><body></body></html>';
+        mockFetch.mock.mockImplementationOnce(async () =>
+          new Response(html, { status: 503 })
         );
 
         await assert.rejects(
