@@ -11,14 +11,15 @@ export function AddLibraryButton() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pathValue, setPathValue] = useState('');
+  const [type, setType] = useState<'book' | 'comic'>('book');
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
 
   // Check if Hardcover is configured when modal opens
   useEffect(() => {
-    if (open) {
+    if (open && type === 'book') {
       isHardcoverConfigured().then(setIsConfigured);
     }
-  }, [open]);
+  }, [open, type]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -35,12 +36,14 @@ export function AddLibraryButton() {
     } else {
       setOpen(false);
       setPathValue('');
+      setType('book');
     }
   };
 
   const handleClose = () => {
     setOpen(false);
     setPathValue('');
+    setType('book');
     setError(null);
   };
 
@@ -60,7 +63,7 @@ export function AddLibraryButton() {
           <div className="relative bg-shelvarr-surface border border-shelvarr-border rounded-lg p-6 w-full max-w-md z-50">
             <h2 className="text-xl font-semibold text-white mb-4">Add Library</h2>
 
-            {isConfigured === false && (
+            {type === 'book' && isConfigured === false && (
               <div className="mb-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                 <div className="flex items-start gap-3">
                   <svg className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -81,6 +84,34 @@ export function AddLibraryButton() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
+              <fieldset>
+                <legend className="block text-sm font-medium text-shelvarr-text-muted mb-1">
+                  Type
+                </legend>
+                <div className="flex gap-2">
+                  {(['book', 'comic'] as const).map((option) => (
+                    <label
+                      key={option}
+                      className={`flex-1 cursor-pointer rounded-lg border px-3 py-2 text-center text-sm ${
+                        type === option
+                          ? 'border-blue-500 bg-blue-600/10 text-white'
+                          : 'border-shelvarr-border bg-shelvarr-bg text-shelvarr-text-muted hover:text-white'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="type"
+                        value={option}
+                        checked={type === option}
+                        onChange={() => setType(option)}
+                        className="sr-only"
+                      />
+                      {option === 'book' ? 'Books' : 'Comics'}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
               <div>
                 <label htmlFor="name" className="block text-sm font-medium text-shelvarr-text-muted mb-1">
                   Name
@@ -90,7 +121,7 @@ export function AddLibraryButton() {
                   id="name"
                   name="name"
                   required
-                  placeholder="My Books"
+                  placeholder={type === 'comic' ? 'My Comics' : 'My Books'}
                   className="w-full bg-shelvarr-bg border border-shelvarr-border rounded-lg px-3 py-2 text-white placeholder-shelvarr-text-muted focus:outline-none focus:border-blue-500"
                 />
               </div>
@@ -99,11 +130,12 @@ export function AddLibraryButton() {
                 <label htmlFor="path" className="block text-sm font-medium text-shelvarr-text-muted mb-1">
                   Path
                 </label>
+                {/* A comic library starts empty, so its folder is made for you. */}
                 <FolderPicker
                   id="path"
                   name="path"
                   required
-                  placeholder="/libraries/ebooks"
+                  placeholder={type === 'comic' ? '/libraries/comics' : '/libraries/ebooks'}
                   value={pathValue}
                   onChange={setPathValue}
                   inputClassName="flex-1 min-w-0 bg-shelvarr-bg border border-shelvarr-border rounded-lg px-3 py-2 text-white placeholder-shelvarr-text-muted focus:outline-none focus:border-blue-500"

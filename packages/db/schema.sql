@@ -560,8 +560,15 @@ CREATE INDEX IF NOT EXISTS idx_book_blocklist_link ON book_blocklist(download_ur
 
 -- Comic library ownership
 -- Directories Shelvarr stores comics in. A volume's folder lives under one.
+--
+-- The folder's name, path and type live on its `libraries` row — this table is
+-- only the id that comics.root_folder_id points at, which is why it still
+-- exists at all. `path` is a write-only copy of libraries.path kept so the
+-- UNIQUE index still stops two comic roots claiming one folder; read the path
+-- from libraries.
 CREATE TABLE IF NOT EXISTS comic_root_folders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  library_id INTEGER REFERENCES libraries(id) ON DELETE CASCADE,
   path TEXT NOT NULL UNIQUE,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
@@ -592,7 +599,9 @@ CREATE TABLE IF NOT EXISTS comic_issue_files (
 
 CREATE INDEX IF NOT EXISTS idx_comic_files_volume ON comic_files(volume_id);
 CREATE INDEX IF NOT EXISTS idx_comic_issue_files_issue ON comic_issue_files(issue_id);
-CREATE INDEX IF NOT EXISTS idx_comic_root_folders_path ON comic_root_folders(path);
+-- idx_comic_root_folders_library is created by the migration step instead:
+-- this file also runs against databases whose comic_root_folders predates the
+-- library_id column, and the index has to wait until the ALTER TABLE.
 
 -- Recurring jobs. Rows are claimed with a single atomic UPDATE, so several
 -- app processes sharing this database can run schedulers without doubling up.

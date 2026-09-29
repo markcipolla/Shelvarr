@@ -82,7 +82,7 @@ phone with [Stackarr](#android-app), the companion Android app.
     <td><img src="docs/screenshots/comic-downloads.webp" alt="The comic download queue"><br><sub><b>Downloads.</b> The queue, what finished, and what failed.</sub></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/settings-comics.webp" alt="Comic settings: root folders and recurring jobs"><br><sub><b>Comic settings.</b> Root folders and recurring jobs.</sub></td>
+    <td><img src="docs/screenshots/settings-comics.webp" alt="Comic settings: recurring jobs and library import"><br><sub><b>Comic settings.</b> Recurring jobs and library import.</sub></td>
     <td><img src="docs/screenshots/settings-users.webp" alt="User accounts in settings"><br><sub><b>Accounts.</b> Invite people; nobody has a password.</sub></td>
   </tr>
 </table>
@@ -137,8 +137,8 @@ your admin account. From there:
 1. **Settings → Metadata Sources**: add a [Hardcover](https://hardcover.app)
    token for books and a [ComicVine](https://comicvine.gamespot.com/api/) key
    for comics.
-2. **Libraries**: add `/libraries/ebooks` and scan it.
-3. **Settings → Comics**: add `/libraries/comics` as a root folder, then add
+2. **Libraries**: add `/libraries/ebooks` as a Books library and scan it.
+3. **Libraries**: add `/libraries/comics` as a Comics library, then add
    volumes from **Comics → Add comic**, or adopt the ones already there.
 
 [`docker-compose.ghcr.yml`](./docker-compose.ghcr.yml) is a fuller example with
@@ -290,7 +290,8 @@ a single account's token, and the green *read* tick that comes from it.
 Shelvarr manages comics itself — it does not need Kapowarr.
 
 **Setup.** Add a ComicVine API key under **Settings → Metadata Sources**,
-alongside Hardcover, and at least one root folder under **Settings → Comics**. A
+alongside Hardcover, and at least one library of type Comics under
+**Libraries**. A
 key is free from [comicvine.gamespot.com/api](https://comicvine.gamespot.com/api/).
 
 **Adding comics.** Search ComicVine from `/comics/add`. Shelvarr pulls the

@@ -2,10 +2,14 @@
 
 import type { BlocklistReason } from './comics';
 
+/** Books live in a 'book' library; comic volumes live under a 'comic' one. */
+export type LibraryType = 'book' | 'comic';
+
 export interface Library {
   id: number;
   name: string;
   path: string;
+  type: LibraryType;
   createdAt: string;
 }
 

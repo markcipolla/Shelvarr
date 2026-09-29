@@ -228,6 +228,11 @@ export function initDatabase(dbPath: string, options: InitDatabaseOptions = {}):
   }
 }
 
+/** Default name for a library added by path alone: the folder's own name. */
+function libraryNameForPath(path: string): string {
+  return path.split('/').filter(Boolean).pop() ?? path;
+}
+
 /**
  * Run database migrations for schema updates
  */
@@ -352,6 +357,40 @@ function runMigrations(database: Database.Database): void {
   // backfilled while still keeping handed-out slugs unique.
   database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_comics_slug ON comics(slug)');
   backfillComicSlugs(database);
+
+  // Comic root folders are libraries now: a comic root's name, path and type
+  // live on a `libraries` row of type 'comic', so both kinds of library are
+  // created and listed in one place. The table stays because
+  // comics.root_folder_id references it.
+  const rootFolderInfo = database
+    .prepare('PRAGMA table_info(comic_root_folders)')
+    .all() as Array<{ name: string }>;
+  if (!rootFolderInfo.some((col) => col.name === 'library_id')) {
+    console.log('Running migration: adding library_id column to comic_root_folders');
+    database.exec(
+      'ALTER TABLE comic_root_folders ADD COLUMN library_id INTEGER REFERENCES libraries(id) ON DELETE CASCADE'
+    );
+  }
+  const unlinkedRoots = database
+    .prepare('SELECT id, path FROM comic_root_folders WHERE library_id IS NULL')
+    .all() as Array<{ id: number; path: string }>;
+  if (unlinkedRoots.length > 0) {
+    console.log(`Running migration: giving ${unlinkedRoots.length} comic root folder(s) a library`);
+    const findLibrary = database.prepare("SELECT id FROM libraries WHERE path = ?");
+    const createLibrary = database.prepare(
+      "INSERT INTO libraries (name, path, type) VALUES (?, ?, 'comic')"
+    );
+    const link = database.prepare('UPDATE comic_root_folders SET library_id = ? WHERE id = ?');
+    for (const root of unlinkedRoots) {
+      const existing = findLibrary.get(root.path) as { id: number } | undefined;
+      const libraryId =
+        existing?.id ?? Number(createLibrary.run(libraryNameForPath(root.path), root.path).lastInsertRowid);
+      link.run(libraryId, root.id);
+    }
+  }
+  database.exec(
+    'CREATE INDEX IF NOT EXISTS idx_comic_root_folders_library ON comic_root_folders(library_id)'
+  );
 
   // Download retries: alternate links to fall back to, and the attempt count
   // that bounds how often a rate-limited download is re-tried.
@@ -3361,38 +3400,66 @@ export function getComicVolumeForMatching(volumeId: number): {
 // Comic library ownership: root folders, managed volumes, files
 // ---------------------------------------------------------------------------
 
+const ROOT_FOLDER_SELECT = `
+  SELECT r.id, l.id AS libraryId, l.path
+    FROM comic_root_folders r
+    JOIN libraries l ON l.id = r.library_id`;
+
 export function getComicRootFolders(): ComicRootFolder[] {
-  return query<{ id: number; path: string }>(
-    'SELECT id, path FROM comic_root_folders ORDER BY path ASC'
-  );
+  return query<ComicRootFolder>(`${ROOT_FOLDER_SELECT} ORDER BY l.path ASC`);
 }
 
 export function getComicRootFolder(id: number): ComicRootFolder | null {
-  return queryOne<{ id: number; path: string }>(
-    'SELECT id, path FROM comic_root_folders WHERE id = ?',
-    [id]
-  );
+  return queryOne<ComicRootFolder>(`${ROOT_FOLDER_SELECT} WHERE r.id = ?`, [id]);
 }
 
-/** Add a root folder. Adding one that already exists returns the existing row. */
-export function addComicRootFolder(path: string): ComicRootFolder {
+/** The root folder a comic library owns, if it has been given one yet. */
+export function getComicRootFolderForLibrary(libraryId: number): ComicRootFolder | null {
+  return queryOne<ComicRootFolder>(`${ROOT_FOLDER_SELECT} WHERE l.id = ?`, [libraryId]);
+}
+
+/**
+ * Add a root folder, creating the comic library that owns it if the path is
+ * new. Adding one that already exists returns the existing row.
+ */
+export function addComicRootFolder(path: string, name?: string): ComicRootFolder {
   const normalised = path.replace(/\/+$/, '') || '/';
-  const existing = queryOne<{ id: number; path: string }>(
-    'SELECT id, path FROM comic_root_folders WHERE path = ?',
+
+  const library = queryOne<{ id: number; type: string }>(
+    'SELECT id, type FROM libraries WHERE path = ?',
     [normalised]
   );
+  if (library && library.type !== 'comic') {
+    throw new Error(`A book library already uses ${normalised}`);
+  }
+
+  const libraryId =
+    library?.id ??
+    insertReturning<{ id: number }>(
+      "INSERT INTO libraries (name, path, type) VALUES (?, ?, 'comic') RETURNING id",
+      [name?.trim() || libraryNameForPath(normalised), normalised]
+    )?.id;
+  if (libraryId === undefined) throw new Error(`Failed to add comic library ${normalised}`);
+
+  const existing = getComicRootFolderForLibrary(libraryId);
   if (existing) return existing;
 
-  const row = insertReturning<{ id: number; path: string }>(
-    'INSERT INTO comic_root_folders (path) VALUES (?) RETURNING id, path',
-    [normalised]
+  const row = insertReturning<{ id: number }>(
+    'INSERT INTO comic_root_folders (library_id, path) VALUES (?, ?) RETURNING id',
+    [libraryId, normalised]
   );
   if (!row) throw new Error(`Failed to add comic root folder ${normalised}`);
-  return row;
+  return { id: row.id, libraryId, path: normalised };
 }
 
+/** Removes the library too — the root folder is what makes it a comic library. */
 export function deleteComicRootFolder(id: number): boolean {
-  return execute('DELETE FROM comic_root_folders WHERE id = ?', [id]).rowCount > 0;
+  return (
+    execute(
+      'DELETE FROM libraries WHERE id = (SELECT library_id FROM comic_root_folders WHERE id = ?)',
+      [id]
+    ).rowCount > 0
+  );
 }
 
 /** How many volumes still point at a root folder — checked before removing it. */

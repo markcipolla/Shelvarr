@@ -29,8 +29,6 @@ mock.module('../../../lib/actions/comics.js', {
 
 mock.module('../../../lib/actions/settings.js', {
   namedExports: {
-    addComicRootFolderAction: mock.fn(async () => ({ success: true })),
-    removeComicRootFolderAction: mock.fn(async () => ({ success: true })),
     startComicLibraryImport: mock.fn(async () => ({ success: true })),
     runScheduleNowAction: mock.fn(async () => ({ success: true })),
     setScheduleEnabledAction: mock.fn(async () => ({ success: true })),
@@ -40,7 +38,7 @@ mock.module('../../../lib/actions/settings.js', {
 
 const { ComicsTab } = await import('../../../components/settings/ComicsTab.js');
 
-const SETTINGS = { hasApiKey: true, rootFolders: [] };
+const SETTINGS = { hasApiKey: true };
 
 describe('ComicsTab duplicates', () => {
   beforeEach(() => {

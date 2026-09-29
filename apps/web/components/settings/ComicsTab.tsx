@@ -3,8 +3,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  addComicRootFolderAction,
-  removeComicRootFolderAction,
   startComicLibraryImport,
   type ScheduleView,
 } from '@/lib/actions/settings';
@@ -15,16 +13,9 @@ import {
 import { RecurringJobs } from '@/components/settings/RecurringJobs';
 import { FolderPicker } from '@/components/ui/FolderPicker';
 
-interface RootFolder {
-  id: number;
-  path: string;
-  volumeCount: number;
-}
-
 interface ComicsSettings {
   /** Whether ComicVine is configured on the Metadata Sources tab. */
   hasApiKey: boolean;
-  rootFolders: RootFolder[];
 }
 
 const inputClass =
@@ -38,9 +29,6 @@ export function ComicsTab({
   schedules: ScheduleView[];
 }) {
   const router = useRouter();
-  const [newFolder, setNewFolder] = useState('');
-  const [folderError, setFolderError] = useState<string | null>(null);
-  const [busyFolder, setBusyFolder] = useState(false);
 
   const [importPath, setImportPath] = useState('');
   const [importMessage, setImportMessage] = useState<string | null>(null);
@@ -51,28 +39,6 @@ export function ComicsTab({
     unresolved: UnresolvedComicDuplicate[];
     error?: string;
   } | null>(null);
-
-  const handleAddFolder = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!newFolder.trim()) return;
-
-    setBusyFolder(true);
-    setFolderError(null);
-    const result = await addComicRootFolderAction(newFolder.trim());
-    if (result.success) setNewFolder('');
-    else setFolderError(result.error ?? 'Failed to add root folder');
-    router.refresh();
-    setBusyFolder(false);
-  };
-
-  const handleRemoveFolder = async (id: number) => {
-    setBusyFolder(true);
-    setFolderError(null);
-    const result = await removeComicRootFolderAction(id);
-    if (!result.success) setFolderError(result.error ?? 'Failed to remove root folder');
-    router.refresh();
-    setBusyFolder(false);
-  };
 
   const handleTidyDuplicates = async () => {
     setTidying(true);
@@ -105,59 +71,13 @@ export function ComicsTab({
       {/* Root folders ---------------------------------------------------- */}
       <section>
         <h2 className="text-lg font-semibold text-white mb-1">Root folders</h2>
-        <p className="text-shelvarr-text-muted mb-4 text-sm">
-          Where comics are stored. Each volume gets its own folder underneath one of these.
+        <p className="text-shelvarr-text-muted text-sm">
+          Comics live in a library of type Comics, alongside the book ones on the{' '}
+          <a href="/libraries" className="text-shelvarr-primary hover:underline">
+            Libraries
+          </a>{' '}
+          page. Each volume gets its own folder underneath one.
         </p>
-
-        {settings.rootFolders.length === 0 ? (
-          <p className="text-sm text-shelvarr-text-muted mb-4">No root folders yet.</p>
-        ) : (
-          <ul className="mb-4 space-y-2">
-            {settings.rootFolders.map((folder) => (
-              <li
-                key={folder.id}
-                className="flex items-center justify-between bg-shelvarr-surface border border-shelvarr-border rounded-lg px-3 py-2"
-              >
-                <div>
-                  <p className="text-white text-sm font-mono">{folder.path}</p>
-                  <p className="text-xs text-shelvarr-text-muted">
-                    {folder.volumeCount} volume{folder.volumeCount === 1 ? '' : 's'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleRemoveFolder(folder.id)}
-                  disabled={busyFolder || folder.volumeCount > 0}
-                  title={
-                    folder.volumeCount > 0
-                      ? 'Move or delete its volumes before removing this folder'
-                      : undefined
-                  }
-                  className="text-sm text-red-400 hover:text-red-300 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <form onSubmit={handleAddFolder} className="flex items-start gap-2">
-          <FolderPicker
-            value={newFolder}
-            onChange={setNewFolder}
-            placeholder="/libraries/comics"
-            inputClassName={inputClass}
-          />
-          <button
-            type="submit"
-            disabled={busyFolder}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium whitespace-nowrap"
-          >
-            Add
-          </button>
-        </form>
-        {folderError && <p className="mt-2 text-sm text-red-400">{folderError}</p>}
       </section>
 
       {/* Recurring jobs --------------------------------------------------- */}

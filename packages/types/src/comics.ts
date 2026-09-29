@@ -243,9 +243,10 @@ export type ComicVineDateType = 'cover_date' | 'store_date';
 // Library ownership
 // ---------------------------------------------------------------------------
 
-/** A directory Shelvarr stores comics in. */
+/** A directory Shelvarr stores comics in. Owned by a library of type 'comic'. */
 export interface ComicRootFolder {
   id: number;
+  libraryId: number;
   path: string;
   /** Bytes free on the filesystem, filled in on read; null if unreadable. */
   freeSpace?: number | null;
