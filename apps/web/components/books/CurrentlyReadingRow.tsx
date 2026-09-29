@@ -11,6 +11,9 @@ import { useToast } from '@/components/ui/Toast';
  * "×" on each cover: a book you finished away from the reader — on paper, on a
  * Kindle — never reaches its last page here, so it would sit on this shelf for
  * good otherwise.
+ *
+ * Misclicking that "×" on a cover two rows into the grid is easy, so the
+ * confirmation toast carries the way back.
  */
 export function CurrentlyReadingRow({ books }: { books: Book[] }) {
   return (
@@ -28,25 +31,37 @@ function CurrentlyReadingCard({ book }: { book: Book }) {
   const [marking, setMarking] = useState(false);
   const title = book.title || 'this book';
 
+  // The page is left out of both requests on purpose: the server keeps whatever
+  // page was saved, so undoing this reopens the book exactly where it was.
+  const setCompleted = async (completed: boolean): Promise<boolean> => {
+    const res = await fetch(`/api/books/${book.id}/read-progress`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ completed }),
+    });
+    if (res.ok) {
+      router.refresh();
+      return true;
+    }
+    const data = await res.json().catch(() => null);
+    toast.error(data?.error || (completed ? 'Failed to mark as read' : 'Failed to undo'));
+    return false;
+  };
+
   // The "×" sits inside the card's link, so its click must not also open the
-  // book. The page is left out of the request on purpose: the server keeps
-  // whatever page was saved, so marking it unread again reopens it in place.
+  // book.
   const handleMarkRead = async (event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
     setMarking(true);
     try {
-      const res = await fetch(`/api/books/${book.id}/read-progress`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ completed: true }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        toast.error(data?.error || 'Failed to mark as read');
-      } else {
-        toast.success(`Marked "${title}" as read`);
-        router.refresh();
+      if (await setCompleted(true)) {
+        toast.success(`Marked "${title}" as read`, {
+          label: 'Undo',
+          onClick: () => {
+            void setCompleted(false).catch(() => toast.error('Failed to reach server'));
+          },
+        });
       }
     } catch {
       toast.error('Failed to reach server');

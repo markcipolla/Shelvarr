@@ -113,7 +113,9 @@ describe('useBookReader', () => {
     });
 
     expect(mockSetPage).toHaveBeenCalledWith(5);
-    expect(mockSyncComicProgress).toHaveBeenCalledWith(11, 5, false, 20);
+    // Undefined, not false: a page save says where the reader is, not that
+    // the issue is unfinished, so it can't un-finish one marked read.
+    expect(mockSyncComicProgress).toHaveBeenCalledWith(11, 5, undefined, 20);
     expect(mockSyncProgress).not.toHaveBeenCalled();
     expect(mockFlushProgress).not.toHaveBeenCalled();
   });
@@ -129,7 +131,7 @@ describe('useBookReader', () => {
     });
 
     // page 1 with an unknown total must stay in-progress, not be flushed as done
-    expect(mockSyncComicProgress).toHaveBeenCalledWith(11, 1, false, 0);
+    expect(mockSyncComicProgress).toHaveBeenCalledWith(11, 1, undefined, 0);
     expect(mockFlushProgress).not.toHaveBeenCalled();
   });
 

@@ -85,6 +85,24 @@ describe('PATCH /api/books/[id]/read-progress', () => {
     assert.deepEqual(upsertReadProgressMock.mock.calls[0].arguments, [5, 1, 42, false]);
   });
 
+  it('leaves a finished book finished when the client only reports a page', async () => {
+    savedProgress = { page: 300, completed: 1 };
+
+    // Somebody who finished the book on paper, ticked it off the shelf, then
+    // opened the epub to look something up. A page save says nothing about
+    // whether the book is done, so it must not undo that tick.
+    await PATCH(patch({ page: 42 }), { params });
+
+    assert.deepEqual(upsertReadProgressMock.mock.calls[0].arguments, [5, 1, 42, true]);
+  });
+
+  it('un-finishes a book on an explicit completed: false', async () => {
+    savedProgress = { page: 300, completed: 1 };
+    await PATCH(patch({ completed: false }), { params });
+
+    assert.deepEqual(upsertReadProgressMock.mock.calls[0].arguments, [5, 1, 300, false]);
+  });
+
   it('honours an explicit page 0 rather than reviving the saved page', async () => {
     await PATCH(patch({ page: 0, completed: false }), { params });
 
