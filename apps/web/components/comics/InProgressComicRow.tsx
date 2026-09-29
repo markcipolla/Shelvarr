@@ -14,6 +14,9 @@ import { useToast } from '@/components/ui/Toast';
  * so finishing that issue is what takes the volume off — the volume itself
  * counts as read only once every issue is. Usually that means the volume moves
  * on to the issue after it rather than disappearing.
+ *
+ * The confirmation toast carries an Undo, because that "×" is a small target
+ * on a cover that is also a link.
  */
 export function InProgressComicRow({ comics }: { comics: InProgressComic[] }) {
   return (
@@ -31,23 +34,36 @@ function InProgressComicCard({ comic }: { comic: InProgressComic }) {
   const [marking, setMarking] = useState(false);
   const label = comic.issueNumber ? `#${comic.issueNumber}` : 'this issue';
 
+  // The page is left out of both requests on purpose: the server keeps whatever
+  // page was saved, so undoing this reopens the issue exactly where it was.
+  const setCompleted = async (completed: boolean): Promise<boolean> => {
+    const res = await fetch(`/api/comics/issues/${comic.issueId}/progress`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ completed, ...(comic.total ? { total: comic.total } : {}) }),
+    });
+    if (res.ok) {
+      router.refresh();
+      return true;
+    }
+    const data = await res.json().catch(() => null);
+    toast.error(data?.error || (completed ? 'Failed to mark as read' : 'Failed to undo'));
+    return false;
+  };
+
   // Inside the card's link, so the click must not also open the volume.
   const handleMarkRead = async (event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
     setMarking(true);
     try {
-      const res = await fetch(`/api/comics/issues/${comic.issueId}/progress`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ completed: true, ...(comic.total ? { total: comic.total } : {}) }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        toast.error(data?.error || 'Failed to mark as read');
-      } else {
-        toast.success(`Marked ${comic.volume.title} ${label} as read`);
-        router.refresh();
+      if (await setCompleted(true)) {
+        toast.success(`Marked ${comic.volume.title} ${label} as read`, {
+          label: 'Undo',
+          onClick: () => {
+            void setCompleted(false).catch(() => toast.error('Failed to reach server'));
+          },
+        });
       }
     } catch {
       toast.error('Failed to reach server');

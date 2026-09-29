@@ -5,7 +5,8 @@ import { PROGRESS_SYNC_DEBOUNCE_MS } from '../utils/constants';
 interface QueuedProgress {
   bookId: string;
   page: number;
-  completed: boolean;
+  /** Undefined means "page only" — never un-finish something already read. */
+  completed?: boolean;
   timestamp: number;
   epub?: boolean;
   epubProgress?: number;
@@ -45,7 +46,7 @@ export function syncEpubProgress(bookId: string, progress: number, completed: bo
   timers.set(bookId, timer);
 }
 
-export function syncComicProgress(issueId: number, page: number, completed: boolean = false, total?: number): void {
+export function syncComicProgress(issueId: number, page: number, completed?: boolean, total?: number): void {
   const bookId = `comic-${issueId}`;
   const entry: QueuedProgress = { bookId, page, completed, timestamp: Date.now(), comic: true, issueId, total };
   pendingSync.set(bookId, entry);

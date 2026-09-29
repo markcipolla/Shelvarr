@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
-import { queryOne, getEpubProgression, getLatestEpubProgression, upsertEpubProgression, upsertReadProgress } from '@/lib/db';
+import { queryOne, getEpubProgression, getLatestEpubProgression, getReadProgress, upsertEpubProgression, upsertReadProgress } from '@/lib/db';
 import { validateApiAuth, getReadingUserId } from '@shelvarr/services';
 import { toEpubProgression } from '@shelvarr/services/api-response';
 import { syncReadingProgress } from '@/lib/services/metadata/hardcover';
@@ -75,7 +75,15 @@ export async function PUT(
   const completed = progression >= 0.98;
   upsertEpubProgression(userId, bookId, deviceId, locator, progression);
   // Mirror into read_progress so IN_PROGRESS filters (page > 0) match.
-  upsertReadProgress(userId, bookId, completed ? 0 : 1, completed);
+  //
+  // A position save is not a claim that the book is unfinished: somebody who
+  // finished it away from here and ticked it off the Currently Reading shelf
+  // can still open it to look something up, and that must not put it back.
+  // Finishing is one-way here — only an explicit PATCH to read-progress, or
+  // the DELETE, can undo it.
+  const already = getReadProgress(userId, bookId);
+  const done = completed || already?.completed === 1;
+  upsertReadProgress(userId, bookId, done ? 0 : 1, done);
 
   // Fire-and-forget Hardcover sync — throttled per-book inside syncReadingProgress.
   if (book.metadata_id && book.metadata_source === 'hardcover') {

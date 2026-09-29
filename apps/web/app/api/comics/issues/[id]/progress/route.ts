@@ -40,15 +40,22 @@ export async function PATCH(
   const body = await request.json() as { page?: number; completed?: boolean; total?: number };
 
   const userId = getReadingUserId(request.headers);
+  // A client that leaves a field out is saying nothing about it, not zero.
+  //
   // A client that only says "completed" — the "×" on the home shelf, the Mark
   // read button on the volume page — keeps whatever page was saved. Writing 0
   // over it would lose the reader's place in that issue for good.
-  const page = body.page ?? getComicReadProgress(userId, issueId)?.page ?? 0;
+  //
+  // And a client that only says "page" — the reader, turning pages — keeps
+  // whatever "completed" was. Defaulting it to false let a page save un-finish
+  // an issue somebody had marked read, which put the volume straight back on
+  // Currently Reading Comics. Only an explicit `completed: false` clears it.
+  const saved = getComicReadProgress(userId, issueId);
   upsertComicReadProgress(
     userId,
     issueId,
-    page,
-    body.completed ?? false,
+    body.page ?? saved?.page ?? 0,
+    body.completed ?? saved?.completed === 1,
     body.total ?? null,
   );
 

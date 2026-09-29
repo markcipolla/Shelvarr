@@ -161,6 +161,29 @@ describe('PATCH /api/comics/issues/[id]/progress', () => {
     assert.equal(upsertComicReadProgressMock.mock.calls[0].arguments[2], 0);
   });
 
+  it('leaves a finished issue finished when the client only reports a page', async () => {
+    getComicReadProgressMock.mock.mockImplementation(() => ({
+      id: 1, issue_id: 1, page: 22, completed: 1, total: 22,
+    }));
+
+    // The reader re-opening an issue to look at a panel: page only, no claim
+    // about whether it is finished. Defaulting that to false used to put the
+    // volume straight back on Currently Reading Comics.
+    await PATCH(makeRequest('PATCH', { page: 3 }) as any, { params });
+
+    assert.equal(upsertComicReadProgressMock.mock.calls[0].arguments[3], true);
+  });
+
+  it('un-finishes an issue on an explicit completed: false', async () => {
+    getComicReadProgressMock.mock.mockImplementation(() => ({
+      id: 1, issue_id: 1, page: 22, completed: 1, total: 22,
+    }));
+
+    await PATCH(makeRequest('PATCH', { completed: false }) as any, { params });
+
+    assert.equal(upsertComicReadProgressMock.mock.calls[0].arguments[3], false);
+  });
+
   it("writes to the calling reader's shelf", async () => {
     readingUserId = 42;
     getComicReadProgressMock.mock.mockImplementation(() => null);

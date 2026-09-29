@@ -204,6 +204,14 @@ describe('syncComicProgress', () => {
     expect(mockedUpdateComic).toHaveBeenCalledWith(7, 10, true, undefined);
   });
 
+  it('leaves "completed" out of a page-only save', async () => {
+    // So the server keeps whatever it had: turning pages in an issue already
+    // marked read must not put its volume back on Currently Reading Comics.
+    syncComicProgress(7, 3, undefined, 24);
+    await flushProgress('comic-7');
+    expect(mockedUpdateComic).toHaveBeenCalledWith(7, 3, undefined, 24);
+  });
+
   it('forwards total page count when provided', async () => {
     syncComicProgress(7, 10, true, 24);
     await flushProgress('comic-7');
@@ -219,7 +227,7 @@ describe('syncComicProgress', () => {
     await Promise.resolve();
 
     expect(mockedUpdateComic).toHaveBeenCalledTimes(1);
-    expect(mockedUpdateComic).toHaveBeenCalledWith(7, 3, false, undefined);
+    expect(mockedUpdateComic).toHaveBeenCalledWith(7, 3, undefined, undefined);
   });
 
   it('queues failed comic progress for retry', async () => {

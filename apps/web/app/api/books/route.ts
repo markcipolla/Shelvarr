@@ -43,6 +43,8 @@ export function GET(request: NextRequest) {
   const size = parseInt(searchParams.get('size') || '20');
   const offset = page * size;
 
+  const userId = getReadingUserId(request.headers);
+
   let whereClause = 'WHERE 1=1';
   const params: unknown[] = [];
 
@@ -56,12 +58,18 @@ export function GET(request: NextRequest) {
     params.push(libraryId);
   }
 
+  // Read state is one person's, so these filters have to be too. Without the
+  // user_id, the phone's In Progress shelf showed books somebody else on the
+  // server was partway through — and nothing you did could take them off it.
   if (readStatus === 'IN_PROGRESS') {
-    whereClause += ' AND b.id IN (SELECT rp.book_id FROM read_progress rp WHERE rp.completed = 0 AND rp.page > 0)';
+    whereClause += ' AND b.id IN (SELECT rp.book_id FROM read_progress rp WHERE rp.user_id = ? AND rp.completed = 0 AND rp.page > 0)';
+    params.push(userId);
   } else if (readStatus === 'UNREAD') {
-    whereClause += ' AND b.id NOT IN (SELECT rp.book_id FROM read_progress rp)';
+    whereClause += ' AND b.id NOT IN (SELECT rp.book_id FROM read_progress rp WHERE rp.user_id = ?)';
+    params.push(userId);
   } else if (readStatus === 'READ') {
-    whereClause += ' AND b.id IN (SELECT rp.book_id FROM read_progress rp WHERE rp.completed = 1)';
+    whereClause += ' AND b.id IN (SELECT rp.book_id FROM read_progress rp WHERE rp.user_id = ? AND rp.completed = 1)';
+    params.push(userId);
   }
 
   const countRow = queryOne<{ count: number }>(
@@ -79,7 +87,6 @@ export function GET(request: NextRequest) {
     [...params, size, offset]
   );
 
-  const userId = getReadingUserId(request.headers);
   const content = rows.map(b => toApiBook(b, userId, getReadProgress(userId, b.id)));
   return NextResponse.json(toPagedResponse(content, page, size, totalElements));
 }

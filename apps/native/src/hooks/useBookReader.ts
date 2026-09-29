@@ -34,7 +34,9 @@ export function useBookReader(bookId: string, opts?: BookReaderOpts) {
           syncComicProgress(issueId, page, true, totalPages);
           flushProgress(bookId);
         } else {
-          syncComicProgress(issueId, page, false, totalPages);
+          // No "completed" at all: a page save must not un-finish an issue
+          // somebody already marked read.
+          syncComicProgress(issueId, page, undefined, totalPages);
         }
       } else {
         if (completed) {

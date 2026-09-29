@@ -551,6 +551,72 @@ describe('Toast Component', () => {
         assert.ok(toast?.className.includes('animate-slide-in'));
       });
     });
+
+    it('runs the action and dismisses itself when the action is clicked', async () => {
+      // "Marked X as read — Undo": the way back from a misclicked × has to be
+      // in the confirmation itself, because by then the card is gone.
+      const undo = mock.fn();
+      function TestComponent() {
+        const { success } = useToast();
+        return (
+          <button onClick={() => success('Marked as read', { label: 'Undo', onClick: undo })}>
+            Add
+          </button>
+        );
+      }
+
+      render(
+        <ToastProvider>
+          <TestComponent />
+        </ToastProvider>
+      );
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('button', { name: 'Add' }));
+
+      const action = await waitFor(() => screen.getByRole('button', { name: 'Undo' }));
+      await user.click(action);
+
+      assert.strictEqual(undo.mock.callCount(), 1);
+      await waitFor(() => assert.strictEqual(screen.queryByText('Marked as read'), null));
+    });
+
+    it('gives a toast with an action longer on screen than a plain one', async () => {
+      const delays: number[] = [];
+      const realSetTimeout = globalThis.setTimeout;
+      globalThis.setTimeout = ((fn: () => void, ms?: number) => {
+        if (typeof ms === 'number' && ms >= 1000) delays.push(ms);
+        return realSetTimeout(fn, ms);
+      }) as typeof setTimeout;
+
+      function TestComponent() {
+        const { success } = useToast();
+        return (
+          <>
+            <button onClick={() => success('Plain')}>Plain</button>
+            <button onClick={() => success('With action', { label: 'Undo', onClick: () => {} })}>
+              Action
+            </button>
+          </>
+        );
+      }
+
+      try {
+        render(
+          <ToastProvider>
+            <TestComponent />
+          </ToastProvider>
+        );
+        const user = userEvent.setup();
+        await user.click(screen.getByRole('button', { name: 'Plain' }));
+        await user.click(screen.getByRole('button', { name: 'Action' }));
+
+        assert.strictEqual(delays.length, 2);
+        assert.ok(delays[1]! > delays[0]!, `${delays[1]} should outlast ${delays[0]}`);
+      } finally {
+        globalThis.setTimeout = realSetTimeout;
+      }
+    });
   });
 
   describe('Edge Cases', () => {

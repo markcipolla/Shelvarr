@@ -4,34 +4,47 @@ import { createContext, useContext, useState, useCallback, ReactNode } from 'rea
 
 type ToastType = 'success' | 'error' | 'info';
 
+/**
+ * A single thing the reader can do about the message — "Undo", in practice.
+ * Clicking it dismisses the toast, so the handler doesn't have to.
+ */
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface Toast {
   id: number;
   message: string;
   type: ToastType;
+  action?: ToastAction;
 }
 
 interface ToastContextType {
-  toast: (message: string, type?: ToastType) => void;
-  success: (message: string) => void;
-  error: (message: string) => void;
-  info: (message: string) => void;
+  toast: (message: string, type?: ToastType, action?: ToastAction) => void;
+  success: (message: string, action?: ToastAction) => void;
+  error: (message: string, action?: ToastAction) => void;
+  info: (message: string, action?: ToastAction) => void;
 }
 
 const ToastContext = createContext<ToastContextType | null>(null);
 
 let toastId = 0;
 
+const DISMISS_MS = 4000;
+// Long enough to read the message, notice the button and reach for it.
+const DISMISS_WITH_ACTION_MS = 10000;
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const addToast = useCallback((message: string, type: ToastType = 'info') => {
+  const addToast = useCallback((message: string, type: ToastType = 'info', action?: ToastAction) => {
     const id = ++toastId;
-    setToasts((prev) => [...prev, { id, message, type }]);
+    setToasts((prev) => [...prev, { id, message, type, action }]);
 
-    // Auto-remove after 4 seconds
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
+    }, action ? DISMISS_WITH_ACTION_MS : DISMISS_MS);
   }, []);
 
   const removeToast = useCallback((id: number) => {
@@ -40,9 +53,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const contextValue: ToastContextType = {
     toast: addToast,
-    success: (msg) => addToast(msg, 'success'),
-    error: (msg) => addToast(msg, 'error'),
-    info: (msg) => addToast(msg, 'info'),
+    success: (msg, action) => addToast(msg, 'success', action),
+    error: (msg, action) => addToast(msg, 'error', action),
+    info: (msg, action) => addToast(msg, 'info', action),
   };
 
   return (
@@ -92,6 +105,17 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: () => void }) 
     >
       <span className="flex-shrink-0 mt-0.5">{icons[toast.type]}</span>
       <p className="flex-1 text-sm">{toast.message}</p>
+      {toast.action && (
+        <button
+          onClick={() => {
+            toast.action!.onClick();
+            onRemove();
+          }}
+          className="flex-shrink-0 text-sm font-semibold underline underline-offset-2 hover:no-underline"
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button
         onClick={onRemove}
         className="flex-shrink-0 text-white/70 hover:text-white transition-colors"

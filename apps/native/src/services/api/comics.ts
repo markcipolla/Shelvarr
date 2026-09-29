@@ -242,15 +242,22 @@ export async function fetchVolumeProgress(volumeId: number): Promise<Map<number,
   }
 }
 
+/**
+ * Save read progress for one issue.
+ *
+ * `completed` left undefined means "I'm only reporting a page" — the server
+ * keeps whatever it had, so turning pages in an issue you already marked read
+ * doesn't un-finish it. Pass false only to deliberately mark it unread.
+ */
 export async function updateComicProgress(
   issueId: number,
   page: number,
-  completed: boolean,
+  completed?: boolean,
   total?: number
 ): Promise<void> {
   await getApiClient().patch(`/api/comics/issues/${issueId}/progress`, {
     page,
-    completed,
+    ...(completed !== undefined ? { completed } : {}),
     ...(total !== undefined ? { total } : {}),
   });
 }

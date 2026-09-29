@@ -27,18 +27,28 @@ export async function PATCH(
     return NextResponse.json({ error: 'Book not found' }, { status: 404 });
   }
 
-  // A client that only says "completed" — the card's tick, the phone's detail
-  // screen — keeps its place in the book. Writing 0 over it would lose the page
-  // for good, so marking the book incomplete again would reopen it at the start.
-  const page = body.page ?? getReadProgress(userId, bookId)?.page ?? 0;
-  upsertReadProgress(userId, bookId, page, body.completed || false);
+  // A client that leaves a field out is saying nothing about it, not zero.
+  //
+  // The page: a client that only says "completed" — the card's tick, the
+  // phone's detail screen — keeps its place in the book. Writing 0 over it
+  // would lose the page for good, so marking the book incomplete again would
+  // reopen it at the start.
+  //
+  // And "completed" the same way: a position save that omits it must not
+  // un-finish a book somebody has explicitly marked read, or the book climbs
+  // straight back onto Currently Reading the next time the reader saves.
+  // Only an explicit `completed: false` — Mark unread, Undo — clears it.
+  const saved = getReadProgress(userId, bookId);
+  const page = body.page ?? saved?.page ?? 0;
+  const completed = body.completed ?? saved?.completed === 1;
+  upsertReadProgress(userId, bookId, page, completed);
 
   // Sync status to Hardcover on transitions (start reading / finish). Hardcover
   // is configured once for the whole server, so this mirrors whoever read the
   // book into the one linked account — it is not per-user, and cannot be.
   if (book.metadata_id && book.metadata_source === 'hardcover') {
     const today = new Date().toISOString().split('T')[0];
-    if (body.completed) {
+    if (completed) {
       void upsertReadingStatus(book.metadata_id, 3, undefined, today).catch((err) => {
         console.error('Hardcover completion sync failed:', err);
       });

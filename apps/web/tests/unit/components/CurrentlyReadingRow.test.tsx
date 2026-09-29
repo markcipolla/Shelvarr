@@ -127,6 +127,27 @@ describe('CurrentlyReadingRow Component', () => {
     assert.strictEqual(outerClick.mock.callCount(), 0);
   });
 
+  it('offers an Undo that puts the book back where it was', async () => {
+    const user = userEvent.setup();
+    render(<CurrentlyReadingRow books={[book]} />);
+
+    await user.click(screen.getByRole('button', { name: removeLabel('The Final Empire') }));
+    await waitFor(() => assert.strictEqual(mockToastSuccess.mock.callCount(), 1));
+
+    const action = mockToastSuccess.mock.calls[0]?.arguments[1] as
+      | { label: string; onClick: () => void }
+      | undefined;
+    assert.strictEqual(action?.label, 'Undo');
+
+    action!.onClick();
+
+    // No page either way, so the server keeps the reader's place through both.
+    await waitFor(() => assert.strictEqual(fetchCalls.length, 2));
+    assert.strictEqual(fetchCalls[1]?.url, '/api/books/7/read-progress');
+    assert.deepStrictEqual(JSON.parse(fetchCalls[1]?.init.body as string), { completed: false });
+    await waitFor(() => assert.strictEqual(mockRefresh.mock.callCount(), 2));
+  });
+
   it('reports the error and leaves the book on the shelf when the server refuses', async () => {
     fetchResponse = { ok: false, body: { error: 'Book not found' } };
     const user = userEvent.setup();
