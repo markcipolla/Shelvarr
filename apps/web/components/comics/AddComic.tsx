@@ -82,8 +82,8 @@ export function AddComic({ rootFolders }: { rootFolders: RootFolder[] }) {
       <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-8 text-center">
         <p className="text-shelvarr-text-muted">
           Comics need somewhere to live.{' '}
-          <Link href="/settings/comics" className="text-shelvarr-primary hover:underline">
-            Add a root folder
+          <Link href="/libraries" className="text-shelvarr-primary hover:underline">
+            Add a comics library
           </Link>{' '}
           first.
         </p>

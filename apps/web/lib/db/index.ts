@@ -131,6 +131,7 @@ export {
   // Comic library ownership
   getComicRootFolders,
   getComicRootFolder,
+  getComicRootFolderForLibrary,
   addComicRootFolder,
   deleteComicRootFolder,
   countVolumesInRootFolder,

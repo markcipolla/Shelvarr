@@ -173,15 +173,9 @@ export async function previewOrganizeForLibrary(
 
 export async function getComicsSettings() {
   const { comicLibrary } = await import('@shelvarr/services');
-  const { countVolumesInRootFolder } = await import('@/lib/db');
 
-  return {
-    hasApiKey: await comicLibrary.isComicVineConfigured(),
-    rootFolders: comicLibrary.listRootFolders().map((folder) => ({
-      ...folder,
-      volumeCount: countVolumesInRootFolder(folder.id),
-    })),
-  };
+  // Root folders are comic libraries now; they're managed on /libraries.
+  return { hasApiKey: await comicLibrary.isComicVineConfigured() };
 }
 
 /** Which ComicVine date ComicVine issues are dated by. */
@@ -210,36 +204,6 @@ export async function testComicVineConnection() {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Connection failed',
-    };
-  }
-}
-
-export async function addComicRootFolderAction(path: string) {
-  const { comicLibrary } = await import('@shelvarr/services');
-
-  try {
-    await comicLibrary.addRootFolder(path);
-    revalidatePath('/settings');
-    return { success: true };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to add root folder',
-    };
-  }
-}
-
-export async function removeComicRootFolderAction(id: number) {
-  const { comicLibrary } = await import('@shelvarr/services');
-
-  try {
-    comicLibrary.removeRootFolder(id);
-    revalidatePath('/settings');
-    return { success: true };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to remove root folder',
     };
   }
 }

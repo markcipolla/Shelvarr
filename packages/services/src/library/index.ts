@@ -1,11 +1,22 @@
-import { query, queryOne, execute, insertReturning, sqlTimeToIso } from '@shelvarr/db';
-import type { Library } from '@shelvarr/types';
+import {
+  query,
+  queryOne,
+  execute,
+  insertReturning,
+  sqlTimeToIso,
+  addComicRootFolder,
+  getComicRootFolderForLibrary,
+  countVolumesInRootFolder,
+} from '@shelvarr/db';
+import type { Library, LibraryType } from '@shelvarr/types';
 import { existsSync, statSync } from 'fs';
+import { mkdir } from 'fs/promises';
 
 interface LibraryRow {
   id: number;
   name: string;
   path: string;
+  type: string | null;
   created_at: string;
 }
 
@@ -14,12 +25,23 @@ function rowToLibrary(row: LibraryRow): Library {
     id: row.id,
     name: row.name,
     path: row.path,
+    type: row.type === 'comic' ? 'comic' : 'book',
     createdAt: sqlTimeToIso(row.created_at),
   };
 }
 
-export async function getAllLibraries(): Promise<Library[]> {
-  const rows = await query<LibraryRow>('SELECT * FROM libraries ORDER BY name');
+/**
+ * Libraries of one type, book by default — the callers that sweep libraries to
+ * scan or organize books would choke on a comic one.
+ */
+export async function getAllLibraries(type: LibraryType | 'all' = 'book'): Promise<Library[]> {
+  const rows =
+    type === 'all'
+      ? await query<LibraryRow>('SELECT * FROM libraries ORDER BY name')
+      : await query<LibraryRow>(
+          "SELECT * FROM libraries WHERE COALESCE(type, 'book') = ? ORDER BY name",
+          [type]
+        );
   return rows.map(rowToLibrary);
 }
 
@@ -36,6 +58,7 @@ export async function getLibraryByPath(path: string): Promise<Library | null> {
 export interface CreateLibraryInput {
   name: string;
   path: string;
+  type?: LibraryType;
 }
 
 export interface CreateLibraryResult {
@@ -45,7 +68,7 @@ export interface CreateLibraryResult {
 }
 
 export async function createLibrary(input: CreateLibraryInput): Promise<CreateLibraryResult> {
-  const { name, path } = input;
+  const { name, path, type = 'book' } = input;
 
   // Validate name
   if (!name || name.trim().length === 0) {
@@ -55,6 +78,19 @@ export async function createLibrary(input: CreateLibraryInput): Promise<CreateLi
   // Validate path
   if (!path || path.trim().length === 0) {
     return { success: false, error: 'Library path is required' };
+  }
+
+  // A comic library is created empty and filled by adding volumes, so unlike a
+  // book library there is nothing to point it at yet — make the folder.
+  if (type === 'comic' && !existsSync(path)) {
+    try {
+      await mkdir(path, { recursive: true });
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : `Could not create ${path}`,
+      };
+    }
   }
 
   // Check if path exists and is a directory
@@ -74,8 +110,17 @@ export async function createLibrary(input: CreateLibraryInput): Promise<CreateLi
   }
 
   try {
+    if (type === 'comic') {
+      // Creates the library row as well — the root folder is what makes it one.
+      const root = addComicRootFolder(path, name);
+      const library = await getLibraryById(root.libraryId);
+      return library
+        ? { success: true, library }
+        : { success: false, error: 'Failed to create library' };
+    }
+
     const row = await insertReturning<LibraryRow>(
-      'INSERT INTO libraries (name, path) VALUES (?, ?) RETURNING *',
+      "INSERT INTO libraries (name, path, type) VALUES (?, ?, 'book') RETURNING *",
       [name.trim(), path]
     );
 
@@ -121,14 +166,33 @@ export async function deleteLibrary(id: number): Promise<{ success: boolean; err
     return { success: false, error: 'Library not found' };
   }
 
+  // A comic library's volumes are not cascade-deleted — they'd just lose their
+  // root folder and be orphaned — so refuse while any still live in it.
+  if (existing.type === 'comic') {
+    const inUse = await getLibraryItemCount(existing);
+    if (inUse > 0) {
+      return {
+        success: false,
+        error: `Library still holds ${inUse} volume${inUse === 1 ? '' : 's'}; move or delete them first`,
+      };
+    }
+  }
+
   try {
-    // Books will be cascade deleted due to FK constraint
+    // Books and the comic root folder are cascade deleted due to FK constraints
     await execute('DELETE FROM libraries WHERE id = ?', [id]);
     return { success: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return { success: false, error: message };
   }
+}
+
+/** Books for a book library, volumes for a comic one. */
+export async function getLibraryItemCount(library: Library): Promise<number> {
+  if (library.type !== 'comic') return getLibraryBookCount(library.id);
+  const root = getComicRootFolderForLibrary(library.id);
+  return root ? countVolumesInRootFolder(root.id) : 0;
 }
 
 export async function getLibraryBookCount(id: number): Promise<number> {

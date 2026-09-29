@@ -57,8 +57,9 @@ export function LibraryList({ libraries }: { libraries: LibraryWithCount[] }) {
     }
   };
 
-  const handleDelete = async (id: number, name: string) => {
-    if (!confirm(`Delete library "${name}"? This will remove all books from the database (files won't be deleted).`)) {
+  const handleDelete = async (id: number, name: string, isComic: boolean) => {
+    const removes = isComic ? 'the library' : 'all books from the database';
+    if (!confirm(`Delete library "${name}"? This will remove ${removes} (files won't be deleted).`)) {
       return;
     }
     setLoading((prev) => ({ ...prev, [id]: 'deleting' }));
@@ -85,45 +86,67 @@ export function LibraryList({ libraries }: { libraries: LibraryWithCount[] }) {
 
   return (
     <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg divide-y divide-shelvarr-border">
-      {libraries.map((lib) => (
+      {libraries.map((lib) => {
+        const isComic = lib.type === 'comic';
+        return (
         <div key={lib.id} className="flex items-center justify-between p-4">
           <div className="flex items-center gap-4">
             <div className="text-shelvarr-primary">
               <FolderIcon />
             </div>
             <div>
-              <div className="font-semibold text-white">{lib.name}</div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-white">{lib.name}</span>
+                <span className="text-xs uppercase tracking-wide text-shelvarr-text-muted border border-shelvarr-border rounded px-1.5 py-0.5">
+                  {isComic ? 'Comics' : 'Books'}
+                </span>
+              </div>
               <div className="text-sm text-shelvarr-text-muted">{lib.path}</div>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
-            <span className="text-sm text-shelvarr-text-muted">{lib.bookCount} books</span>
+            <span className="text-sm text-shelvarr-text-muted">
+              {lib.bookCount} {isComic ? 'volumes' : 'books'}
+            </span>
 
             <div className="flex gap-2">
+              {/* Comic volumes are scanned and renamed per volume, not per
+                  library, so the book-library actions don't apply to them. */}
+              {isComic ? (
+                <Link
+                  href="/comics"
+                  className="bg-shelvarr-bg hover:bg-shelvarr-border text-shelvarr-text border border-shelvarr-border px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                >
+                  Comics
+                </Link>
+              ) : (
+                <>
+                  <button
+                    onClick={() => handleScan(lib.id)}
+                    disabled={!!loading[lib.id]}
+                    className="bg-shelvarr-bg hover:bg-shelvarr-border text-shelvarr-text border border-shelvarr-border px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                  >
+                    {loading[lib.id] === 'scanning' ? 'Scanning...' : 'Scan'}
+                  </button>
+
+                  <MetadataDropdown
+                    disabled={!!loading[lib.id]}
+                    onFindMissing={() => handleMetadata(lib.id, true)}
+                    onRefreshAll={() => handleMetadata(lib.id, false)}
+                  />
+
+                  <Link
+                    href={`/libraries/${lib.id}/organize`}
+                    className="bg-shelvarr-bg hover:bg-shelvarr-border text-shelvarr-text border border-shelvarr-border px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Organize
+                  </Link>
+                </>
+              )}
+
               <button
-                onClick={() => handleScan(lib.id)}
-                disabled={!!loading[lib.id]}
-                className="bg-shelvarr-bg hover:bg-shelvarr-border text-shelvarr-text border border-shelvarr-border px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-              >
-                {loading[lib.id] === 'scanning' ? 'Scanning...' : 'Scan'}
-              </button>
-
-              <MetadataDropdown
-                disabled={!!loading[lib.id]}
-                onFindMissing={() => handleMetadata(lib.id, true)}
-                onRefreshAll={() => handleMetadata(lib.id, false)}
-              />
-
-              <Link
-                href={`/libraries/${lib.id}/organize`}
-                className="bg-shelvarr-bg hover:bg-shelvarr-border text-shelvarr-text border border-shelvarr-border px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-              >
-                Organize
-              </Link>
-
-              <button
-                onClick={() => handleDelete(lib.id, lib.name)}
+                onClick={() => handleDelete(lib.id, lib.name, isComic)}
                 disabled={!!loading[lib.id]}
                 className="bg-shelvarr-bg hover:bg-red-900/20 text-red-400 border border-shelvarr-border px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
               >
@@ -132,7 +155,8 @@ export function LibraryList({ libraries }: { libraries: LibraryWithCount[] }) {
             </div>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

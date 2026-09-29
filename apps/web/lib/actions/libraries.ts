@@ -6,17 +6,19 @@ import {
   getLibraryById,
   createLibrary as createLib,
   deleteLibrary as deleteLib,
-  getLibraryBookCount,
+  getLibraryItemCount,
 } from '@/lib/services/library';
 import { scanLibrary as scanLib } from '@/lib/services/scanner';
 import { createTask, startTask, completeTask, failTask, enqueueTask } from '@/lib/services/queue';
+import type { LibraryType } from '@/types';
 
-export async function getLibraries() {
-  const libraries = await getAllLibraries();
+/** Book libraries only by default — the book pages filter and scan by these. */
+export async function getLibraries(type: LibraryType | 'all' = 'book') {
+  const libraries = await getAllLibraries(type);
   return Promise.all(
     libraries.map(async (lib) => ({
       ...lib,
-      bookCount: await getLibraryBookCount(lib.id),
+      bookCount: await getLibraryItemCount(lib),
     }))
   );
 }
@@ -24,15 +26,22 @@ export async function getLibraries() {
 export async function createLibrary(formData: FormData) {
   const name = formData.get('name') as string;
   const path = formData.get('path') as string;
+  const type: LibraryType = formData.get('type') === 'comic' ? 'comic' : 'book';
 
   if (!name || !path) {
     return { error: 'Name and path are required' };
   }
 
   try {
-    const result = await createLib({ name, path });
+    const result = await createLib({ name, path, type });
     if (!result.success) {
       return { error: result.error || 'Failed to create library' };
+    }
+
+    if (type === 'comic') {
+      revalidatePath('/libraries');
+      revalidatePath('/comics');
+      return { success: true, library: result.library };
     }
 
     if (result.library) {
@@ -68,8 +77,10 @@ export async function createLibrary(formData: FormData) {
 
 export async function deleteLibrary(id: number) {
   try {
-    await deleteLib(id);
+    const result = await deleteLib(id);
+    if (!result.success) return { error: result.error || 'Failed to delete library' };
     revalidatePath('/libraries');
+    revalidatePath('/comics');
     revalidatePath('/');
     return { success: true };
   } catch (error) {

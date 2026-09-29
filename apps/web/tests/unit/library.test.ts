@@ -196,6 +196,75 @@ describe('Library Service', () => {
     });
   });
 
+  describe('comic libraries', () => {
+    const comicPath = () => join(testDir, 'comics-' + Math.random().toString(36).slice(2));
+
+    it('creates the folder, the library and its comic root folder', async () => {
+      const path = comicPath();
+      const result = await libraryService.createLibrary({
+        name: 'My Comics',
+        path,
+        type: 'comic',
+      });
+
+      assert.ok(result.success, result.error);
+      assert.strictEqual(result.library?.type, 'comic');
+      assert.ok(existsSync(path), 'a comic library makes its own folder');
+
+      const root = db.getComicRootFolderForLibrary(result.library!.id);
+      assert.ok(root, 'comics.root_folder_id has something to point at');
+      assert.strictEqual(root.path, path);
+    });
+
+    it('keeps book and comic libraries apart, and lists both under "all"', async () => {
+      await libraryService.createLibrary({ name: 'Books', path: libraryPath });
+      await libraryService.createLibrary({ name: 'Comics', path: comicPath(), type: 'comic' });
+
+      assert.deepStrictEqual(
+        (await libraryService.getAllLibraries()).map((lib) => lib.name),
+        ['Books'],
+        'book sweeps must not pick up comic libraries'
+      );
+      assert.strictEqual((await libraryService.getAllLibraries('comic')).length, 1);
+      assert.strictEqual((await libraryService.getAllLibraries('all')).length, 2);
+    });
+
+    it('refuses a comic folder a book library already claims', async () => {
+      await libraryService.createLibrary({ name: 'Books', path: libraryPath });
+      const result = await libraryService.createLibrary({
+        name: 'Comics',
+        path: libraryPath,
+        type: 'comic',
+      });
+      assert.ok(!result.success);
+    });
+
+    it('deletes the root folder with the library, but not while volumes live there', async () => {
+      const path = comicPath();
+      const created = await libraryService.createLibrary({
+        name: 'Comics',
+        path,
+        type: 'comic',
+      });
+      const libraryId = created.library!.id;
+      const root = db.getComicRootFolderForLibrary(libraryId)!;
+
+      db.getDb()
+        .prepare('INSERT INTO comics (id, title, root_folder_id) VALUES (?, ?, ?)')
+        .run(4242, 'Some Volume', root.id);
+
+      const refused = await libraryService.deleteLibrary(libraryId);
+      assert.ok(!refused.success);
+      assert.match(refused.error ?? '', /1 volume/);
+
+      db.getDb().prepare('DELETE FROM comics WHERE id = ?').run(4242);
+
+      const deleted = await libraryService.deleteLibrary(libraryId);
+      assert.ok(deleted.success, deleted.error);
+      assert.strictEqual(db.getComicRootFolder(root.id), null);
+    });
+  });
+
   describe('updateLibrary', () => {
     it('should update library name', async () => {
       const createResult = await libraryService.createLibrary({
