@@ -710,14 +710,48 @@ describe('Download Services', () => {
         assert.strictEqual(results[0]?.author, 'John Doe');
       });
 
-      it('should search by ISBN when provided', async () => {
-        mockFetch.mock.mockImplementationOnce(async () =>
+      it('should search the title and author first, not the ISBN', async () => {
+        const html = `
+          <table>
+            <tr>
+              <td><a href="edition.php?id=1">Test Book Title</a></td>
+              <td>John Doe</td>
+              <td>Test Publisher</td>
+              <td><nobr>2023</nobr></td>
+              <td>English</td>
+              <td>250</td>
+              <td><nobr><a>5 MB</a></nobr></td>
+              <td>epub</td>
+              <td><a href="ads.php?md5=abcdef1234567890abcdef1234567890">Download</a></td>
+            </tr>
+          </table>
+        `;
+
+        mockFetch.mock.mockImplementationOnce(async () => new Response(html, { status: 200 }));
+
+        const results = await libgen.searchLibGen('Test Book Title John Doe', {
+          isbn: '978-0-123456-78-9',
+        });
+
+        assert.strictEqual(results.length, 1);
+        assert.strictEqual(mockFetch.mock.calls.length, 1, 'ISBN should not be searched as well');
+        const callUrl = mockFetch.mock.calls[0]?.arguments[0] as string;
+        assert.ok(callUrl.includes(encodeURIComponent('Test Book Title John Doe')));
+        assert.ok(!callUrl.includes('9780123456789'));
+      });
+
+      it('should fall back to the ISBN when the title finds nothing', async () => {
+        mockFetch.mock.mockImplementation(async () =>
           new Response('<table></table>', { status: 200 })
         );
 
         await libgen.searchLibGen('test', { isbn: '978-0-123456-78-9' });
-        const callUrl = mockFetch.mock.calls[0]?.arguments[0] as string;
-        assert.ok(callUrl.includes('9780123456789'));
+
+        assert.strictEqual(mockFetch.mock.calls.length, 2);
+        const firstUrl = mockFetch.mock.calls[0]?.arguments[0] as string;
+        const secondUrl = mockFetch.mock.calls[1]?.arguments[0] as string;
+        assert.ok(firstUrl.includes('test'));
+        assert.ok(secondUrl.includes('9780123456789'));
       });
 
       it('should skip rows without MD5', async () => {

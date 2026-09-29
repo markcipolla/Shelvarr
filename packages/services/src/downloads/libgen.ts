@@ -95,18 +95,34 @@ export function getLibGenSearchUrl(query: string): string {
 }
 
 /**
- * Search LibGen using their JSON API
+ * Search LibGen for a book.
+ *
+ * The title and author go first, always. An ISBN used to replace them
+ * outright, which quietly threw the search away: LibGen records carry
+ * whichever ISBN their uploader happened to have, so a catalogue ISBN misses
+ * the very editions a word search finds — and the query someone typed into
+ * the search box never reached LibGen at all. It is a decent second guess
+ * once the words have come up empty, so that is where it runs now.
  */
 export async function searchLibGen(
   query: string,
   options?: { isbn?: string }
 ): Promise<LibGenResult[]> {
+  const results = await searchLibGenTerm(query, query);
+  if (results.length > 0 || !options?.isbn) return results;
+
+  return searchLibGenTerm(options.isbn.replace(/[-\s]/g, ''), query);
+}
+
+/**
+ * One search against the best mirror. `term` is what LibGen matches on;
+ * `query` is only what the results' `searchUrl` should point a human at.
+ */
+async function searchLibGenTerm(term: string, query: string): Promise<LibGenResult[]> {
   const results: LibGenResult[] = [];
 
   try {
-    // If ISBN provided, search by ISBN instead of title
-    const searchQuery = options?.isbn ? options.isbn.replace(/[-\s]/g, '') : query;
-    const encoded = encodeURIComponent(searchQuery);
+    const encoded = encodeURIComponent(term);
 
     // Get search results from the HTML search page
     const domain = getLibGenDomain();
