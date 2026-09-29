@@ -10,6 +10,7 @@ import { getDownloadSourceConfig, upsertDownloadSourceConfig } from '@shelvarr/d
 import { preferredMirrorDomain } from './mirrors';
 import {
   detectChallenge,
+  fetchSourcePage,
   SourceBlockedError,
   SourceParseError,
   recordParseSuccess,
@@ -117,18 +118,14 @@ export async function searchZLibrary(
       headers['Cookie'] = `remix_userid=${config.remix_userid}; remix_userkey=${config.remix_userkey}`;
     }
 
-    const response = await sourceFetch('zlibrary', searchUrl, { headers, signal: AbortSignal.timeout(15000) });
+    // Z-Library serves its `Just a moment` bot check with a 503, so the body
+    // has to be read before the status is judged — see fetchSourcePage.
+    const html = await fetchSourcePage('zlibrary', searchUrl, {
+      headers,
+      signal: AbortSignal.timeout(15000),
+    });
 
-    if (!response.ok) {
-      console.warn(`Z-Library search failed: ${response.status}`);
-      return results;
-    }
-
-    const html = await response.text();
-
-    if (detectChallenge(html, response)) {
-      throw new SourceBlockedError('zlibrary', `${domain} is behind a bot check right now`);
-    }
+    if (html === null) return results;
 
     // Parse search results from HTML
     // Z-Library uses a specific HTML structure for book items

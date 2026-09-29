@@ -9,6 +9,7 @@ import { getDownloadSourceConfig } from '@shelvarr/db';
 import { anyMirrorReachable, preferredMirrorDomain } from './mirrors';
 import {
   detectChallenge,
+  fetchSourcePage,
   SourceBlockedError,
   SourceParseError,
   recordParseSuccess,
@@ -120,21 +121,12 @@ export async function searchAnnas(
     const domain = getAnnasDomain();
     const searchUrl = `https://${domain}/search?${params.toString()}`;
 
-    const response = await sourceFetch('annas', searchUrl, {
+    const html = await fetchSourcePage('annas', searchUrl, {
       headers: { 'Accept': 'text/html,application/xhtml+xml' },
       signal: AbortSignal.timeout(15000),
     });
 
-    if (!response.ok) {
-      console.warn(`Anna's Archive search failed: ${response.status}`);
-      return results;
-    }
-
-    const html = await response.text();
-
-    if (detectChallenge(html, response)) {
-      throw new SourceBlockedError('annas', `${domain} is behind a bot check right now`);
-    }
+    if (html === null) return results;
 
     // Parse search results from HTML
     // Anna's Archive has a specific structure for results
