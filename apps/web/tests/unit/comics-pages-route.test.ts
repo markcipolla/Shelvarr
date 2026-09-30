@@ -30,9 +30,26 @@ class FakePdfNotPaginatedError extends Error {
   }
 }
 
+interface FakePageDimensions {
+  n: number;
+  w: number | null;
+  h: number | null;
+}
+
 const ensureIssuePagesExtractedMock = mock.fn<
-  (issueId: number, filepath: string, options?: { remap?: boolean }) => Promise<{ dir: string; files: string[] }>
->(async () => ({ dir: '/cache/1', files: ['00001.jpg', '00002.jpg'] }));
+  (
+    issueId: number,
+    filepath: string,
+    options?: { remap?: boolean }
+  ) => Promise<{ dir: string; files: string[]; pages: FakePageDimensions[] }>
+>(async () => ({
+  dir: '/cache/1',
+  files: ['00001.jpg', '00002.jpg'],
+  pages: [
+    { n: 1, w: 1200, h: 1800 },
+    { n: 2, w: 1200, h: 1800 },
+  ],
+}));
 
 const getIssuePagePathMock = mock.fn<
   (issueId: number, filepath: string, pageNumber: number, options?: { remap?: boolean }) => Promise<string | null>
@@ -91,16 +108,28 @@ describe('GET /api/comics/issues/[id]/pages', () => {
     assert.equal(res.status, 404);
   });
 
-  it('returns the page count and a 1-indexed page list', async () => {
+  it('returns the page count and a 1-indexed page list with dimensions', async () => {
     ensureIssuePagesExtractedMock.mock.mockImplementationOnce(async () => ({
       dir: '/cache/1',
       files: ['00001.jpg', '00002.jpg', '00003.jpg'],
+      pages: [
+        { n: 1, w: 1200, h: 1800 },
+        { n: 2, w: 3400, h: 1800 },
+        { n: 3, w: null, h: null },
+      ],
     }));
 
     const res = await getPages(pagesRequest('1') as any, { params: Promise.resolve({ id: '1' }) });
     assert.equal(res.status, 200);
     const body = await res.json();
-    assert.deepEqual(body, { count: 3, pages: [{ n: 1 }, { n: 2 }, { n: 3 }] });
+    assert.deepEqual(body, {
+      count: 3,
+      pages: [
+        { n: 1, w: 1200, h: 1800 },
+        { n: 2, w: 3400, h: 1800 },
+        { n: 3, w: null, h: null },
+      ],
+    });
   });
 
   it('passes the needsRemap flag from the file ref through', async () => {

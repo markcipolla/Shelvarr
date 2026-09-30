@@ -37,6 +37,13 @@ export interface ReaderPreferences {
   hideHeader: boolean;
   /** Drives the "about 12 minutes left" estimate. Everyone reads differently. */
   wordsPerMinute: number;
+  /**
+   * Comics only: show a double-page spread as two half-pages rather than one
+   * wide one. Lives here with the EPUB settings, and not in the browser,
+   * because it is a preference about reading rather than about a screen —
+   * someone who wants spreads split wants that on the phone too.
+   */
+  splitWidePages: boolean;
 }
 
 export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
@@ -48,6 +55,7 @@ export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
   textAlign: 'original',
   hideHeader: false,
   wordsPerMinute: 240,
+  splitWidePages: true,
 };
 
 export interface NumericRange {
@@ -182,6 +190,8 @@ export function normaliseReaderPreferences(input: unknown): ReaderPreferences {
       READER_PREFERENCE_RANGES.wordsPerMinute,
       d.wordsPerMinute
     ),
+    splitWidePages:
+      typeof raw['splitWidePages'] === 'boolean' ? raw['splitWidePages'] : d.splitWidePages,
   };
 }
 

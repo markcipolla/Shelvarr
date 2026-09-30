@@ -6,10 +6,12 @@ export type { DownloadEvent, LiveEvent, TaskEvent } from './events/index';
 export { initServiceConfig, getServiceConfig, loadConfigFromEnv } from './config';
 
 // Comics
-export { openComicArchive, remapComicPath, extractComicImages } from './comics/archive';
+export { openComicArchive, remapComicPath, extractComicImages, extractComicEntry } from './comics/archive';
 export type { ComicArchiveResult, OpenComicArchiveOptions, ExtractedImage } from './comics/archive';
+export { parseComicInfo, readComicInfo, applyComicInfo } from './comics/comicinfo';
+export type { ComicInfo } from './comics/comicinfo';
 export { ensureIssuePagesExtracted, getIssuePagePath, PdfNotPaginatedError } from './comics/pages';
-export type { EnsurePagesOptions, IssuePages } from './comics/pages';
+export type { EnsurePagesOptions, IssuePages, PageDimensions } from './comics/pages';
 export * as getcomics from './comics/getcomics/index';
 export * as comicvine from './comics/comicvine/index';
 export * as comicLibrary from './comics/library';

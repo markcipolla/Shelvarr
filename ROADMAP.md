@@ -726,6 +726,235 @@ warnings rather than guessed at. Resolve them deliberately.
 
 ---
 
+## E7 — Read comics the way a comic wants to be read
+
+Shelvarr's comic reader is one `<img class="object-contain">` on a black
+field. That is the whole of it: no spread handling, no cropping, no sense of
+what a page *is*. Open an issue with a double-page spread on a phone and you
+get a postage stamp with two inches of black on either side, and no way to
+read it.
+
+[Kindle Comic Converter](https://github.com/ciromattia/kcc) has spent thirteen
+years on exactly this problem, and its licence is **ISC** — permissive, and
+one-way compatible with GPL-3.0. So unlike the Kapowarr situation that
+relicensed this project, there is nothing to negotiate: we can port what we
+want, keep the ISC notice, and record it in `NOTICE.md`. The reusable core is
+about 1,500 lines across five files; the other 17,000 are generated Qt.
+
+What we take, and what we do not, is a question about *where the pages are
+read*. KCC exists to push pixels onto an e-ink panel: half its cleverness is
+gamma curves, 16-colour palettes and a 2D Fourier transform that unpicks
+moiré on Kaleido 3 screens. None of that means anything on an LCD. What
+transfers is the part about page *geometry* — what a page is, where it should
+be cut, and what colour the space around it should be.
+
+The cards below are ordered by that: geometry first, pixels later, e-ink
+export last and probably never.
+
+### E7-1 · Split a double-page spread instead of shrinking it
+**Size M.** A spread is stored as one wide image. `object-contain` does the
+only thing it can with it — scales it to fit the width and leaves the rest
+black — so the page you most wanted to look at is the one rendered smallest.
+
+Port KCC's classifier (`kindlecomicconverter/image.py`, `splitCheck`). It is
+fifteen lines of arithmetic and two constants, and the constants are the
+value: a landscape page wider than **1.16×** its height is a spread; below
+**1.8×** it bisects into two readable halves; at or above 1.8 it is a
+panorama that bisects into nonsense and should be shown whole. Those numbers
+were not guessed, they were filed as bugs.
+
+Detection needs no pixels at all, only the page's dimensions — which `/pages`
+was documented to return in E3-2 (`{ n, w, h }`) and quietly shipped without.
+So: read the dimensions out of the image headers during extraction, cache
+them beside the pages, finish the contract E3-2 wrote down, and let the
+reader split on the answer with CSS rather than decoding anything.
+
+The subtle part is not the split, it is **page numbering**. Read progress is
+stored as a page number in the archive. Splitting turns page 7 into two
+things to look at, and if the reader starts saving "8" for the right half of
+page 7, every device disagrees about where you are and the completion sync
+lands on the wrong issue. Views and pages have to stay separate concepts all
+the way through.
+
+Per-user, not per-device, in `reader_preferences` alongside the EPUB
+settings, because it is a preference about reading and not about a screen.
+
+**Blocks:** nothing. **Depends on:** E3-2's cache.
+
+**Shipped 2026-09-30.** Built:
+
+- **`comics/dimensions.ts`** reads width and height straight out of a page's
+  header bytes — PNG `IHDR`, the JPEG `SOF` marker walk, GIF, and all three
+  WebP chunk types — with no decoding and no new dependency. It never
+  throws; a truncated or unrecognised page returns null and is shown whole.
+- **The extraction cache records them.** `ensureIssuePagesExtracted` sizes
+  each page as it writes it (the bytes are already in hand) and keeps the
+  answers in a `dimensions.json` beside them. A cache directory from before
+  this existed is backfilled by reading only the first 64 KB of each page,
+  not the whole file, and the sidecar is then written so it happens once. A
+  sidecar whose length disagrees with the pages on disk is ignored rather
+  than trusted.
+- **`/api/comics/issues/:id/pages`** now returns `{ n, w, h }`, which is what
+  E3-2 documented and did not ship.
+- **`lib/comics/spread.ts`** is the KCC port: `classifyPage`, and
+  `buildPageViews`/`firstViewIndexForPage` for the view-versus-page
+  bookkeeping. `fitContain` sizes the clipping box, in JavaScript rather than
+  CSS, because `aspect-ratio` on an `<img>` does not survive a `max-width`
+  clamp without distorting.
+- **The reader navigates by view and persists by page.** Turning between the
+  two halves of one spread sends no PATCH at all, and completion fires on
+  the last *view* — reaching the left half of a final spread is not
+  finishing the issue.
+- **`splitWidePages`** joins the other reader preferences, default on, with
+  a "Split spreads" toggle in the reader header that keeps you on the same
+  page as it rebuilds the view list.
+
+**Deliberately left out:**
+
+- **Right-to-left reading.** KCC splits manga right half first. Shelvarr has
+  no reading-direction setting, and adding the parameter to the splitter
+  alone would be dead flexibility — doing it properly means flipping page
+  turns, the arrow keys and the progress bar too. Until then a right-to-left
+  comic reads its spreads in the wrong order. Documented in the module, not
+  hidden.
+- **The native reader.** Stackarr downloads and extracts the archive on the
+  device rather than using `/pages`, so it has no server-supplied geometry
+  and would need `Image.getSize` and a restructured `FlatList`. A phone is
+  where a shrunk spread hurts most, so this is the obvious next increment —
+  but it is untestable from here (see the note about wireless adb) and
+  shipping unverified React Native was the worse trade.
+- **Wraparound covers.** A wide page 1 is split like any other, which shows
+  the back cover first. Not obviously wrong, so not special-cased on a
+  guess.
+
+### E7-2 · Read the ComicInfo.xml that's already in the file
+**Size M.** Shelvarr has no ComicInfo.xml support anywhere — grep the repo,
+there is not one mention. That file is the de facto standard for comic
+metadata and a large share of the archives people already own carry one,
+written by ComicRack, Mylar, Komga or whatever tagged them before Shelvarr
+existed.
+
+Meanwhile the scanner matches files to issues by parsing the *filename*
+(`scan.ts` → `extractFilenameData`), a Kapowarr-derived heap of regexes doing
+its best with `Batman 001 (2016) (Digital) (Zone-Empire).cbz`. When the
+archive itself contains `<Series>Batman</Series><Number>1</Number>
+<Volume>2016</Volume>`, guessing from the filename is choosing the worse
+source on purpose.
+
+Read it at scan time and prefer it, falling back to the filename when the
+archive has no ComicInfo.xml or it is unreadable. KCC's own parser
+(`metadata.py`) is minidom and not worth copying; the field list is.
+
+Writing metadata *back* into files is E7-6 and deliberately not this card.
+
+**Shipped 2026-09-30.** `comics/comicinfo.ts` parses the document with a
+tag-extraction helper rather than an XML dependency — ComicInfo.xml is a
+flat list of elements, and what actually has to be survived is the mess real
+taggers produce: entities, CDATA, self-closing tags, attributes, namespace
+prefixes. It never throws. `archive.ts` gained `extractComicEntry`, which
+pulls one named entry out of a CBZ or CBR without decompressing the rest:
+fflate filters before inflating and node-unrar-js takes a per-header
+predicate, so a hundred-issue scan costs a hundred small inflations rather
+than a hundred full extractions. It reads and inflates asynchronously,
+unlike its synchronous siblings in that file, because a scan walks every
+file in a folder and the event-loop stall `comics/pages.ts` apologises for
+would be a hundred times worse here.
+
+`applyComicInfo` overlays the result onto `extractFilenameData` field by
+field, so a half-filled ComicInfo still gets its issue number from the
+filename. `specialVersion` and `annual` stay with the filename parser, which
+sees the whole path including folders — information no ComicInfo has.
+
+**Judgement call worth recording:** `<Volume>` means "volume number" in
+ComicRack's schema and "start year" to a large minority of taggers. It is
+resolved by magnitude — a plausible year is treated as one — and an explicit
+`<Year>` beats a year-shaped `<Volume>`. Getting it wrong either way is
+survivable, because `matchVolumeNumber` already accepts a volume number
+equal to the volume's year; what the mapping buys is not recording
+"volume 2016" in our own data.
+
+**Left out:** writers, pencillers, colorists, summary and page count. All
+readable, all real, and Shelvarr has nowhere to put them — issue metadata
+comes from ComicVine and `comic_files` stores a path, a size and a type.
+The field list can grow when E7-6 gives it somewhere to go. `cb7`, `7z`,
+`cbt`, PDF and EPUB return nothing, because `archive.ts` cannot open them
+either. A scan now reads each file where it used to only `stat` it;
+remembering the answer against size and mtime is the obvious next move if
+that turns out to matter, and is not built on a guess.
+
+### E7-3 · Letterbox a page in its own colour, not always black
+**Size S.** The reader is `bg-black`, so a white-margined scan gets a hard
+rectangular frame around it that is not in the artwork. A black-backed page
+on a white reader would look just as wrong the other way.
+
+KCC's `fillCheck` (`image.py`) decides this in about thirty-five lines:
+threshold the page to 1-bit, compare the bounding box of the content against
+the bounding box of its inverse, and if the two are within half a percent of
+each other, fall back to sampling five-pixel strips down every edge and
+taking a vote. It wants pixel access, so it belongs at extraction time,
+cached beside the dimensions from E7-1 and served on the same `/pages`
+response.
+
+### E7-4 · Trim the scanner's margins off a page
+**Size M.** Scanned comics carry white borders and, often, a page number
+floating in the gutter. KCC crops both (`cropMargin`, `cropPageNumber`).
+
+The transferable part is not the bounding-box finder, it is the two
+guardrails around it in `maybeCrop`: never take more than **10%** off any one
+edge, and reject the crop outright if what is left falls below a minimum
+fraction of the original area. Those are what stop an auto-cropper
+confidently eating a dark splash page.
+
+The finder itself is numpy — threshold at `240 - power*64`, blur, ignore
+pixels near the edges, merge the surviving boxes — and porting it means
+taking on `sharp`, which this repo does not have today. That dependency is
+the real cost of this card, not the algorithm.
+
+### E7-5 · Cut a page into panels for a phone-sized screen
+**Size L.** The honest answer to reading a 7×10" page on a phone is not
+pinch-zoom, it is showing one panel at a time. KCC does this in
+`comic2panel.py`: edge-detect the page, threshold at >6, then slide a
+`width/80`-tall window down it looking for blank rows to cut on, padding
+`width/20` in from each side so the margins do not count as content.
+
+The comments in that file are a decade of tuning — *"threshold of 8 is too
+high. 5 is too low"* — which is the argument for porting it rather than
+inventing our own. It is still the largest card here: it needs real image
+processing (so E7-4's `sharp` dependency first), it needs a panel-aware
+reader on both web and native, and read progress has to survive a third
+level of subdivision on top of E7-1's.
+
+### E7-6 · Write the metadata back into the file, if I ask for it
+**Size M.** Shelvarr knows more about a volume than its files do. Writing
+`ComicInfo.xml` into each archive would make the library readable in Komga,
+Kavita or Panels without Shelvarr in the middle.
+
+It also rewrites every file in the library, which is why this is its own card
+and why it is **opt-in, default off, with a dry run that lists what it would
+touch**. Two hard limits: a CBR cannot be written to (KCC raises
+`NotImplementedError` for RAR and so should we — converting to CBZ first is a
+different decision the user should make deliberately), and a file that
+already has a ComicInfo.xml someone else wrote should not be silently
+overwritten.
+
+**Depends on:** E7-2's field mapping.
+
+### E7-7 · Send a volume to my Kindle
+**Size L, and possibly never.** This is the only card that wants KCC the
+*program* rather than KCC the algorithms. It publishes a container
+(`ghcr.io/ciromattia/kcc`) whose entrypoint switches on `KCC_MODE` between
+`c2e` and `c2p`, both plain file-in/file-out CLIs, and we already run
+docker-compose and a job queue — so "convert this volume for my Kobo and mail
+it to me" is a queued job that shells out to `c2e -p KO -f EPUB`, sitting on
+top of the file route that already exists.
+
+The cost is a second runtime: Python, numpy, PyMuPDF and Pillow in a sidecar
+beside a Node app, to be kept patched forever. That only pays for itself if
+e-reader export is a feature someone actually wants. It is carded so the
+option is written down, not because it is next.
+
+---
+
 ## Suggested order
 
 **Status as of 2026-09-17: every card on this roadmap has shipped.** E1 was
@@ -742,8 +971,22 @@ are now in, and Anna's Archive and Z-Library read their mirror domains from
 the table and defer on a spent quota rather than burning the queue against
 it.
 
-**What's left: nothing on this roadmap.** Follow-ups noted on the cards
-above, none of them carded yet:
+**What's left, as of 2026-09-30: E7-3 onwards.** The roadmap was empty for
+a fortnight. E7 refills it from a single source — a read of Kindle Comic
+Converter, whose ISC licence turns out to let us take what we like.
+
+E7-1 (split spreads) and E7-2 (read ComicInfo.xml) shipped the same day the
+epic was written: one fixes a visible defect in the reader, the other closes
+a gap that existed whether or not KCC did. E7-3 is small and cosmetic, and
+slots straight into the sidecar E7-1 built. E7-4 and E7-5 both wait on a
+decision to add `sharp`, and should be taken together if at all. E7-6
+rewrites files in the library, so it waits on someone asking for it. E7-7 is
+written down to stop it being re-proposed, not to be built.
+
+Carried out of E7-1: the native reader still shrinks spreads, because
+Stackarr extracts on the device and never asks `/pages` for geometry.
+
+Follow-ups noted on earlier cards, none of them carded yet:
 
 - Extend the offline cache to `BookPageReader`/`ComicReader` page images
   (E3-6) — needs those `<img src>` fetches converted to blob-URL management.

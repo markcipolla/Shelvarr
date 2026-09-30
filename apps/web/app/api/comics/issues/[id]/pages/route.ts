@@ -9,6 +9,12 @@ export const dynamic = 'force-dynamic';
  * Page count + list for an issue, so a reader can fetch pages one at a time
  * instead of downloading and decompressing the whole archive up front.
  *
+ * Each page carries its pixel dimensions (`w`, `h`), which is what lets the
+ * reader spot a double-page spread and split it without having to fetch and
+ * decode the image first. They are read out of each page's header during
+ * extraction and cached alongside it; a page whose size could not be read
+ * reports nulls and is shown whole.
+ *
  * The first request for an issue extracts every page image into a per-issue
  * cache directory (see `@shelvarr/services`' `comics/pages.ts`); later
  * requests for the same issue just read the cached list back. PDFs are not
@@ -35,13 +41,10 @@ export async function GET(
   }
 
   try {
-    const { files } = await ensureIssuePagesExtracted(issueId, file.filepath, {
+    const { files, pages } = await ensureIssuePagesExtracted(issueId, file.filepath, {
       remap: file.needsRemap,
     });
-    return NextResponse.json({
-      count: files.length,
-      pages: files.map((_, index) => ({ n: index + 1 })),
-    });
+    return NextResponse.json({ count: files.length, pages });
   } catch (err) {
     if (err instanceof PdfNotPaginatedError) {
       return NextResponse.json({ error: err.message }, { status: 400 });

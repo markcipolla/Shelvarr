@@ -43,6 +43,48 @@ Kapowarr's copyright notice is retained in [LICENSE](./LICENSE)'s accompanying
 terms; the original project remains available at
 <https://github.com/Casvt/Kapowarr>.
 
+## Kindle Comic Converter
+
+The comic reader's page-geometry handling is derived from
+[Kindle Comic Converter](https://github.com/ciromattia/kcc), which is
+distributed under the ISC licence:
+
+> ISC LICENSE
+>
+> Copyright (c) 2012-2025 Ciro Mattia Gonano <ciromattia@gmail.com>
+> Copyright (c) 2013-2019 Paweł Jastrzębski <pawelj@iosphe.re>
+> Copyright (c) 2021-2023 Darodi (https://github.com/darodi)
+> Copyright (c) 2023-2025 Alex Xu (https://github.com/axu2)
+>
+> Permission to use, copy, modify, and/or distribute this software for
+> any purpose with or without fee is hereby granted, provided that the
+> above copyright notice and this permission notice appear in all
+> copies.
+>
+> THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL
+> WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED
+> WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE
+> AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
+> DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA
+> OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+> TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+> PERFORMANCE OF THIS SOFTWARE.
+
+ISC is permissive and compatible with the GPL, so unlike the Kapowarr
+derivation above this one imposes no licence change on Shelvarr — only the
+obligation to carry the notice, which is what this section is for.
+
+| Shelvarr | Derived from KCC |
+|---|---|
+| `apps/web/lib/comics/spread.ts` | `kindlecomicconverter/image.py` (`ComicPageParser.splitCheck`) — the 1.16 spread ratio and the 1.8 bisect threshold, and the rule that a page past the second is rotated rather than cut |
+
+Nothing else in Shelvarr is taken from KCC. In particular its e-ink work —
+gamma curves, colour quantisation, the Kaleido 3 rainbow-artifact eraser, the
+device profile tables — is deliberately left behind, because Shelvarr renders
+to screens that do not have those problems. See the E7 epic in `ROADMAP.md`
+for what was considered and declined.
+
+
 ## Upstream differences worth knowing
 
 Shelvarr's port deliberately diverges from Kapowarr in a few places:
