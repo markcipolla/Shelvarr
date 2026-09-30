@@ -4,7 +4,13 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Library } from '@/types';
-import { deleteLibrary, scanLibrary, fetchLibraryMetadata } from '@/lib/actions/libraries';
+import {
+  deleteLibrary,
+  scanLibrary,
+  fetchLibraryMetadata,
+  scanComicLibrary,
+  refreshComicLibraryMetadata,
+} from '@/lib/actions/libraries';
 import { useToast } from '@/components/ui/Toast';
 
 interface LibraryWithCount extends Library {
@@ -16,46 +22,43 @@ export function LibraryList({ libraries }: { libraries: LibraryWithCount[] }) {
   const toast = useToast();
   const [loading, setLoading] = useState<Record<number, string>>({});
 
-  const handleScan = async (id: number) => {
-    setLoading((prev) => ({ ...prev, [id]: 'scanning' }));
-    const result = await scanLibrary(id);
+  const clearLoading = (id: number) =>
     setLoading((prev) => {
       const next = { ...prev };
       delete next[id];
       return next;
     });
-    if (result.error) {
-      toast.error(result.error);
-    } else {
-      toast.success(`Scan started (Task #${result.taskId})`);
-      router.refresh();
-    }
-  };
 
-  const handleMetadata = async (id: number, unmatchedOnly: boolean) => {
-    setLoading((prev) => ({ ...prev, [id]: 'metadata' }));
+  /** Queue a job for one library and report back, whatever kind it is. */
+  const run = async (
+    id: number,
+    label: string,
+    job: string,
+    queue: () => Promise<{ error?: string; taskId?: number }>
+  ) => {
+    setLoading((prev) => ({ ...prev, [id]: label }));
     try {
-      const result = await fetchLibraryMetadata(id, unmatchedOnly);
-      setLoading((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
+      const result = await queue();
       if (result.error) {
         toast.error(result.error);
       } else {
-        toast.success(`Metadata fetch started (Task #${result.taskId})`);
+        toast.success(`${job.charAt(0).toUpperCase()}${job.slice(1)} started (Task #${result.taskId})`);
         router.refresh();
       }
     } catch {
-      setLoading((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-      toast.error('Failed to start metadata fetch');
+      toast.error(`Failed to start ${job}`);
+    } finally {
+      clearLoading(id);
     }
   };
+
+  const handleScan = (id: number, isComic: boolean) =>
+    run(id, 'scanning', 'scan', () => (isComic ? scanComicLibrary(id) : scanLibrary(id)));
+
+  const handleMetadata = (id: number, isComic: boolean, narrow: boolean) =>
+    run(id, 'metadata', 'metadata fetch', () =>
+      isComic ? refreshComicLibraryMetadata(id, narrow) : fetchLibraryMetadata(id, narrow)
+    );
 
   const handleDelete = async (id: number, name: string, isComic: boolean) => {
     const removes = isComic ? 'the library' : 'all books from the database';
@@ -66,11 +69,7 @@ export function LibraryList({ libraries }: { libraries: LibraryWithCount[] }) {
     const result = await deleteLibrary(id);
     if (result.error) {
       toast.error(result.error);
-      setLoading((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
+      clearLoading(id);
     } else {
       toast.success(`Library "${name}" deleted`);
     }
@@ -111,39 +110,29 @@ export function LibraryList({ libraries }: { libraries: LibraryWithCount[] }) {
             </span>
 
             <div className="flex gap-2">
-              {/* Comic volumes are scanned and renamed per volume, not per
-                  library, so the book-library actions don't apply to them. */}
-              {isComic ? (
-                <Link
-                  href="/comics"
-                  className="bg-shelvarr-bg hover:bg-shelvarr-border text-shelvarr-text border border-shelvarr-border px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                >
-                  Comics
-                </Link>
-              ) : (
-                <>
-                  <button
-                    onClick={() => handleScan(lib.id)}
-                    disabled={!!loading[lib.id]}
-                    className="bg-shelvarr-bg hover:bg-shelvarr-border text-shelvarr-text border border-shelvarr-border px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-                  >
-                    {loading[lib.id] === 'scanning' ? 'Scanning...' : 'Scan'}
-                  </button>
+              <button
+                onClick={() => handleScan(lib.id, isComic)}
+                disabled={!!loading[lib.id]}
+                className="bg-shelvarr-bg hover:bg-shelvarr-border text-shelvarr-text border border-shelvarr-border px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {loading[lib.id] === 'scanning' ? 'Scanning...' : 'Scan'}
+              </button>
 
-                  <MetadataDropdown
-                    disabled={!!loading[lib.id]}
-                    onFindMissing={() => handleMetadata(lib.id, true)}
-                    onRefreshAll={() => handleMetadata(lib.id, false)}
-                  />
+              {/* Comics have no "unmatched" state — a volume either came from
+                  ComicVine or it isn't here — so the narrow option is by age. */}
+              <MetadataDropdown
+                disabled={!!loading[lib.id]}
+                narrowLabel={isComic ? 'Refresh Stale' : 'Find Missing'}
+                onNarrow={() => handleMetadata(lib.id, isComic, true)}
+                onRefreshAll={() => handleMetadata(lib.id, isComic, false)}
+              />
 
-                  <Link
-                    href={`/libraries/${lib.id}/organize`}
-                    className="bg-shelvarr-bg hover:bg-shelvarr-border text-shelvarr-text border border-shelvarr-border px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Organize
-                  </Link>
-                </>
-              )}
+              <Link
+                href={isComic ? '/comics' : `/libraries/${lib.id}/organize`}
+                className="bg-shelvarr-bg hover:bg-shelvarr-border text-shelvarr-text border border-shelvarr-border px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+              >
+                {isComic ? 'Comics' : 'Organize'}
+              </Link>
 
               <button
                 onClick={() => handleDelete(lib.id, lib.name, isComic)}
@@ -163,11 +152,13 @@ export function LibraryList({ libraries }: { libraries: LibraryWithCount[] }) {
 
 function MetadataDropdown({
   disabled,
-  onFindMissing,
+  narrowLabel,
+  onNarrow,
   onRefreshAll,
 }: {
   disabled: boolean;
-  onFindMissing: () => void;
+  narrowLabel: string;
+  onNarrow: () => void;
   onRefreshAll: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -197,11 +188,11 @@ function MetadataDropdown({
               type="button"
               onClick={() => {
                 setOpen(false);
-                onFindMissing();
+                onNarrow();
               }}
               className="w-full text-left px-3 py-2 text-sm text-shelvarr-text hover:bg-shelvarr-bg rounded-t-lg"
             >
-              Find Missing
+              {narrowLabel}
             </button>
             <button
               type="button"

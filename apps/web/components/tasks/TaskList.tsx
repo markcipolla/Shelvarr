@@ -66,6 +66,7 @@ function TaskRow({ task }: { task: Task }) {
     comic_rename: 'Comic Rename',
     comic_update_all: 'Refresh All Comics',
     comic_search_all: 'Search All Comics',
+    comic_scan_all: 'Comic Library Scan',
     comic_resume: 'Resume Interrupted Downloads',
     comic_library_import: 'Comic Library Import',
     comic_library_apply: 'Comic Library Adoption',

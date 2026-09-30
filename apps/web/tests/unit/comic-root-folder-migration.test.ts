@@ -28,6 +28,8 @@ describe('comic root folder migration', () => {
     raw.exec('ALTER TABLE comic_root_folders DROP COLUMN library_id');
     raw.prepare("INSERT INTO comic_root_folders (id, path) VALUES (7, '/data/Comics')").run();
     raw.prepare("INSERT INTO comics (id, title, root_folder_id) VALUES (1, 'Saga', 7)").run();
+    // Mirrored in before Shelvarr owned comics, so never given a root folder.
+    raw.prepare("INSERT INTO comics (id, title) VALUES (2, 'Paper Girls')").run();
     raw
       .prepare("INSERT INTO libraries (name, path, type) VALUES ('Ebooks', '/data/Books', 'book')")
       .run();
@@ -50,6 +52,15 @@ describe('comic root folder migration', () => {
         { r: number }).r,
       7
     );
+  });
+
+  it('puts volumes that never had a root folder into the only one there is', () => {
+    assert.strictEqual(
+      (db.getDb().prepare('SELECT root_folder_id AS r FROM comics WHERE id = 2').get() as
+        { r: number }).r,
+      7
+    );
+    assert.strictEqual(db.countVolumesInRootFolder(7), 2);
   });
 
   it('gives it a comic library named after the folder, alongside the book ones', () => {

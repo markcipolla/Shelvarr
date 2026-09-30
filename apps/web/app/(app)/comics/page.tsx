@@ -34,6 +34,7 @@ export default async function ComicsPage({ searchParams }: PageProps) {
           'comic_library_import',
           'comic_library_apply',
           'comic_scan',
+          'comic_scan_all',
           'comic_download',
           'comic_refresh',
           'comic_update_all',
