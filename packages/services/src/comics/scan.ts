@@ -8,7 +8,7 @@
 
 import { readdir, stat } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { extname, join } from 'path';
 
 import {
   getComicFilesForVolume,
@@ -22,6 +22,7 @@ import {
 import type { FilenameData, SpecialVersion } from '@shelvarr/types';
 
 import { createLogger } from '../utils/logger';
+import { applyComicInfo, readComicInfo } from './comicinfo';
 import { extractFilenameData, refineSpecialVersion } from './getcomics/parse';
 import { forceRange } from './getcomics/normalise';
 import {
@@ -196,7 +197,19 @@ export async function scanVolumeFiles(volumeId: number): Promise<ScanResult> {
       continue;
     }
 
-    const raw = extractFilenameData(path, { preferFolderYear: true });
+    // What the archive says about itself beats what someone named the file:
+    // `Batman 001 (2016) (Digital) (Zone-Empire).cbz` is a guess, whereas the
+    // ComicInfo.xml inside it was written by whoever tagged it. Per-field,
+    // so a half-filled ComicInfo still falls back to the filename for the
+    // rest — see applyComicInfo. Only the *input* to the matching below
+    // changes; the matching itself is untouched.
+    const fromFilename = extractFilenameData(path, { preferFolderYear: true });
+    const info = await readComicInfo(path, extname(path));
+    if (info) {
+      log.debug('Using ComicInfo.xml', { path, series: info.series, number: info.number });
+    }
+    const raw = applyComicInfo(fromFilename, info);
+
     if (!fileImportingFilter(raw, volume, issues, numberToYear)) {
       result.unmatched.push(path);
       continue;

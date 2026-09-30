@@ -57,6 +57,36 @@ function makeCbzFixture(name: string, pageCount: number): string {
   return path;
 }
 
+/**
+ * A PNG header declaring a given size. Only the signature and the IHDR
+ * chunk are real, which is all the dimension reader looks at — writing a
+ * genuinely encodable image would mean pulling in an encoder to test a
+ * header parser.
+ */
+function makePngBytes(width: number, height: number): Uint8Array {
+  const bytes = new Uint8Array(33);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(8, 13);
+  bytes.set(new TextEncoder().encode('IHDR'), 12);
+  view.setUint32(16, width);
+  view.setUint32(20, height);
+  bytes[24] = 8; // bit depth
+  bytes[25] = 6; // colour type
+  return bytes;
+}
+
+/** Build a CBZ whose pages are real PNG headers at the given sizes. */
+function makeSizedCbzFixture(name: string, sizes: Array<[number, number]>): string {
+  const entries: Record<string, Uint8Array> = {};
+  sizes.forEach(([width, height], index) => {
+    entries[`page${String(index + 1).padStart(3, '0')}.png`] = makePngBytes(width, height);
+  });
+  const path = join(root, name);
+  writeFileSync(path, zipSync(entries));
+  return path;
+}
+
 function cacheRootDir(): string {
   return join(root, 'comic-pages-cache');
 }
@@ -111,6 +141,83 @@ describe('ensureIssuePagesExtracted', () => {
     await pages.ensureIssuePagesExtracted(7, archivePath2, { remap: false });
 
     assert.ok(existsSync(first.dir), 'a recently created cache dir should not be evicted');
+  });
+});
+
+describe('page dimensions', () => {
+  it('records each page\'s size during extraction', async () => {
+    const archivePath = makeSizedCbzFixture('sized-1.cbz', [[1200, 1800], [2400, 1800]]);
+
+    const result = await pages.ensureIssuePagesExtracted(101, archivePath, { remap: false });
+
+    assert.deepEqual(result.pages, [
+      { n: 1, w: 1200, h: 1800 },
+      { n: 2, w: 2400, h: 1800 },
+    ]);
+  });
+
+  it('reports nulls for a page whose header cannot be read, rather than failing', async () => {
+    // The plain-text fixtures are not images at all, which is the same thing
+    // to a reader as a corrupt page: show it whole and do not guess.
+    const archivePath = makeCbzFixture('unreadable-1.cbz', 2);
+
+    const result = await pages.ensureIssuePagesExtracted(102, archivePath, { remap: false });
+
+    assert.equal(result.files.length, 2);
+    assert.deepEqual(result.pages, [
+      { n: 1, w: null, h: null },
+      { n: 2, w: null, h: null },
+    ]);
+  });
+
+  it('serves the sizes back from cache without re-extracting', async () => {
+    const archivePath = makeSizedCbzFixture('sized-2.cbz', [[1000, 1500]]);
+
+    await pages.ensureIssuePagesExtracted(103, archivePath, { remap: false });
+    unzipSyncSpy.mock.resetCalls();
+    const second = await pages.ensureIssuePagesExtracted(103, archivePath, { remap: false });
+
+    assert.equal(unzipSyncSpy.mock.calls.length, 0);
+    assert.deepEqual(second.pages, [{ n: 1, w: 1000, h: 1500 }]);
+  });
+
+  it('does not count the sizes sidecar as a page', async () => {
+    const archivePath = makeSizedCbzFixture('sized-3.cbz', [[800, 1200], [800, 1200]]);
+
+    const result = await pages.ensureIssuePagesExtracted(104, archivePath, { remap: false });
+
+    assert.equal(result.files.length, 2);
+    assert.ok(existsSync(join(result.dir, 'dimensions.json')));
+    assert.ok(!result.files.some((file) => file.includes('dimensions')));
+  });
+
+  it('backfills a cache directory extracted before sizes were recorded', async () => {
+    const archivePath = makeSizedCbzFixture('sized-4.cbz', [[1600, 2400]]);
+    const first = await pages.ensureIssuePagesExtracted(105, archivePath, { remap: false });
+
+    // Simulate a cache directory written by an older build.
+    rmSync(join(first.dir, 'dimensions.json'));
+    unzipSyncSpy.mock.resetCalls();
+
+    const second = await pages.ensureIssuePagesExtracted(105, archivePath, { remap: false });
+
+    assert.equal(unzipSyncSpy.mock.calls.length, 0, 'backfill must not re-extract the archive');
+    assert.deepEqual(second.pages, [{ n: 1, w: 1600, h: 2400 }]);
+    assert.ok(existsSync(join(first.dir, 'dimensions.json')), 'the backfill should be written out');
+  });
+
+  it('ignores a sidecar that no longer describes the pages on disk', async () => {
+    const archivePath = makeSizedCbzFixture('sized-5.cbz', [[900, 1400], [900, 1400]]);
+    const first = await pages.ensureIssuePagesExtracted(106, archivePath, { remap: false });
+
+    writeFileSync(join(first.dir, 'dimensions.json'), JSON.stringify([{ n: 1, w: 1, h: 1 }]));
+
+    const second = await pages.ensureIssuePagesExtracted(106, archivePath, { remap: false });
+
+    assert.deepEqual(second.pages, [
+      { n: 1, w: 900, h: 1400 },
+      { n: 2, w: 900, h: 1400 },
+    ]);
   });
 });
 

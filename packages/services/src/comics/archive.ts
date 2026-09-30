@@ -3,6 +3,7 @@
  * Supports PDF, CBZ/ZIP (streamed), and CBR/RAR (extracted + re-zipped to CBZ).
  */
 import { createReadStream, readFileSync, statSync } from 'fs';
+import { readFile } from 'fs/promises';
 import { extname } from 'path';
 import { Readable } from 'stream';
 import { getServiceConfig } from '../config';
@@ -97,6 +98,84 @@ export async function extractComicImages(filepath: string, ext: string): Promise
   }
 
   throw new Error(`Unsupported comic format for page extraction: ${ext || 'unknown'}`);
+}
+
+/**
+ * Pull a single entry out of a CBZ/ZIP or CBR/RAR without decompressing the
+ * rest of it.
+ *
+ * {@link extractComicImages} exists to get *everything* out of an archive;
+ * this is the opposite errand — "is ComicInfo.xml in here, and what does it
+ * say?" — and the difference in cost matters, because the scanner asks it of
+ * every file in a volume folder. Both back-ends can filter: fflate only
+ * inflates entries its `filter` accepts, and node-unrar-js takes a
+ * per-header predicate on `extract()`. A solid RAR still has to walk the
+ * members before ours to reach it — that is what "solid" means — but nothing
+ * is decompressed out for them.
+ *
+ * **Deliberately asynchronous, unlike everything else in this file.** The
+ * sibling functions here are synchronous and the module doc on
+ * `comics/pages.ts` is largely an apology for it: one person opening a large
+ * CBR stalls the event loop for everyone. That is survivable there because
+ * it happens once per issue and is cached. It would not be survivable here,
+ * because a scan walks *every* file in a volume folder — a hundred-issue
+ * volume would mean a hundred blocking reads and inflations back to back.
+ * So this one reads with `fs/promises` and hands the inflation to fflate's
+ * callback API, which does the work off-thread.
+ *
+ * What is not solved is peak memory: the archive is still read whole before
+ * one entry is picked out of it. Avoiding that means seeking the zip central
+ * directory from the file's tail, which is a real piece of work for a cost
+ * that is already bounded to one archive at a time — the same peak
+ * `openComicArchive` has always had.
+ *
+ * Returns `null` when no entry matches, and throws whatever the reader
+ * throws for an unreadable file: what a broken archive means is the caller's
+ * decision, not this function's.
+ */
+export async function extractComicEntry(
+  filepath: string,
+  ext: string,
+  matches: (name: string) => boolean
+): Promise<Uint8Array | null> {
+  if (ext === 'cbz' || ext === 'zip') {
+    const { unzip } = await import('fflate');
+    const data = await readFile(filepath);
+    const entries = await new Promise<Record<string, Uint8Array>>((resolve, reject) => {
+      unzip(data, { filter: (file) => matches(file.name) }, (err, unzipped) => {
+        if (err) reject(err);
+        else resolve(unzipped);
+      });
+    });
+    return Object.values(entries)[0] ?? null;
+  }
+
+  if (ext === 'cbr' || ext === 'rar') {
+    const rarData = await readFile(filepath);
+    // Buffers under 4 KiB are views into Node's shared pool, so `.buffer`
+    // alone would hand unrar the whole pool. Slice to this file's own bytes.
+    const bytes = rarData.buffer.slice(
+      rarData.byteOffset,
+      rarData.byteOffset + rarData.byteLength
+    ) as ArrayBuffer;
+
+    // Same caution as extractComicImages: let node-unrar-js self-load its
+    // bundled unrar.wasm, never resolve the path with require.resolve.
+    const { createExtractorFromData } = await import('node-unrar-js');
+    const extractor = await createExtractorFromData({ data: bytes });
+
+    const { files } = extractor.extract({
+      files: (header) => !header.flags.directory && matches(header.name),
+    });
+    // `files` is a generator and extraction happens as it is walked, so the
+    // loop is what actually does the work.
+    for (const file of files) {
+      if (file.extraction) return file.extraction;
+    }
+    return null;
+  }
+
+  return null;
 }
 
 /**
