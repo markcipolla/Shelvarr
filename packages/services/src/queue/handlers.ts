@@ -26,6 +26,8 @@ import {
   claimStalledComicDownloads,
   getComicDownload,
   getComicVolumesNeedingRefresh,
+  getComicVolumeIdsInRootFolder,
+  getComicRootFolderForLibrary,
   getComicVolumesWithMissingIssues,
   startComicDownloadAttempt,
   addBookDownload,
@@ -1931,6 +1933,45 @@ const comicRenameHandler: TaskHandler = async (taskId, onProgress) => {
   return { ...result };
 };
 
+/** The root folder a library-scoped comic job works in, or undefined for all. */
+function comicRootFolderId(libraryId: number | undefined): number | undefined {
+  if (libraryId === undefined) return undefined;
+  const root = getComicRootFolderForLibrary(libraryId);
+  if (!root) throw new Error(`Library ${libraryId} is not a comic library`);
+  return root.id;
+}
+
+/** Rescan every volume's folder in one comic library. */
+const comicScanAllHandler: TaskHandler = async (taskId, onProgress, signal) => {
+  const data = comicTaskData<{ libraryId?: number }>(taskId, 'comic scan configuration');
+  if (!data.libraryId) throw new Error('Comic scan task has no libraryId');
+
+  const rootFolderId = comicRootFolderId(data.libraryId) as number;
+  const volumeIds = getComicVolumeIdsInRootFolder(rootFolderId);
+  onProgress(0, volumeIds.length);
+
+  let matched = 0;
+  let removed = 0;
+  const failed: Array<{ volumeId: number; error: string }> = [];
+
+  for (const [index, volumeId] of volumeIds.entries()) {
+    if (signal.aborted) break;
+    try {
+      const result = await scanVolumeFiles(volumeId);
+      matched += result.matched;
+      removed += result.removed;
+    } catch (error) {
+      failed.push({
+        volumeId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    onProgress(index + 1, volumeIds.length);
+  }
+
+  return { scanned: volumeIds.length, matched, removed, failed };
+};
+
 /**
  * Refresh every volume whose ComicVine data has gone stale.
  *
@@ -1938,14 +1979,18 @@ const comicRenameHandler: TaskHandler = async (taskId, onProgress) => {
  * runs rather than exhausting the hourly limit in one go.
  */
 const comicUpdateAllHandler: TaskHandler = async (taskId, onProgress, signal) => {
-  const data = comicTaskData<{ maxAgeHours?: number; limit?: number }>(
+  const data = comicTaskData<{ maxAgeHours?: number; limit?: number; libraryId?: number }>(
     taskId,
     'comic update configuration'
   );
   const maxAgeHours = data.maxAgeHours ?? 24;
   const limit = data.limit ?? 25;
 
-  const volumeIds = getComicVolumesNeedingRefresh(maxAgeHours, limit);
+  const volumeIds = getComicVolumesNeedingRefresh(
+    maxAgeHours,
+    limit,
+    comicRootFolderId(data.libraryId)
+  );
   onProgress(0, volumeIds.length);
 
   const refreshed: number[] = [];
@@ -2348,6 +2393,7 @@ export function registerAllHandlers(): void {
   registerTaskHandler('comic_scan', comicScanHandler);
   registerTaskHandler('comic_rename', comicRenameHandler);
   registerTaskHandler('comic_update_all', comicUpdateAllHandler);
+  registerTaskHandler('comic_scan_all', comicScanAllHandler);
   registerTaskHandler('comic_search_all', comicSearchAllHandler);
   registerTaskHandler('comic_resume', comicResumeHandler);
   registerTaskHandler('comic_library_import', comicLibraryImportHandler);

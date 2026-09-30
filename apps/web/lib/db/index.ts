@@ -147,6 +147,7 @@ export {
   setComicVolumeCover,
   getComicVolumeCover,
   getComicVolumesNeedingRefresh,
+  getComicVolumeIdsInRootFolder,
   getComicVolumesWithMissingIssues,
   getComicFilesForVolume,
   getComicFilesForIssue,

@@ -392,6 +392,22 @@ function runMigrations(database: Database.Database): void {
     'CREATE INDEX IF NOT EXISTS idx_comic_root_folders_library ON comic_root_folders(library_id)'
   );
 
+  // Volumes mirrored in before Shelvarr owned comics were never given a root
+  // folder, so their library counted 0 of them and every library-scoped job
+  // skipped them. With one comic root there is only one place they can belong.
+  // ponytail: single-root backfill; a second root needs a human to split them.
+  const [onlyRoot, ...otherRoots] = database
+    .prepare('SELECT id FROM comic_root_folders')
+    .all() as Array<{ id: number }>;
+  if (onlyRoot && otherRoots.length === 0) {
+    const orphaned = database
+      .prepare('UPDATE comics SET root_folder_id = ? WHERE root_folder_id IS NULL')
+      .run(onlyRoot.id);
+    if (orphaned.changes > 0) {
+      console.log(`Running migration: put ${orphaned.changes} comic volume(s) in their root folder`);
+    }
+  }
+
   // Download retries: alternate links to fall back to, and the attempt count
   // that bounds how often a rate-limited download is re-tried.
   const comicDownloadsInfo = database
@@ -3890,14 +3906,29 @@ export function retargetComicVolume(id: number, comicvineId: number): void {
 }
 
 /** Volumes whose ComicVine data is older than `maxAgeHours`, staleest first. */
-export function getComicVolumesNeedingRefresh(maxAgeHours: number, limit = 25): number[] {
+export function getComicVolumesNeedingRefresh(
+  maxAgeHours: number,
+  limit = 25,
+  rootFolderId?: number
+): number[] {
   const cutoff = Math.floor(Date.now() / 1000) - maxAgeHours * 3600;
   return query<{ id: number }>(
     `SELECT id FROM comics
-      WHERE managed = 1 AND deleted_at IS NULL AND last_cv_fetch < ?
+      WHERE managed = 1 AND deleted_at IS NULL AND last_cv_fetch <= ?
+        ${rootFolderId === undefined ? '' : 'AND root_folder_id = ?'}
       ORDER BY last_cv_fetch ASC
       LIMIT ?`,
-    [cutoff, limit]
+    rootFolderId === undefined ? [cutoff, limit] : [cutoff, rootFolderId, limit]
+  ).map((row) => row.id);
+}
+
+/** Every volume filed under a root folder, for the library-wide rescan. */
+export function getComicVolumeIdsInRootFolder(rootFolderId: number): number[] {
+  return query<{ id: number }>(
+    `SELECT id FROM comics
+      WHERE root_folder_id = ? AND deleted_at IS NULL
+      ORDER BY title ASC`,
+    [rootFolderId]
   ).map((row) => row.id);
 }
 

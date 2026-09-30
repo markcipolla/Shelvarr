@@ -159,3 +159,42 @@ export async function organizeLibrary(id: number) {
   revalidatePath('/books');
   return { success: true, taskId: task.id };
 }
+
+/** Rescan every volume folder in a comic library. */
+export async function scanComicLibrary(id: number) {
+  const library = await getLibraryById(id);
+  if (!library || library.type !== 'comic') {
+    return { error: 'Comic library not found' };
+  }
+
+  const task = enqueueTask('comic_scan_all', { libraryId: id, libraryName: library.name });
+
+  revalidatePath('/libraries');
+  revalidatePath('/comics');
+  return { success: true, taskId: task.id };
+}
+
+/**
+ * Re-fetch ComicVine metadata for a comic library. `staleOnly` keeps to the
+ * volumes the scheduled sweep would pick up; the whole library otherwise,
+ * which is a large slice of the hourly ComicVine budget.
+ */
+export async function refreshComicLibraryMetadata(id: number, staleOnly = true) {
+  const library = await getLibraryById(id);
+  if (!library || library.type !== 'comic') {
+    return { error: 'Comic library not found' };
+  }
+
+  const task = enqueueTask('comic_update_all', {
+    libraryId: id,
+    maxAgeHours: staleOnly ? 24 : 0,
+    // No cap when the user asked for the lot; the sweep's 25 is a budget
+    // guard for a job nobody watched start.
+    ...(staleOnly ? {} : { limit: 1_000_000 }),
+  });
+
+  revalidatePath('/libraries');
+  revalidatePath('/comics');
+  revalidatePath('/tasks');
+  return { success: true, taskId: task.id };
+}

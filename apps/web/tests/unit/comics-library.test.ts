@@ -394,6 +394,23 @@ describe('Comic library', () => {
       const { rootFolderId } = seedVolume('Immortal Hulk');
       assert.strictEqual(db.countVolumesInRootFolder(rootFolderId), 1);
     });
+
+    it('lists its volumes, and only its own, for a library-wide job', () => {
+      const { volumeId, rootFolderId } = seedVolume('Immortal Hulk');
+      const elsewhere = db.addComicRootFolder(join(root, 'other'));
+      db.upsertManagedComicVolume({
+        metadata: metadata({ comicvineId: 999, title: 'Saga' }),
+        rootFolderId: elsewhere.id,
+        folder: join(root, 'other', 'Saga'),
+      });
+
+      assert.deepStrictEqual(db.getComicVolumeIdsInRootFolder(rootFolderId), [volumeId]);
+      assert.deepStrictEqual(
+        db.getComicVolumesNeedingRefresh(0, 25, rootFolderId),
+        [volumeId]
+      );
+      assert.strictEqual(db.getComicVolumesNeedingRefresh(0, 25).length, 2);
+    });
   });
 
   describe('replaceComicIssuesFromMetadata', () => {
