@@ -1941,6 +1941,38 @@ function comicRootFolderId(libraryId: number | undefined): number | undefined {
   return root.id;
 }
 
+/** Rename every volume in one comic library to match the naming templates. */
+const comicRenameAllHandler: TaskHandler = async (taskId, onProgress, signal) => {
+  const data = comicTaskData<{ libraryId?: number }>(taskId, 'comic rename configuration');
+  if (!data.libraryId) throw new Error('Comic rename task has no libraryId');
+
+  const rootFolderId = comicRootFolderId(data.libraryId) as number;
+  const volumeIds = getComicVolumeIdsInRootFolder(rootFolderId);
+  onProgress(0, volumeIds.length);
+
+  let renamed = 0;
+  let foldersMoved = 0;
+  const errors: Array<{ from: string; error: string }> = [];
+
+  for (const [index, volumeId] of volumeIds.entries()) {
+    if (signal.aborted) break;
+    try {
+      const result = await applyVolumeRename(volumeId);
+      renamed += result.renamed;
+      if (result.folderMoved) foldersMoved += 1;
+      errors.push(...result.errors);
+    } catch (error) {
+      errors.push({
+        from: `volume ${volumeId}`,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    onProgress(index + 1, volumeIds.length);
+  }
+
+  return { volumes: volumeIds.length, renamed, foldersMoved, errors };
+};
+
 /** Rescan every volume's folder in one comic library. */
 const comicScanAllHandler: TaskHandler = async (taskId, onProgress, signal) => {
   const data = comicTaskData<{ libraryId?: number }>(taskId, 'comic scan configuration');
@@ -2392,6 +2424,7 @@ export function registerAllHandlers(): void {
   registerTaskHandler('comic_refresh', comicRefreshHandler);
   registerTaskHandler('comic_scan', comicScanHandler);
   registerTaskHandler('comic_rename', comicRenameHandler);
+  registerTaskHandler('comic_rename_all', comicRenameAllHandler);
   registerTaskHandler('comic_update_all', comicUpdateAllHandler);
   registerTaskHandler('comic_scan_all', comicScanAllHandler);
   registerTaskHandler('comic_search_all', comicSearchAllHandler);

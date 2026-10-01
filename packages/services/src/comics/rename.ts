@@ -13,7 +13,9 @@ import { dirname, extname, join, relative } from 'path';
 import {
   getComicFilesForVolume,
   getComicRootFolder,
+  getComicRootFolderForLibrary,
   getComicVolume,
+  getComicVolumeIdsInRootFolder,
   getDb,
   setComicVolumeFolder,
   updateComicFilePath,
@@ -151,6 +153,23 @@ export function previewVolumeRename(volumeId: number): RenamePreview {
     (proposal) => proposal.from !== proposal.to
   );
   return preview;
+}
+
+/**
+ * Preview a rename across a whole comic library — the comic answer to the
+ * book organizer's library-wide preview.
+ *
+ * Volumes with nothing to do are left out, so an empty array means the
+ * library already matches the naming templates. A library with no root folder
+ * owns no volumes, so there is nothing to propose either.
+ */
+export function previewLibraryRename(libraryId: number): RenamePreview[] {
+  const rootFolder = getComicRootFolderForLibrary(libraryId);
+  if (!rootFolder) return [];
+
+  return getComicVolumeIdsInRootFolder(rootFolder.id)
+    .map((volumeId) => previewVolumeRename(volumeId))
+    .filter((preview) => preview.files.length > 0 || preview.folderTo !== null);
 }
 
 export interface RenameResult {

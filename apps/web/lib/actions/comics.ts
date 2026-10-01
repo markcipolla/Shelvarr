@@ -19,6 +19,7 @@ import type {
   ComicVolumeSummary,
   ComicVolumeDetail,
 } from '@shelvarr/types';
+import type { ReorgPreviewItem } from '@/lib/services/organizer';
 import { getReadingUserId } from '@/lib/auth';
 import { withComicCardState } from '@/lib/comics/cardState';
 
@@ -298,6 +299,47 @@ export async function previewComicRename(volumeId: number) {
       error: error instanceof Error ? error.message : 'Failed to preview rename',
     };
   }
+}
+
+/**
+ * What organizing a whole comic library would do, in the shape the book
+ * organize preview table already renders.
+ *
+ * A volume's folder move gets its own row (keyed off the negative volume id,
+ * which cannot collide with a file id) so a volume whose folder moves but
+ * whose files are already named correctly still shows up.
+ */
+export async function previewComicLibraryRename(
+  libraryId: number
+): Promise<{ templates: string[]; preview: ReorgPreviewItem[] }> {
+  const { comicRename, comicNaming } = await import('@shelvarr/services');
+
+  const preview = comicRename.previewLibraryRename(libraryId).flatMap((volume) => [
+    ...(volume.folderTo
+      ? [
+          {
+            bookId: -volume.volumeId,
+            currentPath: volume.folderFrom ?? '',
+            newPath: volume.folderTo,
+            willMove: true,
+          },
+        ]
+      : []),
+    ...volume.files.map((file) => ({
+      bookId: file.fileId,
+      currentPath: file.from,
+      newPath: file.to,
+      willMove: true,
+    })),
+  ]);
+
+  return {
+    templates: [
+      comicNaming.DEFAULT_VOLUME_FOLDER_TEMPLATE,
+      comicNaming.DEFAULT_ISSUE_TEMPLATE,
+    ],
+    preview,
+  };
 }
 
 /** Remove a volume from the library, optionally deleting its files. */

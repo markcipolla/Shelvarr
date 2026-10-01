@@ -8,9 +8,15 @@ import type { ReorgPreviewItem } from '@/lib/services/organizer';
 interface OrganizePreviewProps {
   libraryId: number;
   preview: ReorgPreviewItem[];
+  /** Shown instead of the table when there is nothing to move. */
+  emptyMessage?: string;
 }
 
-export function OrganizePreview({ libraryId, preview }: OrganizePreviewProps) {
+export function OrganizePreview({
+  libraryId,
+  preview,
+  emptyMessage = 'No books in this library.',
+}: OrganizePreviewProps) {
   const router = useRouter();
   const [applying, setApplying] = useState(false);
 
@@ -40,7 +46,7 @@ export function OrganizePreview({ libraryId, preview }: OrganizePreviewProps) {
   if (preview.length === 0) {
     return (
       <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-8 text-center">
-        <p className="text-shelvarr-text-muted">No books in this library.</p>
+        <p className="text-shelvarr-text-muted">{emptyMessage}</p>
       </div>
     );
   }

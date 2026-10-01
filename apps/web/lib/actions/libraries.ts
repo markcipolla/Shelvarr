@@ -152,11 +152,17 @@ export async function organizeLibrary(id: number) {
     return { error: 'Library not found' };
   }
 
-  // Use enqueueTask to both create AND run the task
-  const task = enqueueTask('organize', { libraryId: id, libraryName: library.name });
+  // Use enqueueTask to both create AND run the task. Comics organize by
+  // renaming every volume to the naming templates; books by the organize
+  // template. Same button, same preview page, different job.
+  const task = enqueueTask(
+    library.type === 'comic' ? 'comic_rename_all' : 'organize',
+    { libraryId: id, libraryName: library.name }
+  );
 
   revalidatePath('/libraries');
   revalidatePath('/books');
+  revalidatePath('/comics');
   return { success: true, taskId: task.id };
 }
 

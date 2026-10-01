@@ -617,6 +617,30 @@ describe('Comic library', () => {
       assert.strictEqual(new Set(targets).size, targets.length, 'targets must be unique');
     });
 
+    it('previews a whole library, and only its own volumes', async () => {
+      const { volumeId, folder, rootFolderId } = seedVolume('Immortal Hulk');
+      writeFileSync(join(folder, 'Immortal Hulk (2018) Issue 001.cbz'), 'x');
+      await scan.scanVolumeFiles(volumeId);
+
+      // A volume in a different comic library must not be dragged in.
+      const elsewhere = db.addComicRootFolder(join(root, 'other'));
+      const otherFolder = join(root, 'other', 'Saga');
+      mkdirSync(otherFolder, { recursive: true });
+      db.upsertManagedComicVolume({
+        metadata: metadata({ comicvineId: 999, title: 'Saga' }),
+        rootFolderId: elsewhere.id,
+        folder: otherFolder,
+      });
+
+      const libraryId = db.getComicRootFolder(rootFolderId)!.libraryId;
+      const previews = rename.previewLibraryRename(libraryId);
+      assert.deepStrictEqual(
+        previews.map((preview) => preview.volumeId),
+        [volumeId]
+      );
+      assert.strictEqual(previews[0]!.files.length, 1);
+    });
+
     it('leaves a hand-picked folder where it is', () => {
       const { volumeId, folder } = seedVolume('Custom Place');
       db.setComicVolumeFolder(volumeId, folder, true);
