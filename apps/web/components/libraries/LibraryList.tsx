@@ -128,10 +128,10 @@ export function LibraryList({ libraries }: { libraries: LibraryWithCount[] }) {
               />
 
               <Link
-                href={isComic ? '/comics' : `/libraries/${lib.id}/organize`}
+                href={`/libraries/${lib.id}/organize`}
                 className="bg-shelvarr-bg hover:bg-shelvarr-border text-shelvarr-text border border-shelvarr-border px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
               >
-                {isComic ? 'Comics' : 'Organize'}
+                Organize
               </Link>
 
               <button

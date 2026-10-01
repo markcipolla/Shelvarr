@@ -5,6 +5,7 @@ import {
   getOrganizeSettings,
   previewOrganizeForLibrary,
 } from '@/lib/actions/settings';
+import { previewComicLibraryRename } from '@/lib/actions/comics';
 import { OrganizePreview } from '@/components/libraries/OrganizePreview';
 
 export const dynamic = 'force-dynamic';
@@ -21,10 +22,18 @@ export default async function OrganizePreviewPage({
   const library = await getLibraryById(libraryId);
   if (!library) notFound();
 
-  const [{ template }, preview] = await Promise.all([
-    getOrganizeSettings(),
-    previewOrganizeForLibrary(libraryId),
-  ]);
+  // Comics are organized by the naming templates, which aren't editable yet,
+  // so they get the same preview table with no "edit template" link.
+  const isComic = library.type === 'comic';
+  const { templates, preview } = isComic
+    ? await previewComicLibraryRename(libraryId)
+    : await (async () => {
+        const [{ template }, items] = await Promise.all([
+          getOrganizeSettings(),
+          previewOrganizeForLibrary(libraryId),
+        ]);
+        return { templates: [template], preview: items };
+      })();
 
   return (
     <div className="space-y-6">
@@ -35,19 +44,33 @@ export default async function OrganizePreviewPage({
             Preview proposed moves before committing.
           </p>
         </div>
-        <Link
-          href="/settings/organize"
-          className="text-sm text-blue-400 hover:text-blue-300"
-        >
-          Edit template
-        </Link>
+        {!isComic && (
+          <Link
+            href="/settings/organize"
+            className="text-sm text-blue-400 hover:text-blue-300"
+          >
+            Edit template
+          </Link>
+        )}
       </div>
 
-      <div className="text-xs text-shelvarr-text-muted">
-        Template: <code className="font-mono">{template}</code>
+      <div className="text-xs text-shelvarr-text-muted space-y-1">
+        {templates.map((template) => (
+          <div key={template}>
+            Template: <code className="font-mono">{template}</code>
+          </div>
+        ))}
       </div>
 
-      <OrganizePreview libraryId={libraryId} preview={preview} />
+      <OrganizePreview
+        libraryId={libraryId}
+        preview={preview}
+        emptyMessage={
+          isComic
+            ? 'Every file already matches the naming templates.'
+            : 'No books in this library.'
+        }
+      />
     </div>
   );
 }
