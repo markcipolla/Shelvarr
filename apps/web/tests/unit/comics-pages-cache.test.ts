@@ -95,7 +95,7 @@ describe('ensureIssuePagesExtracted', () => {
   it('extracts every image from a multi-page CBZ and reports the page count', async () => {
     const archivePath = makeCbzFixture('issue-1.cbz', 3);
 
-    const result = await pages.ensureIssuePagesExtracted(1, archivePath, { remap: false });
+    const result = await pages.ensureIssuePagesExtracted(1, archivePath);
 
     assert.equal(result.files.length, 3);
     assert.ok(existsSync(result.dir));
@@ -104,8 +104,8 @@ describe('ensureIssuePagesExtracted', () => {
   it('does not re-extract on a second request for the same issue', async () => {
     const archivePath = makeCbzFixture('issue-2.cbz', 2);
 
-    await pages.ensureIssuePagesExtracted(2, archivePath, { remap: false });
-    await pages.ensureIssuePagesExtracted(2, archivePath, { remap: false });
+    await pages.ensureIssuePagesExtracted(2, archivePath);
+    await pages.ensureIssuePagesExtracted(2, archivePath);
 
     assert.equal(unzipSyncSpy.mock.calls.length, 1);
   });
@@ -115,7 +115,7 @@ describe('ensureIssuePagesExtracted', () => {
     writeFileSync(pdfPath, 'not really a pdf, just bytes');
 
     await assert.rejects(
-      () => pages.ensureIssuePagesExtracted(3, pdfPath, { remap: false }),
+      () => pages.ensureIssuePagesExtracted(3, pdfPath),
       (error: unknown) => error instanceof pages.PdfNotPaginatedError
     );
   });
@@ -127,7 +127,7 @@ describe('ensureIssuePagesExtracted', () => {
     utimesSync(staleDir, eightDaysAgo, eightDaysAgo);
 
     const archivePath = makeCbzFixture('issue-5.cbz', 1);
-    const result = await pages.ensureIssuePagesExtracted(5, archivePath, { remap: false });
+    const result = await pages.ensureIssuePagesExtracted(5, archivePath);
 
     assert.ok(!existsSync(staleDir), 'stale cache dir should have been evicted');
     assert.ok(existsSync(result.dir), 'the freshly created cache dir should survive its own eviction pass');
@@ -135,10 +135,10 @@ describe('ensureIssuePagesExtracted', () => {
 
   it('keeps a recent cache directory around during eviction', async () => {
     const archivePath = makeCbzFixture('issue-6.cbz', 1);
-    const first = await pages.ensureIssuePagesExtracted(6, archivePath, { remap: false });
+    const first = await pages.ensureIssuePagesExtracted(6, archivePath);
 
     const archivePath2 = makeCbzFixture('issue-7.cbz', 1);
-    await pages.ensureIssuePagesExtracted(7, archivePath2, { remap: false });
+    await pages.ensureIssuePagesExtracted(7, archivePath2);
 
     assert.ok(existsSync(first.dir), 'a recently created cache dir should not be evicted');
   });
@@ -148,7 +148,7 @@ describe('page dimensions', () => {
   it('records each page\'s size during extraction', async () => {
     const archivePath = makeSizedCbzFixture('sized-1.cbz', [[1200, 1800], [2400, 1800]]);
 
-    const result = await pages.ensureIssuePagesExtracted(101, archivePath, { remap: false });
+    const result = await pages.ensureIssuePagesExtracted(101, archivePath);
 
     assert.deepEqual(result.pages, [
       { n: 1, w: 1200, h: 1800 },
@@ -161,7 +161,7 @@ describe('page dimensions', () => {
     // to a reader as a corrupt page: show it whole and do not guess.
     const archivePath = makeCbzFixture('unreadable-1.cbz', 2);
 
-    const result = await pages.ensureIssuePagesExtracted(102, archivePath, { remap: false });
+    const result = await pages.ensureIssuePagesExtracted(102, archivePath);
 
     assert.equal(result.files.length, 2);
     assert.deepEqual(result.pages, [
@@ -173,9 +173,9 @@ describe('page dimensions', () => {
   it('serves the sizes back from cache without re-extracting', async () => {
     const archivePath = makeSizedCbzFixture('sized-2.cbz', [[1000, 1500]]);
 
-    await pages.ensureIssuePagesExtracted(103, archivePath, { remap: false });
+    await pages.ensureIssuePagesExtracted(103, archivePath);
     unzipSyncSpy.mock.resetCalls();
-    const second = await pages.ensureIssuePagesExtracted(103, archivePath, { remap: false });
+    const second = await pages.ensureIssuePagesExtracted(103, archivePath);
 
     assert.equal(unzipSyncSpy.mock.calls.length, 0);
     assert.deepEqual(second.pages, [{ n: 1, w: 1000, h: 1500 }]);
@@ -184,7 +184,7 @@ describe('page dimensions', () => {
   it('does not count the sizes sidecar as a page', async () => {
     const archivePath = makeSizedCbzFixture('sized-3.cbz', [[800, 1200], [800, 1200]]);
 
-    const result = await pages.ensureIssuePagesExtracted(104, archivePath, { remap: false });
+    const result = await pages.ensureIssuePagesExtracted(104, archivePath);
 
     assert.equal(result.files.length, 2);
     assert.ok(existsSync(join(result.dir, 'dimensions.json')));
@@ -193,13 +193,13 @@ describe('page dimensions', () => {
 
   it('backfills a cache directory extracted before sizes were recorded', async () => {
     const archivePath = makeSizedCbzFixture('sized-4.cbz', [[1600, 2400]]);
-    const first = await pages.ensureIssuePagesExtracted(105, archivePath, { remap: false });
+    const first = await pages.ensureIssuePagesExtracted(105, archivePath);
 
     // Simulate a cache directory written by an older build.
     rmSync(join(first.dir, 'dimensions.json'));
     unzipSyncSpy.mock.resetCalls();
 
-    const second = await pages.ensureIssuePagesExtracted(105, archivePath, { remap: false });
+    const second = await pages.ensureIssuePagesExtracted(105, archivePath);
 
     assert.equal(unzipSyncSpy.mock.calls.length, 0, 'backfill must not re-extract the archive');
     assert.deepEqual(second.pages, [{ n: 1, w: 1600, h: 2400 }]);
@@ -208,11 +208,11 @@ describe('page dimensions', () => {
 
   it('ignores a sidecar that no longer describes the pages on disk', async () => {
     const archivePath = makeSizedCbzFixture('sized-5.cbz', [[900, 1400], [900, 1400]]);
-    const first = await pages.ensureIssuePagesExtracted(106, archivePath, { remap: false });
+    const first = await pages.ensureIssuePagesExtracted(106, archivePath);
 
     writeFileSync(join(first.dir, 'dimensions.json'), JSON.stringify([{ n: 1, w: 1, h: 1 }]));
 
-    const second = await pages.ensureIssuePagesExtracted(106, archivePath, { remap: false });
+    const second = await pages.ensureIssuePagesExtracted(106, archivePath);
 
     assert.deepEqual(second.pages, [
       { n: 1, w: 900, h: 1400 },
@@ -225,7 +225,7 @@ describe('getIssuePagePath', () => {
   it("serves a specific page's bytes, 1-indexed", async () => {
     const archivePath = makeCbzFixture('issue-8.cbz', 3);
 
-    const pagePath = await pages.getIssuePagePath(8, archivePath, 2, { remap: false });
+    const pagePath = await pages.getIssuePagePath(8, archivePath, 2);
 
     assert.ok(pagePath);
     assert.equal(readFileSync(pagePath!, 'utf-8'), 'page-2');
@@ -234,16 +234,16 @@ describe('getIssuePagePath', () => {
   it('returns null for an out-of-range page number', async () => {
     const archivePath = makeCbzFixture('issue-9.cbz', 2);
 
-    assert.equal(await pages.getIssuePagePath(9, archivePath, 99, { remap: false }), null);
-    assert.equal(await pages.getIssuePagePath(9, archivePath, 0, { remap: false }), null);
+    assert.equal(await pages.getIssuePagePath(9, archivePath, 99), null);
+    assert.equal(await pages.getIssuePagePath(9, archivePath, 0), null);
   });
 
   it('serves from the cache on a second call without re-extracting', async () => {
     const archivePath = makeCbzFixture('issue-10.cbz', 2);
 
-    await pages.getIssuePagePath(10, archivePath, 1, { remap: false });
+    await pages.getIssuePagePath(10, archivePath, 1);
     unzipSyncSpy.mock.resetCalls();
-    const pagePath = await pages.getIssuePagePath(10, archivePath, 2, { remap: false });
+    const pagePath = await pages.getIssuePagePath(10, archivePath, 2);
 
     assert.ok(pagePath);
     assert.equal(readFileSync(pagePath!, 'utf-8'), 'page-2');

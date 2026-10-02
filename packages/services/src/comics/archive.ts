@@ -6,33 +6,11 @@ import { createReadStream, readFileSync, statSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { extname } from 'path';
 import { Readable } from 'stream';
-import { getServiceConfig } from '../config';
 
 export interface ComicArchiveResult {
   contentType: string;
   body: ReadableStream | Buffer;
   filename: string;
-}
-
-/**
- * Remap a filepath recorded by a previous manager, using the migration path
- * map ("from:to").
- *
- * E.g. with `"/comics-1:/libraries/comics"`, a path starting `/comics-1` is
- * rewritten to `/libraries/comics`. Volumes Shelvarr manages record their own
- * paths and need no remapping.
- */
-export function remapComicPath(filepath: string): string {
-  const pathMap = getServiceConfig().comicPaths.pathMap;
-  if (!pathMap) return filepath;
-  const sep = pathMap.indexOf(':');
-  if (sep < 0) return filepath;
-  const from = pathMap.slice(0, sep);
-  const to = pathMap.slice(sep + 1);
-  if (filepath.startsWith(from)) {
-    return to + filepath.slice(from.length);
-  }
-  return filepath;
 }
 
 /** Image extensions recognized as comic pages, across both archive formats. */
@@ -184,30 +162,16 @@ export async function extractComicEntry(
  * - CBZ/ZIP → stream raw bytes, Content-Type: application/x-cbz
  * - CBR/RAR → extract images, re-zip to CBZ, Content-Type: application/x-cbz
  */
-export interface OpenComicArchiveOptions {
-  /**
-   * Apply the migration prefix remap. Only paths recorded by a previous
-   * manager need it; Shelvarr's own library paths are already local, so
-   * managed volumes pass `false`.
-   */
-  remap?: boolean;
-}
-
-export async function openComicArchive(
-  filepath: string,
-  options: OpenComicArchiveOptions = {}
-): Promise<ComicArchiveResult> {
-  const real = options.remap === false ? filepath : remapComicPath(filepath);
-
+export async function openComicArchive(filepath: string): Promise<ComicArchiveResult> {
   // Verify file exists (throws ENOENT otherwise, which we map to 404)
-  statSync(real);
+  statSync(filepath);
 
-  const ext = extname(real).toLowerCase().replace('.', '');
-  const basename = real.split('/').pop() || 'comic';
+  const ext = extname(filepath).toLowerCase().replace('.', '');
+  const basename = filepath.split('/').pop() || 'comic';
   const basenameWithoutExt = basename.replace(/\.[^.]+$/, '');
 
   if (ext === 'pdf') {
-    const stream = createReadStream(real);
+    const stream = createReadStream(filepath);
     const webStream = Readable.toWeb(stream) as ReadableStream;
     return {
       contentType: 'application/pdf',
@@ -217,7 +181,7 @@ export async function openComicArchive(
   }
 
   if (ext === 'cbz' || ext === 'zip') {
-    const stream = createReadStream(real);
+    const stream = createReadStream(filepath);
     const webStream = Readable.toWeb(stream) as ReadableStream;
     return {
       contentType: 'application/x-cbz',
@@ -233,7 +197,7 @@ export async function openComicArchive(
     // require.resolve to a numeric webpack module id, which then breaks (e.g.
     // "<id>.lastIndexOf is not a function"). extractComicImages carries this
     // same caution forward for its own node-unrar-js import.
-    const imageFiles = await extractComicImages(real, ext);
+    const imageFiles = await extractComicImages(filepath, ext);
 
     // Build a zip (CBZ) using fflate
     const { zipSync } = await import('fflate');

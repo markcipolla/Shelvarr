@@ -21,8 +21,8 @@ const CONTENT_TYPES: Record<string, string> = {
  *
  * Mirrors /api/comics/issues/[id]/pages/[n] exactly — see that route and the
  * doc comment on the sibling `/pages` route for why 'book' is passed as the
- * cache namespace, `remap` is always false, and EPUB gets its own 400 instead
- * of falling through to extraction. If this is the first time the book has
+ * cache namespace and EPUB gets its own 400 instead of falling through to
+ * extraction. If this is the first time the book has
  * been requested — `/pages` was never called first — the cache is populated
  * here instead, on demand.
  */
@@ -59,7 +59,6 @@ export async function GET(
 
   try {
     const pagePath = await getIssuePagePath(bookId, row.file_path, pageNumber, {
-      remap: false,
       namespace: 'book',
     });
     if (!pagePath) {

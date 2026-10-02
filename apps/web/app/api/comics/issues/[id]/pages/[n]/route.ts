@@ -44,9 +44,7 @@ export async function GET(
   }
 
   try {
-    const pagePath = await getIssuePagePath(issueId, file.filepath, pageNumber, {
-      remap: file.needsRemap,
-    });
+    const pagePath = await getIssuePagePath(issueId, file.filepath, pageNumber);
     if (!pagePath) {
       return NextResponse.json({ error: 'Page not found' }, { status: 404 });
     }

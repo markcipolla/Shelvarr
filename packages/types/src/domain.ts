@@ -208,19 +208,6 @@ export interface HealthResponse {
 }
 
 // Config types
-/**
- * Settings for reading a library Shelvarr did not organise itself.
- */
-export interface ComicPathConfig {
-  /**
-   * `"from:to"` prefix remap for paths recorded by whatever managed the
-   * library before, mapping them onto the ones this process can see. Needed
-   * when the recorded paths are another tool's container paths. Unused once
-   * volumes are managed, because their folders are then Shelvarr's own.
-   */
-  pathMap: string | null;
-}
-
 /** Where comics are sourced from and what happens to the files. */
 export interface GetComicsConfig {
   /** Site base URL — configurable so a mirror can be swapped in. */
@@ -242,7 +229,6 @@ export interface AppConfig {
   /** Where the folder browser starts; book libraries are added in Settings. */
   libraryRoot: string;
   dbPath: string;
-  comicPaths: ComicPathConfig;
   getcomics: GetComicsConfig;
   supportedExtensions: string[];
 }

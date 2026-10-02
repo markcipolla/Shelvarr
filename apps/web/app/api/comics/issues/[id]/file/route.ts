@@ -32,9 +32,7 @@ export async function GET(
   }
 
   try {
-    const { contentType, body, filename } = await openComicArchive(file.filepath, {
-      remap: file.needsRemap,
-    });
+    const { contentType, body, filename } = await openComicArchive(file.filepath);
 
     return new Response(body as ReadableStream | BodyInit, {
       headers: {

@@ -35,7 +35,7 @@ const ensureIssuePagesExtractedMock = mock.fn<
   (
     id: number,
     filepath: string,
-    options?: { remap?: boolean; namespace?: string }
+    options?: { namespace?: string }
   ) => Promise<{ dir: string; files: string[] }>
 >(async () => ({ dir: '/cache/1', files: ['00001.jpg', '00002.jpg'] }));
 
@@ -44,7 +44,7 @@ const getIssuePagePathMock = mock.fn<
     id: number,
     filepath: string,
     pageNumber: number,
-    options?: { remap?: boolean; namespace?: string }
+    options?: { namespace?: string }
   ) => Promise<string | null>
 >(async () => null);
 
@@ -113,12 +113,12 @@ describe('GET /api/books/[id]/pages', () => {
     assert.deepEqual(body, { count: 3, pages: [{ n: 1 }, { n: 2 }, { n: 3 }] });
   });
 
-  it('extracts under the book cache namespace with remap disabled', async () => {
+  it('extracts under the book cache namespace', async () => {
     await getPages(pagesRequest('1') as any, { params: Promise.resolve({ id: '1' }) });
 
     const [, filepath, options] = ensureIssuePagesExtractedMock.mock.calls[0].arguments;
     assert.equal(filepath, '/books/some-comic.cbz');
-    assert.deepEqual(options, { remap: false, namespace: 'book' });
+    assert.deepEqual(options, { namespace: 'book' });
   });
 
   it('returns a distinct 400 for an EPUB without attempting extraction', async () => {
@@ -214,12 +214,12 @@ describe('GET /api/books/[id]/pages/[n]', () => {
     }
   });
 
-  it('extracts under the book cache namespace with remap disabled', async () => {
+  it('extracts under the book cache namespace', async () => {
     await getPage(pageRequest('1', '1') as any, { params: Promise.resolve({ id: '1', n: '1' }) });
 
     const [, filepath, , options] = getIssuePagePathMock.mock.calls[0].arguments;
     assert.equal(filepath, '/books/some-comic.cbz');
-    assert.deepEqual(options, { remap: false, namespace: 'book' });
+    assert.deepEqual(options, { namespace: 'book' });
   });
 
   it('returns 400 for a PDF book', async () => {

@@ -13,9 +13,7 @@ export const dynamic = 'force-dynamic';
  * Mirrors /api/comics/issues/[id]/pages exactly, reusing the same
  * extract-once cache (`@shelvarr/services`' `comics/pages.ts`) under the
  * 'book' namespace so a comic issue and a book never collide even if they
- * happen to share an id number. `remap: false` is passed unconditionally —
- * `needsRemap`/`COMIC_PATH_MAP` is a comic-migration concept (see
- * `getComicIssueFileRef`) that has no book equivalent.
+ * happen to share an id number.
  *
  * A PDF book gets the same 400 the comic route gives a PDF issue, pointing
  * at the whole-file route — see the doc comment on `ensureIssuePagesExtracted`
@@ -55,7 +53,6 @@ export async function GET(
 
   try {
     const { files } = await ensureIssuePagesExtracted(bookId, row.file_path, {
-      remap: false,
       namespace: 'book',
     });
     return NextResponse.json({

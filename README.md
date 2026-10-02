@@ -203,7 +203,6 @@ existing library rather than rewriting it.
 | `GETCOMICS_HOST_PREFERENCE` | getcomics,pixeldrain | Order to try download hosts in |
 | `GETCOMICS_RENAME` | true | Rename imported files to the naming template; set `false` to keep original names |
 | `SCHEDULER_ENABLED` | true | Set `false` to stop Shelvarr running recurring jobs in-process |
-| `COMIC_PATH_MAP` | - | `from:to` prefix remap, when a library's recorded paths differ from where this process sees them |
 | `LOG_LEVEL` | info | Lowest level written to the log, and so to the buffer the diagnostics API reads |
 | `LOG_BUFFER_SIZE` | 2000 | Recent log lines held in memory for the diagnostics API |
 | `LOG_FILE` | `$DATA_DIR/logs/shelvarr.log` | Where log lines are also written, so they survive a restart. Rotates at 5 MB, keeping two old files. `off` keeps logs in memory only |
@@ -345,9 +344,12 @@ existing library**. That scans the tree and guesses the ComicVine match for each
 folder — one search per folder, so it is slower — and you confirm the matches on
 `/comics/import`.
 
-If a volume's folder can't be found afterwards, set `COMIC_PATH_MAP` to map the
-recorded path prefix onto the one this process sees, e.g.
-`/comics-1:/libraries/comics`.
+A library adopted from another manager records the folder as *that* manager saw
+it (`/data/Comics/Saga`). Shelvarr rewrites those paths against the library they
+belong to on first start, so the only thing to get right is the library's own
+path: point it at where the folders are actually mounted and restart. Paths are
+only rewritten once the library is mounted, so a volume whose files can't be
+found is a mount to fix, not a setting.
 
 ## Diagnostics API and MCP
 

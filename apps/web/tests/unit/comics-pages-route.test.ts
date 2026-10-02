@@ -17,10 +17,9 @@ import { join } from 'path';
 import { cleanup } from '@testing-library/react';
 
 let authResult = true;
-let fileRef: { filepath: string; size: number; needsRemap: boolean } | null = {
+let fileRef: { filepath: string; size: number } | null = {
   filepath: '/comics/issue-1.cbz',
   size: 1024,
-  needsRemap: false,
 };
 
 class FakePdfNotPaginatedError extends Error {
@@ -40,7 +39,7 @@ const ensureIssuePagesExtractedMock = mock.fn<
   (
     issueId: number,
     filepath: string,
-    options?: { remap?: boolean }
+    options?: { namespace?: string }
   ) => Promise<{ dir: string; files: string[]; pages: FakePageDimensions[] }>
 >(async () => ({
   dir: '/cache/1',
@@ -52,7 +51,12 @@ const ensureIssuePagesExtractedMock = mock.fn<
 }));
 
 const getIssuePagePathMock = mock.fn<
-  (issueId: number, filepath: string, pageNumber: number, options?: { remap?: boolean }) => Promise<string | null>
+  (
+    issueId: number,
+    filepath: string,
+    pageNumber: number,
+    options?: { namespace?: string }
+  ) => Promise<string | null>
 >(async () => null);
 
 mock.module('@shelvarr/services', {
@@ -88,7 +92,7 @@ describe('GET /api/comics/issues/[id]/pages', () => {
   beforeEach(() => {
     ensureIssuePagesExtractedMock.mock.resetCalls();
     authResult = true;
-    fileRef = { filepath: '/comics/issue-1.cbz', size: 1024, needsRemap: false };
+    fileRef = { filepath: '/comics/issue-1.cbz', size: 1024 };
   });
   afterEach(cleanup);
 
@@ -132,13 +136,12 @@ describe('GET /api/comics/issues/[id]/pages', () => {
     });
   });
 
-  it('passes the needsRemap flag from the file ref through', async () => {
-    fileRef = { filepath: '/legacy/issue-1.cbz', size: 1024, needsRemap: true };
+  it('opens the path the file ref gives, as recorded', async () => {
+    fileRef = { filepath: '/comics/Saga/issue-1.cbz', size: 1024 };
     await getPages(pagesRequest('1') as any, { params: Promise.resolve({ id: '1' }) });
 
-    const [, filepath, options] = ensureIssuePagesExtractedMock.mock.calls[0].arguments;
-    assert.equal(filepath, '/legacy/issue-1.cbz');
-    assert.equal(options?.remap, true);
+    const [, filepath] = ensureIssuePagesExtractedMock.mock.calls[0].arguments;
+    assert.equal(filepath, '/comics/Saga/issue-1.cbz');
   });
 
   it('returns 400 for a PDF issue, pointing at the whole-file route', async () => {
@@ -164,7 +167,7 @@ describe('GET /api/comics/issues/[id]/pages/[n]', () => {
   beforeEach(() => {
     getIssuePagePathMock.mock.resetCalls();
     authResult = true;
-    fileRef = { filepath: '/comics/issue-1.cbz', size: 1024, needsRemap: false };
+    fileRef = { filepath: '/comics/issue-1.cbz', size: 1024 };
   });
   afterEach(cleanup);
 

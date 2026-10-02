@@ -6,7 +6,7 @@
 import { describe, it, before, after, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import type { ComicIssueMetadata, ComicVolumeMetadata } from '@shelvarr/types';
 
 let db: typeof import('../../lib/db/index.js');
@@ -322,7 +322,6 @@ describe('Comic library', () => {
       dataDir: root,
       libraryRoot: root,
       dbPath: join(root, 'test.db'),
-      comicPaths: { pathMap: null },
       getcomics: {
         baseUrl: 'https://getcomics.example',
         downloadDir: join(root, 'downloads'),
@@ -639,6 +638,37 @@ describe('Comic library', () => {
         [volumeId]
       );
       assert.strictEqual(previews[0]!.files.length, 1);
+    });
+
+    it('keeps the suffixes it already handed out, so a second run is a no-op', async () => {
+      const { volumeId, folder } = seedVolume('Immortal Hulk');
+      // Three files for the same issue, as a volume that was re-downloaded on
+      // every sweep ends up with. One holds the un-suffixed name.
+      writeFileSync(join(folder, 'Immortal Hulk (2018) Volume 01 Issue 001.cbz'), 'a');
+      writeFileSync(join(folder, 'Immortal Hulk (2018) Volume 01 Issue 001 (2).cbz'), 'b');
+      writeFileSync(join(folder, 'Immortal Hulk (2018) Volume 01 Issue 001 (3).cbz'), 'c');
+      db.setComicVolumeFolder(volumeId, folder, true);
+      await scan.scanVolumeFiles(volumeId);
+
+      const preview = rename.previewVolumeRename(volumeId);
+      assert.deepStrictEqual(preview.files, [], 'already-suffixed files must stay put');
+    });
+
+    it('never renames a file over one that is already there', async () => {
+      const { volumeId, folder } = seedVolume('Immortal Hulk');
+      writeFileSync(join(folder, 'Immortal Hulk (2018) Issue 004.cbz'), 'wanted');
+      await scan.scanVolumeFiles(volumeId);
+
+      const preview = rename.previewVolumeRename(volumeId);
+      const target = preview.files[0]!.to;
+      mkdirSync(dirname(target), { recursive: true });
+      // A file no scan ever recorded, sitting exactly where we want to move to.
+      writeFileSync(target, 'bystander');
+
+      const result = await rename.applyVolumeRename(volumeId);
+      assert.strictEqual(result.renamed, 0);
+      assert.strictEqual(result.errors.length, 1);
+      assert.strictEqual(readFileSync(target, 'utf8'), 'bystander');
     });
 
     it('leaves a hand-picked folder where it is', () => {
