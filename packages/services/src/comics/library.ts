@@ -44,7 +44,6 @@ import type {
 
 import { describeWriteFailure } from '../utils/fs-errors';
 import { createLogger } from '../utils/logger';
-import { remapComicPath } from './archive';
 import { ComicVine, InvalidComicVineApiKeyError } from './comicvine/index';
 import { generateVolumeFolderName } from './naming';
 import { scanVolumeFiles } from './scan';
@@ -81,15 +80,11 @@ export function sameFolderKey(folder: string): string {
   return folder.replace(/[\\/]+$/, '');
 }
 
-/**
- * Volumes that already hold a folder, keyed by where that folder is on this
- * machine — a recorded folder can be under another mount, which is what
- * COMIC_PATH_MAP translates.
- */
+/** Volumes that already hold a folder, keyed by that folder. */
 export function comicFolderOwners(): Map<string, ComicFolderOwner> {
   const owners = new Map<string, ComicFolderOwner>();
   for (const volume of getComicVolumeFolders()) {
-    owners.set(sameFolderKey(remapComicPath(volume.folder)), volume);
+    owners.set(sameFolderKey(volume.folder), volume);
   }
   return owners;
 }
@@ -152,7 +147,7 @@ export interface MergeDuplicateVolumesResult {
 export function mergeDuplicateComicVolumes(): MergeDuplicateVolumesResult {
   const byFolder = new Map<string, ComicFolderOwner[]>();
   for (const volume of getComicVolumeFolders()) {
-    const key = sameFolderKey(remapComicPath(volume.folder));
+    const key = sameFolderKey(volume.folder);
     const group = byFolder.get(key);
     if (group) group.push(volume);
     else byFolder.set(key, [volume]);
@@ -262,9 +257,8 @@ export function mergeDuplicateComicVolumes(): MergeDuplicateVolumesResult {
 function holdsFilesOnDisk(volume: ComicVolumeIdentity): boolean {
   if (!volume.holdsFiles || volume.folder === null) return false;
 
-  const folder = remapComicPath(volume.folder);
-  if (existsSync(folder)) return true;
-  return !existsSync(dirname(folder));
+  if (existsSync(volume.folder)) return true;
+  return !existsSync(dirname(volume.folder));
 }
 
 /** A shelf that reads as the same series twice, for a human to judge. */

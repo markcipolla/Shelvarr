@@ -135,7 +135,6 @@ describe('Comic download retries', () => {
       dataDir,
       libraryRoot: join(dataDir, 'library'),
       dbPath: join(dataDir, 'test.db'),
-      comicPaths: { pathMap: null },
       getcomics: {
         baseUrl: 'https://getcomics.org',
         downloadDir: scratchDir,

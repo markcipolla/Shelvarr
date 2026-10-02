@@ -277,7 +277,6 @@ describe('scanning a volume with tagged files', () => {
       dataDir: root,
       libraryRoot: root,
       dbPath: join(root, 'test.db'),
-      comicPaths: { pathMap: null },
       getcomics: {
         baseUrl: 'https://getcomics.example',
         downloadDir: join(root, 'downloads'),

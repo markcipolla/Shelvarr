@@ -13,10 +13,8 @@ import { dirname, extname, join, parse, sep } from 'path';
 import { getComicRootFolder, getComicRootFolders } from '@shelvarr/db';
 import type { ComicDownload } from '@shelvarr/types';
 
-import { getServiceConfig } from '../config';
 import { describeWriteFailure } from '../utils/fs-errors';
 import { createLogger } from '../utils/logger';
-import { remapComicPath } from './archive';
 import { generateVolumeFolderName, type NamingVolume } from './naming';
 
 const log = createLogger('comics-import');
@@ -37,12 +35,11 @@ export type ImportVolume = NamingVolume & {
  * Work out where a download belongs.
  *
  * Prefers the volume's existing folder, so files land next to the rest of the
- * series; a path recorded under another mount goes through COMIC_PATH_MAP.
- * Failing that, builds a folder from the naming template inside the volume's
- * root folder, or the first one set up in Settings → Comics.
+ * series. Failing that, builds a folder from the naming template inside the
+ * volume's root folder, or the first one set up in Settings → Comics.
  */
 export function resolveImportDirectory(volume: ImportVolume): string {
-  if (volume.folder) return remapComicPath(volume.folder);
+  if (volume.folder) return volume.folder;
 
   const rootFolder =
     (volume.rootFolderId != null ? getComicRootFolder(volume.rootFolderId) : null) ??
@@ -81,8 +78,9 @@ function nearestExistingAncestor(directory: string): string {
  * Explain a destination that is not on any mount, naming what would fix it.
  *
  * Nobody keeps a comic library in the filesystem root, so a path with nothing
- * on disk above it is either a mount that is not there, or a folder recorded
- * under another machine's mount for COMIC_PATH_MAP to translate.
+ * on disk above it means the mount is not there — either it was never made, or
+ * the volume still holds a folder recorded by whatever managed the library
+ * before, which the migration only rewrites once the library is mounted.
  */
 function missingMount(volume: ImportVolume, directory: string): Error {
   const { root } = parse(directory);
@@ -95,18 +93,10 @@ function missingMount(volume: ImportVolume, directory: string): Error {
     );
   }
 
-  // The recorded folder is worth naming: it is what COMIC_PATH_MAP translates,
-  // and after a remap the path that failed is no longer the one on record.
-  const { pathMap } = getServiceConfig().comicPaths;
-  const recorded = directory === volume.folder ? '' : ` (remapped from ${volume.folder})`;
-  const current = pathMap
-    ? ` COMIC_PATH_MAP is currently ${pathMap}.`
-    : ' COMIC_PATH_MAP is not set.';
-
   return new Error(
-    `Cannot file into ${directory}${recorded}: ${topLevel} does not exist here. Mount the ` +
-      `comic library at ${topLevel}, or set COMIC_PATH_MAP=${topLevel}:<where it is mounted> ` +
-      `to translate the recorded folder.${current}`
+    `Cannot file into ${directory}: ${topLevel} does not exist here. Mount the comic ` +
+      `library at ${topLevel}, or point the root folder in Settings → Comics at where it ` +
+      'is mounted and rescan the library so the recorded folders are rewritten.'
   );
 }
 

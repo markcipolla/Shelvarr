@@ -41,9 +41,7 @@ export async function GET(
   }
 
   try {
-    const { files, pages } = await ensureIssuePagesExtracted(issueId, file.filepath, {
-      remap: file.needsRemap,
-    });
+    const { files, pages } = await ensureIssuePagesExtracted(issueId, file.filepath);
     return NextResponse.json({ count: files.length, pages });
   } catch (err) {
     if (err instanceof PdfNotPaginatedError) {

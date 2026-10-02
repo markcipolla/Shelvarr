@@ -495,6 +495,113 @@ function runMigrations(database: Database.Database): void {
   seedSourceMirrors(database);
 
   migrateProgressToPerUser(database);
+  adoptComicPathsIntoLibraries(database);
+}
+
+/**
+ * Re-root a path recorded under another mount, by finding the shallowest
+ * trailing segments of it that name something real under `root`.
+ *
+ * `/data/Comics/Saga` recorded against a library mounted at
+ * `/libraries/comics` becomes `/libraries/comics/Saga`; a nested
+ * `/data/Comics/Saga/Volume 01 (2012)` needs two segments and gets them.
+ * Returns null when nothing matches, which is the honest answer for a library
+ * that simply isn't mounted.
+ *
+ * ponytail: the shallowest match wins, so two volumes whose recorded folders
+ * end in the same name resolve to the same place. Both were already opening
+ * the same folder through the path map this replaces, and telling them apart
+ * needs a human.
+ */
+function reRootUnder(root: string, recorded: string): string | null {
+  const segments = recorded.split(/[\\/]/).filter(Boolean);
+  for (let take = 1; take <= segments.length; take++) {
+    const candidate = join(root, ...segments.slice(segments.length - take));
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
+ * Rewrite comic paths recorded by the manager Shelvarr adopted a library from.
+ *
+ * Kapowarr (and Shelvarr before comic libraries existed) recorded the folder
+ * as its own container saw it — `/data/Comics/Saga` — which is not where the
+ * library is mounted here. That used to be papered over on every read by
+ * COMIC_PATH_MAP, an env var every path-touching caller had to remember to
+ * apply; the ones that forgot (the scanner, most expensively) saw an empty
+ * folder, decided the volume had no files at all, and re-downloaded it on
+ * every sweep.
+ *
+ * So this rewrites the paths once, against the library they belong to, and
+ * the map is gone. Only a path that is missing here *and* resolves to a real
+ * one under its root folder is touched, so it is a no-op for a library that
+ * is already correct, a no-op when the mount is absent, and safe to re-run.
+ */
+function adoptComicPathsIntoLibraries(database: Database.Database): void {
+  const rooted = database
+    .prepare(
+      `SELECT c.id, c.folder, r.path AS root
+         FROM comics c
+         JOIN comic_root_folders r ON r.id = c.root_folder_id
+        WHERE c.folder IS NOT NULL`
+    )
+    .all() as Array<{ id: number; folder: string; root: string }>;
+
+  const setFolder = database.prepare('UPDATE comics SET folder = ? WHERE id = ?');
+  const filesIn = database.prepare('SELECT id, filepath FROM comic_files WHERE volume_id = ?');
+  const setFilePath = database.prepare('UPDATE comic_files SET filepath = ? WHERE id = ?');
+  const issuesIn = database.prepare(
+    "SELECT id, files FROM comic_issues WHERE volume_id = ? AND files IS NOT NULL AND files != '[]'"
+  );
+  const setIssueFiles = database.prepare('UPDATE comic_issues SET files = ? WHERE id = ?');
+
+  let volumes = 0;
+  let files = 0;
+
+  for (const volume of rooted) {
+    if (!existsSync(volume.folder)) {
+      const folder = reRootUnder(volume.root, volume.folder);
+      if (folder) {
+        setFolder.run(folder, volume.id);
+        for (const file of filesIn.all(volume.id) as Array<{ id: number; filepath: string }>) {
+          if (!file.filepath.startsWith(volume.folder)) continue;
+          setFilePath.run(folder + file.filepath.slice(volume.folder.length), file.id);
+          files += 1;
+        }
+        volumes += 1;
+      }
+    }
+
+    // The pre-comic-library mirror kept an issue's files as JSON on the issue
+    // row, and `getComicIssueFileRef` still falls back to it for volumes whose
+    // files were never linked. Those paths are recorded the same way.
+    for (const issue of issuesIn.all(volume.id) as Array<{ id: number; files: string }>) {
+      let refs: Array<{ filepath?: string }>;
+      try {
+        refs = JSON.parse(issue.files) as Array<{ filepath?: string }>;
+      } catch {
+        continue;
+      }
+      let changed = false;
+      for (const ref of refs) {
+        if (!ref.filepath || existsSync(ref.filepath)) continue;
+        const moved = reRootUnder(volume.root, ref.filepath);
+        if (!moved) continue;
+        ref.filepath = moved;
+        changed = true;
+        files += 1;
+      }
+      if (changed) setIssueFiles.run(JSON.stringify(refs), issue.id);
+    }
+  }
+
+  if (volumes > 0 || files > 0) {
+    console.log(
+      `Running migration: re-rooted ${volumes} comic folder(s) and ${files} file path(s) ` +
+        'into their library'
+    );
+  }
 }
 
 /**
@@ -4256,15 +4363,12 @@ export function getManagedIssueFile(issueId: number): ComicFileRef | null {
 /**
  * An issue's file, whether the volume is managed or a not-yet-migrated
  * mirror.
- *
- * `needsRemap` says whether the path was recorded by a previous manager and
- * has to go through the migration path map before it can be opened.
  */
 export function getComicIssueFileRef(
   issueId: number
-): { filepath: string; size: number; needsRemap: boolean } | null {
+): { filepath: string; size: number } | null {
   const managed = getManagedIssueFile(issueId);
-  if (managed) return { filepath: managed.filepath, size: managed.size, needsRemap: false };
+  if (managed) return { filepath: managed.filepath, size: managed.size };
 
   const row = queryOne<{ files: string | null }>(
     'SELECT files FROM comic_issues WHERE id = ? AND deleted_at IS NULL',
@@ -4276,7 +4380,7 @@ export function getComicIssueFileRef(
     const files = JSON.parse(row.files) as ComicFileRef[];
     const file = files.find((entry) => entry.filepath);
     if (!file) return null;
-    return { filepath: file.filepath, size: file.size ?? 0, needsRemap: true };
+    return { filepath: file.filepath, size: file.size ?? 0 };
   } catch {
     return null;
   }

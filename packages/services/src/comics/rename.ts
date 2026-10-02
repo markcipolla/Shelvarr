@@ -63,24 +63,46 @@ function issueNumbersByFile(volumeId: number): Map<number, IssueNumber> {
 }
 
 /**
- * Give colliding names a ` (2)`, ` (3)`… suffix.
+ * Give files that want the same name a ` (2)`, ` (3)`… suffix.
  *
  * Two files can legitimately map to the same name — a `.cbz` and a `.pdf` of
- * the same issue, say — so this disambiguates within the proposal rather than
- * dropping one.
+ * the same issue, say — so this disambiguates rather than dropping one.
+ *
+ * Takes *every* file, including the ones already correctly named, and lets a
+ * file that already sits on one of the names its group will use keep it. Both
+ * matter: numbering only the files that happen to need moving renumbers them
+ * differently on every run, so the organiser proposes the same 700 moves for
+ * ever and each one renames a file over a sibling that had not moved yet.
  */
 function indexSameNames(proposals: RenameProposal[]): RenameProposal[] {
-  const seen = new Map<string, number>();
+  const groups = new Map<string, RenameProposal[]>();
+  for (const proposal of proposals) {
+    const group = groups.get(proposal.to);
+    if (group) group.push(proposal);
+    else groups.set(proposal.to, [proposal]);
+  }
 
-  return proposals.map((proposal) => {
-    const count = seen.get(proposal.to) ?? 0;
-    seen.set(proposal.to, count + 1);
-    if (count === 0) return proposal;
+  const settled = new Map<RenameProposal, string>();
+  for (const [base, group] of groups) {
+    const extension = extname(base);
+    const stem = base.slice(0, base.length - extension.length);
+    const names = group.map((_, index) =>
+      index === 0 ? base : `${stem} (${index + 1})${extension}`
+    );
+    const available = new Set(names);
 
-    const extension = extname(proposal.to);
-    const stem = proposal.to.slice(0, proposal.to.length - extension.length);
-    return { ...proposal, to: `${stem} (${count + 1})${extension}` };
-  });
+    for (const proposal of group) {
+      if (!available.delete(proposal.from)) continue;
+      settled.set(proposal, proposal.from);
+    }
+    const spare = names.filter((name) => available.has(name));
+    let next = 0;
+    for (const proposal of group) {
+      if (!settled.has(proposal)) settled.set(proposal, spare[next++]!);
+    }
+  }
+
+  return proposals.map((proposal) => ({ ...proposal, to: settled.get(proposal)! }));
 }
 
 function namingVolume(volume: NonNullable<ReturnType<typeof getComicVolume>>): NamingVolume {
@@ -146,7 +168,9 @@ export function previewVolumeRename(volumeId: number): RenamePreview {
       to = join(targetFolder, relativePath);
     }
 
-    if (to !== file.filepath) proposals.push({ fileId: file.id, from: file.filepath, to });
+    // Everything goes in, including files already correctly named: they hold
+    // the un-suffixed name, and indexSameNames has to see that.
+    proposals.push({ fileId: file.id, from: file.filepath, to });
   }
 
   preview.files = indexSameNames(proposals).filter(
@@ -194,6 +218,18 @@ export async function applyVolumeRename(volumeId: number): Promise<RenameResult>
   };
 
   for (const proposal of preview.files) {
+    // `rename` overwrites its destination without a word, so anything already
+    // sitting there — a file no scan ever recorded, say — would be destroyed.
+    // A case-only rename is the same file on a case-insensitive filesystem, so
+    // that one is allowed through.
+    if (
+      proposal.from.toLowerCase() !== proposal.to.toLowerCase() &&
+      existsSync(proposal.to)
+    ) {
+      result.errors.push({ from: proposal.from, error: `${proposal.to} already exists` });
+      continue;
+    }
+
     try {
       await mkdir(dirname(proposal.to), { recursive: true });
       await rename(proposal.from, proposal.to);

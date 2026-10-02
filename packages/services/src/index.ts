@@ -6,8 +6,8 @@ export type { DownloadEvent, LiveEvent, TaskEvent } from './events/index';
 export { initServiceConfig, getServiceConfig, loadConfigFromEnv } from './config';
 
 // Comics
-export { openComicArchive, remapComicPath, extractComicImages, extractComicEntry } from './comics/archive';
-export type { ComicArchiveResult, OpenComicArchiveOptions, ExtractedImage } from './comics/archive';
+export { openComicArchive, extractComicImages, extractComicEntry } from './comics/archive';
+export type { ComicArchiveResult, ExtractedImage } from './comics/archive';
 export { parseComicInfo, readComicInfo, applyComicInfo } from './comics/comicinfo';
 export type { ComicInfo } from './comics/comicinfo';
 export { ensureIssuePagesExtracted, getIssuePagePath, PdfNotPaginatedError } from './comics/pages';

@@ -54,7 +54,7 @@ import {
 } from 'fs';
 import { extname, join } from 'path';
 
-import { extractComicImages, remapComicPath } from './archive';
+import { extractComicImages } from './archive';
 import { readImageDimensions } from './dimensions';
 import { getServiceConfig } from '../config';
 import { createLogger } from '../utils/logger';
@@ -116,8 +116,6 @@ export class PdfNotPaginatedError extends Error {
 export type PageCacheNamespace = 'comic' | 'book';
 
 export interface EnsurePagesOptions {
-  /** Same meaning as {@link OpenComicArchiveOptions.remap} in archive.ts. */
-  remap?: boolean;
   /** Defaults to 'comic'. */
   namespace?: PageCacheNamespace;
 }
@@ -291,16 +289,15 @@ export async function ensureIssuePagesExtracted(
   options: EnsurePagesOptions = {}
 ): Promise<IssuePages> {
   const namespace = options.namespace ?? 'comic';
-  const real = options.remap === false ? filepath : remapComicPath(filepath);
 
   // Verify the file exists (throws ENOENT otherwise, which callers map to 404).
-  const stat = statSync(real);
+  const stat = statSync(filepath);
 
-  const ext = extname(real).toLowerCase().replace('.', '');
+  const ext = extname(filepath).toLowerCase().replace('.', '');
   if (ext === 'pdf') throw new PdfNotPaginatedError();
 
   const root = cacheRoot(namespace);
-  const key = cacheKey(namespace, id, real, stat.size, stat.mtimeMs);
+  const key = cacheKey(namespace, id, filepath, stat.size, stat.mtimeMs);
   const dir = join(root, key);
 
   if (existsSync(dir)) {
@@ -309,7 +306,7 @@ export async function ensureIssuePagesExtracted(
     return { dir, files, pages };
   }
 
-  const images = await extractComicImages(real, ext);
+  const images = await extractComicImages(filepath, ext);
 
   mkdirSync(dir, { recursive: true });
   const files: string[] = [];
