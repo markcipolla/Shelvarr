@@ -74,13 +74,14 @@ be added as a mirror.
 Two deliberate behaviour changes fall out of it. Anna's Archive and Z-Library
 are now aggregates over their mirrors the way LibGen already was, so their
 headline badge is the best of their mirrors rather than a single probe of
-`.org`/`.sk`. And each source keeps its old fallback domain — including
-Anna's odd `annas-archive.li`, which is not its highest-priority mirror — but
-only for as long as that domain is still one of the configured mirrors;
-remove it and the operator's own top mirror takes over. Left open: no
-per-mirror "last worked" or automatic demotion beyond the existing health
-ranking, and GetComics still takes its base URL from its own setting rather
-than a mirror row.
+`.org`/`.sk`. And each source keeps a fallback domain, but only for as long
+as that domain is still one of the configured mirrors; remove it and the
+operator's own top mirror takes over. (Anna's fallback used to be
+`annas-archive.li`, deliberately not its highest-priority mirror — moot now
+that both of the domains it was picked between are gone; see
+`retireDeadMirrors`.) Left open: no per-mirror "last worked" or automatic
+demotion beyond the existing health ranking, and GetComics still takes its
+base URL from its own setting rather than a mirror row.
 
 ### E1-2 · Say "Cloudflare is blocking us", not "no results found"
 **Size S.** `probeSource` (`source-status.ts:133`) already treats 403/429/503

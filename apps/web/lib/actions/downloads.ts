@@ -127,7 +127,8 @@ export async function checkDownloadSourceHealth(source: string): Promise<SourceS
 /**
  * Get each shadow-library source's consecutive structural-parse-failure
  * streak (in-memory, process-local — see `getParserHealth`). Used to flag a
- * source whose parser may need updating for a markup change.
+ * source that keeps failing to return a recognisable page — a markup change
+ * or a mirror that has gone away.
  */
 export async function getDownloadParserHealth(): Promise<ParserHealth[]> {
   return getParserHealth();

@@ -57,7 +57,7 @@ interface KnownSource {
 // services. GetComics isn't mirrored and is probed directly.
 const HEADLINE_SOURCES: Record<string, { displayName: string; fallbackDomain: string }> = {
   zlibrary: { displayName: 'Z-Library', fallbackDomain: 'z-library.sk' },
-  annas: { displayName: "Anna's Archive", fallbackDomain: 'annas-archive.li' },
+  annas: { displayName: "Anna's Archive", fallbackDomain: 'annas-archive.gl' },
   libgen: { displayName: 'Library Genesis', fallbackDomain: 'libgen.vg' },
   getcomics: { displayName: 'GetComics', fallbackDomain: 'getcomics.org' },
 };
