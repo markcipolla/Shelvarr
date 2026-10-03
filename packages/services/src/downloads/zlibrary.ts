@@ -178,7 +178,8 @@ export async function searchZLibrary(
       recordParseFailure('zlibrary');
       throw new SourceParseError(
         'zlibrary',
-        `${domain}'s page structure wasn't recognised — the Z-Library parser may need updating`
+        `${domain} didn't serve a Z-Library page — the domain may be dead or its ` +
+          'markup changed. Check the mirror list in Settings -> Download Sources.'
       );
     }
 

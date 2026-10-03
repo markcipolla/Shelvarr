@@ -41,7 +41,7 @@ const originalFetch = global.fetch;
 /** The lists that used to live in libgen.ts / annas.ts / zlibrary.ts. */
 const SHIPPED_DEFAULTS: Record<string, string[]> = {
   libgen: ['libgen.vg', 'libgen.la', 'libgen.bz', 'libgen.gl'],
-  annas: ['annas-archive.org', 'annas-archive.li'],
+  annas: ['annas-archive.gl', 'annas-archive.pk', 'annas-archive.gd'],
   zlibrary: ['z-library.sk', 'z-lib.gl'],
 };
 
@@ -113,6 +113,73 @@ describe('Source mirrors', () => {
       }
     });
 
+    it('retires a seeded mirror whose domain has died, keeping operator rows', () => {
+      // A database seeded before a domain was taken down keeps pointing at
+      // it forever: seedSourceMirrors runs once. retireDeadMirrors is what
+      // moves it on — and a parked for-sale page answers 200 with HTML, so
+      // leaving it there reads as "this source's markup changed".
+      const deadDir = mkdtempSync(join(tmpdir(), 'shelvarr-mirror-dead-'));
+      const deadPath = join(deadDir, 'dead.db');
+      try {
+        db.closeDatabase();
+        db.initDatabase(deadPath);
+
+        // Rewind to the pre-retirement state: the old seeded domains, one
+        // of them with a cached health row, plus a mirror the operator
+        // added themselves.
+        const database = db.getDb();
+        database.exec("DELETE FROM source_mirrors WHERE source = 'annas'");
+        database.exec("DELETE FROM settings WHERE key = 'retired_mirrors_annas_2026_10'");
+        ['annas-archive.org', 'annas-archive.li'].forEach((domain, index) =>
+          database
+            .prepare(
+              `INSERT INTO source_mirrors (source, domain, priority, enabled, added_by)
+               VALUES ('annas', ?, ?, 1, 'seed')`
+            )
+            .run(domain, index)
+        );
+        database
+          .prepare(
+            `INSERT INTO source_mirrors (source, domain, priority, enabled, added_by)
+             VALUES ('annas', 'annas.mine.example', 9, 1, 'operator')`
+          )
+          .run();
+        db.updateSourceStatus('annas:annas-archive.li', 'up', 10);
+
+        db.closeDatabase();
+        db.initDatabase(deadPath);
+
+        const domains = db.getSourceMirrors('annas').map((m) => m.domain);
+        assert.deepStrictEqual(
+          domains.filter((d) => d.startsWith('annas-archive')),
+          ['annas-archive.gl', 'annas-archive.pk', 'annas-archive.gd'],
+          'dead seeded domains are replaced by the live ones'
+        );
+        assert.ok(
+          domains.includes('annas.mine.example'),
+          "a mirror the operator typed is theirs to keep, dead or not"
+        );
+        assert.ok(
+          !db.getSourceStatusCache().some((s) => s.source === 'annas:annas-archive.li'),
+          'the dead mirror stops showing in the Settings status list'
+        );
+
+        // Idempotent: a second boot must not re-add what an operator has
+        // since removed.
+        db.getDb().prepare("DELETE FROM source_mirrors WHERE domain = 'annas-archive.pk'").run();
+        db.closeDatabase();
+        db.initDatabase(deadPath);
+        assert.ok(
+          !db.getSourceMirrors('annas').some((m) => m.domain === 'annas-archive.pk'),
+          'the retirement runs once, not on every restart'
+        );
+      } finally {
+        db.closeDatabase();
+        db.initDatabase();
+        rmSync(deadDir, { recursive: true, force: true });
+      }
+    });
+
     it('does not re-seed a mirror the operator removed', () => {
       const seedDir = mkdtempSync(join(tmpdir(), 'shelvarr-mirror-reseed-'));
       const seedPath = join(seedDir, 'seed.db');
@@ -141,10 +208,8 @@ describe('Source mirrors', () => {
       assert.deepStrictEqual(libgen.getLibGenDomains(), SHIPPED_DEFAULTS['libgen']);
     });
 
-    it("falls back to Anna's .li mirror when nothing has been probed", () => {
-      // Quirk of the old ANNAS_FALLBACK, preserved deliberately: the
-      // fallback is not the highest-priority mirror.
-      assert.strictEqual(annas.getAnnasDomain(), 'annas-archive.li');
+    it("falls back to Anna's first mirror when nothing has been probed", () => {
+      assert.strictEqual(annas.getAnnasDomain(), 'annas-archive.gl');
     });
 
     it('falls back to z-library.sk when nothing has been probed', () => {
@@ -182,8 +247,8 @@ describe('Source mirrors', () => {
     });
 
     it("prefers an Anna's mirror that is up over the fallback", () => {
-      markStatus('annas', 'annas-archive.org', 'up');
-      assert.strictEqual(annas.getAnnasDomain(), 'annas-archive.org');
+      markStatus('annas', 'annas-archive.pk', 'up');
+      assert.strictEqual(annas.getAnnasDomain(), 'annas-archive.pk');
     });
 
     it('prefers degraded over unprobed, but up over degraded', () => {
@@ -196,7 +261,7 @@ describe('Source mirrors', () => {
 
     it('reports a source as reachable when any of its mirrors answers', () => {
       assert.strictEqual(annas.isAnnasAvailable(), false);
-      markStatus('annas', 'annas-archive.li', 'degraded');
+      markStatus('annas', 'annas-archive.gd', 'degraded');
       assert.strictEqual(annas.isAnnasAvailable(), true);
     });
 

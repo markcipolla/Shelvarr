@@ -173,7 +173,8 @@ async function searchLibGenTerm(term: string, query: string): Promise<LibGenResu
     recordParseFailure('libgen');
     throw new SourceParseError(
       'libgen',
-      `${unrecognised}'s page structure wasn't recognised — the LibGen parser may need updating`
+      `${unrecognised} didn't serve a LibGen page — the domain may be dead or its ` +
+        'markup changed. Check the mirror list in Settings -> Download Sources.'
     );
   }
 

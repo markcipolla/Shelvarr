@@ -57,10 +57,12 @@ export interface AnnasResult {
   searchUrl: string;
 }
 
-// Last-resort domain for a server with no mirrors configured at all. Also
-// the tie-break when no mirror has been probed yet, which is why it is .li
-// and not the higher-priority .org.
-const ANNAS_FALLBACK = 'annas-archive.li';
+// Last-resort domain for a server with no mirrors configured at all, and
+// the tie-break when no mirror has been probed yet. Anna's Archive loses
+// domains faster than any other source here, so this is only ever as fresh
+// as the release — the mirror list in Settings is what an operator should
+// reach for, and `retireDeadMirrors` is what updates a seeded database.
+const ANNAS_FALLBACK = 'annas-archive.gl';
 
 /**
  * Get the current working Anna's Archive domain.
@@ -195,7 +197,8 @@ export async function searchAnnas(
       recordParseFailure('annas');
       throw new SourceParseError(
         'annas',
-        `${domain}'s page structure wasn't recognised — the Anna's Archive parser may need updating`
+        `${domain} didn't serve an Anna's Archive page — the domain may be dead or its ` +
+          'markup changed. Check the mirror list in Settings -> Download Sources.'
       );
     }
 

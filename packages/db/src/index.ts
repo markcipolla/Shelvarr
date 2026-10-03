@@ -493,9 +493,85 @@ function runMigrations(database: Database.Database): void {
   }
 
   seedSourceMirrors(database);
+  retireDeadMirrors(database);
 
   migrateProgressToPerUser(database);
   adoptComicPathsIntoLibraries(database);
+}
+
+/**
+ * Replace shipped mirror domains that have since died with the ones that
+ * replaced them.
+ *
+ * `seedSourceMirrors` only ever runs once, so a database seeded before a
+ * domain was taken down keeps pointing at it forever — and a dead domain
+ * that gets re-registered as a parked for-sale page answers HTTP 200 with
+ * HTML, which reads to the scrapers as "this source's markup changed"
+ * rather than "this domain isn't the source any more".
+ *
+ * Only rows still marked `added_by = 'seed'` are touched: a domain an
+ * operator typed in Settings is their call, even if we think it is dead.
+ * Each retirement is keyed by its own settings marker so adding the next
+ * one doesn't re-run the previous.
+ */
+const RETIRED_MIRRORS: Array<{
+  marker: string;
+  source: string;
+  dead: string[];
+  replacements: string[];
+}> = [
+  {
+    // annas-archive.org was suspended in January 2026 and .li was deleted
+    // from the registry that March; the name is now a parked ad page.
+    marker: 'retired_mirrors_annas_2026_10',
+    source: 'annas',
+    dead: ['annas-archive.org', 'annas-archive.li', 'annas-archive.se'],
+    replacements: ['annas-archive.gl', 'annas-archive.pk', 'annas-archive.gd'],
+  },
+];
+
+function retireDeadMirrors(database: Database.Database): void {
+  const seen = database.prepare('SELECT value FROM settings WHERE key = ?');
+  const mark = database.prepare('INSERT INTO settings (key, value) VALUES (?, ?)');
+  const drop = database.prepare(
+    "DELETE FROM source_mirrors WHERE source = ? AND domain = ? AND added_by = 'seed'"
+  );
+  const dropStatus = database.prepare('DELETE FROM source_status_cache WHERE source = ?');
+  const nextPriority = database.prepare(
+    'SELECT COALESCE(MAX(priority), -1) + 1 AS p FROM source_mirrors WHERE source = ?'
+  );
+  const add = database.prepare(
+    `INSERT OR IGNORE INTO source_mirrors (source, domain, priority, enabled, added_by)
+     VALUES (?, ?, ?, 1, 'seed')`
+  );
+
+  for (const retirement of RETIRED_MIRRORS) {
+    if (seen.get(retirement.marker)) continue;
+
+    let removed = 0;
+    for (const domain of retirement.dead) {
+      removed += drop.run(retirement.source, domain).changes;
+      // Same key shape as `mirrorStatusKey`, which lives downstream of this
+      // package. Leaving the row would keep the dead mirror in the
+      // Settings status list, which maps every cached row it finds.
+      dropStatus.run(`${retirement.source}:${domain}`);
+    }
+
+    let added = 0;
+    for (const domain of retirement.replacements) {
+      const { p } = nextPriority.get(retirement.source) as { p: number };
+      added += add.run(retirement.source, domain, p).changes;
+    }
+
+    if (removed > 0 || added > 0) {
+      console.log(
+        `Running migration: retired ${removed} dead ${retirement.source} mirror(s), ` +
+          `added ${added} replacement(s)`
+      );
+    }
+
+    mark.run(retirement.marker, '1');
+  }
 }
 
 /**
@@ -1170,7 +1246,7 @@ export function isSourceEnabled(source: string): boolean {
  */
 export const DEFAULT_SOURCE_MIRRORS: Record<string, string[]> = {
   libgen: ['libgen.vg', 'libgen.la', 'libgen.bz', 'libgen.gl'],
-  annas: ['annas-archive.org', 'annas-archive.li'],
+  annas: ['annas-archive.gl', 'annas-archive.pk', 'annas-archive.gd'],
   zlibrary: ['z-library.sk', 'z-lib.gl'],
 };
 
