@@ -60,7 +60,8 @@ function searchOptions(signal?: AbortSignal): GetComicsOptions {
 
 /**
  * GetComics is a download source like the ebook ones, so it honours the same
- * on/off switch in Settings -> Download sources. Absent config means enabled.
+ * on/off switch in Settings -> Download sources. Absent config means
+ * disabled: nothing is fetched until it has been asked for.
  */
 export function isGetComicsEnabled(): boolean {
   return isSourceEnabled('getcomics');
@@ -264,6 +265,8 @@ export interface CreateDownloadsOptions {
 export async function createDownloadsFromPost(
   options: CreateDownloadsOptions
 ): Promise<ComicDownload[]> {
+  assertGetComicsEnabled();
+
   const { volumeId, post, issueId = null, forceMatch = false, signal } = options;
 
   const loaded = loadVolume(volumeId);

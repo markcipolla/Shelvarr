@@ -166,10 +166,33 @@ describe('Comic download retries', () => {
       rmSync(join(scratchDir, entry), { force: true });
     }
     db.upsertComicDetail(makeVolume());
+    // GetComics is off until someone switches it on, and the download
+    // handler refuses to run while it is off.
+    db.upsertDownloadSourceConfig('getcomics', true);
   });
 
   afterEach(() => {
     globalThis.fetch = realFetch;
+  });
+
+  it('refuses to download while GetComics is switched off', async () => {
+    db.upsertDownloadSourceConfig('getcomics', false);
+    stubFetch({ [LINK_A]: () => fileResponse('comic-bytes', LINK_A) });
+
+    const download = db.addComicDownload({
+      volumeId: 501,
+      issueId: 9001,
+      host: 'getcomics',
+      downloadLink: LINK_A,
+      filenameBody: 'Immortal Hulk (2018) Volume 01 Issue 001',
+    });
+
+    assert.strictEqual(await runDownload(download.id), 'failed');
+    assert.strictEqual(
+      existsSync(join(libraryDir, 'Immortal Hulk (2018) Volume 01 Issue 001.cbz')),
+      false,
+      'nothing was fetched'
+    );
   });
 
   it('falls back to an alternate link when the first one is dead', async () => {

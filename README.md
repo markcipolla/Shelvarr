@@ -297,7 +297,12 @@ key is free from [comicvine.gamespot.com/api](https://comicvine.gamespot.com/api
 volume and its issues, creates the folder, and adopts any files already sitting
 there.
 
-**Getting issues.** From a volume's page, *Search for missing issues* picks a
+**Getting issues.** Every download source — GetComics for comics, Z-Library,
+Anna's Archive and Library Genesis for books — starts switched off. Nothing is
+fetched from any of them until you tick it on under **Settings → Download
+sources**.
+
+From a volume's page, *Search for missing issues* picks a
 non-overlapping set of [GetComics](https://getcomics.org/) releases covering
 what you're missing and queues them. Or run a manual search through the API to
 see every release, ranked, with a reason on the ones that don't match.

@@ -1220,16 +1220,17 @@ export function setSourceNetworkSettings(
   execute(`UPDATE download_source_config SET ${fields.join(', ')} WHERE id = ?`, values);
 }
 
-// zlibrary, annas and libgen are shadow libraries: searching them is an
-// opt-in the operator makes in Settings, not a default a fresh install
-// should assume. GetComics isn't a shadow library, so it keeps the
-// historical default-enabled behaviour when it has never been configured.
-const SHADOW_LIBRARY_SOURCES = new Set(['zlibrary', 'annas', 'libgen']);
-
+/**
+ * Whether a download source may be used at all.
+ *
+ * Every source is off until someone ticks it on in Settings -> Download
+ * sources: fetching files from zlibrary, annas, libgen or getcomics is a
+ * choice the operator makes, not a default a fresh install should assume on
+ * their behalf. An absent config row therefore means disabled, for every
+ * source, and it is the only thing that gates the download handlers.
+ */
 export function isSourceEnabled(source: string): boolean {
-  const sourceConfig = getDownloadSourceConfig(source);
-  if (sourceConfig) return sourceConfig.enabled === 1;
-  return !SHADOW_LIBRARY_SOURCES.has(source);
+  return getDownloadSourceConfig(source)?.enabled === 1;
 }
 
 // ============ Source Mirror Functions ============

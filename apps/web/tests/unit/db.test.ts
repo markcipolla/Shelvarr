@@ -463,9 +463,6 @@ describe('Database Operations', () => {
     it('should check if source is enabled', async () => {
       if (!db) return;
 
-      // A source with no config row and no special handling defaults enabled
-      assert.strictEqual(db.isSourceEnabled('unknown_source'), true);
-
       db.upsertDownloadSourceConfig('disabled_source', false);
       assert.strictEqual(db.isSourceEnabled('disabled_source'), false);
 
@@ -473,14 +470,14 @@ describe('Database Operations', () => {
       assert.strictEqual(db.isSourceEnabled('enabled_source'), true);
     });
 
-    it('should default shadow library sources to disabled with no config row', async () => {
+    it('should default every source to disabled with no config row', async () => {
       if (!db) return;
 
-      // zlibrary, annas and libgen are shadow libraries: searching them is
-      // opt-in, so a fresh install with no row must not enable them.
-      assert.strictEqual(db.isSourceEnabled('zlibrary'), false);
-      assert.strictEqual(db.isSourceEnabled('annas'), false);
-      assert.strictEqual(db.isSourceEnabled('libgen'), false);
+      // Downloading is opt-in: a fresh install fetches from nothing until
+      // someone ticks a source on, comics included.
+      for (const source of ['zlibrary', 'annas', 'libgen', 'getcomics', 'unknown_source']) {
+        assert.strictEqual(db.isSourceEnabled(source), false, source);
+      }
 
       // Explicit rows still take precedence over the default either way.
       db.upsertDownloadSourceConfig('libgen', true);
@@ -488,14 +485,6 @@ describe('Database Operations', () => {
 
       db.upsertDownloadSourceConfig('zlibrary', false);
       assert.strictEqual(db.isSourceEnabled('zlibrary'), false);
-    });
-
-    it('should keep GetComics default-enabled with no config row', async () => {
-      if (!db) return;
-
-      // GetComics isn't a shadow library, so its historical
-      // default-enabled behaviour is unchanged.
-      assert.strictEqual(db.isSourceEnabled('getcomics'), true);
     });
   });
 
