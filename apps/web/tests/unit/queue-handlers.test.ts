@@ -706,6 +706,15 @@ if (canRunTests) {
       // point of E1-6), so it has to be cleared here or the first test to
       // record one would gate every download test after it.
       execute('DELETE FROM source_limits', []);
+      // Every download source is off until it is switched on, and the
+      // download handler refuses to run for a source that is off.
+      execute('DELETE FROM download_source_config', []);
+      // 'not-a-real-source' is switched on alongside the real ones so the
+      // tests for the handler's unsupported-source branch reach it rather
+      // than stopping at the enabled check.
+      for (const source of ['libgen', 'annas', 'zlibrary', 'not-a-real-source']) {
+        execute('INSERT INTO download_source_config (source, enabled) VALUES (?, 1)', [source]);
+      }
 
       // Create test library
       testLibPath = join(testDir, 'test-lib');
@@ -928,6 +937,29 @@ if (canRunTests) {
         assert.ok(updated);
         assert.strictEqual(updated.status, 'failed');
         assert.ok(updated.error?.includes('Invalid download task configuration'));
+      });
+
+      it('refuses to download while the source is switched off', async () => {
+        const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
+        registerAllHandlers();
+
+        execute('UPDATE download_source_config SET enabled = 0 WHERE source = ?', ['libgen']);
+
+        const task = createTask('download', {
+          source: 'libgen',
+          md5: 'abc123',
+          title: 'Test Book',
+          author: 'Test Author',
+          extension: 'epub',
+          libraryId: 1,
+        });
+        await runTask(task.id);
+
+        const updated = getTask(task.id);
+        assert.strictEqual(updated?.status, 'failed');
+        assert.match(updated!.error!, /disabled/);
+        // Nothing was queued either: a source that is off leaves no trace.
+        assert.strictEqual(getBookDownloads({ libraryId: 1 }).length, 0);
       });
 
       it('should handle non-existent library', async () => {

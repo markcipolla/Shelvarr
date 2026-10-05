@@ -40,7 +40,7 @@ if (canRunTests) {
   process.env['DB_PATH'] = join(testDir, 'test.db');
   process.env['LIBRARY_ROOT'] = testDir;
 
-  const { initDatabase, closeDatabase, execute, query, queryOne, getDownloadSourceConfig } = await import('../../lib/db/index.js');
+  const { initDatabase, closeDatabase, execute, query, queryOne, getDownloadSourceConfig, upsertDownloadSourceConfig } = await import('../../lib/db/index.js');
 
   // ============================================================================
   // BOOKS ACTIONS TESTS
@@ -526,6 +526,24 @@ if (canRunTests) {
     describe('queueDownload', () => {
       beforeEach(() => {
         execute('DELETE FROM tasks', []);
+        // Downloading is opt-in, so the source has to be on for anything to queue.
+        upsertDownloadSourceConfig('libgen', true);
+      });
+
+      it('refuses while the source is switched off', async () => {
+        upsertDownloadSourceConfig('libgen', false);
+        const { queueDownload } = await import('../../lib/actions/downloads.js');
+        const result = await queueDownload({
+          source: 'libgen',
+          md5: 'abc123def456',
+          title: 'Test Book',
+          author: 'Test Author',
+          extension: 'epub',
+          libraryId: 1,
+        });
+
+        assert.ok(!result.success);
+        assert.match(result.error!, /disabled/);
       });
 
       it('should return error for missing required fields', async () => {

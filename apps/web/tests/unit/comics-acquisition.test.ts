@@ -234,8 +234,8 @@ describe('Comic acquisition', () => {
       db.getDb().exec('DELETE FROM download_source_config;');
     });
 
-    it('is enabled when nothing has been configured', () => {
-      assert.strictEqual(getcomics.isGetComicsEnabled(), true);
+    it('is disabled when nothing has been configured', () => {
+      assert.strictEqual(getcomics.isGetComicsEnabled(), false);
     });
 
     it('follows the download source config', () => {

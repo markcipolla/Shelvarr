@@ -31,6 +31,13 @@ export async function POST(
     return NextResponse.json({ error: 'link is required' }, { status: 400 });
   }
 
+  if (!getcomics.isGetComicsEnabled()) {
+    return NextResponse.json(
+      { error: 'GetComics is disabled. Turn it on in Settings \u2192 Download sources.' },
+      { status: 409 }
+    );
+  }
+
   try {
     const post = await getcomics.fetchPostByLink(body.link);
     if (!post) {

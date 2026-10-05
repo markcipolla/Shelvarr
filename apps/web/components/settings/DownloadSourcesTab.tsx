@@ -53,7 +53,7 @@ const CATEGORIES: { id: SourceCategory; label: string; description: string }[] =
   },
 ];
 
-// Kept in sync with SHADOW_LIBRARY_SOURCES in packages/db/src/index.ts.
+// Only these rotate domains, so only they carry mirrors.
 const SHADOW_LIBRARY_SOURCES = new Set(['zlibrary', 'annas', 'libgen']);
 
 // Kept in sync with mirrorStatusKey in
@@ -198,10 +198,8 @@ function SourceCard({
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
 
-  // Mirrors isSourceEnabled: no config row means shadow libraries
-  // (zlibrary, annas, libgen) default off; other sources default on.
-  const isEnabled =
-    config != null ? config.enabled === 1 : !SHADOW_LIBRARY_SOURCES.has(source.name);
+  // Mirrors isSourceEnabled: no config row means off, for every source.
+  const isEnabled = config?.enabled === 1;
   const hasCredentials = config?.credentials != null;
   const hasAuthFields = (source.authFields?.length ?? 0) > 0;
   const hasProxy = (config?.proxy_url ?? '') !== '';

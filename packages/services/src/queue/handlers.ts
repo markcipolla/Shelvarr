@@ -37,6 +37,7 @@ import {
   addToBookBlocklist,
   bookBlocklistContains,
   switchBookDownloadLink,
+  isSourceEnabled,
 } from '@shelvarr/db';
 import {
   deferDownload,
@@ -889,6 +890,16 @@ const downloadHandler: TaskHandler = async (taskId, onProgress, signal) => {
     throw new Error('Invalid download task configuration');
   }
 
+  // The source's switch in Settings -> Download sources is what permits any
+  // of this. Checked here rather than only where the task was queued, because
+  // a task can outlive the switch: queued yesterday, source turned off since,
+  // or waiting out a rate limit while someone changed their mind.
+  if (!isSourceEnabled(data.source)) {
+    throw new Error(
+      `${data.source} is disabled in Settings \u2192 Download sources`
+    );
+  }
+
   onProgress(0, 6); // 6 steps: get library, download, save, add to db, fetch metadata, organize
 
   // Step 1: Get the library and wanted book info (for better metadata)
@@ -1653,6 +1664,10 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
 
   const data = JSON.parse(taskRow.result) as { comicDownloadId?: number };
   if (!data.comicDownloadId) throw new Error('Comic download task has no comicDownloadId');
+
+  if (!getcomics.isGetComicsEnabled()) {
+    throw new Error('GetComics is disabled in Settings \u2192 Download sources');
+  }
 
   const download = getComicDownload(data.comicDownloadId);
   if (!download) throw new Error(`Comic download ${data.comicDownloadId} not found`);

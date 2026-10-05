@@ -20,6 +20,7 @@ import {
 import {
   getDownloadSourceConfigs,
   getDownloadSourceConfig,
+  isSourceEnabled,
   upsertDownloadSourceConfig,
   MIRRORED_SOURCES,
   normaliseMirrorDomain,
@@ -454,6 +455,15 @@ export async function queueDownload(data: {
   try {
     if (!data.source || !data.md5 || !data.libraryId) {
       return { success: false, error: 'Missing required fields' };
+    }
+
+    // Say so now rather than queueing a task the download handler will only
+    // reject when it runs.
+    if (!isSourceEnabled(data.source)) {
+      return {
+        success: false,
+        error: `${data.source} is disabled. Turn it on in Settings → Download sources.`,
+      };
     }
 
     const task = enqueueTask('download', {
