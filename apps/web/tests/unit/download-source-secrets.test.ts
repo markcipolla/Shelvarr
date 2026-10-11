@@ -96,8 +96,14 @@ describe('download source secrets', () => {
 
     it('reports tampered-with ciphertext rather than returning garbage', () => {
       const encrypted = encryptSecret('hunter2');
-      // Flip the last byte of the body; GCM's tag should catch it.
-      const broken = encrypted.slice(0, -1) + (encrypted.endsWith('A') ? 'B' : 'A');
+      // Flip a bit in the last byte of the body; GCM's tag should catch it.
+      // Edit the bytes, not the base64url text: the last character of a
+      // base64 payload carries unused low bits, so a one-character change
+      // there can decode to the same bytes and decrypt cleanly.
+      const at = encrypted.lastIndexOf('.') + 1;
+      const raw = Buffer.from(encrypted.slice(at), 'base64url');
+      raw[raw.length - 1] ^= 1;
+      const broken = encrypted.slice(0, at) + raw.toString('base64url');
       assert.strictEqual(decryptSecret(broken), null);
     });
   });
