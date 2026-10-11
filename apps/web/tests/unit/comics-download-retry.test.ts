@@ -226,6 +226,35 @@ describe('Comic download retries', () => {
     assert.ok(!db.comicBlocklistContains(LINK_B));
   });
 
+  // Without this the issue keeps no record of having been downloaded, so the
+  // next auto-search sweep queues it again — thousands of times over, each
+  // copy filed beside the last as `… (2)`, until the disk fills.
+  it('records the imported file against its issue, so the next sweep skips it', async () => {
+    stubFetch({ [LINK_A]: () => fileResponse('comic-bytes', LINK_A) });
+    db.execute('UPDATE comics SET managed = 1 WHERE id = 501');
+    assert.deepStrictEqual(
+      db.getComicVolumesWithMissingIssues(),
+      [501],
+      'the issue has no file to begin with'
+    );
+
+    const download = db.addComicDownload({
+      volumeId: 501,
+      issueId: 9001,
+      host: 'getcomics',
+      downloadLink: LINK_A,
+      filenameBody: 'Immortal Hulk (2018) Volume 01 Issue 001',
+    });
+
+    assert.strictEqual(await runDownload(download.id), 'completed');
+
+    assert.deepStrictEqual(
+      db.getComicVolumesWithMissingIssues(),
+      [],
+      'the volume is no longer missing anything'
+    );
+  });
+
   it('fails once every link is exhausted, and says which error ended it', async () => {
     stubFetch({
       [LINK_A]: () => new Response('gone', { status: 404 }),

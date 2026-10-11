@@ -1867,6 +1867,24 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
     const imported = await importComicDownload(download, fetched.path, namingVolume);
 
     setDownloadState(download.id, 'completed', { filePath: imported.path });
+
+    // Link the file to its issue now. Until something does, the issue still
+    // has no row in `comic_issue_files`, which is the only thing
+    // `getComicVolumesWithMissingIssues` and `autoSearch` consult: the next
+    // sweep would see the issue as missing and download it all over again,
+    // filing the result beside the first copy as `… (2)`. Waiting for the
+    // nightly metadata refresh to rescan is what let that happen thousands of
+    // times over. A scan failure is not the download's failure — the bytes
+    // are filed — so it is logged and the import still counts.
+    try {
+      await scanVolumeFiles(download.volumeId);
+    } catch (error) {
+      console.warn(
+        `[comic-download] imported ${imported.path} but could not rescan volume ` +
+          `${download.volumeId}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
     addComicDownloadHistory({
       volumeId: download.volumeId,
       issueId: download.issueId,
