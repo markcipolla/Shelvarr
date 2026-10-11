@@ -307,7 +307,11 @@ non-overlapping set of [GetComics](https://getcomics.org/) releases covering
 what you're missing and queues them. Or run a manual search through the API to
 see every release, ranked, with a reason on the ones that don't match.
 Downloads stream to `GETCOMICS_DOWNLOAD_DIR`, get renamed to the naming
-template, and land in the volume's folder. Supported hosts are GetComics' own
+template, and land in the volume's folder — which is also recorded against the
+issue there and then, so the next sweep knows it already has it. Keep that
+scratch directory on the same filesystem as the library if you can: on a
+different one every imported issue is copied byte for byte, and in-flight
+downloads fill whichever disk holds `DATA_DIR`. Supported hosts are GetComics' own
 servers and Pixeldrain; DataNodes, VikingFile, TeraBox, Mega and MediaFire are
 recognised and shown but not fetched — see [NOTICE.md](./NOTICE.md).
 

@@ -9,6 +9,11 @@ services:
       - "3000:3000"
     volumes:
       - shelvarr_data:/app/data
+      # Downloads are scratch space. Keep them on the same filesystem as the
+      # library and an import is a rename; split across filesystems every
+      # imported issue is copied byte by byte, and in-flight downloads fill
+      # whichever disk holds /app/data.
+      - /path/to/downloads:/app/data/downloads:rw
       # Mount your book libraries here:
       - /path/to/ebooks:/libraries/ebooks:rw
       - /path/to/comics:/libraries/comics:rw
