@@ -146,10 +146,12 @@ export const openLibraryHandlers = [
   }),
 ];
 
+const ANNAS_DOMAINS = ['annas-archive.gl', 'annas-archive.pk', 'annas-archive.gd'];
+
 // Download source handlers (LibGen, Anna's Archive, Z-Library)
 export const downloadSourceHandlers = [
-  // Anna's Archive search
-  http.get('https://annas-archive.org/search', ({ request }) => {
+  // Anna's Archive search, on whichever mirror selection picked
+  ...ANNAS_DOMAINS.map((domain) => http.get(`https://${domain}/search`, ({ request }) => {
     const url = new URL(request.url);
     const query = url.searchParams.get('q') || '';
 
@@ -172,7 +174,7 @@ export const downloadSourceHandlers = [
         </body>
       </html>
     `);
-  }),
+  })),
 
   // LibGen search
   http.get('https://libgen.is/search.php', ({ request }) => {
@@ -209,17 +211,13 @@ export const downloadSourceHandlers = [
     `);
   }),
 
-  // Source status probes: each source is HEAD-probed at its landing page
-  ...[
-    'https://z-library.sk',
-    'https://z-lib.gl',
-    'https://annas-archive.org',
-    'https://annas-archive.li',
-    'https://libgen.vg',
-    'https://libgen.la',
-    'https://libgen.bz',
-    'https://libgen.gl',
-  ].map((url) => http.head(url, () => new HttpResponse(null, { status: 200 }))),
+  // Source status probes: each mirror is HEAD-probed at its landing page. These
+  // have to match DEFAULT_SOURCE_MIRRORS in packages/db — a domain missing here
+  // is blocked by the guard and the source reads as "Offline", which is what
+  // the "status each source reported" e2e test is there to catch.
+  ...[...ANNAS_DOMAINS, 'z-library.sk', 'z-lib.gl', 'libgen.vg', 'libgen.la', 'libgen.bz', 'libgen.gl'].map(
+    (domain) => http.head(`https://${domain}`, () => new HttpResponse(null, { status: 200 }))
+  ),
 
   // GetComics is probed through its WordPress REST API rather than the landing
   // page, which sits behind caching and does not reliably answer HEAD.
