@@ -2006,22 +2006,49 @@ if (canRunTests) {
         );
       });
 
-      it('does not claim a row still in queued — nothing was ever driving it to begin with', () => {
-        const neverStarted = addBookDownload({
+      it('claims a queued row whose heartbeat has gone cold — its task was dropped at a restart', () => {
+        // How a row gets here: retryBookDownload (or this sweep itself) parks
+        // it in 'queued' and enqueues a separate `download` task. That task
+        // carries no not_before, so rebuildRetryQueueFromDatabase does not
+        // rebuild it at boot — a restart in that gap leaves the row queued
+        // with nothing driving it. If the sweep skips 'queued', it is stuck
+        // forever.
+        const stranded = addBookDownload({
           libraryId: 1,
           source: 'libgen',
-          title: 'Never Started',
+          title: 'Stranded Book',
           author: 'Some Author',
           extension: 'epub',
-          downloadUrl: 'libgen:never-md5',
-          md5: 'never-md5',
+          downloadUrl: 'libgen:stranded-md5',
+          md5: 'stranded-md5',
         });
         execute(
           `UPDATE book_downloads SET heartbeat_at = datetime('now', '-60 minutes') WHERE id = ?`,
-          [neverStarted.id]
+          [stranded.id]
         );
 
+        assert.deepStrictEqual(
+          claimStalledBookDownloads(30).map((download) => download.id),
+          [stranded.id]
+        );
+      });
+
+      it('leaves a freshly queued row alone until it has had time to be picked up', () => {
+        // heartbeat_at defaults to CURRENT_TIMESTAMP, so a row whose task is
+        // about to drive it is not stale yet — which is what makes claiming
+        // 'queued' safe rather than a race with downloadHandler.
+        const justQueued = addBookDownload({
+          libraryId: 1,
+          source: 'libgen',
+          title: 'Just Queued',
+          author: 'Some Author',
+          extension: 'epub',
+          downloadUrl: 'libgen:fresh-md5',
+          md5: 'fresh-md5',
+        });
+
         assert.deepStrictEqual(claimStalledBookDownloads(30), []);
+        assert.strictEqual(getBookDownload(justQueued.id)!.state, 'queued');
       });
 
       it('will not let two sweeps claim the same orphan', () => {

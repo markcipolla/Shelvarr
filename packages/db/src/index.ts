@@ -3375,12 +3375,25 @@ export function getBookDownloadHistory(limit = 50, libraryId?: number): Array<Re
  * one — the loser's subquery no longer matches once the winner's heartbeat
  * stamp lands.
  *
- * Unlike comics, `queued` is not among the claimable states here. A book
- * download's row is created and moved straight to `downloading` within the
- * same task invocation (see `downloadHandler`) — there is no gap where a row
- * sits in `queued` waiting for a separate process to pick it up, so a row
- * still in `queued` was never claimed by anyone to begin with and has
- * nothing to resume.
+ * `queued` is claimable, same as comics. It is tempting to leave it out on
+ * the grounds that `downloadHandler` creates a row and moves it straight to
+ * `downloading` in one invocation, so nothing ever waits in `queued` — but
+ * two paths do exactly that, and both park the row before the task that
+ * drives it exists:
+ *
+ *   - `retryBookDownload` resets the row to `queued`, then enqueues a
+ *     separate `download` task.
+ *   - this very function parks what it claims in `queued`, then
+ *     `bookResumeHandler` enqueues the task.
+ *
+ * A plain `download` task carries no `not_before`, and
+ * `rebuildRetryQueueFromDatabase` only rebuilds pending tasks that have one.
+ * So a restart in that gap drops the task and strands the row in `queued`
+ * with nothing left to drive it — permanently, if this sweep cannot see it.
+ *
+ * Claiming `queued` is safe because `heartbeat_at` defaults to
+ * CURRENT_TIMESTAMP on insert: a genuinely fresh row is not stale for
+ * `staleMinutes`, by which time its task has long since taken it.
  */
 export function claimStalledBookDownloads(
   staleMinutes: number,
@@ -3392,7 +3405,7 @@ export function claimStalledBookDownloads(
           SET state = 'queued', heartbeat_at = CURRENT_TIMESTAMP
         WHERE id IN (
           SELECT id FROM book_downloads
-           WHERE state IN ('downloading', 'importing')
+           WHERE state IN ('queued', 'downloading', 'importing')
              AND (heartbeat_at IS NULL
                   OR heartbeat_at <= datetime('now', ?))
            ORDER BY id ASC
