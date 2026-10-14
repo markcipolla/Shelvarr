@@ -67,9 +67,18 @@ export function isGetComicsEnabled(): boolean {
   return isSourceEnabled('getcomics');
 }
 
+/**
+ * What every refusal says when the switch is off. Shared because the switch is
+ * checked from the queue handlers, the API routes and the server actions as
+ * well as from here, and four different wordings for one cause is three too
+ * many.
+ */
+export const GETCOMICS_DISABLED_MESSAGE =
+  'GetComics is disabled. Turn it on in Settings \u2192 Download sources.';
+
 function assertGetComicsEnabled(): void {
   if (!isGetComicsEnabled()) {
-    throw new Error('GetComics is disabled in Settings \u2192 Download sources');
+    throw new Error(GETCOMICS_DISABLED_MESSAGE);
   }
 }
 
@@ -385,12 +394,13 @@ export async function autoSearchVolume(
   volumeId: number,
   options: AutoSearchVolumeOptions = {}
 ): Promise<AutoSearchVolumeResult> {
-  // Scheduled sweeps call this too, so a disabled source is a no-op rather
-  // than a failure that would keep retrying.
-  if (!isGetComicsEnabled()) {
-    log.info('Skipping auto search, GetComics is disabled', { volumeId });
-    return { downloads: [], failed: [] };
-  }
+  // Not a silent no-op. Returning an empty result here is indistinguishable
+  // from "GetComics has nothing for this volume", so the one setting that
+  // stops every download was invisible to the only people who could change
+  // it: the search button said "queued", the task completed, and no comic
+  // ever arrived. The scheduled sweep checks the switch itself, so nothing is
+  // left retrying on a timer.
+  assertGetComicsEnabled();
 
   const loaded = loadVolume(volumeId);
   if (!loaded) throw new Error(`Comic volume ${volumeId} not found`);

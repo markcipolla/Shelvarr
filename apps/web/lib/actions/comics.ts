@@ -250,11 +250,17 @@ export async function runComicVolumeJob(
   volumeId: number,
   job: VolumeJob
 ): Promise<{ success: boolean; taskId?: number; error?: string }> {
-  const { queue } = await import('@shelvarr/services');
+  const { queue, getcomics } = await import('@shelvarr/services');
   const { revalidatePath } = await import('next/cache');
 
   const type = VOLUME_JOB_TASKS[job];
   if (!type) return { success: false, error: `Unknown job: ${job}` };
+
+  // Say it at the click rather than let the task fail quietly on a page the
+  // user has no reason to open.
+  if (job === 'search' && !getcomics.isGetComicsEnabled()) {
+    return { success: false, error: getcomics.GETCOMICS_DISABLED_MESSAGE };
+  }
 
   const task = queue.enqueueTask(type as never, { volumeId });
   revalidatePath(`/comics/${getComicSlug(volumeId) ?? volumeId}`);
@@ -274,7 +280,11 @@ export async function searchAllComicsAction(): Promise<{
   alreadyRunning?: boolean;
   error?: string;
 }> {
-  const { queue } = await import('@shelvarr/services');
+  const { queue, getcomics } = await import('@shelvarr/services');
+
+  if (!getcomics.isGetComicsEnabled()) {
+    return { success: false, error: getcomics.GETCOMICS_DISABLED_MESSAGE };
+  }
 
   try {
     const { task, alreadyRunning } = queue.enqueueOnce('comic_search_all', {});
