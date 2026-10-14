@@ -12,18 +12,42 @@
  * to press Retry, so failures are swept on a delay rather than at once.
  */
 
-import { existsSync, readdirSync, statSync, unlinkSync } from 'fs';
+import { constants, existsSync, readdirSync, statSync, unlinkSync } from 'fs';
+import { access, mkdir } from 'fs/promises';
 import { join } from 'path';
 
 import { getComicDownload, sqlTimeToIso } from '@shelvarr/db';
 
 import { getServiceConfig } from '../config';
+import { describeWriteFailure } from '../utils/fs-errors';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('comics-scratch');
 
 /** How long a failed download's bytes are kept in case it gets retried. */
 export const DEFAULT_KEEP_FAILED_HOURS = 48;
+
+/**
+ * Check in-flight downloads have somewhere to land, creating it if need be.
+ *
+ * Called before a download starts, for the same reason the library folder is:
+ * when the scratch directory is missing or unwritable — a data mount that is
+ * not there, one owned by another uid — every link for the release fails
+ * identically, and finding that out one link at a time spends the host's
+ * download allowance to learn nothing.
+ */
+export async function ensureScratchDir(): Promise<string> {
+  const directory = getServiceConfig().getcomics.downloadDir;
+
+  try {
+    await mkdir(directory, { recursive: true });
+    await access(directory, constants.W_OK | constants.X_OK);
+  } catch (error) {
+    throw describeWriteFailure(directory, error, 'write downloads to');
+  }
+
+  return directory;
+}
 
 /** `123-Some Comic 001.cbz` — the download id the file belongs to. */
 const SCRATCH_NAME = /^(\d+)-/;

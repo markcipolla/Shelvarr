@@ -30,7 +30,7 @@ const FAILURE_COPY: Record<ComicDownloadFailureReason, string> = {
   'import-failed':
     'It downloaded, but could not be filed into the library. A retry picks up from the bytes already fetched.',
   'library-unwritable':
-    'The volume’s folder could not be written to, so nothing was downloaded. Check who owns it.',
+    'A folder it needed could not be written to — the download scratch space, or the volume’s own folder — so nothing was downloaded. The error below names which, and who was denied.',
 };
 
 /** The same reasons in a few words, for a history line. */

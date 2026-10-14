@@ -60,7 +60,7 @@ import type {
 import * as getcomics from '../comics/getcomics/index';
 import * as comicLibrary from '../comics/library';
 import { ensureImportable, importComicDownload } from '../comics/import';
-import { sweepComicScratch } from '../comics/scratch';
+import { ensureScratchDir, sweepComicScratch } from '../comics/scratch';
 import { scanVolumeFiles } from '../comics/scan';
 import { applyVolumeRename } from '../comics/rename';
 import {
@@ -1718,14 +1718,15 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
    */
   const clearScratch = (): void => {
     const scratchDir = getServiceConfig().getcomics.downloadDir;
-    if (!fs.existsSync(scratchDir)) return;
-    for (const entry of fs.readdirSync(scratchDir)) {
-      if (!entry.startsWith(`${download.id}-`)) continue;
-      try {
+    try {
+      for (const entry of fs.readdirSync(scratchDir)) {
+        if (!entry.startsWith(`${download.id}-`)) continue;
         fs.unlinkSync(path.join(scratchDir, entry));
-      } catch {
-        // Best effort: a leftover partial is untidy, not fatal.
       }
+    } catch {
+      // Best effort: a leftover partial is untidy, not fatal — and this runs
+      // on the way out of a failure, where throwing would replace the error
+      // that actually ended the download with one about reading the directory.
     }
   };
 
@@ -1783,11 +1784,13 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
     rootFolderId: volumeRow?.root_folder_id ?? null,
   };
 
-  // Check the library folder is writable before spending bandwidth on a file
-  // we would only fail to file away. A wrongly-owned bind mount is the usual
-  // culprit, and it fails every download identically.
+  // Check both folders are writable before spending bandwidth on a file we
+  // would only fail to put down: the scratch directory it is streamed to, and
+  // the library folder it is filed into. A wrongly-owned or missing bind mount
+  // is the usual culprit, and it fails every link identically.
   try {
     await ensureImportable(namingVolume);
+    await ensureScratchDir();
   } catch (error) {
     return fail(
       error instanceof Error ? error.message : String(error),

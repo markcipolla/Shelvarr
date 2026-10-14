@@ -15,6 +15,20 @@ export function describeWriteFailure(
   action = 'write to'
 ): Error {
   const code = (error as NodeJS.ErrnoException).code;
+
+  // A stale handle means the filesystem that was mounted here has gone: the
+  // host unmounted or replaced it under the running container, so every
+  // operation on the path fails until it is mounted again. libuv has no name
+  // for ESTALE, so Node reports it as `Unknown system error -116` (Linux's
+  // errno for it) with code `UNKNOWN`, which tells nobody anything.
+  if (code === 'ESTALE' || (error as NodeJS.ErrnoException).errno === -116) {
+    return new Error(
+      `Cannot ${action} ${directory}: the filesystem mounted there has gone stale. ` +
+        'Whatever the host had mounted at that path is no longer there — fix the ' +
+        'mount and restart the container.'
+    );
+  }
+
   if (code !== 'EACCES' && code !== 'EPERM' && code !== 'EROFS') {
     return error instanceof Error ? error : new Error(String(error));
   }

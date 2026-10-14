@@ -20,6 +20,8 @@ let sweep: typeof import('@shelvarr/services/comics/scratch');
 let dataDir: string;
 let libraryDir: string;
 let scratchDir: string;
+/** Re-point the config at another scratch directory. Set up in `before`. */
+let useScratchDir: (downloadDir: string) => void;
 
 const realFetch = globalThis.fetch;
 
@@ -131,18 +133,20 @@ describe('Comic download retries', () => {
     db.initDatabase();
 
     const { initServiceConfig } = await import('@shelvarr/services');
-    initServiceConfig({
-      dataDir,
-      libraryRoot: join(dataDir, 'library'),
-      dbPath: join(dataDir, 'test.db'),
-      getcomics: {
-        baseUrl: 'https://getcomics.org',
-        downloadDir: scratchDir,
-        hostPreference: ['getcomics', 'pixeldrain'],
-        renameDownloadedFiles: true,
-      },
-      supportedExtensions: ['.cbz'],
-    });
+    useScratchDir = (downloadDir: string) =>
+      initServiceConfig({
+        dataDir,
+        libraryRoot: join(dataDir, 'library'),
+        dbPath: join(dataDir, 'test.db'),
+        getcomics: {
+          baseUrl: 'https://getcomics.org',
+          downloadDir,
+          hostPreference: ['getcomics', 'pixeldrain'],
+          renameDownloadedFiles: true,
+        },
+        supportedExtensions: ['.cbz'],
+      });
+    useScratchDir(scratchDir);
 
     queue = await import('@shelvarr/services/queue/index');
     sweep = await import('@shelvarr/services/comics/scratch');
@@ -371,6 +375,51 @@ describe('Comic download retries', () => {
 
     assert.strictEqual(await runDownload(download.id), 'failed');
     assert.strictEqual(db.getComicDownload(download.id)!.failureReason, 'library-unwritable');
+  });
+
+  it('says the download folder was the problem before fetching anything', async () => {
+    const stub = stubFetch({
+      [LINK_A]: () => fileResponse('comic-bytes', LINK_A),
+      [LINK_B]: () => fileResponse('comic-bytes', LINK_B),
+    });
+
+    const download = db.addComicDownload({
+      volumeId: 501,
+      host: 'getcomics',
+      downloadLink: LINK_A,
+      alternateLinks: [{ host: 'getcomics', link: LINK_B }],
+    });
+
+    // A scratch directory that cannot be created: a path under a regular file.
+    // A missing data mount fails the same way, and used to fail every link in
+    // turn — each one spending a slice of the host's download allowance.
+    const blocker = join(dataDir, 'scratch-blocker');
+    writeFileSync(blocker, 'in the way');
+    useScratchDir(join(blocker, 'downloads'));
+    try {
+      assert.strictEqual(await runDownload(download.id), 'failed');
+    } finally {
+      useScratchDir(scratchDir);
+    }
+
+    const failed = db.getComicDownload(download.id)!;
+    assert.strictEqual(failed.failureReason, 'library-unwritable');
+    assert.match(failed.error ?? '', /scratch-blocker/);
+    assert.deepStrictEqual(stub.calls, [], 'no link was tried');
+  });
+
+  it('explains a stale mount instead of the errno nobody can look up', async () => {
+    const { describeWriteFailure } = await import('@shelvarr/services/utils/fs-errors');
+    // What a vanished bind mount throws: libuv has no name for ESTALE, so the
+    // code is `UNKNOWN` and the message is Linux's raw errno.
+    const stale = Object.assign(
+      new Error("Unknown system error -116, mkdir '/app/data/downloads'"),
+      { errno: -116, code: 'UNKNOWN' }
+    );
+
+    const described = describeWriteFailure('/app/data/downloads', stale, 'write downloads to');
+    assert.match(described.message, /gone stale/);
+    assert.match(described.message, /restart the container/);
   });
 
   it('resumes a partial file rather than starting over', async () => {

@@ -118,7 +118,7 @@ export type ComicDownloadFailureReason =
   | 'download-failed'
   /** The file arrived but could not be moved into the library. */
   | 'import-failed'
-  /** The volume's folder could not be written to, so nothing was fetched. */
+  /** The scratch or library folder could not be written to; nothing was fetched. */
   | 'library-unwritable';
 
 /** A queued or in-flight download. */
