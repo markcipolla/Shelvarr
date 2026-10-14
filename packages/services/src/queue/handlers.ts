@@ -1666,7 +1666,7 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
   if (!data.comicDownloadId) throw new Error('Comic download task has no comicDownloadId');
 
   if (!getcomics.isGetComicsEnabled()) {
-    throw new Error('GetComics is disabled in Settings \u2192 Download sources');
+    throw new Error(getcomics.GETCOMICS_DISABLED_MESSAGE);
   }
 
   const download = getComicDownload(data.comicDownloadId);
@@ -2147,6 +2147,13 @@ const comicResumeHandler: TaskHandler = async (taskId, onProgress) => {
  */
 const comicSearchAllHandler: TaskHandler = async (taskId, onProgress, signal) => {
   const data = comicTaskData<{ limit?: number }>(taskId, 'comic search configuration');
+
+  // Up front, so the whole sweep fails once and says why, rather than
+  // collecting the same refusal against a hundred volumes.
+  if (!getcomics.isGetComicsEnabled()) {
+    throw new Error(getcomics.GETCOMICS_DISABLED_MESSAGE);
+  }
+
   const volumeIds = getComicVolumesWithMissingIssues(data.limit ?? 100);
 
   onProgress(0, volumeIds.length);

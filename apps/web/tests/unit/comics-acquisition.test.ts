@@ -246,13 +246,17 @@ describe('Comic acquisition', () => {
       assert.strictEqual(getcomics.isGetComicsEnabled(), true);
     });
 
-    it('makes auto search a no-op while disabled', async () => {
+    // This used to return `{ downloads: [], failed: [] }`, which reads
+    // exactly like "GetComics has nothing for this volume". The switch is off
+    // by default, so a whole server stopped downloading comics and every
+    // surface reported success: the search button said "queued", the task
+    // completed, nothing arrived.
+    it('refuses an auto search while disabled, rather than finding nothing', async () => {
       db.upsertDownloadSourceConfig('getcomics', false);
 
-      // Returns before the volume is even loaded, so the missing volume 501
-      // would otherwise have thrown.
-      const result = await getcomics.autoSearchVolume(501);
-      assert.deepStrictEqual(result, { downloads: [], failed: [] });
+      // Rejects before the volume is even loaded, so a missing volume 501 is
+      // no excuse for the rejection.
+      await assert.rejects(getcomics.autoSearchVolume(501), /disabled/i);
     });
 
     it('refuses a manual search while disabled', async () => {

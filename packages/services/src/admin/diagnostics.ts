@@ -9,7 +9,14 @@
 
 import { statSync } from 'fs';
 
-import { getSetting, query, queryOne, sqlTimeToIso } from '@shelvarr/db';
+import {
+  getDownloadSourceConfigs,
+  getSetting,
+  isSourceEnabled,
+  query,
+  queryOne,
+  sqlTimeToIso,
+} from '@shelvarr/db';
 
 import { APP_NAME, APP_VERSION } from '../constants';
 import { getServiceConfig } from '../config';
@@ -228,6 +235,15 @@ export interface IntegrationSummary {
   hardcover: boolean;
   comicvine: boolean;
   email: boolean;
+  /**
+   * Download sources, by whether they are switched on in Settings -> Download
+   * sources. A source that has never been configured has no row and is
+   * therefore disabled; `getcomics` is always listed, because it is the one
+   * switch that gates every comic search and download, and leaving it off the
+   * snapshot made "comics stopped downloading" impossible to diagnose from
+   * here.
+   */
+  downloadSources: Record<string, boolean>;
   auth: { enabled: boolean; users: number; admins: number };
 }
 
@@ -297,6 +313,12 @@ export function getSystemStatus(): SystemStatus {
       hardcover: Boolean(storedKey('hardcover_api_key')),
       comicvine: Boolean(storedKey('comicvine_api_key')),
       email: isEmailConfigured(),
+      downloadSources: {
+        getcomics: isSourceEnabled('getcomics'),
+        ...Object.fromEntries(
+          getDownloadSourceConfigs().map((config) => [config.source, config.enabled === 1])
+        ),
+      },
       auth: {
         enabled: isAuthEnabled(),
         users: safeCount(countUsers),

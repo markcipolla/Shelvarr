@@ -33,6 +33,10 @@ export async function GET(
     return NextResponse.json({ error: 'Invalid issueId' }, { status: 400 });
   }
 
+  if (!getcomics.isGetComicsEnabled()) {
+    return NextResponse.json({ error: getcomics.GETCOMICS_DISABLED_MESSAGE }, { status: 409 });
+  }
+
   try {
     const { results } = await getcomics.searchVolume(volumeId, { issueId });
     return NextResponse.json({ results });
@@ -59,6 +63,10 @@ export async function POST(
   const volumeId = parseVolumeId(id);
   if (volumeId === null) {
     return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+  }
+
+  if (!getcomics.isGetComicsEnabled()) {
+    return NextResponse.json({ error: getcomics.GETCOMICS_DISABLED_MESSAGE }, { status: 409 });
   }
 
   const body = (await request.json().catch(() => ({}))) as { issueId?: number };

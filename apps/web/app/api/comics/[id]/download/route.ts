@@ -32,10 +32,7 @@ export async function POST(
   }
 
   if (!getcomics.isGetComicsEnabled()) {
-    return NextResponse.json(
-      { error: 'GetComics is disabled. Turn it on in Settings \u2192 Download sources.' },
-      { status: 409 }
-    );
+    return NextResponse.json({ error: getcomics.GETCOMICS_DISABLED_MESSAGE }, { status: 409 });
   }
 
   try {
