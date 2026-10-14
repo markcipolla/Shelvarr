@@ -2952,6 +2952,38 @@ export function switchComicDownloadLink(
 }
 
 /**
+ * How long a non-terminal download's heartbeat may go cold before nothing is
+ * driving it any more.
+ *
+ * Must stay above the longest rate-limit backoff, or a download quietly
+ * waiting out a host would be treated as abandoned by the process that is
+ * already going to retry it.
+ */
+export const STALLED_DOWNLOAD_MINUTES = 30;
+
+/**
+ * Whether a download has been abandoned — its state still claims it is on its
+ * way, but nothing has stamped it in `STALLED_DOWNLOAD_MINUTES`.
+ *
+ * `state` is a claim; `heartbeat_at` is the evidence. Anything deciding
+ * whether a download is really in flight has to ask this rather than trust
+ * the state, or a process killed mid-download leaves a row that looks busy
+ * forever: the sweep is the only thing that can rescue it, and the sweep is a
+ * schedule the user is allowed to switch off.
+ */
+export function isComicDownloadStalled(download: ComicDownload): boolean {
+  if (!ACTIVE_DOWNLOAD_STATES.includes(download.state as (typeof ACTIVE_DOWNLOAD_STATES)[number])) {
+    return false;
+  }
+  if (!download.heartbeatAt) return true;
+
+  const heartbeat = Date.parse(download.heartbeatAt);
+  if (Number.isNaN(heartbeat)) return true;
+
+  return Date.now() - heartbeat > STALLED_DOWNLOAD_MINUTES * 60_000;
+}
+
+/**
  * Claim downloads that were left mid-flight when a process stopped.
  *
  * A live download stamps `heartbeat_at` as it goes — on every state change and

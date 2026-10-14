@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
 import { validateApiAuth, queue, comicDownloadEvents } from '@shelvarr/services';
-import { getComicDownload } from '@/lib/db';
+import { getComicDownload, isComicDownloadStalled } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,10 +29,13 @@ export async function POST(
     return NextResponse.json({ error: 'Download not found' }, { status: 404 });
   }
 
+  // A stalled download says `downloading` and means nothing of the kind, so
+  // only refuse one that is genuinely being driven.
   if (
-    download.state === 'queued' ||
-    download.state === 'downloading' ||
-    download.state === 'importing'
+    (download.state === 'queued' ||
+      download.state === 'downloading' ||
+      download.state === 'importing') &&
+    !isComicDownloadStalled(download)
   ) {
     return NextResponse.json(
       { error: `Download is already ${download.state}` },

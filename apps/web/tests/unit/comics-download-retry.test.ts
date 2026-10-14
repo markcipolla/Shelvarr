@@ -596,6 +596,43 @@ describe('Comic download retries', () => {
     assert.strictEqual(db.getComicDownload(orphan.id)!.state, 'queued');
   });
 
+  // A live server sat on 60 rows that said `downloading` and hadn't moved in
+  // 12 hours. The queue page offered them no Retry and the retry endpoint
+  // refused them as "already downloading", so the resume sweep was the only
+  // way back — and that is a schedule the user is allowed to switch off. The
+  // state is a claim; the heartbeat is the evidence.
+  it('calls a non-terminal download with a cold heartbeat stalled, not busy', () => {
+    const live = db.addComicDownload({
+      volumeId: 501,
+      host: 'getcomics',
+      downloadLink: LINK_A,
+    });
+    db.execute("UPDATE comic_downloads SET state = 'downloading' WHERE id = ?", [live.id]);
+    assert.strictEqual(
+      db.isComicDownloadStalled(db.getComicDownload(live.id)!),
+      false,
+      'a download stamped just now is being driven'
+    );
+
+    db.execute(
+      `UPDATE comic_downloads SET heartbeat_at = datetime('now', '-60 minutes') WHERE id = ?`,
+      [live.id]
+    );
+    assert.strictEqual(
+      db.isComicDownloadStalled(db.getComicDownload(live.id)!),
+      true,
+      'an hour without a heartbeat means nobody is driving it'
+    );
+
+    // A download that already finished is not stalled, however old it is.
+    db.execute(
+      `UPDATE comic_downloads SET state = 'completed',
+              heartbeat_at = datetime('now', '-600 minutes') WHERE id = ?`,
+      [live.id]
+    );
+    assert.strictEqual(db.isComicDownloadStalled(db.getComicDownload(live.id)!), false);
+  });
+
   it('keeps the heartbeat warm while a download is making progress', () => {
     const download = db.addComicDownload({
       volumeId: 501,

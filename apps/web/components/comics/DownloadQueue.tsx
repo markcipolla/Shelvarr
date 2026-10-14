@@ -49,6 +49,9 @@ const STATE_STYLES: Record<string, string> = {
   completed: 'bg-green-600/20 text-green-400 border-green-500/40',
   failed: 'bg-red-600/20 text-red-400 border-red-500/40',
   cancelled: 'bg-gray-600/20 text-gray-400 border-gray-500/40',
+  // Not a stored state: a row whose state still claims it is downloading but
+  // whose heartbeat has gone cold.
+  stalled: 'bg-amber-600/20 text-amber-400 border-amber-500/40',
 };
 
 export function DownloadQueue({ data }: { data: DownloadQueueView }) {
@@ -119,6 +122,7 @@ export function DownloadQueue({ data }: { data: DownloadQueueView }) {
                 download={download}
                 busy={busy === download.id}
                 onCancel={() => handleCancel(download.id)}
+                onRetry={() => handleRetry(download.id)}
               />
             ))}
           </ul>
@@ -266,10 +270,12 @@ function ActiveDownloadRow({
   download,
   busy,
   onCancel,
+  onRetry,
 }: {
   download: DownloadQueueView['downloads'][number];
   busy: boolean;
   onCancel: () => void;
+  onRetry: () => void;
 }) {
   const { progress, size } = useLiveDownloadProgress(download.id, {
     progress: download.progress,
@@ -282,8 +288,12 @@ function ActiveDownloadRow({
     <li className="p-3 flex items-center justify-between gap-4">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className={`text-xs px-2 py-0.5 rounded border ${STATE_STYLES[download.state]}`}>
-            {download.state}
+          <span
+            className={`text-xs px-2 py-0.5 rounded border ${
+              download.stalled ? STATE_STYLES['stalled'] : STATE_STYLES[download.state]
+            }`}
+          >
+            {download.stalled ? 'stalled' : download.state}
           </span>
           <Link
             href={`/comics/${download.volumeSlug}`}
@@ -301,10 +311,16 @@ function ActiveDownloadRow({
           {download.alternates > 0 &&
             ` · ${download.alternates} fallback${download.alternates === 1 ? '' : 's'}`}
         </p>
+        {download.stalled && (
+          <p className="text-xs text-amber-400 mt-1">
+            Nothing has driven this for half an hour — the server probably stopped mid-download.
+            Retry picks it up from the bytes already fetched.
+          </p>
+        )}
         {download.state === 'queued' && download.error && (
           <p className="text-xs text-amber-400 mt-1 truncate">{download.error}</p>
         )}
-        {size ? (
+        {size && !download.stalled ? (
           <div className="mt-2 h-1 bg-shelvarr-bg rounded overflow-hidden">
             <div
               className="h-full bg-blue-500 transition-all"
@@ -314,14 +330,26 @@ function ActiveDownloadRow({
         ) : null}
       </div>
 
-      <button
-        type="button"
-        onClick={onCancel}
-        disabled={busy}
-        className="text-sm text-red-400 hover:text-red-300 disabled:opacity-40 whitespace-nowrap"
-      >
-        Cancel
-      </button>
+      <div className="flex items-center gap-3">
+        {download.stalled && (
+          <button
+            type="button"
+            onClick={onRetry}
+            disabled={busy}
+            className="text-sm text-blue-400 hover:text-blue-300 disabled:opacity-40"
+          >
+            Retry
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          className="text-sm text-red-400 hover:text-red-300 disabled:opacity-40 whitespace-nowrap"
+        >
+          Cancel
+        </button>
+      </div>
     </li>
   );
 }

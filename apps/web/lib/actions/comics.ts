@@ -431,6 +431,12 @@ export interface DownloadQueueView {
     error: string | null;
     /** Why it failed, for the page to phrase; null unless it failed. */
     failureReason: ComicDownloadFailureReason | null;
+    /**
+     * Still says it is on its way, but nothing has stamped it in half an
+     * hour — so nothing is driving it and the page should offer a retry
+     * rather than a progress bar.
+     */
+    stalled: boolean;
     createdAt: string;
   }>;
   history: Array<{
@@ -457,6 +463,7 @@ export async function getComicDownloadQueue(): Promise<DownloadQueueView> {
     getComicBlocklist,
     getComicDownloadHistory,
     getComicDownloads,
+    isComicDownloadStalled,
     query: dbQuery,
   } = await import('@/lib/db');
 
@@ -482,6 +489,7 @@ export async function getComicDownloadQueue(): Promise<DownloadQueueView> {
       alternates: download.alternateLinks.length,
       error: download.error,
       failureReason: download.failureReason,
+      stalled: isComicDownloadStalled(download),
       createdAt: download.createdAt,
     })),
     history: (
@@ -553,17 +561,22 @@ export async function cancelComicDownload(
 export async function retryComicDownload(
   id: number
 ): Promise<{ success: boolean; error?: string }> {
-  const { getComicDownload } = await import('@/lib/db');
+  const { getComicDownload, isComicDownloadStalled } = await import('@/lib/db');
   const { comicDownloadEvents, queue } = await import('@shelvarr/services');
   const { revalidatePath } = await import('next/cache');
 
   const download = getComicDownload(id);
   if (!download) return { success: false, error: 'Download not found' };
 
+  // Only refuse a download that is genuinely being driven. A stalled one says
+  // `downloading` and means nothing of the kind, and refusing it here left it
+  // unrecoverable by hand: the resume sweep was the only way back, and that is
+  // a schedule the user can switch off.
   if (
-    download.state === 'downloading' ||
-    download.state === 'importing' ||
-    download.state === 'queued'
+    (download.state === 'downloading' ||
+      download.state === 'importing' ||
+      download.state === 'queued') &&
+    !isComicDownloadStalled(download)
   ) {
     return { success: false, error: `Download is already ${download.state}` };
   }

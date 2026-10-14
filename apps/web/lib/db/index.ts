@@ -93,6 +93,7 @@ export {
   addComicDownload,
   getComicDownload,
   getComicDownloads,
+  isComicDownloadStalled,
   isComicDownloadActive,
   getActiveComicDownloadCounts,
   updateComicDownloadProgress,
