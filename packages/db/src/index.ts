@@ -464,6 +464,28 @@ function runMigrations(database: Database.Database): void {
     database.exec('DROP TABLE login_tokens');
   }
 
+  // Every `no-working-links` blocklist entry was written by a rule that could
+  // not tell a dead article from an unreachable one: when no link resolved,
+  // the article was blocklisted permanently — including when the reason was
+  // GetComics rate-limiting a library sweep, which is precisely what a large
+  // sweep provokes. Articles whose links serve the file perfectly well ended
+  // up skipped forever, and nothing surfaced it.
+  //
+  // The rule is fixed; these rows are its output, so they go. They are a
+  // cache of failures, and re-checking one costs a single resolve. Entries
+  // from a link that really did prove broken (`link-broken`) and ones added
+  // by hand (`added-by-user`) are evidence of something and stay.
+  const staleBlocklist = database
+    .prepare("DELETE FROM comic_blocklist WHERE reason = 'no-working-links'")
+    .run();
+  if (staleBlocklist.changes > 0) {
+    console.log(
+      `Running migration: cleared ${staleBlocklist.changes} comic blocklist ` +
+        'entries recorded as no-working-links (could not distinguish a dead ' +
+        'article from a rate-limited one)'
+    );
+  }
+
   // Book downloads got a real queue (book_downloads/book_download_history/
   // book_blocklist, mirroring the comic acquisition tables). The old
   // `downloads` table was never read or written by anything, so there is no
