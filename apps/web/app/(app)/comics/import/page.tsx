@@ -9,6 +9,8 @@ import { LiveRefresh } from '@/components/live/LiveRefresh';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Import an existing library' };
+
 export default async function LibraryImportPage() {
   const [run, apply, rootFolders] = await Promise.all([
     getLatestLibraryImport(),

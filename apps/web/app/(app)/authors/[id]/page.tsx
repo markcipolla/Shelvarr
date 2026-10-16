@@ -10,6 +10,11 @@ interface PageProps {
   params: Promise<{ id: string }>;
 }
 
+export async function generateMetadata({ params }: PageProps) {
+  const author = await getAuthor(parseInt((await params).id, 10));
+  return { title: author?.name ?? 'Author' };
+}
+
 export default async function AuthorDetailPage({ params }: PageProps) {
   const { id } = await params;
   const authorId = parseInt(id, 10);

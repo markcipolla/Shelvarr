@@ -10,6 +10,11 @@ import { OrganizePreview } from '@/components/libraries/OrganizePreview';
 
 export const dynamic = 'force-dynamic';
 
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const library = await getLibraryById(Number((await params).id));
+  return { title: library ? `Organize: ${library.name}` : 'Organize' };
+}
+
 export default async function OrganizePreviewPage({
   params,
 }: {

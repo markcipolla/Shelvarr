@@ -4,6 +4,8 @@ import { getAuthorByName } from '@/lib/actions/authors';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Author debug info' };
+
 export default async function DebugAuthorsPage() {
   // Get author count
   const authorCount = query<{ count: number }>('SELECT COUNT(*) as count FROM authors', [])[0];

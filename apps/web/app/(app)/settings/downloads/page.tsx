@@ -7,6 +7,8 @@ import { DownloadSourcesTab } from '@/components/settings/DownloadSourcesTab';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Download Sources · Settings' };
+
 export default async function DownloadSettingsPage() {
   const [downloadConfigs, downloadStatuses, mirrors] = await Promise.all([
     getDownloadConfigs(),

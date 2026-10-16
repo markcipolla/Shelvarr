@@ -7,7 +7,9 @@ import { ToastProvider } from '@/components/ui/Toast';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Shelvarr',
+  // Pages set their own title; this template keeps the app name on the end of
+  // it so a browser tab or a bookmark still says where it came from.
+  title: { default: 'Shelvarr', template: '%s · Shelvarr' },
   description: 'Self-hosted book and comic metadata management',
 };
 

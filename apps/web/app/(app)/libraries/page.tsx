@@ -5,6 +5,8 @@ import { LiveRefresh } from '@/components/live/LiveRefresh';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Libraries' };
+
 export default async function LibrariesPage() {
   const libraries = await getLibraries('all');
 

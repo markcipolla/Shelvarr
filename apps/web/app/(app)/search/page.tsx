@@ -20,6 +20,11 @@ export interface SearchResultWithStatus extends HardcoverSearchResult {
   isWanted: boolean;
 }
 
+export async function generateMetadata({ searchParams }: PageProps) {
+  const query = (await searchParams).q?.trim();
+  return { title: query ? `Search: ${query}` : 'Search' };
+}
+
 export default async function SearchRoute({ searchParams }: PageProps) {
   const { q } = await searchParams;
   const query = q?.trim() || '';

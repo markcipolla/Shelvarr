@@ -6,6 +6,8 @@ import { BookCover } from '@/components/ui/BookCover';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Series' };
+
 interface PageProps {
   searchParams: Promise<{ search?: string }>;
 }

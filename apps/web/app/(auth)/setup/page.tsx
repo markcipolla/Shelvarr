@@ -5,6 +5,8 @@ import { SetupForm } from '@/components/auth/SetupForm';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Set up' };
+
 /**
  * First run. Available only while the server has no accounts — once the first
  * admin exists this page redirects away for good.

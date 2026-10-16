@@ -6,6 +6,8 @@ import { LiveIndicator } from '@/components/live/LiveIndicator';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Tasks' };
+
 export default async function TasksPage() {
   // Fetch queued (pending/running) and completed tasks separately
   const [queuedResult, completedResult] = await Promise.all([

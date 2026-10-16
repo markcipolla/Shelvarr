@@ -7,6 +7,8 @@ import { UsersTab } from '@/components/settings/UsersTab';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Users · Settings' };
+
 export default async function UsersSettingsPage() {
   const currentUser = await requireAdmin();
   const access = await getAccessSettings();

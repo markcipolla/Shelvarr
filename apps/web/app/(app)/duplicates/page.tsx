@@ -3,6 +3,8 @@ import { DuplicatesReview } from '@/components/duplicates/DuplicatesReview';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Duplicates' };
+
 export default async function DuplicatesPage() {
   const { books, comics } = await getDuplicatesAction();
 

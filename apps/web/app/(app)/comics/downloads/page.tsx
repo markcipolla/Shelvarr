@@ -4,6 +4,8 @@ import { DownloadQueue } from '@/components/comics/DownloadQueue';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Comic downloads' };
+
 export default async function ComicDownloadsPage() {
   const data = await getComicDownloadQueue();
 
