@@ -464,6 +464,42 @@ function runMigrations(database: Database.Database): void {
     database.exec('DROP TABLE login_tokens');
   }
 
+  // Schedules record the default the code last shipped for them, so a changed
+  // default can reach an existing install.
+  //
+  // Before this, `ensureDefaultSchedules` inserted a row once and then left it
+  // alone forever, on the grounds that the interval and the on/off switch
+  // belong to whoever set them. True — but it could not tell a decision from a
+  // leftover, so a default that changed after a row existed never applied
+  // again. Six of ten jobs here were running on an interval the code had
+  // stopped asking for, and two comic jobs shipped as on-by-default sat off.
+  //
+  // Backfilling the recorded default from the stored value says "nobody has
+  // answered this yet", which is exactly what we know: no edit was ever
+  // recorded. The first start after this adopts the current defaults, and
+  // from then on an edit is distinguishable and survives.
+  const scheduledTasksInfo = database
+    .prepare('PRAGMA table_info(scheduled_tasks)')
+    .all() as Array<{ name: string }>;
+  for (const column of ['default_enabled', 'default_interval_seconds']) {
+    if (scheduledTasksInfo.some((col) => col.name === column)) continue;
+    console.log(`Running migration: adding ${column} column to scheduled_tasks`);
+    database.exec(`ALTER TABLE scheduled_tasks ADD COLUMN ${column} INTEGER`);
+  }
+  const unrecorded = database
+    .prepare(
+      `UPDATE scheduled_tasks
+          SET default_enabled = enabled,
+              default_interval_seconds = interval_seconds
+        WHERE default_enabled IS NULL OR default_interval_seconds IS NULL`
+    )
+    .run();
+  if (unrecorded.changes > 0) {
+    console.log(
+      `Running migration: recorded the shipped default for ${unrecorded.changes} schedule(s)`
+    );
+  }
+
   // Every `no-working-links` blocklist entry was written by a rule that could
   // not tell a dead article from an unreachable one: when no link resolved,
   // the article was blocklisted permanently — including when the reason was
