@@ -207,6 +207,19 @@ function countHostsOffered(group: DownloadGroup): Partial<Record<DownloadHost, n
   return counts;
 }
 
+interface LinkSearchResult {
+  working: WorkingLink | null;
+  /**
+   * A link failed for a reason that is not the link's fault — a rate limit, a
+   * timeout, the host briefly unreachable.
+   *
+   * This travels back to the caller because finding nothing is not evidence
+   * of anything when the site was refusing to talk to us. Blocklisting on it
+   * is permanent, and the article is usually fine an hour later.
+   */
+  transient: boolean;
+}
+
 /**
  * Try each link in a group, in host-preference order, until one resolves.
  * Dead links are blocklisted so later searches skip them.
@@ -215,7 +228,7 @@ async function findWorkingLink(
   group: DownloadGroup,
   context: { volumeId: number; issueId: number | null; webLink: string; webTitle: string | null },
   signal?: AbortSignal
-): Promise<WorkingLink | null> {
+): Promise<LinkSearchResult> {
   const hostsOffered = countHostsOffered(group);
   const resolvable = (Object.keys(hostsOffered) as DownloadHost[]).filter(isResolvable);
 
@@ -226,6 +239,7 @@ async function findWorkingLink(
   }
 
   let working: WorkingLink | null = null;
+  let transient = false;
 
   for (const [index, { host, link }] of candidates.entries()) {
     if (comicBlocklistContains(link)) continue;
@@ -253,13 +267,19 @@ async function findWorkingLink(
         continue;
       }
       // Rate limits and transient failures shouldn't poison the link.
+      transient = true;
       log.warn('Link resolution failed', { link, error });
     }
   }
 
-  log.info('Host coverage', { hostsOffered, resolvable, chosen: working?.host ?? null });
+  log.info('Host coverage', {
+    hostsOffered,
+    resolvable,
+    chosen: working?.host ?? null,
+    transient,
+  });
 
-  return working;
+  return { working, transient };
 }
 
 export interface CreateDownloadsOptions {
@@ -313,11 +333,14 @@ export async function createDownloadsFromPost(
     webTitle: post.title,
   };
 
+  let transient = false;
+
   for (const path of paths) {
     const working: WorkingLink[] = [];
     for (const group of path) {
       const found = await findWorkingLink(group, context, signal);
-      if (found) working.push(found);
+      if (found.transient) transient = true;
+      if (found.working) working.push(found.working);
     }
     if (working.length === 0) continue;
 
@@ -339,8 +362,20 @@ export async function createDownloadsFromPost(
       );
   }
 
-  // Every path was dead. Record that so the same article isn't retried
-  // endlessly by auto-search.
+  // Nothing resolved, but a rate limit or an unreachable host is not evidence
+  // that the article is dead — and blocklisting it is permanent. Sweeping a
+  // large library is exactly what provokes GetComics into rate-limiting, so
+  // treating that as "dead" let one busy night blocklist articles whose links
+  // still serve the file perfectly well. Leave it for the next sweep.
+  if (transient) {
+    throw new Error(
+      `Could not reach any download link on ${post.link} — not blocklisting it, ` +
+        'since the host was rate-limiting or unreachable rather than the links being dead'
+    );
+  }
+
+  // Every link actually proved broken. Record that so the same article isn't
+  // retried endlessly by auto-search.
   addToComicBlocklist({
     downloadLink: post.link,
     reason: 'no-working-links',
