@@ -27,6 +27,18 @@ mock.module('next/navigation', {
   },
 });
 
+// Stubbed for the same reason as ComicReader: it reaches for server actions,
+// which drag the database in behind them.
+let capturedPanelProps: Record<string, unknown> | null = null;
+mock.module('../../../components/comics/ReleaseSearchPanel.js', {
+  namedExports: {
+    ReleaseSearchPanel: (props: any) => {
+      capturedPanelProps = props;
+      return <div data-testid="release-search" />;
+    },
+  },
+});
+
 let capturedReaderProps: Record<string, unknown> | null = null;
 mock.module('../../../components/comics/ComicReader.js', {
   namedExports: {
@@ -60,6 +72,7 @@ function makeIssue(overrides: Record<string, unknown> = {}) {
 describe('ComicIssueRow Component', () => {
   beforeEach(() => {
     capturedReaderProps = null;
+    capturedPanelProps = null;
     globalThis.fetch = (async () => ({ ok: true, json: async () => ({}) })) as unknown as typeof fetch;
   });
 
@@ -70,7 +83,7 @@ describe('ComicIssueRow Component', () => {
 
   it('opens the reader when an issue with a file is clicked', async () => {
     const user = userEvent.setup();
-    render(<ComicIssueRow issue={makeIssue()} volumeTitle="Sandman" />);
+    render(<ComicIssueRow issue={makeIssue()} volumeId={3} volumeTitle="Sandman" />);
 
     assert.strictEqual(screen.queryByTestId('comic-reader'), null);
 
@@ -84,7 +97,7 @@ describe('ComicIssueRow Component', () => {
 
   it('does not open the reader for an issue with no files', async () => {
     const user = userEvent.setup();
-    render(<ComicIssueRow issue={makeIssue({ files: [] })} volumeTitle="Sandman" />);
+    render(<ComicIssueRow issue={makeIssue({ files: [] })} volumeId={3} volumeTitle="Sandman" />);
 
     const trigger = screen.getByRole('button', { name: /The One About the Dream/ });
     assert.ok((trigger as HTMLButtonElement).disabled);
@@ -94,8 +107,27 @@ describe('ComicIssueRow Component', () => {
     assert.ok(screen.getByText('Missing'));
   });
 
+  it('offers a release search for an issue with no file, scoped to that issue', async () => {
+    const user = userEvent.setup();
+    render(<ComicIssueRow issue={makeIssue({ files: [] })} volumeId={3} volumeTitle="Sandman" />);
+
+    assert.strictEqual(screen.queryByTestId('release-search'), null);
+    await user.click(screen.getByRole('button', { name: 'Find' }));
+
+    await waitFor(() => assert.ok(screen.getByTestId('release-search')));
+    assert.strictEqual(capturedPanelProps?.volumeId, 3);
+    assert.strictEqual(capturedPanelProps?.issueId, 42);
+    assert.strictEqual(capturedPanelProps?.subject, 'Sandman #4');
+  });
+
+  it('does not offer a release search for an issue that already has a file', () => {
+    render(<ComicIssueRow issue={makeIssue()} volumeId={3} volumeTitle="Sandman" />);
+
+    assert.strictEqual(screen.queryByRole('button', { name: 'Find' }), null);
+  });
+
   it('shows the Downloaded badge and a Mark read button for an unread, downloaded issue', () => {
-    render(<ComicIssueRow issue={makeIssue()} volumeTitle="Sandman" />);
+    render(<ComicIssueRow issue={makeIssue()} volumeId={3} volumeTitle="Sandman" />);
 
     assert.ok(screen.getByText('Downloaded'));
     assert.ok(screen.getByRole('button', { name: 'Mark read' }));
@@ -105,7 +137,7 @@ describe('ComicIssueRow Component', () => {
     render(
       <ComicIssueRow
         issue={makeIssue()}
-        volumeTitle="Sandman"
+        volumeId={3} volumeTitle="Sandman"
         progress={{ issueId: 42, page: 22, completed: true, total: 22, updatedAt: '2026-09-01T00:00:00Z' }}
       />
     );

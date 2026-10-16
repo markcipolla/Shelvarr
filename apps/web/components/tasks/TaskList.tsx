@@ -57,7 +57,7 @@ function TaskRow({ task }: { task: Task }) {
     author_sync: 'Author Sync',
     book_scan_all: 'Scan All Libraries',
     book_organize_all: 'Organize All Libraries',
-    book_resume: 'Resume Interrupted Downloads',
+    book_resume: 'Resume Interrupted Book Downloads',
     book_search_all: 'Search Wanted Books',
     comic_search: 'Comic Search',
     comic_download: 'Comic Download',
@@ -68,7 +68,7 @@ function TaskRow({ task }: { task: Task }) {
     comic_update_all: 'Refresh All Comics',
     comic_search_all: 'Search All Comics',
     comic_scan_all: 'Comic Library Scan',
-    comic_resume: 'Resume Interrupted Downloads',
+    comic_resume: 'Resume Interrupted Comic Downloads',
     comic_library_import: 'Comic Library Import',
     comic_library_apply: 'Comic Library Adoption',
     auth_prune: 'Session Cleanup',
@@ -112,6 +112,12 @@ function TaskRow({ task }: { task: Task }) {
       ? (taskData as unknown as OrganizeResult)
       : null;
 
+  const searchResult =
+    (task.type === 'comic_search' || task.type === 'comic_search_all') &&
+    task.status === 'completed'
+      ? (taskData as unknown as ComicSearchResult)
+      : null;
+
   const comicDownload = taskData.comicDownload as ComicDownloadSubject | undefined;
 
   // Comic downloads count bytes rather than items, so their progress reads as
@@ -149,6 +155,7 @@ function TaskRow({ task }: { task: Task }) {
             />
           )}
           {organizeResult && <OrganizeResultSummary result={organizeResult} />}
+          {searchResult && <ComicSearchSummary result={searchResult} />}
           <div className="text-xs text-shelvarr-text-muted mt-1">
             Created: {formatRelativeTime(task.createdAt)}
             {task.completedAt && ` • Completed: ${formatRelativeTime(task.completedAt)}`}
@@ -236,6 +243,58 @@ function ComicDownloadSummary({
         <span>{subject.host}</span>
         {importedBytes !== null && <span> · {formatBytes(importedBytes)}</span>}
       </div>
+    </div>
+  );
+}
+
+interface ComicSearchResult {
+  queued?: number;
+  /** Releases GetComics returned at all. */
+  found?: number;
+  /** How many of those were for this volume. */
+  matched?: number;
+  /** The queries sent; absent on the library-wide sweep. */
+  queries?: string[];
+}
+
+/**
+ * Why a search queued nothing.
+ *
+ * "Completed" with no downloads reads as success, and for a long time that
+ * was the only thing a finished search said. Three different nothings hide
+ * behind it and each wants a different next move, so name which one it was.
+ */
+function ComicSearchSummary({ result }: { result: ComicSearchResult }) {
+  const queued = result.queued ?? 0;
+  if (queued > 0) {
+    return (
+      <div className="text-xs text-green-400 mt-1">
+        Queued {queued} download{queued === 1 ? '' : 's'}
+      </div>
+    );
+  }
+
+  // The sweep aggregates over volumes and has no per-volume counts to show.
+  if (result.found === undefined) {
+    return <div className="text-xs text-amber-400 mt-1">Queued nothing</div>;
+  }
+
+  let reason: string;
+  if (result.queries?.length === 0) {
+    reason = 'nothing was searched for — every issue is unmonitored or already here';
+  } else if (result.found === 0) {
+    reason = 'GetComics returned 0 results';
+  } else if (!result.matched) {
+    reason = `${result.found} release${result.found === 1 ? '' : 's'} found, none matched this volume`;
+  } else {
+    reason = `${result.matched} matched, but every release was already covered or its links were dead`;
+  }
+
+  return (
+    <div className="text-xs text-amber-400 mt-1">
+      Queued nothing — {reason}. Open the volume and use
+      <span className="text-shelvarr-text-muted"> Find releases </span>
+      to search by hand.
     </div>
   );
 }

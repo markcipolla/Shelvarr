@@ -125,12 +125,16 @@ export function loadVolume(volumeId: number): LoadedVolume | null {
 export interface SearchVolumeOptions {
   /** Search for one issue instead of the whole volume. */
   issueId?: number | null;
+  /** Search this instead of the query built from catalogue metadata. */
+  query?: string | null;
   signal?: AbortSignal;
 }
 
 export interface SearchVolumeResult {
   results: MatchedComicSearchResult[];
   posts: Map<string, GetComicsPost>;
+  /** What was actually asked of GetComics. */
+  queries: string[];
 }
 
 /**
@@ -153,7 +157,11 @@ export async function searchVolume(
     throw new Error(`Issue ${options.issueId} is not part of volume ${volumeId}`);
   }
 
-  log.info('Manual search', { volumeId, issueId: options.issueId ?? null });
+  log.info('Manual search', {
+    volumeId,
+    issueId: options.issueId ?? null,
+    query: options.query ?? null,
+  });
 
   return manualSearch(
     {
@@ -166,6 +174,7 @@ export async function searchVolume(
           }
         : null,
       isBlocklisted: comicBlocklistContains,
+      query: options.query ?? null,
     },
     searchOptions(options.signal)
   );
@@ -383,6 +392,12 @@ export interface AutoSearchVolumeResult {
   downloads: ComicDownload[];
   /** Releases that were chosen but whose links all turned out to be dead. */
   failed: Array<{ link: string; error: string }>;
+  /** How many releases GetComics returned at all. */
+  found: number;
+  /** How many of those were for this volume. */
+  matched: number;
+  /** The queries sent; empty when nothing was wanted so nothing was asked. */
+  queries: string[];
 }
 
 /**
@@ -418,7 +433,7 @@ export async function autoSearchVolume(
     title: loaded.volume.title,
   });
 
-  const { chosen, posts } = await autoSearch(
+  const { chosen, posts, results, queries } = await autoSearch(
     {
       volume: loaded.volume,
       issues: loaded.issues,
@@ -457,13 +472,18 @@ export async function autoSearchVolume(
     }
   }
 
+  const matched = results.filter((result) => result.match).length;
+
   log.info('Auto search finished', {
     volumeId,
     queued: downloads.length,
     failed: failed.length,
+    found: results.length,
+    matched,
+    queries,
   });
 
-  return { downloads, failed };
+  return { downloads, failed, found: results.length, matched, queries };
 }
 
 /**

@@ -109,6 +109,7 @@ export {
   comicBlocklistContains,
   getComicBlocklist,
   removeFromComicBlocklist,
+  removeComicBlocklistForPost,
   clearComicBlocklist,
   getComicVolumeForMatching,
   // Book acquisition

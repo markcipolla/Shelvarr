@@ -119,6 +119,7 @@ export default async function ComicDetailPage({ params }: PageProps) {
               <ComicIssueRow
                 key={issue.id}
                 issue={issue}
+                volumeId={volumeId}
                 volumeTitle={volume.title}
                 progress={progressByIssue.get(issue.id)}
               />

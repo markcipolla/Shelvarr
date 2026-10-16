@@ -10,6 +10,7 @@ import {
   searchComicVineAction,
   type ComicVineSearchResultView,
 } from '@/lib/actions/comics';
+import { ReleaseSearchPanel } from '@/components/comics/ReleaseSearchPanel';
 
 interface RenameProposal {
   fileId: number;
@@ -41,6 +42,7 @@ export function VolumeActions({ volumeId, title }: { volumeId: number; title: st
   const [renamePreview, setRenamePreview] = useState<RenameProposal[] | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [fixingMatch, setFixingMatch] = useState(false);
+  const [findingReleases, setFindingReleases] = useState(false);
   const [matchQuery, setMatchQuery] = useState(title);
   const [matches, setMatches] = useState<ComicVineSearchResultView[] | null>(null);
 
@@ -145,6 +147,18 @@ export function VolumeActions({ volumeId, title }: { volumeId: number; title: st
         >
           {busy === 'search' ? 'Searching…' : 'Search for missing issues'}
         </button>
+        <button
+          type="button"
+          onClick={() => {
+            setFindingReleases(!findingReleases);
+            setError(null);
+            setMessage(null);
+          }}
+          disabled={busy !== null}
+          className={buttonClass}
+        >
+          Find releases
+        </button>
         <button type="button" onClick={() => run('refresh', 'Metadata refresh')} disabled={busy !== null} className={buttonClass}>
           Refresh metadata
         </button>
@@ -178,6 +192,14 @@ export function VolumeActions({ volumeId, title }: { volumeId: number; title: st
 
       {message && <p className="text-sm text-green-400">{message}</p>}
       {error && <p className="text-sm text-red-400">{error}</p>}
+
+      {findingReleases && (
+        <ReleaseSearchPanel
+          volumeId={volumeId}
+          subject={title}
+          onClose={() => setFindingReleases(false)}
+        />
+      )}
 
       {fixingMatch && (
         <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-4 space-y-3">
