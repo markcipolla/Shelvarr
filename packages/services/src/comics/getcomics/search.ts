@@ -277,12 +277,23 @@ export interface ManualSearchInput {
   /** Set to search for a single issue rather than the whole volume. */
   issue?: { issueNumber: string; calculatedIssueNumber: number } | null;
   isBlocklisted?: (link: string) => boolean;
+  /**
+   * Search this instead of the generated query ladder. The ladder is a guess
+   * built from catalogue metadata, and a search that comes back empty is
+   * usually one word away from working — so the UI lets it be overridden.
+   */
+  query?: string | null;
 }
 
 export interface ManualSearchOutput {
   results: MatchedComicSearchResult[];
   /** Posts keyed by link, so callers can build downloads without re-fetching. */
   posts: Map<string, GetComicsPost>;
+  /**
+   * The queries actually sent to GetComics. Shown in the UI: "nothing found"
+   * means nothing without knowing what was asked for.
+   */
+  queries: string[];
 }
 
 /**
@@ -297,6 +308,7 @@ export async function manualSearch(
   options: GetComicsOptions = {}
 ): Promise<ManualSearchOutput> {
   const { volume, issues, issue = null, isBlocklisted } = input;
+  const override = input.query?.trim() || null;
 
   const numberToYear = new Map<number, number | null>(
     issues.map((i) => [i.calculatedIssueNumber, i.year])
@@ -310,10 +322,15 @@ export async function manualSearch(
     ...(isBlocklisted ? { isBlocklisted } : {}),
   };
 
-  for (const title of [volume.title, volume.altTitle]) {
+  const attempted: string[] = [];
+
+  for (const title of override ? [override] : [volume.title, volume.altTitle]) {
     if (!title) continue;
 
-    const queries = buildQueries(volume, issue?.issueNumber ?? null, title);
+    const queries = override
+      ? [override]
+      : buildQueries(volume, issue?.issueNumber ?? null, title);
+    attempted.push(...queries);
     const posts = await searchMultipleQueries(queries, options);
     if (posts.length === 0) continue;
 
@@ -331,10 +348,14 @@ export async function manualSearch(
       calculatedIssueNumber: issue?.calculatedIssueNumber ?? null,
     });
 
-    return { results, posts: new Map(posts.map((post) => [post.link, post])) };
+    return {
+      results,
+      posts: new Map(posts.map((post) => [post.link, post])),
+      queries: attempted,
+    };
   }
 
-  return { results: [], posts: new Map() };
+  return { results: [], posts: new Map(), queries: attempted };
 }
 
 export interface AutoSearchInput extends ManualSearchInput {
@@ -347,6 +368,14 @@ export interface AutoSearchOutput {
   chosen: MatchedComicSearchResult[];
   /** Every post seen during the search, so downloads need no second fetch. */
   posts: Map<string, GetComicsPost>;
+  /**
+   * Every result seen, ranked, each with its rejection reason. Choosing
+   * nothing is the common outcome and used to be indistinguishable from an
+   * error; this is what lets the caller say which kind of nothing it was.
+   */
+  results: MatchedComicSearchResult[];
+  /** The queries sent, or empty when nothing was wanted and none were. */
+  queries: string[];
 }
 
 /**
@@ -374,15 +403,19 @@ export async function autoSearch(
         i.calculatedIssueNumber === issue.calculatedIssueNumber && i.monitored && !i.hasFile
     );
   }
-  if (searchable.length === 0) return { chosen: [], posts: new Map() };
+  // Nothing wanted: no query goes out, and an empty `queries` is how the
+  // caller tells this apart from "GetComics had nothing".
+  if (searchable.length === 0) {
+    return { chosen: [], posts: new Map(), results: [], queries: [] };
+  }
 
-  const { results, posts } = await manualSearch(input, options);
+  const { results, posts, queries } = await manualSearch(input, options);
   const matches = results.filter((result) => result.match);
 
   const isSingleTarget =
     issue !== null ||
     (volume.specialVersion !== null && volume.specialVersion !== 'volume-as-issue');
-  if (isSingleTarget) return { chosen: matches.slice(0, 1), posts };
+  if (isSingleTarget) return { chosen: matches.slice(0, 1), posts, results, queries };
 
   // Volume search: assemble a non-overlapping set covering as much as possible.
   const sortedIssues = [...issues].sort(
@@ -449,7 +482,13 @@ export async function autoSearch(
     );
     chosen.push(...extra.chosen);
     for (const [link, post] of extra.posts) posts.set(link, post);
+    for (const result of extra.results) {
+      if (!results.some((seen) => seen.link === result.link)) results.push(result);
+    }
+    for (const query of extra.queries) {
+      if (!queries.includes(query)) queries.push(query);
+    }
   }
 
-  return { chosen, posts };
+  return { chosen, posts, results, queries };
 }

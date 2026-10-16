@@ -37,9 +37,16 @@ export async function GET(
     return NextResponse.json({ error: getcomics.GETCOMICS_DISABLED_MESSAGE }, { status: 409 });
   }
 
+  // The generated query is a guess built from catalogue metadata; let the
+  // caller replace it rather than re-running the same miss.
+  const query = request.nextUrl.searchParams.get('q');
+
   try {
-    const { results } = await getcomics.searchVolume(volumeId, { issueId });
-    return NextResponse.json({ results });
+    const { results, queries } = await getcomics.searchVolume(volumeId, {
+      issueId,
+      query,
+    });
+    return NextResponse.json({ results, queries });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Search failed';
     const notFound = message.includes('not found');

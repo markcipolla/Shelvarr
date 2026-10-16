@@ -3129,6 +3129,23 @@ export function removeFromComicBlocklist(id: number): boolean {
   return execute('DELETE FROM comic_blocklist WHERE id = ?', [id]).rowCount > 0;
 }
 
+/**
+ * Drop every blocklist entry belonging to one GetComics article — the article
+ * itself (blocklisted as "no-working-links") and each of its buttons.
+ *
+ * The blocklist is a cache of "this was dead once", and a dead link is often
+ * only dead for a while: a host that was rate-limiting, a mirror that came
+ * back, or — as happened here — a local failure that looked like a dead link
+ * from the inside. Picking a release by hand is someone saying they don't
+ * believe the cache, so the cache goes.
+ */
+export function removeComicBlocklistForPost(postLink: string): number {
+  return execute(
+    'DELETE FROM comic_blocklist WHERE download_link = ? OR web_link = ?',
+    [postLink, postLink]
+  ).rowCount;
+}
+
 export function clearComicBlocklist(): number {
   return execute('DELETE FROM comic_blocklist', []).rowCount;
 }

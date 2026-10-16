@@ -1596,10 +1596,11 @@ const comicSearchHandler: TaskHandler = async (taskId, onProgress, signal) => {
 
   onProgress(0, 2);
 
-  const { downloads, failed } = await getcomics.autoSearchVolume(data.volumeId, {
-    issueId: data.issueId ?? null,
-    signal,
-  });
+  const { downloads, failed, found, matched, queries } =
+    await getcomics.autoSearchVolume(data.volumeId, {
+      issueId: data.issueId ?? null,
+      signal,
+    });
 
   onProgress(1, 2);
 
@@ -1609,11 +1610,16 @@ const comicSearchHandler: TaskHandler = async (taskId, onProgress, signal) => {
 
   onProgress(2, 2);
 
+  // Queueing nothing is the common outcome, and "completed" on its own reads
+  // as success. These counts are what the Tasks page turns into a reason.
   return {
     volumeId: data.volumeId,
     queued: downloads.length,
     downloadIds: downloads.map((download) => download.id),
     failed,
+    found,
+    matched,
+    queries,
   };
 };
 

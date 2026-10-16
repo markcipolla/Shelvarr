@@ -33,6 +33,7 @@ import { createLinkPaths } from '@shelvarr/services/comics/getcomics/paths';
 import { refineSpecialVersion } from '@shelvarr/services/comics/getcomics/parse';
 import {
   buildQueries,
+  manualSearch,
   fetchPosts,
   postToSearchResult,
 } from '@shelvarr/services/comics/getcomics/search';
@@ -461,6 +462,57 @@ describe('buildQueries', () => {
   it('uses the TPB ladder for TPB volumes', () => {
     const queries = buildQueries({ ...VOLUME, specialVersion: 'tpb' }, null);
     assert.ok(queries[0]!.endsWith('TPB'));
+  });
+});
+
+describe('manualSearch query override', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  function searchesFor(): string[] {
+    const asked: string[] = [];
+    global.fetch = mock.fn(async (url: string) => {
+      asked.push(decodeURIComponent(new URL(url).searchParams.get('search') ?? ''));
+      return new Response('[]', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'X-WP-TotalPages': '1' },
+      });
+    }) as unknown as typeof fetch;
+    return asked;
+  }
+
+  it('reports the generated ladder it tried, so an empty result can be read', async () => {
+    const asked = searchesFor();
+    const { queries } = await manualSearch({ volume: VOLUME, issues: ISSUES });
+
+    assert.deepStrictEqual(queries, asked);
+    assert.deepStrictEqual(queries, buildQueries(VOLUME, null));
+  });
+
+  it('searches the override alone, skipping the ladder and the alt title', async () => {
+    const asked = searchesFor();
+    const { queries } = await manualSearch({
+      volume: { ...VOLUME, altTitle: 'The Immortal Hulk' },
+      issues: ISSUES,
+      query: '  hulk 2018  ',
+    });
+
+    assert.deepStrictEqual(asked, ['hulk 2018']);
+    assert.deepStrictEqual(queries, ['hulk 2018']);
+  });
+
+  it('falls back to the ladder for a blank override', async () => {
+    searchesFor();
+    const { queries } = await manualSearch({
+      volume: VOLUME,
+      issues: ISSUES,
+      query: '   ',
+    });
+
+    assert.deepStrictEqual(queries, buildQueries(VOLUME, null));
   });
 });
 

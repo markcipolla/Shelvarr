@@ -204,6 +204,39 @@ describe('Comic acquisition', () => {
       assert.strictEqual(db.clearComicBlocklist(), 1);
       assert.strictEqual(db.getComicBlocklist().length, 0);
     });
+
+    it('clears an article and all of its buttons together', () => {
+      const article = 'https://getcomics.org/post/hulk-1/';
+
+      // The article itself, once every button on it had failed...
+      db.addToComicBlocklist({
+        downloadLink: article,
+        webLink: article,
+        reason: 'no-working-links',
+      });
+      // ...and the individual buttons that failed first.
+      db.addToComicBlocklist({
+        downloadLink: 'https://getcomics.org/dls/a',
+        webLink: article,
+        reason: 'link-broken',
+      });
+      db.addToComicBlocklist({
+        downloadLink: 'https://getcomics.org/dls/b',
+        webLink: article,
+        reason: 'link-broken',
+      });
+      // A different article is not collateral damage.
+      db.addToComicBlocklist({
+        downloadLink: 'https://getcomics.org/dls/c',
+        webLink: 'https://getcomics.org/post/thor-1/',
+        reason: 'link-broken',
+      });
+
+      assert.strictEqual(db.removeComicBlocklistForPost(article), 3);
+      assert.ok(!db.comicBlocklistContains(article));
+      assert.ok(!db.comicBlocklistContains('https://getcomics.org/dls/a'));
+      assert.ok(db.comicBlocklistContains('https://getcomics.org/dls/c'));
+    });
   });
 
   describe('history', () => {

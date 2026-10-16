@@ -824,3 +824,120 @@ export async function applyLibraryImportAction(
   revalidatePath('/comics/import');
   return { success: true, taskId: task.id, alreadyRunning };
 }
+
+export interface ComicReleaseView {
+  link: string;
+  displayTitle: string;
+  issueNumber: string | null;
+  year: number | null;
+  match: boolean;
+  /** Why it was rejected; null when it matched. */
+  matchIssue: string | null;
+}
+
+export interface ComicReleaseSearchResult {
+  results: ComicReleaseView[];
+  /** What was actually asked of GetComics, so "nothing found" can be read. */
+  queries: string[];
+  error?: string;
+}
+
+/** `[3, 7]` reads better as "3-7" than as a JSON array. */
+function formatIssueNumber(value: number | [number, number] | null): string | null {
+  if (value === null) return null;
+  return Array.isArray(value) ? `${value[0]}-${value[1]}` : String(value);
+}
+
+/**
+ * Every release GetComics has for this volume, ranked, each carrying the
+ * reason it was or wasn't considered a match.
+ *
+ * The auto-search can only ever say how many it queued. This is the screen
+ * that explains a zero: no query went out, nothing came back, or things came
+ * back and were rejected — and for the last one, by what rule.
+ */
+export async function searchComicReleasesAction(
+  volumeId: number,
+  options: { issueId?: number | null; query?: string | null } = {}
+): Promise<ComicReleaseSearchResult> {
+  const { getcomics } = await import('@shelvarr/services');
+
+  if (!getcomics.isGetComicsEnabled()) {
+    return { results: [], queries: [], error: getcomics.GETCOMICS_DISABLED_MESSAGE };
+  }
+
+  try {
+    const { results, queries } = await getcomics.searchVolume(volumeId, {
+      issueId: options.issueId ?? null,
+      query: options.query ?? null,
+    });
+
+    return {
+      queries,
+      results: results.map((result) => ({
+        link: result.link,
+        displayTitle: result.displayTitle,
+        issueNumber: formatIssueNumber(result.issueNumber),
+        year: result.year,
+        match: result.match,
+        matchIssue: result.matchIssue,
+      })),
+    };
+  } catch (error) {
+    return {
+      results: [],
+      queries: [],
+      error: error instanceof Error ? error.message : 'GetComics search failed',
+    };
+  }
+}
+
+/**
+ * Grab one chosen release.
+ *
+ * `forceMatch` is for the rows the matcher rejected: the rules are a guess
+ * about someone else's filenames, and a person looking at the title can
+ * overrule them.
+ */
+export async function queueComicReleaseAction(
+  volumeId: number,
+  link: string,
+  options: { issueId?: number | null; forceMatch?: boolean } = {}
+): Promise<{ success: boolean; queued?: number; error?: string }> {
+  const { getcomics, queue } = await import('@shelvarr/services');
+  const { revalidatePath } = await import('next/cache');
+
+  if (!getcomics.isGetComicsEnabled()) {
+    return { success: false, error: getcomics.GETCOMICS_DISABLED_MESSAGE };
+  }
+
+  try {
+    // Picking a release by hand overrules whatever the blocklist remembers
+    // about it. The auto-search still honours it; this is the way out when a
+    // link was cached as dead by a failure that wasn't the link's fault.
+    const { removeComicBlocklistForPost } = await import('@/lib/db');
+    removeComicBlocklistForPost(link);
+
+    const post = await getcomics.fetchPostByLink(link);
+    if (!post) return { success: false, error: `Could not load ${link}` };
+
+    const downloads = await getcomics.createDownloadsFromPost({
+      volumeId,
+      post,
+      issueId: options.issueId ?? null,
+      forceMatch: options.forceMatch ?? false,
+    });
+
+    for (const download of downloads) {
+      queue.enqueueTask('comic_download', { comicDownloadId: download.id });
+    }
+
+    revalidatePath(`/comics/${getComicSlug(volumeId) ?? volumeId}`);
+    return { success: true, queued: downloads.length };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to queue the download',
+    };
+  }
+}
