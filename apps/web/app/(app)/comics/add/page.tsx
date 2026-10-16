@@ -4,6 +4,8 @@ import { AddComic } from '@/components/comics/AddComic';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Add a comic' };
+
 export default async function AddComicPage() {
   const rootFolders = await getComicRootFoldersAction();
 

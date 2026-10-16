@@ -13,6 +13,12 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
+export async function generateMetadata({ params }: PageProps) {
+  const ref = await resolveComicRef(decodeURIComponent((await params).slug));
+  const volume = ref ? (await getComic(ref.id)).volume : null;
+  return { title: volume?.title ?? 'Comic' };
+}
+
 export default async function ComicDetailPage({ params }: PageProps) {
   const { slug } = await params;
   const ref = decodeURIComponent(slug);

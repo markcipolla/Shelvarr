@@ -9,6 +9,8 @@ import { getActiveDownloadCounts } from '@/lib/actions/downloads';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Comics' };
+
 interface PageProps {
   searchParams: Promise<{
     search?: string;

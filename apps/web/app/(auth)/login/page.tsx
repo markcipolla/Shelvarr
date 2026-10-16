@@ -6,6 +6,8 @@ import { LoginForm } from '@/components/auth/LoginForm';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Sign in' };
+
 const ERRORS: Record<string, string> = {
   'invalid-code': 'That code is not right, has expired, or has already been used.',
   'signed-out': 'You have been signed out.',

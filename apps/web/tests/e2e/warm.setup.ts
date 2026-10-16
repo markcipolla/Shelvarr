@@ -31,6 +31,7 @@ const ROUTES = [
   '/downloads',
   '/wanted',
   '/authors',
+  '/search',
   '/tasks',
   '/settings/metadata',
   '/settings/downloads',

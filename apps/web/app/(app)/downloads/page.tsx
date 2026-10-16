@@ -4,6 +4,8 @@ import { DownloadQueue } from '@/components/downloads/DownloadQueue';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Downloads' };
+
 export default async function BookDownloadsPage() {
   const data = await getBookDownloadQueue();
 

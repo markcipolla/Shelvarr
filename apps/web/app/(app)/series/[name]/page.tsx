@@ -10,6 +10,10 @@ interface PageProps {
   params: Promise<{ name: string }>;
 }
 
+export async function generateMetadata({ params }: PageProps) {
+  return { title: decodeURIComponent((await params).name) };
+}
+
 export default async function SeriesDetailPage({ params }: PageProps) {
   const { name } = await params;
   const seriesName = decodeURIComponent(name);

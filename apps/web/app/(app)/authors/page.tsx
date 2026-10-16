@@ -4,6 +4,8 @@ import { AuthorSearch } from '@/components/authors/AuthorSearch';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Authors' };
+
 interface PageProps {
   searchParams: Promise<{ search?: string }>;
 }

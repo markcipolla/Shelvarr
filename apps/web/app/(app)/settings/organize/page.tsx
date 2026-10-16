@@ -3,6 +3,8 @@ import { OrganizeTab } from '@/components/settings/OrganizeTab';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Books · Settings' };
+
 export default async function OrganizeSettingsPage() {
   const [settings, schedules] = await Promise.all([
     getOrganizeSettings(),

@@ -6,6 +6,8 @@ import { AdvancedTab } from '@/components/settings/AdvancedTab';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Advanced · Settings' };
+
 export default async function AdvancedSettingsPage() {
   // No-op when authentication is switched off, which is the same "trusted
   // network" allowance the rest of the app makes.

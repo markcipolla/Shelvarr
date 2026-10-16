@@ -10,6 +10,18 @@ test.describe('Navigation', () => {
     await expect(page).toHaveTitle(/Shelvarr/);
   });
 
+  test('page title says which page is on screen', async ({ page }) => {
+    await page.goto('/books');
+    await expect(page).toHaveTitle('Books · Shelvarr');
+
+    await page.goto('/settings/metadata');
+    await expect(page).toHaveTitle('Metadata Sources · Settings · Shelvarr');
+
+    // A generateMetadata route, which needs no library data to have a title.
+    await page.goto('/search?q=dune');
+    await expect(page).toHaveTitle('Search: dune · Shelvarr');
+  });
+
   test('should display sidebar with navigation items', async ({ page }) => {
     await page.goto('/');
 

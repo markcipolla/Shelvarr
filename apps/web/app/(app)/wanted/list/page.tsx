@@ -6,6 +6,8 @@ import { LiveRefresh } from '@/components/live/LiveRefresh';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Wanted books' };
+
 export default async function WantedListPage() {
   const [allBooks, sourceStatuses] = await Promise.all([
     getWantedBooks(),

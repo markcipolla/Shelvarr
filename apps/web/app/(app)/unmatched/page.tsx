@@ -8,6 +8,8 @@ import { LiveRefresh } from '@/components/live/LiveRefresh';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Unmatched books' };
+
 interface PageProps {
   searchParams: Promise<{
     page?: string;

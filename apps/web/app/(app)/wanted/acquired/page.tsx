@@ -3,6 +3,8 @@ import { WantedBookGrid } from '@/components/wanted/WantedBookGrid';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = { title: 'Acquired books' };
+
 export default async function AcquiredPage() {
   const allBooks = await getWantedBooks();
 
