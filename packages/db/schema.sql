@@ -612,7 +612,13 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
   next_run INTEGER NOT NULL,
   last_run INTEGER,
   enabled INTEGER NOT NULL DEFAULT 1,
-  payload TEXT -- JSON passed to the task
+  payload TEXT, -- JSON passed to the task
+  -- What the code last shipped for this job. A stored value still equal to
+  -- its recorded default has never been answered by anyone, so a changed
+  -- default is free to replace it; anything else is somebody's decision and
+  -- is left alone. Null for a row added by hand, which no default governs.
+  default_enabled INTEGER,
+  default_interval_seconds INTEGER
 );
 
 -- User accounts

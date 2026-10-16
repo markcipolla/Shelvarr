@@ -195,27 +195,69 @@ function rowToSchedule(row: ScheduleRow): Schedule {
 }
 
 /**
- * Create any missing schedule rows.
+ * Create any missing schedule rows, and bring unanswered ones up to date with
+ * what the code now ships.
  *
- * Existing rows are left alone: the interval and enabled flag belong to the
- * user once they've touched them.
+ * The interval and the on/off switch belong to whoever set them — but "set by
+ * someone" and "left as it was created" are different things, and for a long
+ * time this could not tell them apart: it inserted a row once and never looked
+ * at it again, so a default that changed afterwards only ever reached fresh
+ * installs. A job shipped as on-by-default stayed off on every existing
+ * server, forever, and nothing said why.
+ *
+ * Each row therefore records the default it was given. A stored value still
+ * equal to its recorded default is one nobody has answered, so a new default
+ * replaces it; a value that differs is somebody's decision and is left alone.
+ * Either way the recorded default is updated, so the next change is judged
+ * against what this version shipped rather than what the first one did.
+ *
+ * The payload is not user-editable, so it always comes from the code.
  */
 export function ensureDefaultSchedules(): void {
   const now = nowSeconds();
 
   for (const schedule of DEFAULT_SCHEDULES) {
+    const enabled = schedule.enabledByDefault ? 1 : 0;
     execute(
       `INSERT INTO scheduled_tasks
-         (name, task_type, interval_seconds, next_run, enabled, payload)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(name) DO NOTHING`,
+         (name, task_type, interval_seconds, next_run, enabled, payload,
+          default_enabled, default_interval_seconds)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(name) DO UPDATE SET
+         enabled = CASE
+           WHEN scheduled_tasks.enabled IS scheduled_tasks.default_enabled
+             THEN excluded.enabled
+           ELSE scheduled_tasks.enabled
+         END,
+         interval_seconds = CASE
+           WHEN scheduled_tasks.interval_seconds IS scheduled_tasks.default_interval_seconds
+             THEN excluded.interval_seconds
+           ELSE scheduled_tasks.interval_seconds
+         END,
+         -- A row we actually changed starts a fresh interval, the same way
+         -- toggling it by hand does. One we left alone keeps its place in the
+         -- queue, including a run that is already overdue.
+         next_run = CASE
+           WHEN (scheduled_tasks.enabled IS scheduled_tasks.default_enabled
+                 AND scheduled_tasks.enabled <> excluded.enabled)
+             OR (scheduled_tasks.interval_seconds IS scheduled_tasks.default_interval_seconds
+                 AND scheduled_tasks.interval_seconds <> excluded.interval_seconds)
+             THEN excluded.next_run
+           ELSE scheduled_tasks.next_run
+         END,
+         task_type = excluded.task_type,
+         payload = excluded.payload,
+         default_enabled = excluded.default_enabled,
+         default_interval_seconds = excluded.default_interval_seconds`,
       [
         schedule.name,
         schedule.taskType,
         schedule.intervalSeconds,
         now + schedule.intervalSeconds,
-        schedule.enabledByDefault ? 1 : 0,
+        enabled,
         schedule.payload ? JSON.stringify(schedule.payload) : null,
+        enabled,
+        schedule.intervalSeconds,
       ]
     );
   }

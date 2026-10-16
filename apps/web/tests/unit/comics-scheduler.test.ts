@@ -36,6 +36,140 @@ describe('Scheduler', () => {
     schedulerDb.getDb().exec('DELETE FROM scheduled_tasks; DELETE FROM tasks;');
   });
 
+  describe('bringing an existing install up to date', () => {
+    /** The state an install carries from before this version shipped. */
+    function rowAsCreatedBy(
+      name: string,
+      values: { enabled: 0 | 1; intervalSeconds: number }
+    ) {
+      schedulerDb
+        .getDb()
+        .prepare(
+          `UPDATE scheduled_tasks
+              SET enabled = ?, interval_seconds = ?,
+                  default_enabled = ?, default_interval_seconds = ?
+            WHERE name = ?`
+        )
+        // The recorded default matches the stored value: nobody has answered
+        // it, which is what the migration assumes for a pre-existing row.
+        .run(values.enabled, values.intervalSeconds, values.enabled, values.intervalSeconds, name);
+    }
+
+    /** The state of a row somebody has deliberately changed. */
+    function answeredBySomeone(
+      name: string,
+      values: { enabled: 0 | 1; intervalSeconds: number }
+    ) {
+      const definition = scheduler.DEFAULT_SCHEDULES.find((s) => s.name === name)!;
+      schedulerDb
+        .getDb()
+        .prepare(
+          `UPDATE scheduled_tasks
+              SET enabled = ?, interval_seconds = ?,
+                  default_enabled = ?, default_interval_seconds = ?
+            WHERE name = ?`
+        )
+        .run(
+          values.enabled,
+          values.intervalSeconds,
+          definition.enabledByDefault ? 1 : 0,
+          definition.intervalSeconds,
+          name
+        );
+    }
+
+    it('turns on a job that ships on-by-default but was created off', () => {
+      // Exactly the production case: comic_resume is enabledByDefault, and sat
+      // off on every install created before that was true.
+      scheduler.ensureDefaultSchedules();
+      rowAsCreatedBy('comic_resume', { enabled: 0, intervalSeconds: 21600 });
+
+      scheduler.ensureDefaultSchedules();
+
+      const schedule = scheduler.getSchedule('comic_resume')!;
+      assert.strictEqual(schedule.enabled, true);
+      assert.strictEqual(schedule.intervalSeconds, 900);
+    });
+
+    it('leaves a job somebody deliberately switched off switched off', () => {
+      scheduler.ensureDefaultSchedules();
+      answeredBySomeone('comic_resume', { enabled: 0, intervalSeconds: 900 });
+
+      scheduler.ensureDefaultSchedules();
+
+      assert.strictEqual(scheduler.getSchedule('comic_resume')!.enabled, false);
+    });
+
+    it('keeps an interval somebody chose, while still adopting the new switch', () => {
+      scheduler.ensureDefaultSchedules();
+      schedulerDb
+        .getDb()
+        .prepare(
+          `UPDATE scheduled_tasks
+              SET enabled = 0, interval_seconds = 3600,
+                  default_enabled = 0, default_interval_seconds = 21600
+            WHERE name = 'comic_resume'`
+        )
+        .run();
+
+      scheduler.ensureDefaultSchedules();
+
+      const schedule = scheduler.getSchedule('comic_resume')!;
+      // The interval differs from its recorded default, so it was chosen.
+      assert.strictEqual(schedule.intervalSeconds, 3600);
+      // The switch still matched its default, so the new one applies.
+      assert.strictEqual(schedule.enabled, true);
+    });
+
+    it('does not switch on a job that ships off-by-default', () => {
+      scheduler.ensureDefaultSchedules();
+      rowAsCreatedBy('comic_search_all', { enabled: 0, intervalSeconds: 21600 });
+
+      scheduler.ensureDefaultSchedules();
+
+      const schedule = scheduler.getSchedule('comic_search_all')!;
+      assert.strictEqual(schedule.enabled, false);
+      // The drifted interval is still corrected.
+      assert.strictEqual(schedule.intervalSeconds, 86400);
+    });
+
+    it('gives a row it changed a fresh interval rather than firing at once', () => {
+      scheduler.ensureDefaultSchedules();
+      rowAsCreatedBy('comic_resume', { enabled: 0, intervalSeconds: 21600 });
+      schedulerDb
+        .getDb()
+        .prepare("UPDATE scheduled_tasks SET next_run = 1 WHERE name = 'comic_resume'")
+        .run();
+
+      scheduler.ensureDefaultSchedules();
+
+      assert.ok(scheduler.getSchedule('comic_resume')!.nextRun > Math.floor(Date.now() / 1000));
+    });
+
+    it('leaves an untouched row\'s overdue run overdue', () => {
+      scheduler.ensureDefaultSchedules();
+      schedulerDb
+        .getDb()
+        .prepare("UPDATE scheduled_tasks SET next_run = 1 WHERE name = 'book_resume'")
+        .run();
+
+      scheduler.ensureDefaultSchedules();
+
+      assert.strictEqual(scheduler.getSchedule('book_resume')!.nextRun, 1);
+    });
+
+    it('settles: a second pass changes nothing', () => {
+      scheduler.ensureDefaultSchedules();
+      rowAsCreatedBy('comic_resume', { enabled: 0, intervalSeconds: 21600 });
+      scheduler.ensureDefaultSchedules();
+
+      const after = scheduler.getSchedule('comic_resume')!;
+      scheduler.ensureDefaultSchedules();
+
+      assert.deepStrictEqual(scheduler.getSchedule('comic_resume'), after);
+    });
+  });
+
   it('creates the default jobs', () => {
     scheduler.ensureDefaultSchedules();
 
