@@ -496,6 +496,68 @@ describe('Comic download retries', () => {
     assert.deepStrictEqual(created[0]!.alternateLinks, [{ host: 'getcomics', link: LINK_B }]);
   });
 
+  it('does not blocklist an article when the host was only rate-limiting', async () => {
+    // The bug this covers: sweeping a large library is exactly what provokes
+    // GetComics into rate-limiting, and a 429 on every mirror used to be
+    // recorded as "no working links" — permanently, on an article whose links
+    // serve the file perfectly well an hour later.
+    const post = {
+      id: 3,
+      title: 'Immortal Hulk #1',
+      link: 'https://getcomics.org/marvel/immortal-hulk-1-limited/',
+      date: '2018-06-13T00:00:00',
+      contentHtml:
+        '<p style="text-align: center;"><strong>Immortal Hulk #1</strong><br />' +
+        '<strong>Language :</strong> English | <strong>Year :</strong> 2018</p>' +
+        `<p><div class="aio-button-center"><a href="${LINK_A}" title="DOWNLOAD NOW">DOWNLOAD NOW</a></div>` +
+        `<div class="aio-button-center"><a href="${LINK_B}" title="MIRROR DOWNLOAD">MIRROR DOWNLOAD</a></div>` +
+        '<hr />',
+    };
+
+    stubFetch({
+      [LINK_A]: () => new Response('slow down', { status: 429 }),
+      [LINK_B]: () => new Response('slow down', { status: 429 }),
+    });
+
+    const getcomics = await import('@shelvarr/services/comics/getcomics/index');
+    await assert.rejects(
+      getcomics.createDownloadsFromPost({ volumeId: 501, post }),
+      /not blocklisting it/
+    );
+
+    assert.ok(!db.comicBlocklistContains(post.link), 'article must stay searchable');
+    assert.ok(!db.comicBlocklistContains(LINK_A));
+    assert.ok(!db.comicBlocklistContains(LINK_B));
+  });
+
+  it('blocklists an article once every link has actually proved broken', async () => {
+    const post = {
+      id: 4,
+      title: 'Immortal Hulk #1',
+      link: 'https://getcomics.org/marvel/immortal-hulk-1-dead/',
+      date: '2018-06-13T00:00:00',
+      contentHtml:
+        '<p style="text-align: center;"><strong>Immortal Hulk #1</strong><br />' +
+        '<strong>Language :</strong> English | <strong>Year :</strong> 2018</p>' +
+        `<p><div class="aio-button-center"><a href="${LINK_A}" title="DOWNLOAD NOW">DOWNLOAD NOW</a></div>` +
+        `<div class="aio-button-center"><a href="${LINK_B}" title="MIRROR DOWNLOAD">MIRROR DOWNLOAD</a></div>` +
+        '<hr />',
+    };
+
+    stubFetch({
+      [LINK_A]: () => new Response('gone', { status: 404 }),
+      [LINK_B]: () => new Response('gone', { status: 404 }),
+    });
+
+    const getcomics = await import('@shelvarr/services/comics/getcomics/index');
+    await assert.rejects(
+      getcomics.createDownloadsFromPost({ volumeId: 501, post }),
+      /No working download links/
+    );
+
+    assert.ok(db.comicBlocklistContains(post.link));
+  });
+
   it('logs the full host mix on a group, including hosts nothing can resolve', async () => {
     // One release with a getcomics link (resolvable) alongside a mega and a
     // mediafire link (recognised by identifyHost, but never resolved/
