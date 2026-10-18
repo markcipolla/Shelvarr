@@ -534,6 +534,57 @@ describe('Comic download retries', () => {
     assert.deepStrictEqual(created[0]!.alternateLinks, [{ host: 'getcomics', link: LINK_B }]);
   });
 
+  // Nothing about the library's opinion of a file changes the fact that the
+  // bytes are already here. Three identical copies of one 157 MB release is
+  // what this costs when the issue it satisfies can't be worked out — see
+  // the numberless-filename case above.
+  it('refuses to fetch a release whose file is already on disk', async () => {
+    const post = {
+      id: 5,
+      title: 'Immortal Hulk #1',
+      link: 'https://getcomics.org/marvel/immortal-hulk-1-again/',
+      date: '2018-06-13T00:00:00',
+      contentHtml:
+        '<p style="text-align: center;"><strong>Immortal Hulk #1</strong><br />' +
+        '<strong>Language :</strong> English | <strong>Year :</strong> 2018</p>' +
+        `<p><div class="aio-button-center"><a href="${LINK_A}" title="DOWNLOAD NOW">DOWNLOAD NOW</a></div>` +
+        `<div class="aio-button-center"><a href="${LINK_B}" title="MIRROR DOWNLOAD">MIRROR DOWNLOAD</a></div>` +
+        '<hr />',
+    };
+
+    stubFetch({
+      [LINK_A]: () => fileResponse('comic-bytes', LINK_A),
+      [LINK_B]: () => fileResponse('comic-bytes', LINK_B),
+    });
+
+    const getcomics = await import('@shelvarr/services/comics/getcomics/index');
+    const [first] = await getcomics.createDownloadsFromPost({ volumeId: 501, post });
+    assert.strictEqual(await runDownload(first!.id), 'completed');
+    const imported = join(libraryDir, 'Immortal Hulk (2018) Volume 01 Issue 001.cbz');
+    assert.ok(existsSync(imported), 'the first copy landed');
+
+    await assert.rejects(
+      getcomics.createDownloadsFromPost({ volumeId: 501, post }),
+      /Already downloaded/,
+      'the same release must not be fetched twice'
+    );
+
+    // The mirror is the same file, so taking it instead is no better.
+    db.getDb()
+      .prepare('UPDATE comic_downloads SET download_link = ? WHERE id = ?')
+      .run(LINK_B, first!.id);
+    await assert.rejects(
+      getcomics.createDownloadsFromPost({ volumeId: 501, post }),
+      /Already downloaded/,
+      'another mirror of a file we have is still a file we have'
+    );
+
+    // Deleting the copy is how you ask for it again.
+    rmSync(imported);
+    const again = await getcomics.createDownloadsFromPost({ volumeId: 501, post });
+    assert.strictEqual(again.length, 1);
+  });
+
   it('does not blocklist an article when the host was only rate-limiting', async () => {
     // The bug this covers: sweeping a large library is exactly what provokes
     // GetComics into rate-limiting, and a 429 on every mirror used to be

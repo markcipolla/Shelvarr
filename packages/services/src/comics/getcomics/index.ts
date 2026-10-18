@@ -9,9 +9,12 @@
  * Derived from Kapowarr (GPL-3.0) — see NOTICE.md.
  */
 
+import { existsSync } from 'fs';
+
 import {
   addToComicBlocklist,
   comicBlocklistContains,
+  completedComicDownloadFile,
   getComicVolumeForMatching,
   isComicDownloadActive,
   isSourceEnabled,
@@ -344,22 +347,44 @@ export async function createDownloadsFromPost(
     }
     if (working.length === 0) continue;
 
-    return working
-      .filter((entry) => !isComicDownloadActive(entry.link))
-      .map((entry) =>
-        addDownload({
-          volumeId,
-          issueId: resolveIssueId(loaded, entry.group, issueId),
-          coveredIssues: entry.group.info.issueNumber,
-          host: entry.host,
-          downloadLink: entry.link,
-          alternateLinks: entry.alternates,
-          webLink: post.link,
-          webTitle: post.title,
-          webSubTitle: entry.group.subTitle,
-          filenameBody: buildFilenameBody(loaded, entry.group),
-        })
+    // Don't spend the bandwidth twice. A link that already brought back a
+    // file still on disk is not worth fetching again whatever the library
+    // thinks of what it got — and when it got nothing out of it, as a release
+    // with no issue number in its name does, "the issue is still missing" is
+    // exactly the state that sends us back here.
+    const queueable: WorkingLink[] = [];
+    const onDisk: string[] = [];
+    for (const entry of working) {
+      if (isComicDownloadActive(entry.link)) continue;
+      const existing = existingCopy(entry);
+      if (existing !== null) {
+        onDisk.push(existing);
+        continue;
+      }
+      queueable.push(entry);
+    }
+
+    if (queueable.length === 0 && onDisk.length > 0) {
+      throw new Error(
+        `Already downloaded from ${post.link}: ${onDisk[0]} is on disk. Delete it ` +
+          'first if you want another copy.'
       );
+    }
+
+    return queueable.map((entry) =>
+      addDownload({
+        volumeId,
+        issueId: resolveIssueId(loaded, entry.group, issueId),
+        coveredIssues: entry.group.info.issueNumber,
+        host: entry.host,
+        downloadLink: entry.link,
+        alternateLinks: entry.alternates,
+        webLink: post.link,
+        webTitle: post.title,
+        webSubTitle: entry.group.subTitle,
+        filenameBody: buildFilenameBody(loaded, entry.group),
+      })
+    );
   }
 
   // Nothing resolved, but a rate limit or an unreachable host is not evidence
@@ -385,6 +410,21 @@ export async function createDownloadsFromPost(
     webTitle: post.title,
   });
   throw new Error(`No working download links on ${post.link}`);
+}
+
+/**
+ * A copy of this group's file already on disk, from an earlier download.
+ *
+ * Every link in the group is one mirror of the same file, so a copy fetched
+ * from any of them counts — the host that wins the preference order today
+ * need not be the one that won last time.
+ */
+function existingCopy(entry: WorkingLink): string | null {
+  for (const link of [entry.link, ...entry.alternates.map((alternate) => alternate.link)]) {
+    const path = completedComicDownloadFile(link);
+    if (path !== null && existsSync(path)) return path;
+  }
+  return null;
 }
 
 /**
