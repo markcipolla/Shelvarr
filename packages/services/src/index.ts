@@ -43,6 +43,9 @@ export * as apiResponse from './api-response';
 // API auth
 export { validateApiAuth } from './api-auth';
 
+// Backups: database snapshots, kept locally and optionally at Backblaze
+export * as backup from './backup/index';
+
 // Admin diagnostics: logs, status, and the MCP server in front of them
 export * as admin from './admin/index';
 

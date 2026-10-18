@@ -14,6 +14,7 @@ import {
 import { scanLibrary, updateBook, addBook, getBookById } from '../scanner';
 import { getAllLibraries, getLibraryById } from '../library';
 import { pruneExpired } from '../auth/sessions';
+import { runBackup } from '../backup/index';
 import {
   query,
   queryOne,
@@ -2445,6 +2446,14 @@ const authPruneHandler: TaskHandler = async (_taskId, onProgress) => {
   };
 };
 
+/** Snapshot the database, and push it off this disk if that is set up. */
+const backupHandler: TaskHandler = async (_taskId, onProgress) => {
+  onProgress(0, 1);
+  const result = await runBackup();
+  onProgress(1, 1);
+  return { ...result };
+};
+
 /**
  * Register all task handlers
  */
@@ -2500,6 +2509,9 @@ export function registerAllHandlers(): void {
   // also swept as they are met, but nothing else ever revisits a link that
   // was emailed and never opened.
   registerTaskHandler('auth_prune', authPruneHandler);
+
+  // Backups: Settings -> Advanced decides where they go, this decides when.
+  registerTaskHandler('backup', backupHandler);
 }
 
 export default { registerAllHandlers };
