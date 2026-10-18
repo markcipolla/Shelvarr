@@ -2909,6 +2909,20 @@ export function isComicDownloadActive(downloadLink: string): boolean {
   return (row?.count ?? 0) > 0;
 }
 
+/**
+ * Where a completed download of this link filed its file, if one did — so the
+ * same release isn't fetched a second time over a copy already on disk.
+ */
+export function completedComicDownloadFile(downloadLink: string): string | null {
+  const row = queryOne<{ file_path: string }>(
+    `SELECT file_path FROM comic_downloads
+      WHERE download_link = ? AND state = 'completed' AND file_path IS NOT NULL
+      ORDER BY id DESC LIMIT 1`,
+    [downloadLink]
+  );
+  return row?.file_path ?? null;
+}
+
 export function updateComicDownloadProgress(id: number, progress: number, size: number | null): void {
   execute(
     `UPDATE comic_downloads

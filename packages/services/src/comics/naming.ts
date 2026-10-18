@@ -145,6 +145,12 @@ export function generateIssueName(
     template = templates.volumeAsIssue ?? DEFAULT_VOLUME_AS_ISSUE_TEMPLATE;
   } else if (volume.specialVersion !== null && volume.specialVersion !== 'cover') {
     template = templates.specialVersion ?? DEFAULT_SPECIAL_VERSION_TEMPLATE;
+  } else if (issueNumber === null) {
+    // No number to put in the issue template, which would leave a dangling
+    // "Issue" with nothing after it. A release that names no issue covers the
+    // volume, so name it the way a one-shot or collection is named — minus
+    // the label, since the volume isn't recorded as either.
+    template = templates.specialVersion ?? DEFAULT_SPECIAL_VERSION_TEMPLATE;
   } else {
     template = templates.issue ?? DEFAULT_ISSUE_TEMPLATE;
   }
