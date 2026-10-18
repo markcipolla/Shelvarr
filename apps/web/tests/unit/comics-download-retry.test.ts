@@ -259,6 +259,44 @@ describe('Comic download retries', () => {
     );
   });
 
+  // A GetComics article for a one-shot or a collection names no issue, so
+  // the import has no number to put in the filename and the scan has none to
+  // read back out of it — it writes the file off as a TPB for a volume that
+  // isn't one. The download row knows which issue it was queued for, and that
+  // has to outlast the rescans, or the issue reads as missing again and the
+  // same bytes are fetched once more as `… (2)`.
+  it('records a file whose name carries no issue number', async () => {
+    stubFetch({ [LINK_A]: () => fileResponse('comic-bytes', LINK_A) });
+    db.execute('UPDATE comics SET managed = 1 WHERE id = 501');
+
+    const download = db.addComicDownload({
+      volumeId: 501,
+      issueId: 9001,
+      host: 'getcomics',
+      downloadLink: LINK_A,
+      filenameBody: 'Immortal Hulk (2018) Volume 01',
+    });
+
+    assert.strictEqual(await runDownload(download.id), 'completed');
+    assert.ok(
+      existsSync(join(libraryDir, 'Immortal Hulk (2018) Volume 01.cbz')),
+      'the file landed in the volume folder'
+    );
+    assert.deepStrictEqual(
+      db.getComicVolumesWithMissingIssues(),
+      [],
+      'the issue counts as downloaded'
+    );
+
+    const { scanVolumeFiles } = await import('@shelvarr/services/comics/scan');
+    await scanVolumeFiles(501);
+    assert.deepStrictEqual(
+      db.getComicVolumesWithMissingIssues(),
+      [],
+      'and still does after a rescan that cannot place the file itself'
+    );
+  });
+
   it('fails once every link is exhausted, and says which error ended it', async () => {
     stubFetch({
       [LINK_A]: () => new Response('gone', { status: 404 }),

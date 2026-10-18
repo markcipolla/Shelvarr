@@ -25,6 +25,9 @@ import {
   addToComicBlocklist,
   claimStalledComicDownloads,
   getComicDownload,
+  linkComicFileToIssues,
+  refreshComicVolumeStats,
+  upsertComicFile,
   getComicVolumesNeedingRefresh,
   getComicVolumeIdsInRootFolder,
   getComicRootFolderForLibrary,
@@ -53,6 +56,7 @@ import {
   setDownloadProgress as updateBookDownloadProgress,
 } from '../downloads/download-events';
 import type {
+  ComicDownload,
   ComicDownloadFailureReason,
   ComicDownloadLink,
   Library,
@@ -1646,6 +1650,60 @@ function rateLimitBackoff(attempt: number): number {
 }
 
 /**
+ * Make sure a freshly imported file is attributed to an issue, even when its
+ * name doesn't say which one.
+ *
+ * `scanVolumeFiles` reads the issue back out of the filename, which only
+ * works if the release had an issue number to put there. GetComics articles
+ * for one-shots and collections often don't — "Ancestor (2016)" has no number
+ * anywhere — so the file lands unattributed, the issue still reads as
+ * missing, and the next search fetches the very same bytes again and files
+ * them beside the first copy as `… (2)`.
+ *
+ * The queue already knows what it fetched: the download row records the issue
+ * it was for and the issues the release covers. So when the scan comes up
+ * empty, fall back to that. The link is `forced` because every later scan
+ * would fail to make it for exactly the same reason this one did, and would
+ * otherwise throw it away again.
+ */
+function attributeImportedFile(
+  download: ComicDownload,
+  imported: { path: string; bytes: number },
+  issues: Array<{ id: number; calculatedIssueNumber: number }>
+): void {
+  const linked = queryOne<{ count: number }>(
+    `SELECT COUNT(*) AS count
+       FROM comic_files f
+       JOIN comic_issue_files l ON l.file_id = f.id
+      WHERE f.filepath = ?`,
+    [imported.path]
+  );
+  if ((linked?.count ?? 0) > 0) return;
+
+  let issueIds: number[];
+  if (download.coveredIssues !== null) {
+    const [start, end] = getcomics.forceRange(download.coveredIssues);
+    issueIds = issues
+      .filter(
+        (issue) => start <= issue.calculatedIssueNumber && issue.calculatedIssueNumber <= end
+      )
+      .map((issue) => issue.id);
+  } else {
+    issueIds = download.issueId !== null ? [download.issueId] : [];
+  }
+  if (issueIds.length === 0) return;
+
+  const fileId = upsertComicFile({
+    volumeId: download.volumeId,
+    filepath: imported.path,
+    size: imported.bytes,
+    fileType: 'issue',
+  });
+  linkComicFileToIssues(fileId, issueIds, true);
+  refreshComicVolumeStats(download.volumeId);
+}
+
+/**
  * Fetch one queued comic download and import it into the library.
  *
  * Progress is reported in bytes so the UI can show a real progress bar; the
@@ -1893,6 +1951,8 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
           `${download.volumeId}: ${error instanceof Error ? error.message : String(error)}`
       );
     }
+
+    attributeImportedFile(download, imported, loaded.issues);
 
     addComicDownloadHistory({
       volumeId: download.volumeId,
