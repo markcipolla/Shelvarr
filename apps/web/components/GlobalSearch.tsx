@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { SearchIcon } from '@/components/ui/Icons';
 
@@ -12,7 +12,6 @@ export function GlobalSearch() {
   const urlQuery = onSearchPage ? (searchParams.get('q') ?? '') : '';
 
   const [query, setQuery] = useState(urlQuery);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // When the user navigates away from /search (e.g. clicks Home/Books/Comics),
   // clear the search input. When they return to /search, sync to the URL.
@@ -20,32 +19,22 @@ export function GlobalSearch() {
     setQuery(urlQuery);
   }, [urlQuery, onSearchPage]);
 
-  // Debounced navigation to /search as the user types.
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-
-    // Only drive navigation from user typing — not from the URL-sync effect above.
-    if (query === urlQuery) return;
-
-    debounceRef.current = setTimeout(() => {
-      const trimmed = query.trim();
-      if (!trimmed) {
-        // User cleared the input — leave /search if we're there, otherwise no-op.
-        if (onSearchPage) router.replace('/search');
-        return;
-      }
-      const target = `/search?q=${encodeURIComponent(trimmed)}`;
-      if (onSearchPage) {
-        router.replace(target);
-      } else {
-        router.push(target);
-      }
-    }, 300);
-
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [query, urlQuery, onSearchPage, router]);
+  // Searching only happens when the user asks for it: Enter, or the search button.
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = query.trim();
+    if (!trimmed) {
+      // Nothing to search for — leave /search if we're there, otherwise no-op.
+      if (onSearchPage) router.replace('/search');
+      return;
+    }
+    const target = `/search?q=${encodeURIComponent(trimmed)}`;
+    if (onSearchPage) {
+      router.replace(target);
+    } else {
+      router.push(target);
+    }
+  };
 
   const handleClear = () => {
     setQuery('');
@@ -53,8 +42,14 @@ export function GlobalSearch() {
   };
 
   return (
-    <div className="relative max-w-2xl mx-auto">
-      <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-shelvarr-text-muted pointer-events-none" />
+    <form onSubmit={handleSubmit} role="search" className="relative max-w-2xl mx-auto">
+      <button
+        type="submit"
+        aria-label="Search"
+        className="absolute left-1 top-1/2 -translate-y-1/2 p-2 rounded text-shelvarr-text-muted hover:text-white hover:bg-shelvarr-bg transition-colors"
+      >
+        <SearchIcon className="w-4 h-4" />
+      </button>
       <input
         type="text"
         value={query}
@@ -74,6 +69,6 @@ export function GlobalSearch() {
           </svg>
         </button>
       )}
-    </div>
+    </form>
   );
 }
