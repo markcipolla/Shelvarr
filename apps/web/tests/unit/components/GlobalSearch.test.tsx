@@ -1,6 +1,6 @@
 /**
  * Unit tests for GlobalSearch component
- * Tests input handling, debounced navigation to /search, and clear button behavior.
+ * Tests input handling, navigation to /search on submit, and clear button behavior.
  */
 
 import { describe, it, mock, beforeEach, afterEach } from 'node:test';
@@ -68,8 +68,8 @@ describe('GlobalSearch Component', () => {
     });
   });
 
-  describe('Typing navigates to /search', () => {
-    it('should navigate to /search after debounce when typing on non-search route', async () => {
+  describe('Searching navigates to /search', () => {
+    it('should not navigate while the user is still typing', async () => {
       render(<GlobalSearch />);
       const user = userEvent.setup();
       const input = screen.getByPlaceholderText('Search books, comics, authors...');
@@ -77,9 +77,31 @@ describe('GlobalSearch Component', () => {
       await user.type(input, 'harry');
       await new Promise((r) => setTimeout(r, 400));
 
-      assert.ok(mockPush.mock.callCount() >= 1);
-      const lastCall = mockPush.mock.calls[mockPush.mock.callCount() - 1];
-      assert.strictEqual(lastCall.arguments[0], '/search?q=harry');
+      assert.strictEqual(mockPush.mock.callCount(), 0);
+      assert.strictEqual(mockReplace.mock.callCount(), 0);
+    });
+
+    it('should navigate to /search when Enter is pressed on a non-search route', async () => {
+      render(<GlobalSearch />);
+      const user = userEvent.setup();
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
+
+      await user.type(input, 'harry{Enter}');
+
+      assert.strictEqual(mockPush.mock.callCount(), 1);
+      assert.strictEqual(mockPush.mock.calls[0].arguments[0], '/search?q=harry');
+    });
+
+    it('should navigate to /search when the search button is clicked', async () => {
+      render(<GlobalSearch />);
+      const user = userEvent.setup();
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
+
+      await user.type(input, 'harry');
+      await user.click(screen.getByLabelText('Search'));
+
+      assert.strictEqual(mockPush.mock.callCount(), 1);
+      assert.strictEqual(mockPush.mock.calls[0].arguments[0], '/search?q=harry');
     });
 
     it('should use replace (not push) when already on /search', async () => {
@@ -88,12 +110,10 @@ describe('GlobalSearch Component', () => {
       const user = userEvent.setup();
       const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
-      await user.type(input, 'xy');
-      await new Promise((r) => setTimeout(r, 400));
+      await user.type(input, 'xy{Enter}');
 
-      assert.ok(mockReplace.mock.callCount() >= 1);
-      const last = mockReplace.mock.calls[mockReplace.mock.callCount() - 1];
-      assert.strictEqual(last.arguments[0], '/search?q=xy');
+      assert.strictEqual(mockReplace.mock.callCount(), 1);
+      assert.strictEqual(mockReplace.mock.calls[0].arguments[0], '/search?q=xy');
       assert.strictEqual(mockPush.mock.callCount(), 0);
     });
 
@@ -102,12 +122,21 @@ describe('GlobalSearch Component', () => {
       const user = userEvent.setup();
       const input = screen.getByPlaceholderText('Search books, comics, authors...');
 
-      await user.type(input, 'a&b');
-      await new Promise((r) => setTimeout(r, 400));
+      await user.type(input, 'a&b{Enter}');
 
-      assert.ok(mockPush.mock.callCount() >= 1);
-      const last = mockPush.mock.calls[mockPush.mock.callCount() - 1];
-      assert.strictEqual(last.arguments[0], '/search?q=a%26b');
+      assert.strictEqual(mockPush.mock.callCount(), 1);
+      assert.strictEqual(mockPush.mock.calls[0].arguments[0], '/search?q=a%26b');
+    });
+
+    it('should not navigate when submitting a blank query from a non-search route', async () => {
+      render(<GlobalSearch />);
+      const user = userEvent.setup();
+      const input = screen.getByPlaceholderText('Search books, comics, authors...');
+
+      await user.type(input, '   {Enter}');
+
+      assert.strictEqual(mockPush.mock.callCount(), 0);
+      assert.strictEqual(mockReplace.mock.callCount(), 0);
     });
   });
 
