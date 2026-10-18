@@ -129,6 +129,16 @@ export const DEFAULT_SCHEDULES: ScheduleDefinition[] = [
     enabledByDefault: true,
   },
   {
+    name: 'backup',
+    taskType: 'backup',
+    intervalSeconds: 24 * HOUR,
+    description: 'Snapshot the database, and upload it if Backblaze is configured',
+    category: 'system',
+    // On by default. It writes a few megabytes next to the database and is
+    // the one job whose absence is only ever noticed too late.
+    enabledByDefault: true,
+  },
+  {
     name: 'source_health',
     taskType: 'source_health',
     intervalSeconds: 15 * 60,

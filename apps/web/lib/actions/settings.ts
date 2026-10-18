@@ -229,10 +229,12 @@ export async function startComicLibraryImport(path: string) {
 
 export type ScheduleCategory = 'books' | 'comics' | 'system';
 
-/** Both settings tabs list recurring jobs, so both go stale together. */
+/** Every tab that lists recurring jobs goes stale together. */
 function revalidateScheduleTabs() {
   revalidatePath('/settings/comics');
   revalidatePath('/settings/organize');
+  // Advanced lists the backup job.
+  revalidatePath('/settings/advanced');
   revalidatePath('/tasks');
 }
 

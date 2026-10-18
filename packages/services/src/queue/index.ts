@@ -20,7 +20,7 @@ export type TaskType = 'scan' | 'metadata' | 'book_metadata' | 'organize' | 'dow
   | 'comic_search' | 'comic_download' | 'comic_refresh' | 'comic_scan'
   | 'comic_rename' | 'comic_rename_all' | 'comic_update_all' | 'comic_search_all' | 'comic_scan_all'
   | 'comic_library_import' | 'comic_library_apply' | 'comic_resume' | 'auth_prune'
-  | 'source_health';
+  | 'source_health' | 'backup';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface Task {

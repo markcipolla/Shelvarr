@@ -59,6 +59,8 @@ phone with [Stackarr](#android-app), the companion Android app.
   everyone gets their own reading progress.
 - **[Stackarr](#android-app) for Android.** Your library on your phone, with
   offline downloads, and it keeps itself up to date.
+- **[Backups](#backups).** A nightly snapshot of the database, kept locally and
+  optionally pushed to Backblaze B2.
 - **Diagnostics over MCP.** An optional read-only window onto logs and
   background jobs, for you or an AI assistant to debug with.
 
@@ -359,6 +361,45 @@ belong to on first start, so the only thing to get right is the library's own
 path: point it at where the folders are actually mounted and restart. Paths are
 only rewritten once the library is mounted, so a volume whose files can't be
 found is a mount to fix, not a setting.
+
+## Backups
+
+Everything Shelvarr knows that isn't re-derivable from your files — libraries,
+metadata, read progress, download history, settings, accounts — is in
+`data/shelvarr.db`. The credentials in it are encrypted with `data/.secret-key`,
+so a copy of the database without that key restores everything except your
+saved passwords.
+
+**Settings → Advanced → Backups** runs a snapshot daily. It uses SQLite's online
+backup, so it is a consistent copy even though the server is still writing, and
+it is gzipped into `data/backups/`. The last seven are kept; **Run now** takes
+one immediately and the Tasks page shows it finish.
+
+That snapshot is on the same volume as the database it came from, which covers
+a bad migration and not a dead disk. Tick **Upload to Backblaze B2** for the
+second case:
+
+1. In Backblaze, create a private bucket.
+2. Create an application key restricted to that bucket, with read and write
+   access. Note the key ID and the key itself — Backblaze shows the key once.
+3. Paste both into Settings → Advanced, name the bucket, and save.
+
+The snapshot and a copy of `.secret-key` both go up, so the bucket on its own is
+enough to restore. That also means anyone holding the bucket can read your saved
+passwords: keep it private, and keep the application key scoped to it.
+
+### Restoring
+
+```bash
+docker compose down
+gunzip -c backups/shelvarr-2026-10-16T02-00-00-000Z.db.gz > shelvarr.db   # in data/
+docker compose up -d
+```
+
+If you are restoring onto a new machine, put the backed-up `.secret-key` in
+`data/` alongside it first. Without it the server still starts and your library
+is intact, but the saved download-source credentials read as empty and have to
+be entered again.
 
 ## Diagnostics API and MCP
 
