@@ -45,6 +45,28 @@ export const SCANNABLE_EXTENSIONS = new Set([
 const IGNORED_DIRECTORIES = new Set(['.git', '@eaDir', '#recycle', '.DS_Store']);
 
 /**
+ * Whether this file's "TPB" is only `extractFilenameData`'s fallback guess.
+ *
+ * Anything with no issue number and no stated edition is labelled a TPB — see
+ * "assume a TPB" in `getcomics/parse.ts`. So an ordinary volume's own
+ * collected edition, `Ancestor (2016) Volume 01.cbz`, claims to be an edition
+ * the volume is not recorded as, and `matchSpecialVersion` throws the file
+ * out even though it is sitting in that volume's folder with a matching year
+ * and volume number. Nothing in the filename ever said "TPB".
+ *
+ * Only for volumes with no special version of their own: where we do know
+ * what the volume is, `matchSpecialVersion` already allows the fallback
+ * through.
+ */
+function inferredCollection(volume: VolumeMatchData, fileData: FilenameData): boolean {
+  return (
+    volume.specialVersion === null &&
+    fileData.specialVersion === 'tpb' &&
+    fileData.issueNumber === null
+  );
+}
+
+/**
  * Whether a file belongs to this volume at all.
  *
  * Deliberately looser than the search-result filter: a file already sitting in
@@ -66,12 +88,13 @@ export function fileImportingFilter(
     issueNumber = -Infinity;
   }
 
-  const matchingSpecialVersion = matchSpecialVersion(
-    volume.specialVersion,
-    fileData.specialVersion,
-    volume.title,
-    fileData.issueNumber
-  );
+  const matchingSpecialVersion =
+    matchSpecialVersion(
+      volume.specialVersion,
+      fileData.specialVersion,
+      volume.title,
+      fileData.issueNumber
+    ) || inferredCollection(volume, fileData);
 
   const matchingVolumeNumber = matchVolumeNumber(volume, issues, fileData.volumeNumber);
   const matchingYear = matchYear(
@@ -225,9 +248,15 @@ export async function scanVolumeFiles(volumeId: number): Promise<ScanResult> {
 
     if (fileType === 'issue') {
       if (
-        volume.specialVersion !== null &&
-        volume.specialVersion !== 'volume-as-issue' &&
-        fileData.specialVersion !== null
+        (volume.specialVersion !== null &&
+          volume.specialVersion !== 'volume-as-issue' &&
+          fileData.specialVersion !== null) ||
+        // A collected edition names no issue, so there is no number to read
+        // back out. Attribute it the same way: to the first issue, not to
+        // every issue it might contain — guessing the whole run from a
+        // filename would mark a volume complete and stop the search for the
+        // issues this file turns out not to hold.
+        inferredCollection(volume, fileData)
       ) {
         // The volume *is* one book, so its single file covers issue one.
         issueIds = issues.length > 0 ? [issues[0]!.id] : [];

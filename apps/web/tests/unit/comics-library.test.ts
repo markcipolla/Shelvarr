@@ -500,6 +500,42 @@ describe('Comic library', () => {
       assert.strictEqual(result.unmatched.length, 1);
     });
 
+    // A release that names no issue number — a one-shot or a collection — is
+    // labelled a TPB by the filename parser, which used to disagree with a
+    // volume recorded as no particular edition and get the file thrown out.
+    it('finds a collected edition of a volume that is not marked as one', async () => {
+      const { volumeId, folder } = seedVolume('Immortal Hulk');
+      const path = join(folder, 'Immortal Hulk (2018) Volume 01.cbz');
+      writeFileSync(path, 'x');
+
+      const result = await scan.scanVolumeFiles(volumeId);
+      assert.strictEqual(result.matched, 1);
+      assert.deepStrictEqual(result.unmatched, []);
+      assert.strictEqual(db.getComicFilesForVolume(volumeId).length, 1);
+    });
+
+    it('keeps a collected edition on rescan instead of pruning it', async () => {
+      const { volumeId, folder } = seedVolume('Immortal Hulk');
+      writeFileSync(join(folder, 'Immortal Hulk (2018) Volume 01.cbz'), 'x');
+
+      await scan.scanVolumeFiles(volumeId);
+      const rescan = await scan.scanVolumeFiles(volumeId);
+      assert.strictEqual(rescan.matched, 1);
+      assert.strictEqual(rescan.removed, 0);
+      assert.strictEqual(db.getComicFilesForVolume(volumeId).length, 1);
+    });
+
+    // The looser special-version check must not swallow a file that is simply
+    // in the wrong folder: year *and* volume number still both have to fail.
+    it('still rejects a collected edition of a different volume', async () => {
+      const { volumeId, folder } = seedVolume('Immortal Hulk');
+      writeFileSync(join(folder, 'Some Other Series (1995) Volume 03.cbz'), 'x');
+
+      const result = await scan.scanVolumeFiles(volumeId);
+      assert.strictEqual(result.matched, 0);
+      assert.strictEqual(result.unmatched.length, 1);
+    });
+
     it('forgets files that have left the folder', async () => {
       const { volumeId, folder } = seedVolume('Immortal Hulk');
       const path = join(folder, 'Immortal Hulk (2018) Issue 001.cbz');
