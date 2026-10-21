@@ -297,6 +297,65 @@ describe('Comic download retries', () => {
     );
   });
 
+  // A series collected as books — "Birdking Vol. 2 (2023)" — puts no issue
+  // number anywhere in the release's title, so every one of them was named
+  // after the volume alone: the second landed beside the first as `… (2)`,
+  // and the scan, which reads the issue back out of the filename, filed both
+  // under issue one while issues two and three stayed missing. The queue
+  // knew which issue it had asked for all along.
+  it('names a volume-titled release after the issue it was queued for', async () => {
+    const detail = makeVolume();
+    detail.issues = [
+      makeIssue(),
+      makeIssue({ id: 9002, comicvine_id: 8002, issue_number: '2', calculated_issue_number: 2 }),
+      makeIssue({ id: 9003, comicvine_id: 8003, issue_number: '3', calculated_issue_number: 3 }),
+    ];
+    db.upsertComicDetail(detail);
+    db.execute('UPDATE comics SET managed = 1 WHERE id = 501');
+
+    stubFetch({ [LINK_A]: () => fileResponse('comic-bytes', LINK_A) });
+    const post = {
+      id: 7,
+      title: 'Immortal Hulk Vol. 2 (2019)',
+      link: 'https://getcomics.org/marvel/immortal-hulk-vol-2/',
+      date: '2019-06-13T00:00:00',
+      contentHtml:
+        '<p style="text-align: center;"><strong>Immortal Hulk Vol. 2</strong><br />' +
+        '<strong>Language :</strong> English | <strong>Year :</strong> 2019</p>' +
+        `<p><div class="aio-button-center"><a href="${LINK_A}" title="DOWNLOAD NOW">DOWNLOAD NOW</a></div>` +
+        '<hr />',
+    };
+
+    const getcomics = await import('@shelvarr/services/comics/getcomics/index');
+    const [queued] = await getcomics.createDownloadsFromPost({
+      volumeId: 501,
+      post,
+      issueId: 9002,
+      forceMatch: true,
+    });
+
+    assert.strictEqual(queued!.issueId, 9002);
+    assert.strictEqual(
+      queued!.filenameBody,
+      'Immortal Hulk (2018) Volume 01 Issue 002',
+      'the filename says which issue it is, not just which volume'
+    );
+
+    assert.strictEqual(await runDownload(queued!.id), 'completed');
+
+    // And the scan, reading only the filename, agrees.
+    const { scanVolumeFiles } = await import('@shelvarr/services/comics/scan');
+    await scanVolumeFiles(501);
+    assert.deepStrictEqual(
+      db
+        .getDb()
+        .prepare('SELECT DISTINCT issue_id FROM comic_issue_files ORDER BY issue_id')
+        .all(),
+      [{ issue_id: 9002 }],
+      'issue two holds the file; issue one is still missing'
+    );
+  });
+
   it('fails once every link is exhausted, and says which error ended it', async () => {
     stubFetch({
       [LINK_A]: () => new Response('gone', { status: 404 }),

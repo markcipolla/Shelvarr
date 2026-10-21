@@ -371,10 +371,11 @@ export async function createDownloadsFromPost(
       );
     }
 
-    return queueable.map((entry) =>
-      addDownload({
+    return queueable.map((entry) => {
+      const resolvedIssueId = resolveIssueId(loaded, entry.group, issueId);
+      return addDownload({
         volumeId,
-        issueId: resolveIssueId(loaded, entry.group, issueId),
+        issueId: resolvedIssueId,
         coveredIssues: entry.group.info.issueNumber,
         host: entry.host,
         downloadLink: entry.link,
@@ -382,9 +383,9 @@ export async function createDownloadsFromPost(
         webLink: post.link,
         webTitle: post.title,
         webSubTitle: entry.group.subTitle,
-        filenameBody: buildFilenameBody(loaded, entry.group),
-      })
-    );
+        filenameBody: buildFilenameBody(loaded, entry.group, resolvedIssueId),
+      });
+    });
   }
 
   // Nothing resolved, but a rate limit or an unreachable host is not evidence
@@ -444,7 +445,30 @@ function resolveIssueId(
   return issue?.id ?? fallback;
 }
 
-function buildFilenameBody(loaded: LoadedVolume, group: DownloadGroup): string | null {
+/**
+ * The issue number to put in the filename when the release's own title had
+ * none of its own.
+ *
+ * A series collected as books — "Birdking Vol. 2 (2023)" — names no issue
+ * anywhere, so every release in it was named `Birdking (2022) Volume 01`:
+ * the second landed beside the first as `… (2)`, and the scan, which reads
+ * the issue back out of the filename, filed both under issue one while
+ * issues two and three stayed missing. The queue knew which issue it
+ * fetched; only the name threw it away.
+ *
+ * Not for volumes that are a single book. There the number is noise, and
+ * `Ancestor (2016) Volume 01` is the name we want.
+ */
+function fallbackIssueNumber(loaded: LoadedVolume, issueId: number | null): number | null {
+  if (issueId === null || loaded.issues.length <= 1) return null;
+  return loaded.issues.find((issue) => issue.id === issueId)?.calculatedIssueNumber ?? null;
+}
+
+function buildFilenameBody(
+  loaded: LoadedVolume,
+  group: DownloadGroup,
+  issueId: number | null
+): string | null {
   if (!getServiceConfig().getcomics.renameDownloadedFiles) return null;
   return generateIssueName(
     {
@@ -453,7 +477,7 @@ function buildFilenameBody(loaded: LoadedVolume, group: DownloadGroup): string |
       volumeNumber: loaded.volume.volumeNumber,
       specialVersion: loaded.volume.specialVersion,
     },
-    group.info.issueNumber
+    group.info.issueNumber ?? fallbackIssueNumber(loaded, issueId)
   );
 }
 
