@@ -101,6 +101,10 @@ export function ReleaseSearchPanel({
           : `Queued ${result.queued} download${result.queued === 1 ? '' : 's'}.`
       );
       router.refresh();
+      // Queued is the end of this panel's job — get out of the way and let the
+      // row underneath show the download. A page that queued nothing stays put:
+      // its message is the whole point of the click.
+      if (result.queued) onClose?.();
     } else {
       setError(result.error ?? 'Failed to queue the download');
     }
