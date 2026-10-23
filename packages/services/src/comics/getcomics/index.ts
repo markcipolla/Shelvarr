@@ -372,10 +372,10 @@ export async function createDownloadsFromPost(
     }
 
     return queueable.map((entry) => {
-      const resolvedIssueId = resolveIssueId(loaded, entry.group, issueId);
+      const attributedIssueId = resolveIssueId(loaded, entry.group, issueId);
       return addDownload({
         volumeId,
-        issueId: resolvedIssueId,
+        issueId: attributedIssueId,
         coveredIssues: entry.group.info.issueNumber,
         host: entry.host,
         downloadLink: entry.link,
@@ -383,7 +383,7 @@ export async function createDownloadsFromPost(
         webLink: post.link,
         webTitle: post.title,
         webSubTitle: entry.group.subTitle,
-        filenameBody: buildFilenameBody(loaded, entry.group, resolvedIssueId),
+        filenameBody: buildFilenameBody(loaded, entry.group, attributedIssueId),
       });
     });
   }
@@ -446,30 +446,28 @@ function resolveIssueId(
 }
 
 /**
- * The issue number to put in the filename when the release's own title had
- * none of its own.
+ * What to call the file once it lands, or null when renaming is off.
  *
- * A series collected as books — "Birdking Vol. 2 (2023)" — names no issue
- * anywhere, so every release in it was named `Birdking (2022) Volume 01`:
- * the second landed beside the first as `… (2)`, and the scan, which reads
- * the issue back out of the filename, filed both under issue one while
- * issues two and three stayed missing. The queue knew which issue it
- * fetched; only the name threw it away.
- *
- * Not for volumes that are a single book. There the number is noise, and
- * `Ancestor (2016) Volume 01` is the name we want.
+ * A release can name no issue and still be for a known one — a one-shot, an
+ * OGN volume, anything the search was launched for by issue. Naming those
+ * from the volume alone gives every such download in a volume the same
+ * filename, so the second lands as `… (2)` and the third as `… (3)`, which
+ * is neither what a rename would call them nor something the scan can read an
+ * issue number back out of. The issue we attributed it to carries the number
+ * the template wants, so use that when the article has none.
  */
-function fallbackIssueNumber(loaded: LoadedVolume, issueId: number | null): number | null {
-  if (issueId === null || loaded.issues.length <= 1) return null;
-  return loaded.issues.find((issue) => issue.id === issueId)?.calculatedIssueNumber ?? null;
-}
-
 function buildFilenameBody(
   loaded: LoadedVolume,
   group: DownloadGroup,
   issueId: number | null
 ): string | null {
   if (!getServiceConfig().getcomics.renameDownloadedFiles) return null;
+
+  const issueNumber =
+    group.info.issueNumber ??
+    loaded.issues.find((issue) => issue.id === issueId)?.calculatedIssueNumber ??
+    null;
+
   return generateIssueName(
     {
       title: loaded.volume.title,
@@ -477,7 +475,7 @@ function buildFilenameBody(
       volumeNumber: loaded.volume.volumeNumber,
       specialVersion: loaded.volume.specialVersion,
     },
-    group.info.issueNumber ?? fallbackIssueNumber(loaded, issueId)
+    issueNumber
   );
 }
 

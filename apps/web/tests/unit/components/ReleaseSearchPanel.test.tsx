@@ -135,16 +135,46 @@ describe('ReleaseSearchPanel', () => {
     assert.ok(screen.getByText('Queued 1 download.'));
   });
 
+  it('closes itself once something is queued', async () => {
+    searchResponse = { results: [release()], queries: ['x'] };
+    let closed = 0;
+    const user = userEvent.setup();
+    render(
+      <ReleaseSearchPanel
+        volumeId={774}
+        subject="Alien: King Killer"
+        onClose={() => {
+          closed += 1;
+        }}
+      />
+    );
+
+    await waitFor(() => assert.ok(screen.getByRole('button', { name: 'Download' })));
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+
+    await waitFor(() => assert.strictEqual(closed, 1));
+  });
+
   it('reports a page whose links were all dead rather than claiming success', async () => {
     searchResponse = { results: [release()], queries: ['x'] };
     queueResponse = { success: true, queued: 0 };
+    let closed = 0;
     const user = userEvent.setup();
-    render(<ReleaseSearchPanel volumeId={774} subject="Alien: King Killer" />);
+    render(
+      <ReleaseSearchPanel
+        volumeId={774}
+        subject="Alien: King Killer"
+        onClose={() => {
+          closed += 1;
+        }}
+      />
+    );
 
     await waitFor(() => assert.ok(screen.getByRole('button', { name: 'Download' })));
     await user.click(screen.getByRole('button', { name: 'Download' }));
 
     await waitFor(() => assert.ok(screen.getByText(/links are all dead or unsupported/)));
+    assert.strictEqual(closed, 0);
   });
 
   it('surfaces a disabled source instead of showing an empty list', async () => {
