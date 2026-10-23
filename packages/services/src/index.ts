@@ -18,6 +18,7 @@ export * as comicLibrary from './comics/library';
 export * as comicNaming from './comics/naming';
 export * as comicScan from './comics/scan';
 export * as comicRename from './comics/rename';
+export * as comicDuplicateFiles from './comics/duplicate-files';
 export * as comicLibraryImport from './comics/import-library';
 export { ensureImportable, importComicDownload, resolveImportTarget } from './comics/import';
 export * as comicDownloadEvents from './comics/download-events';

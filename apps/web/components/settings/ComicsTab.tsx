@@ -7,7 +7,10 @@ import {
   type ScheduleView,
 } from '@/lib/actions/settings';
 import {
+  findDuplicateComicFilesAction,
+  removeDuplicateComicFilesAction,
   tidyComicDuplicatesAction,
+  type DuplicateComicFileView,
   type UnresolvedComicDuplicate,
 } from '@/lib/actions/comics';
 import { RecurringJobs } from '@/components/settings/RecurringJobs';
@@ -16,6 +19,21 @@ import { FolderPicker } from '@/components/ui/FolderPicker';
 interface ComicsSettings {
   /** Whether ComicVine is configured on the Metadata Sources tab. */
   hasApiKey: boolean;
+}
+
+/** How many copies the whole list would delete. */
+function copyCount(groups: DuplicateComicFileView[]): number {
+  return groups.reduce((total, group) => total + group.remove.length, 0);
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 ** 3) return `${Math.round(bytes / 1024 ** 2)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
+
+/** Just the filename: the folder is the same for every copy in a group. */
+function fileName(path: string): string {
+  return path.split('/').pop() ?? path;
 }
 
 const inputClass =
@@ -39,6 +57,49 @@ export function ComicsTab({
     unresolved: UnresolvedComicDuplicate[];
     error?: string;
   } | null>(null);
+
+  const [scanningFiles, setScanningFiles] = useState(false);
+  const [removingFiles, setRemovingFiles] = useState(false);
+  const [duplicateFiles, setDuplicateFiles] = useState<{
+    groups: DuplicateComicFileView[];
+    bytes: number;
+    error?: string;
+  } | null>(null);
+  const [removedFiles, setRemovedFiles] = useState<{
+    removed: number;
+    bytes: number;
+    errors: Array<{ path: string; error: string }>;
+    error?: string;
+  } | null>(null);
+
+  const handleFindDuplicateFiles = async () => {
+    setScanningFiles(true);
+    setDuplicateFiles(null);
+    setRemovedFiles(null);
+
+    const result = await findDuplicateComicFilesAction();
+    setDuplicateFiles({
+      groups: result.groups,
+      bytes: result.bytes,
+      ...(result.error ? { error: result.error } : {}),
+    });
+    setScanningFiles(false);
+  };
+
+  const handleRemoveDuplicateFiles = async () => {
+    setRemovingFiles(true);
+
+    const result = await removeDuplicateComicFilesAction();
+    setRemovedFiles({
+      removed: result.removed,
+      bytes: result.bytes,
+      errors: result.errors,
+      ...(result.error ? { error: result.error } : {}),
+    });
+    setDuplicateFiles(null);
+    router.refresh();
+    setRemovingFiles(false);
+  };
 
   const handleTidyDuplicates = async () => {
     setTidying(true);
@@ -176,6 +237,105 @@ export function ComicsTab({
               ))}
             </ul>
           </div>
+        )}
+      </section>
+
+      {/* Duplicate files ------------------------------------------------- */}
+      <section>
+        <h2 className="text-lg font-semibold text-white mb-1">Duplicate files</h2>
+        <p className="text-shelvarr-text-muted mb-4 text-sm">
+          An import never overwrites, so a file arriving under a name already taken is filed as
+          <span className="font-mono"> (2)</span>. Where the bytes differ that is two different
+          releases and a rename settles them; where they match it is the same file twice. Every
+          same-size pair in every volume folder is hashed to be sure, so this takes a while on a
+          big library.
+        </p>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleFindDuplicateFiles}
+            disabled={scanningFiles || removingFiles}
+            className="px-4 py-2 bg-shelvarr-surface border border-shelvarr-border hover:border-blue-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium"
+          >
+            {scanningFiles ? 'Comparing files…' : 'Find duplicate files'}
+          </button>
+
+          {duplicateFiles && duplicateFiles.groups.length > 0 && (
+            <button
+              type="button"
+              onClick={handleRemoveDuplicateFiles}
+              disabled={removingFiles}
+              className="px-4 py-2 bg-red-500/10 border border-red-500/40 hover:border-red-500 disabled:opacity-50 text-red-300 rounded-lg text-sm font-medium"
+            >
+              {removingFiles
+                ? 'Deleting…'
+                : `Delete ${copyCount(duplicateFiles.groups)} ${
+                    copyCount(duplicateFiles.groups) === 1 ? 'copy' : 'copies'
+                  }`}
+            </button>
+          )}
+        </div>
+
+        {duplicateFiles?.error && (
+          <p className="mt-2 text-sm text-red-400">{duplicateFiles.error}</p>
+        )}
+
+        {duplicateFiles && !duplicateFiles.error && duplicateFiles.groups.length === 0 && (
+          <p className="mt-2 text-sm text-shelvarr-text-muted">
+            Nothing to remove — no file is held twice.
+          </p>
+        )}
+
+        {duplicateFiles && duplicateFiles.groups.length > 0 && (
+          <div className="mt-3 bg-shelvarr-surface border border-shelvarr-border rounded-lg p-4 space-y-3">
+            <p className="text-sm text-shelvarr-text-muted">
+              {copyCount(duplicateFiles.groups)} redundant{' '}
+              {copyCount(duplicateFiles.groups) === 1 ? 'copy' : 'copies'} across{' '}
+              {duplicateFiles.groups.length}{' '}
+              {duplicateFiles.groups.length === 1 ? 'file' : 'files'}, {formatBytes(duplicateFiles.bytes)}{' '}
+              to reclaim. One copy of each stays.
+            </p>
+            <ul className="space-y-2 text-xs">
+              {duplicateFiles.groups.map((group) => (
+                <li key={group.keep}>
+                  <span className="text-white">{group.volumeTitle}</span>{' '}
+                  <span className="text-shelvarr-text-muted">({formatBytes(group.bytes)} each)</span>
+                  <ul className="mt-1 space-y-0.5 font-mono text-shelvarr-text-muted">
+                    <li className="text-green-400">keep {fileName(group.keep)}</li>
+                    {group.remove.map((path) => (
+                      <li key={path} className="text-red-400">
+                        delete {fileName(path)}
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {removedFiles?.error && <p className="mt-2 text-sm text-red-400">{removedFiles.error}</p>}
+
+        {removedFiles && !removedFiles.error && (
+          <p className="mt-2 text-sm text-shelvarr-text-muted">
+            {removedFiles.removed === 0
+              ? 'Nothing was removed.'
+              : `Deleted ${removedFiles.removed} ${
+                  removedFiles.removed === 1 ? 'copy' : 'copies'
+                }, freeing ${formatBytes(removedFiles.bytes)}. Rename a volume to tidy any ` +
+                '(2) left on files that are not copies.'}
+          </p>
+        )}
+
+        {removedFiles && removedFiles.errors.length > 0 && (
+          <ul className="mt-2 space-y-1 text-xs text-red-400">
+            {removedFiles.errors.map((failure) => (
+              <li key={failure.path}>
+                <span className="font-mono">{fileName(failure.path)}</span> — {failure.error}
+              </li>
+            ))}
+          </ul>
         )}
       </section>
     </div>

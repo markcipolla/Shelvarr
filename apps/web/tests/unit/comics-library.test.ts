@@ -1121,6 +1121,77 @@ describe('Comic library', () => {
       assert.ok(db.getComicVolume(first.volumeId));
     });
   });
+
+  describe('duplicate files', () => {
+    it('removes a byte-identical copy and leaves a collided release alone', async () => {
+      const { volumeId, folder } = seedVolume('Immortal Hulk');
+      const base = join(folder, 'Immortal Hulk (2018) Volume 01 Issue 001.cbz');
+      const copy = join(folder, 'Immortal Hulk (2018) Volume 01 Issue 001 (2).cbz');
+      const other = join(folder, 'Immortal Hulk (2018) Volume 01 Issue 001 (3).cbz');
+      writeFileSync(base, 'the same bytes');
+      writeFileSync(copy, 'the same bytes');
+      // Same length, different content: a second release that collided on the
+      // name, not a copy. Renaming settles that one; deleting it loses it.
+      writeFileSync(other, 'other same len');
+
+      await scan.scanVolumeFiles(volumeId);
+
+      const duplicates = await import('@shelvarr/services/comics/duplicate-files');
+      const groups = await duplicates.findDuplicateComicFiles();
+
+      assert.strictEqual(groups.length, 1);
+      assert.strictEqual(groups[0]!.keep, base, 'the unsuffixed name is the one kept');
+      assert.deepStrictEqual(groups[0]!.remove, [copy]);
+
+      const result = await duplicates.removeDuplicateComicFiles();
+      assert.strictEqual(result.removed, 1);
+      assert.deepStrictEqual(result.errors, []);
+      assert.ok(existsSync(base), 'the copy that stays is still there');
+      assert.ok(existsSync(other), 'the release that only collided on the name survives');
+      assert.strictEqual(existsSync(copy), false, 'the identical copy is gone');
+      assert.strictEqual(
+        db.getComicFilesForVolume(volumeId).some((file) => file.filepath === copy),
+        false,
+        'and its row went with it'
+      );
+    });
+
+    it('keeps the issue attributed when the copy was the file that held the link', async () => {
+      const { volumeId, folder } = seedVolume('Immortal Hulk');
+      // Only the suffixed copy is recorded and linked — the state an import
+      // leaves behind when the scan could not place the first one.
+      const keep = join(folder, 'Immortal Hulk (2018) Volume 01 Issue 002.cbz');
+      const copy = join(folder, 'Immortal Hulk (2018) Volume 01 Issue 002 (2).cbz');
+      writeFileSync(keep, 'issue two');
+      writeFileSync(copy, 'issue two');
+
+      const issueId = db
+        .getDb()
+        .prepare(
+          'SELECT id FROM comic_issues WHERE volume_id = ? AND calculated_issue_number = 2'
+        )
+        .get(volumeId) as { id: number };
+      const fileId = db.upsertComicFile({ volumeId, filepath: copy, size: 9 });
+      db.linkComicFileToIssues(fileId, [issueId.id], true);
+      db.refreshComicVolumeStats(volumeId);
+      assert.strictEqual(db.getComicVolumeFileStats(volumeId).downloadedCount, 1);
+
+      const duplicates = await import('@shelvarr/services/comics/duplicate-files');
+      await duplicates.removeDuplicateComicFiles();
+
+      assert.strictEqual(existsSync(copy), false);
+      assert.strictEqual(
+        db.getComicVolumeFileStats(volumeId).downloadedCount,
+        1,
+        'the issue is still downloaded, so no sweep fetches it again'
+      );
+      assert.deepStrictEqual(
+        db.getComicFilesForIssue(issueId.id).map((file) => file.filepath),
+        [keep],
+        'the link moved to the copy that stayed'
+      );
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
