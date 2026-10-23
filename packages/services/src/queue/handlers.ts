@@ -25,6 +25,7 @@ import {
   addComicDownloadHistory,
   addToComicBlocklist,
   claimStalledComicDownloads,
+  completedComicDownloadFile,
   getComicDownload,
   linkComicFileToIssues,
   refreshComicVolumeStats,
@@ -1736,6 +1737,22 @@ const comicDownloadHandler: TaskHandler = async (taskId, onProgress, signal) => 
 
   const download = getComicDownload(data.comicDownloadId);
   if (!download) throw new Error(`Comic download ${data.comicDownloadId} not found`);
+
+  // Two tasks can end up pointing at one download. A rate-limited task waits
+  // its turn in the serial retry queue with the row back at `queued`, which
+  // can take well past the point its heartbeat goes cold — and a cold
+  // heartbeat is what `comic_resume` claims, so it enqueues a second task for
+  // the same row. Both then fetch the same bytes, and whichever imports
+  // second files them beside the first as `… (2)`.
+  const alreadyImported = completedComicDownloadFile(download.downloadLink);
+  if (download.state === 'completed' && alreadyImported && fs.existsSync(alreadyImported)) {
+    return {
+      comicDownloadId: download.id,
+      volumeId: download.volumeId,
+      path: alreadyImported,
+      alreadyImported: true,
+    };
+  }
 
   const loaded = getcomics.loadVolume(download.volumeId);
   if (!loaded) throw new Error(`Comic volume ${download.volumeId} not found`);

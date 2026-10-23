@@ -371,10 +371,11 @@ export async function createDownloadsFromPost(
       );
     }
 
-    return queueable.map((entry) =>
-      addDownload({
+    return queueable.map((entry) => {
+      const attributedIssueId = resolveIssueId(loaded, entry.group, issueId);
+      return addDownload({
         volumeId,
-        issueId: resolveIssueId(loaded, entry.group, issueId),
+        issueId: attributedIssueId,
         coveredIssues: entry.group.info.issueNumber,
         host: entry.host,
         downloadLink: entry.link,
@@ -382,9 +383,9 @@ export async function createDownloadsFromPost(
         webLink: post.link,
         webTitle: post.title,
         webSubTitle: entry.group.subTitle,
-        filenameBody: buildFilenameBody(loaded, entry.group),
-      })
-    );
+        filenameBody: buildFilenameBody(loaded, entry.group, attributedIssueId),
+      });
+    });
   }
 
   // Nothing resolved, but a rate limit or an unreachable host is not evidence
@@ -444,8 +445,29 @@ function resolveIssueId(
   return issue?.id ?? fallback;
 }
 
-function buildFilenameBody(loaded: LoadedVolume, group: DownloadGroup): string | null {
+/**
+ * What to call the file once it lands, or null when renaming is off.
+ *
+ * A release can name no issue and still be for a known one — a one-shot, an
+ * OGN volume, anything the search was launched for by issue. Naming those
+ * from the volume alone gives every such download in a volume the same
+ * filename, so the second lands as `… (2)` and the third as `… (3)`, which
+ * is neither what a rename would call them nor something the scan can read an
+ * issue number back out of. The issue we attributed it to carries the number
+ * the template wants, so use that when the article has none.
+ */
+function buildFilenameBody(
+  loaded: LoadedVolume,
+  group: DownloadGroup,
+  issueId: number | null
+): string | null {
   if (!getServiceConfig().getcomics.renameDownloadedFiles) return null;
+
+  const issueNumber =
+    group.info.issueNumber ??
+    loaded.issues.find((issue) => issue.id === issueId)?.calculatedIssueNumber ??
+    null;
+
   return generateIssueName(
     {
       title: loaded.volume.title,
@@ -453,7 +475,7 @@ function buildFilenameBody(loaded: LoadedVolume, group: DownloadGroup): string |
       volumeNumber: loaded.volume.volumeNumber,
       specialVersion: loaded.volume.specialVersion,
     },
-    group.info.issueNumber
+    issueNumber
   );
 }
 
