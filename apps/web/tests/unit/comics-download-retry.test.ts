@@ -297,6 +297,34 @@ describe('Comic download retries', () => {
     );
   });
 
+  // A rate-limited task waits its turn in the retry queue with its row back at
+  // `queued`; once the heartbeat goes cold `comic_resume` enqueues a second
+  // task for the same row, and both used to fetch and import the same bytes —
+  // the loser filing them as `… (2)`.
+  it('does nothing when a second task arrives for a download already imported', async () => {
+    stubFetch({ [LINK_A]: () => fileResponse('comic-bytes', LINK_A) });
+
+    const download = db.addComicDownload({
+      volumeId: 501,
+      issueId: 9001,
+      host: 'getcomics',
+      downloadLink: LINK_A,
+      filenameBody: 'Immortal Hulk (2018) Volume 01 Issue 001',
+    });
+
+    assert.strictEqual(await runDownload(download.id), 'completed');
+
+    const second = queue.createTask('comic_download', { comicDownloadId: download.id });
+    await queue.runTask(second.id);
+
+    assert.strictEqual(queue.getTask(second.id)?.status, 'completed');
+    assert.deepStrictEqual(
+      readdirSync(libraryDir),
+      ['Immortal Hulk (2018) Volume 01 Issue 001.cbz'],
+      'no second copy was filed'
+    );
+  });
+
   it('fails once every link is exhausted, and says which error ended it', async () => {
     stubFetch({
       [LINK_A]: () => new Response('gone', { status: 404 }),
@@ -538,6 +566,56 @@ describe('Comic download retries', () => {
   // bytes are already here. Three identical copies of one 157 MB release is
   // what this costs when the issue it satisfies can't be worked out — see
   // the numberless-filename case above.
+  // Three volumes of Birdking, each its own OGN article naming no issue
+  // number, all named themselves `Birdking (2022) Volume 01` and landed as
+  // `… (2)` and `… (3)`: not what a rename would call them, and nothing the
+  // scan can read an issue number back out of. The search was launched for a
+  // specific issue, so the number was there to be used.
+  it('names a release that carries no issue number after the issue it is for', async () => {
+    const volume = makeVolume();
+    volume.issues = [
+      makeIssue(),
+      makeIssue({ id: 9002, comicvine_id: 8002, issue_number: '2', calculated_issue_number: 2 }),
+    ];
+    volume.issue_count = 2;
+    volume.issue_count_monitored = 2;
+    db.upsertComicDetail(volume);
+
+    const article = (id: number, slug: string, link: string) => ({
+      id,
+      title: 'Immortal Hulk',
+      link: `https://getcomics.org/marvel/${slug}/`,
+      date: '2018-06-13T00:00:00',
+      contentHtml:
+        '<p style="text-align: center;"><strong>Immortal Hulk</strong><br />' +
+        '<strong>Language :</strong> English | <strong>Year :</strong> 2018</p>' +
+        `<p><div class="aio-button-center"><a href="${link}" title="DOWNLOAD NOW">DOWNLOAD NOW</a></div>` +
+        '<hr />',
+    });
+
+    stubFetch({
+      [LINK_A]: () => fileResponse('comic-bytes', LINK_A),
+      [LINK_B]: () => fileResponse('comic-bytes', LINK_B),
+    });
+    const getcomics = await import('@shelvarr/services/comics/getcomics/index');
+
+    const [first] = await getcomics.createDownloadsFromPost({
+      volumeId: 501,
+      post: article(11, 'immortal-hulk-ogn-one', LINK_A),
+      issueId: 9001,
+      forceMatch: true,
+    });
+    const [second] = await getcomics.createDownloadsFromPost({
+      volumeId: 501,
+      post: article(12, 'immortal-hulk-ogn-two', LINK_B),
+      issueId: 9002,
+      forceMatch: true,
+    });
+
+    assert.strictEqual(first!.filenameBody, 'Immortal Hulk (2018) Volume 01 Issue 001');
+    assert.strictEqual(second!.filenameBody, 'Immortal Hulk (2018) Volume 01 Issue 002');
+  });
+
   it('refuses to fetch a release whose file is already on disk', async () => {
     const post = {
       id: 5,

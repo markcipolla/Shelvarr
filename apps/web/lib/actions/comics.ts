@@ -409,6 +409,77 @@ export async function tidyComicDuplicatesAction(): Promise<{
   }
 }
 
+/** One file held twice, and the copies that would go. */
+export interface DuplicateComicFileView {
+  volumeTitle: string;
+  keep: string;
+  remove: string[];
+  bytes: number;
+}
+
+/**
+ * List the comic files the library holds more than one identical copy of.
+ *
+ * Reads and hashes every same-size pair in every volume folder, so it is
+ * slow by nature — and it deletes nothing, which is the point: the copies are
+ * listed first and removed only when someone asks.
+ */
+export async function findDuplicateComicFilesAction(): Promise<{
+  success: boolean;
+  groups: DuplicateComicFileView[];
+  bytes: number;
+  error?: string;
+}> {
+  const { comicDuplicateFiles } = await import('@shelvarr/services');
+
+  try {
+    const groups = await comicDuplicateFiles.findDuplicateComicFiles();
+    return {
+      success: true,
+      groups: groups.map((group) => ({
+        volumeTitle: group.volumeTitle,
+        keep: group.keep,
+        remove: group.remove,
+        bytes: group.bytes,
+      })),
+      bytes: groups.reduce((total, group) => total + group.bytes * group.remove.length, 0),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      groups: [],
+      bytes: 0,
+      error: error instanceof Error ? error.message : 'Failed to look for duplicate files',
+    };
+  }
+}
+
+/** Delete those copies, keeping one of each. */
+export async function removeDuplicateComicFilesAction(): Promise<{
+  success: boolean;
+  removed: number;
+  bytes: number;
+  errors: Array<{ path: string; error: string }>;
+  error?: string;
+}> {
+  const { comicDuplicateFiles } = await import('@shelvarr/services');
+  const { revalidatePath } = await import('next/cache');
+
+  try {
+    const result = await comicDuplicateFiles.removeDuplicateComicFiles();
+    revalidatePath('/comics');
+    return { success: true, ...result };
+  } catch (error) {
+    return {
+      success: false,
+      removed: 0,
+      bytes: 0,
+      errors: [],
+      error: error instanceof Error ? error.message : 'Failed to remove duplicate files',
+    };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Download queue
 // ---------------------------------------------------------------------------
