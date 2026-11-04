@@ -17,6 +17,9 @@
 export const DEFAULT_ORGANIZE_TEMPLATE =
   '{author}/{series}/Book {number} - {title}.{ext}';
 
+export const DEFAULT_STANDALONE_TEMPLATE =
+  '{author}/{title}.{ext}';
+
 /**
  * Template variables that can be used in naming patterns.
  *

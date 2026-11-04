@@ -443,8 +443,8 @@ if (canRunTests) {
         assert.strictEqual(updated.status, 'completed');
 
         // sanitizePathComponent strips `<>:"/\|?*` chars — inner tag letters remain.
-        // Default template is {author}/{series}/Book {number} - {title}.{ext}; empty series collapses.
-        const expectedPath = join(testLibPath, 'iItalic Authori', 'Book - bBold Titleb.epub');
+        // No series → standalone template: Author/Title.ext
+        const expectedPath = join(testLibPath, 'iItalic Authori', 'bBold Titleb.epub');
         assert.ok(existsSync(expectedPath));
       });
 

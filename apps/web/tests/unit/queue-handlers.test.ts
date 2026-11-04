@@ -1582,12 +1582,9 @@ if (canRunTests) {
         assert.ok(updated);
         assert.strictEqual(updated.status, 'completed');
 
-        // Default template: {author}/{series}/Book {number} - {title}.{ext}.
         // No series info comes back (metadata lookups are blocked in tests),
-        // so the {series}/{number} segment collapses — the same shape
-        // organizeHandler's own "should organize book with valid file" test
-        // asserts for generateNewPath with the default template.
-        const expectedPath = join(testLibPath, 'Organized Author', 'Book - Organized Title.epub');
+        // so the standalone template applies: {author}/{title}.{ext}.
+        const expectedPath = join(testLibPath, 'Organized Author', 'Organized Title.epub');
         assert.ok(existsSync(expectedPath), `expected file at ${expectedPath}`);
 
         const data = updated.data as { filePath: string; organized: boolean };
@@ -1602,12 +1599,11 @@ if (canRunTests) {
         const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
         registerAllHandlers();
 
-        // A flat, non-hierarchical template quite unlike the default —
-        // proves Step 6 reads the configured template rather than always
-        // producing the "Author/Book - Title.ext" default layout.
+        // A flat, non-hierarchical standalone template quite unlike the default —
+        // proves Step 6 reads the configured standalone template for a no-series book.
         execute(
           'INSERT INTO settings (key, value) VALUES (?, ?)',
-          ['organize_template', JSON.stringify('{title} by {author}.{ext}')]
+          ['organize_standalone_template', JSON.stringify('{title} by {author}.{ext}')]
         );
 
         const task = createTask('download', {
@@ -1660,7 +1656,7 @@ if (canRunTests) {
         assert.ok(updated);
         assert.strictEqual(updated.status, 'completed');
 
-        const expectedPath = join(testLibPath, 'Auto Run Off Author', 'Book - Auto Run Off Title.epub');
+        const expectedPath = join(testLibPath, 'Auto Run Off Author', 'Auto Run Off Title.epub');
         assert.ok(existsSync(expectedPath), `expected file at ${expectedPath}`);
 
         const data = updated.data as { filePath: string; organized: boolean };
@@ -2253,9 +2249,8 @@ if (canRunTests) {
         const data = updated.data as { organized: number };
         assert.strictEqual(data.organized, 1);
 
-        // Default template: {author}/{series}/Book {number} - {title}.{ext}
-        // No series → segment collapses; standalone yields: Author/Book - Title.ext
-        const expectedPath = join(testLibPath, 'Test Author', 'Book - Test Book.epub');
+        // No series → standalone template: Author/Title.ext
+        const expectedPath = join(testLibPath, 'Test Author', 'Test Book.epub');
         assert.ok(existsSync(expectedPath));
       });
 
@@ -2263,10 +2258,10 @@ if (canRunTests) {
         const { registerAllHandlers } = await import('../../lib/services/queue/handlers.js');
         registerAllHandlers();
 
-        // Create file in default-template location
+        // Create file in standalone-template location: Author/Title.epub
         const authorDir = join(testLibPath, 'Test Author');
         mkdirSync(authorDir, { recursive: true });
-        const correctPath = join(authorDir, 'Book - Test Book.epub');
+        const correctPath = join(authorDir, 'Test Book.epub');
         writeFileSync(correctPath, 'test content');
 
         execute(
@@ -2292,10 +2287,10 @@ if (canRunTests) {
         const file1 = join(testLibPath, 'book1.epub');
         writeFileSync(file1, 'content 1');
 
-        // Create target file that would conflict (default template path)
+        // Create target file that would conflict (standalone template path: Author/Title.epub)
         const authorDir = join(testLibPath, 'Test Author');
         mkdirSync(authorDir, { recursive: true });
-        const existingFile = join(authorDir, 'Book - Test Book.epub');
+        const existingFile = join(authorDir, 'Test Book.epub');
         writeFileSync(existingFile, 'existing content');
 
         execute(
@@ -2311,7 +2306,7 @@ if (canRunTests) {
         assert.strictEqual(updated.status, 'completed');
 
         // Should create file with (1) suffix
-        const expectedPath = join(authorDir, 'Book - Test Book (1).epub');
+        const expectedPath = join(authorDir, 'Test Book (1).epub');
         assert.ok(existsSync(expectedPath));
       });
 
@@ -2358,7 +2353,7 @@ if (canRunTests) {
         assert.ok(updated);
         assert.strictEqual(updated.status, 'completed');
 
-        const expectedPath = join(testLibPath, 'Plain Author Name', 'Book - Test Book.epub');
+        const expectedPath = join(testLibPath, 'Plain Author Name', 'Test Book.epub');
         assert.ok(existsSync(expectedPath));
       });
     });

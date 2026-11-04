@@ -238,8 +238,8 @@ describe('Organizer Service - Pure Functions', () => {
     it('should handle Author/Series/Filename pattern', () => {
       const book = makeBook('/libraries/ebooks/Aaron Dembski-Bowden/Betrayer/Betrayer - Aaron Dembski-Bowden.epub');
       const result = generateNewPath(book, libraryPath);
-      // Betrayer folder is same as title, so no series detected -> Author/Book - Title
-      assert.strictEqual(result, '/libraries/ebooks/Aaron Dembski-Bowden/Book - Betrayer.epub');
+      // Betrayer folder is same as title, so no series detected -> standalone template
+      assert.strictEqual(result, '/libraries/ebooks/Aaron Dembski-Bowden/Betrayer.epub');
     });
 
     it('should handle [Series Book N] filename pattern', () => {
@@ -265,13 +265,13 @@ describe('Organizer Service - Pure Functions', () => {
     it('should handle simple Author/Title pattern', () => {
       const book = makeBook('/libraries/ebooks/Adrian Tchaikovsky/Alien Clay.epub');
       const result = generateNewPath(book, libraryPath);
-      assert.strictEqual(result, '/libraries/ebooks/Adrian Tchaikovsky/Book - Alien Clay.epub');
+      assert.strictEqual(result, '/libraries/ebooks/Adrian Tchaikovsky/Alien Clay.epub');
     });
 
     it('should handle Author/Title/Filename pattern with dash', () => {
       const book = makeBook('/libraries/ebooks/Adrian Tchaikovsky/Dogs of War/Dogs of War - Adrian Tchaikovsky.epub');
       const result = generateNewPath(book, libraryPath);
-      assert.strictEqual(result, '/libraries/ebooks/Adrian Tchaikovsky/Book - Dogs of War.epub');
+      assert.strictEqual(result, '/libraries/ebooks/Adrian Tchaikovsky/Dogs of War.epub');
     });
 
     it('should handle [Series] without number in filename', () => {
@@ -310,7 +310,7 @@ describe('Organizer Service - Pure Functions', () => {
     it('should handle Author - Title pattern with year in parentheses', () => {
       const book = makeBook('/libraries/ebooks/Author Name - Book Title (2023).epub');
       const result = generateNewPath(book, libraryPath);
-      assert.strictEqual(result, '/libraries/ebooks/Author Name/Book - Book Title.epub');
+      assert.strictEqual(result, '/libraries/ebooks/Author Name/Book Title.epub');
     });
 
     it('should handle series without number', () => {

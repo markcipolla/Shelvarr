@@ -105,14 +105,16 @@ export async function syncHardcoverStatus(): Promise<{
 }
 
 // Organize settings
-import { DEFAULT_ORGANIZE_TEMPLATE, previewReorganization } from '@/lib/services/organizer';
+import { DEFAULT_ORGANIZE_TEMPLATE, DEFAULT_STANDALONE_TEMPLATE, previewReorganization } from '@/lib/services/organizer';
 import type { ReorgPreviewItem } from '@/lib/services/organizer';
 
-export async function getOrganizeSettings(): Promise<{ template: string; autoRun: boolean }> {
+export async function getOrganizeSettings(): Promise<{ template: string; standaloneTemplate: string; autoRun: boolean }> {
   const template = await getSetting<string>('organize_template', DEFAULT_ORGANIZE_TEMPLATE);
+  const standaloneTemplate = await getSetting<string>('organize_standalone_template', DEFAULT_STANDALONE_TEMPLATE);
   const autoRun = await getSetting<boolean>('organize_auto_run', true);
   return {
     template: template ?? DEFAULT_ORGANIZE_TEMPLATE,
+    standaloneTemplate: standaloneTemplate ?? DEFAULT_STANDALONE_TEMPLATE,
     autoRun: autoRun ?? true,
   };
 }
@@ -144,12 +146,14 @@ function validateTemplate(template: string): string | null {
 
 export async function setOrganizeSettings(
   template: string,
+  standaloneTemplate: string,
   autoRun: boolean,
 ): Promise<{ success: true } | { error: string }> {
-  const error = validateTemplate(template);
+  const error = validateTemplate(template) ?? validateTemplate(standaloneTemplate);
   if (error) return { error };
 
   setSetting('organize_template', template);
+  setSetting('organize_standalone_template', standaloneTemplate);
   setSetting('organize_auto_run', autoRun);
 
   revalidatePath('/settings');
@@ -160,8 +164,8 @@ export async function setOrganizeSettings(
 export async function previewOrganizeForLibrary(
   libraryId: number,
 ): Promise<ReorgPreviewItem[]> {
-  const { template } = await getOrganizeSettings();
-  return previewReorganization(libraryId, { template });
+  const { template, standaloneTemplate } = await getOrganizeSettings();
+  return previewReorganization(libraryId, { template, standaloneTemplate });
 }
 
 // ---------------------------------------------------------------------------

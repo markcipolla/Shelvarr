@@ -20,6 +20,7 @@ import type { Book } from '@shelvarr/types';
 import { rowToBook, type BookRow } from '../scanner/index';
 import {
   DEFAULT_ORGANIZE_TEMPLATE,
+  DEFAULT_STANDALONE_TEMPLATE,
   applyTemplate,
   sanitizePathComponent,
 } from './template';
@@ -29,6 +30,7 @@ import type { TemplateVars } from './template';
 // without having to switch to the template-only subpath.
 export {
   DEFAULT_ORGANIZE_TEMPLATE,
+  DEFAULT_STANDALONE_TEMPLATE,
   applyTemplate,
   sanitizePathComponent,
 } from './template';
@@ -80,8 +82,10 @@ export interface ReorgOptions {
   dryRun?: boolean;
   /** Limit reorganization to these book IDs. */
   bookIds?: number[];
-  /** Override the configured filename template. */
+  /** Override the configured filename template for series books. */
   template?: string;
+  /** Override the configured filename template for standalone books (no series). */
+  standaloneTemplate?: string;
   /** Progress callback (current, total). */
   onProgress?: (current: number, total: number) => void;
   /** Abort signal — checked between books. */
@@ -297,6 +301,7 @@ export function generateNewPath(
   book: Book,
   libraryPath: string,
   template: string = DEFAULT_ORGANIZE_TEMPLATE,
+  standaloneTemplate: string = DEFAULT_STANDALONE_TEMPLATE,
 ): string {
   const ext = extname(book.filePath);
   const parsed = parsePathInfo(book.filePath, libraryPath);
@@ -336,7 +341,8 @@ export function generateNewPath(
     ext,
   };
 
-  return join(libraryPath, applyTemplate(template, vars));
+  const chosenTemplate = series ? template : standaloneTemplate;
+  return join(libraryPath, applyTemplate(chosenTemplate, vars));
 }
 
 /**
@@ -344,7 +350,7 @@ export function generateNewPath(
  */
 export async function previewReorganization(
   libraryId: number,
-  opts: { bookIds?: number[]; template?: string } = {},
+  opts: { bookIds?: number[]; template?: string; standaloneTemplate?: string } = {},
 ): Promise<ReorgPreviewItem[]> {
   const library = await queryOne<{ path: string }>(
     'SELECT path FROM libraries WHERE id = ?',
@@ -370,7 +376,7 @@ export async function previewReorganization(
 
   for (const book of books) {
     try {
-      const newPath = generateNewPath(book, library.path, opts.template);
+      const newPath = generateNewPath(book, library.path, opts.template, opts.standaloneTemplate);
       const willMove = newPath !== book.filePath;
       const sourceMissing = !existsSync(book.filePath);
 
@@ -473,6 +479,7 @@ export async function applyReorganization(
   const preview = await previewReorganization(libraryId, {
     bookIds: opts.bookIds,
     template: opts.template,
+    standaloneTemplate: opts.standaloneTemplate,
   });
 
   const total = preview.length;
