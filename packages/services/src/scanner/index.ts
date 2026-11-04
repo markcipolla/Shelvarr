@@ -94,9 +94,16 @@ export function rowToBook(row: BookRow): Book {
 // Joins each book to one person's reading position. Aliased as `b`, exposing
 // `rp_*` and `ep_progression`. Takes two parameters — the user id, twice —
 // which must be bound before anything else in the query.
+// epub_progression is per-device; aggregate across devices so a book read on
+// two devices does not fan out into duplicate rows.
 const PROGRESS_JOIN = `
   LEFT JOIN read_progress rp ON rp.book_id = b.id AND rp.user_id = ?
-  LEFT JOIN epub_progression ep ON ep.book_id = b.id AND ep.user_id = ?`;
+  LEFT JOIN (
+    SELECT book_id, MAX(progression) AS progression, MAX(updated_at) AS updated_at
+    FROM epub_progression
+    WHERE user_id = ?
+    GROUP BY book_id
+  ) ep ON ep.book_id = b.id`;
 
 // Joins each book to its cached Hardcover reading status (when the book is
 // matched to a Hardcover record). Aliased as `b`, exposing `hc_status`.
