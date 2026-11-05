@@ -1,6 +1,7 @@
 export * from '@shelvarr/services/organizer/index';
 export {
   DEFAULT_ORGANIZE_TEMPLATE,
+  DEFAULT_STANDALONE_TEMPLATE,
   applyTemplate,
   generateNewPath,
   moveFile,

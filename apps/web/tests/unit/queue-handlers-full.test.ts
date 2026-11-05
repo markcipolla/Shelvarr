@@ -500,8 +500,8 @@ if (canRunTests) {
         assert.ok(updated);
         assert.strictEqual(updated.status, 'completed');
 
-        // No author → "Unknown Author" fallback; standalone → "Book - Title".
-        const expectedPath = join(testLibPath, 'Unknown Author', 'Book - Book Title.epub');
+        // No author → "Unknown Author" fallback; standalone template → Author/Title.
+        const expectedPath = join(testLibPath, 'Unknown Author', 'Book Title.epub');
         assert.ok(existsSync(expectedPath));
       });
 

@@ -1,5 +1,6 @@
 export {
   DEFAULT_ORGANIZE_TEMPLATE,
+  DEFAULT_STANDALONE_TEMPLATE,
   applyTemplate,
   sanitizePathComponent,
 } from '@shelvarr/services/organizer/template';

@@ -546,23 +546,20 @@ async function organizeNewBook(
       // doesn't read settings itself, that's on the caller (organizeHandler
       // does the same lookup, just merged with an explicit task-level
       // override that doesn't apply here since neither caller carries one).
-      let organizeTemplate: string | undefined;
-      const templateRow = queryOne<{ value: string }>(
-        'SELECT value FROM settings WHERE key = ?',
-        ['organize_template'],
-      );
-      if (templateRow?.value) {
+      const readTemplateSetting = (key: string): string | undefined => {
+        const row = queryOne<{ value: string }>('SELECT value FROM settings WHERE key = ?', [key]);
+        if (!row?.value) return undefined;
         try {
-          const parsed = JSON.parse(templateRow.value);
-          if (typeof parsed === 'string' && parsed.length > 0) {
-            organizeTemplate = parsed;
-          }
+          const parsed = JSON.parse(row.value);
+          return typeof parsed === 'string' && parsed.length > 0 ? parsed : undefined;
         } catch {
-          organizeTemplate = templateRow.value;
+          return row.value;
         }
-      }
+      };
+      const organizeTemplate = readTemplateSetting('organize_template');
+      const standaloneTemplate = readTemplateSetting('organize_standalone_template');
 
-      const wantedPath = generateNewPath(freshBook, library.path, organizeTemplate);
+      const wantedPath = generateNewPath(freshBook, library.path, organizeTemplate, standaloneTemplate);
       if (wantedPath !== currentPath) {
         const organizedPath = resolveTargetCollision(wantedPath, currentPath);
         const organizedDir = path.dirname(organizedPath);
@@ -1362,6 +1359,7 @@ const organizeHandler: TaskHandler = async (taskId, onProgress, signal) => {
     libraryId?: number;
     bookIds?: number[];
     template?: string;
+    standaloneTemplate?: string;
   };
 
   // Resolve libraryId — if only bookIds were provided, derive from the first book.
@@ -1382,29 +1380,24 @@ const organizeHandler: TaskHandler = async (taskId, onProgress, signal) => {
     throw new Error('Library ID not specified');
   }
 
-  // Resolve template — explicit task arg wins, otherwise stored setting, otherwise default.
-  let template = data.template;
-  if (!template) {
-    const settingRow = queryOne<{ value: string }>(
-      'SELECT value FROM settings WHERE key = ?',
-      ['organize_template'],
-    );
-    if (settingRow?.value) {
-      try {
-        const parsed = JSON.parse(settingRow.value);
-        if (typeof parsed === 'string' && parsed.length > 0) {
-          template = parsed;
-        }
-      } catch {
-        // Treat raw value as the template string (fallback for non-JSON entries).
-        template = settingRow.value;
-      }
+  // Resolve templates — explicit task arg wins, otherwise stored setting, otherwise default.
+  const readOrgTemplateSetting = (key: string): string | undefined => {
+    const row = queryOne<{ value: string }>('SELECT value FROM settings WHERE key = ?', [key]);
+    if (!row?.value) return undefined;
+    try {
+      const parsed = JSON.parse(row.value);
+      return typeof parsed === 'string' && parsed.length > 0 ? parsed : undefined;
+    } catch {
+      return row.value;
     }
-  }
+  };
+  const template = data.template ?? readOrgTemplateSetting('organize_template');
+  const standaloneTemplate = data.standaloneTemplate ?? readOrgTemplateSetting('organize_standalone_template');
 
   const reorgResult = await applyReorganization(libraryId, {
     bookIds: data.bookIds,
     template,
+    standaloneTemplate,
     onProgress,
     signal,
   });

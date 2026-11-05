@@ -4,10 +4,11 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { setOrganizeSettings, type ScheduleView } from '@/lib/actions/settings';
 import { RecurringJobs } from '@/components/settings/RecurringJobs';
-import { applyTemplate, DEFAULT_ORGANIZE_TEMPLATE } from '@/lib/services/organizer/template';
+import { applyTemplate, DEFAULT_ORGANIZE_TEMPLATE, DEFAULT_STANDALONE_TEMPLATE } from '@/lib/services/organizer/template';
 
 interface OrganizeSettings {
   template: string;
+  standaloneTemplate: string;
   autoRun: boolean;
 }
 
@@ -58,6 +59,7 @@ const SAMPLES = [
 export function OrganizeTab({ settings, schedules }: OrganizeTabProps) {
   const router = useRouter();
   const [template, setTemplate] = useState(settings.template);
+  const [standaloneTemplate, setStandaloneTemplate] = useState(settings.standaloneTemplate);
   const [autoRun, setAutoRun] = useState(settings.autoRun);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,8 +68,9 @@ export function OrganizeTab({ settings, schedules }: OrganizeTabProps) {
   const previews = useMemo(
     () =>
       SAMPLES.map((s) => {
+        const tpl = s.vars.series ? template : standaloneTemplate;
         try {
-          return { label: s.label, output: applyTemplate(template, s.vars) };
+          return { label: s.label, output: applyTemplate(tpl, s.vars) };
         } catch (err) {
           return {
             label: s.label,
@@ -75,7 +78,7 @@ export function OrganizeTab({ settings, schedules }: OrganizeTabProps) {
           };
         }
       }),
-    [template],
+    [template, standaloneTemplate],
   );
 
   const handleSave = async (e: React.FormEvent) => {
@@ -83,7 +86,7 @@ export function OrganizeTab({ settings, schedules }: OrganizeTabProps) {
     setSaving(true);
     setError(null);
     setSaved(false);
-    const result = await setOrganizeSettings(template, autoRun);
+    const result = await setOrganizeSettings(template, standaloneTemplate, autoRun);
     if ('error' in result) {
       setError(result.error);
     } else {
@@ -108,7 +111,7 @@ export function OrganizeTab({ settings, schedules }: OrganizeTabProps) {
               htmlFor="organize-template"
               className="block text-sm font-medium text-shelvarr-text-muted mb-1"
             >
-              Filename template
+              Series template
             </label>
             <input
               type="text"
@@ -121,6 +124,30 @@ export function OrganizeTab({ settings, schedules }: OrganizeTabProps) {
             <button
               type="button"
               onClick={() => setTemplate(DEFAULT_ORGANIZE_TEMPLATE)}
+              className="mt-1 text-xs text-blue-400 hover:text-blue-300"
+            >
+              Reset to default
+            </button>
+          </div>
+
+          <div>
+            <label
+              htmlFor="organize-standalone-template"
+              className="block text-sm font-medium text-shelvarr-text-muted mb-1"
+            >
+              Standalone template
+            </label>
+            <input
+              type="text"
+              id="organize-standalone-template"
+              value={standaloneTemplate}
+              onChange={(e) => setStandaloneTemplate(e.target.value)}
+              placeholder={DEFAULT_STANDALONE_TEMPLATE}
+              className="w-full bg-shelvarr-surface border border-shelvarr-border rounded-lg px-3 py-2 text-white font-mono text-sm placeholder-shelvarr-text-muted focus:outline-none focus:border-blue-500"
+            />
+            <button
+              type="button"
+              onClick={() => setStandaloneTemplate(DEFAULT_STANDALONE_TEMPLATE)}
               className="mt-1 text-xs text-blue-400 hover:text-blue-300"
             >
               Reset to default
