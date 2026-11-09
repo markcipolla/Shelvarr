@@ -410,6 +410,10 @@ function MirrorList({
   const toast = useToast();
   const [newDomain, setNewDomain] = useState('');
   const [busy, setBusy] = useState(false);
+  const [localMirrors, setLocalMirrors] = useState(mirrors);
+
+  // Sync when server data arrives after a refresh.
+  useEffect(() => { setLocalMirrors(mirrors); }, [mirrors]);
 
   const run = async (action: () => Promise<{ success: boolean; error?: string }>) => {
     setBusy(true);
@@ -418,6 +422,14 @@ function MirrorList({
     router.refresh();
     setBusy(false);
     return result.success;
+  };
+
+  const handleMove = async (index: number, direction: 'up' | 'down') => {
+    const next = [...localMirrors];
+    const swap = direction === 'up' ? index - 1 : index + 1;
+    [next[index], next[swap]] = [next[swap]!, next[index]!];
+    setLocalMirrors(next);
+    await run(() => reorderDownloadSourceMirror(localMirrors[index]!.id, direction));
   };
 
   const handleAdd = async () => {
@@ -445,13 +457,13 @@ function MirrorList({
         </p>
       </div>
 
-      {mirrors.length === 0 ? (
+      {localMirrors.length === 0 ? (
         <p className="text-sm text-amber-400">
           No mirrors configured. {source.displayName} can&apos;t be searched until you add one.
         </p>
       ) : (
         <ul className="space-y-1">
-          {mirrors.map((mirror, index) => {
+          {localMirrors.map((mirror, index) => {
             const status = statusFor(mirror.domain);
             return (
               <li
@@ -482,7 +494,7 @@ function MirrorList({
                 )}
                 <span className="ml-auto flex items-center gap-1">
                   <button
-                    onClick={() => run(() => reorderDownloadSourceMirror(mirror.id, 'up'))}
+                    onClick={() => handleMove(index, 'up')}
                     disabled={busy || index === 0}
                     aria-label={`Move ${mirror.domain} up`}
                     className="text-shelvarr-text-muted hover:text-white transition-colors disabled:opacity-30"
@@ -490,8 +502,8 @@ function MirrorList({
                     ↑
                   </button>
                   <button
-                    onClick={() => run(() => reorderDownloadSourceMirror(mirror.id, 'down'))}
-                    disabled={busy || index === mirrors.length - 1}
+                    onClick={() => handleMove(index, 'down')}
+                    disabled={busy || index === localMirrors.length - 1}
                     aria-label={`Move ${mirror.domain} down`}
                     className="text-shelvarr-text-muted hover:text-white transition-colors disabled:opacity-30"
                   >
