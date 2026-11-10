@@ -5,8 +5,8 @@
  * Uses the cached source statuses (see source-status.ts) to check availability.
  */
 
-import { getDownloadSourceConfig } from '@shelvarr/db';
-import { anyMirrorReachable, preferredMirrorDomain } from './mirrors';
+import { getDownloadSourceConfig, updateSourceStatus } from '@shelvarr/db';
+import { anyMirrorReachable, preferredMirrorDomain, mirrorStatusKey } from './mirrors';
 import {
   detectChallenge,
   fetchSourcePage,
@@ -239,6 +239,7 @@ export async function getAnnasDownloadLinks(md5: string): Promise<string[]> {
     const html = await response.text();
 
     if (detectChallenge(html, response)) {
+      try { updateSourceStatus(mirrorStatusKey('annas', domain), 'degraded'); } catch { /* best-effort */ }
       throw new SourceBlockedError('annas', `${domain} is behind a bot check right now`);
     }
 
@@ -306,7 +307,9 @@ async function probeAnnasCandidate(url: string, md5: string): Promise<ResolvedDo
   if (contentType?.includes('text/html')) {
     const html = await response.text().catch(() => '');
     if (detectChallenge(html, response)) {
-      throw new SourceBlockedError('annas', `${getAnnasDomain()} is behind a bot check right now`);
+      const domain = getAnnasDomain();
+      try { updateSourceStatus(mirrorStatusKey('annas', domain), 'degraded'); } catch { /* best-effort */ }
+      throw new SourceBlockedError('annas', `${domain} is behind a bot check right now`);
     }
     throw new LinkBrokenError(url, 'Candidate served HTML instead of a file');
   }

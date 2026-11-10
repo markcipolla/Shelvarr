@@ -13,6 +13,8 @@
  * through to "no results" as it does today, which is not a regression.
  */
 
+import { updateSourceStatus } from '@shelvarr/db';
+import { mirrorStatusKey } from './mirrors';
 import { sourceFetch } from '../utils/source-http';
 
 // Substrings commonly found in Cloudflare/Turnstile (and similar) challenge
@@ -54,6 +56,13 @@ export async function fetchSourcePage(
   const html = await response.text();
 
   if (detectChallenge(html, response)) {
+    // Mark this mirror degraded so the next request picks a different one.
+    try {
+      const domain = hostOf(url);
+      updateSourceStatus(mirrorStatusKey(source, domain), 'degraded');
+    } catch {
+      // Status cache update is best-effort.
+    }
     throw new SourceBlockedError(source, `${hostOf(url)} is behind a bot check right now`);
   }
 
