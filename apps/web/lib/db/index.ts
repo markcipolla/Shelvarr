@@ -166,7 +166,11 @@ export {
   listComicVolumes,
   sqlTimeToIso,
   isoToSqlTime,
+  getFlareSolverrConfig,
+  setFlareSolverrConfig,
 } from '@shelvarr/db';
+
+export type { FlareSolverrConfig } from '@shelvarr/db';
 
 export type {
   ReadProgressRow,

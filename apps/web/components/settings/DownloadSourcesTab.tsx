@@ -16,8 +16,9 @@ import {
   removeDownloadSourceMirror,
   reorderDownloadSourceMirror,
   saveDownloadSourceNetwork,
+  saveFlareSolverrSettings,
 } from '@/lib/actions/downloads';
-import type { DownloadSourceConfig, SourceMirror } from '@/lib/db';
+import type { DownloadSourceConfig, SourceMirror, FlareSolverrConfig } from '@/lib/db';
 import type { SourceStatus, ParserHealth } from '@/lib/services/downloads';
 import { SourceStatusBadge } from '@/components/wanted/SourceStatusBadge';
 import { useToast } from '@/components/ui/Toast';
@@ -26,6 +27,7 @@ interface DownloadSourcesTabProps {
   configs: DownloadSourceConfig[];
   statuses: SourceStatus[];
   mirrors: SourceMirror[];
+  flareSolverr: FlareSolverrConfig;
 }
 
 type SourceCategory = 'ebook' | 'comic';
@@ -101,7 +103,7 @@ const SOURCES: SourceInfo[] = [
   },
 ];
 
-export function DownloadSourcesTab({ configs, statuses, mirrors }: DownloadSourcesTabProps) {
+export function DownloadSourcesTab({ configs, statuses, mirrors, flareSolverr }: DownloadSourcesTabProps) {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [parserHealth, setParserHealth] = useState<ParserHealth[]>([]);
@@ -171,6 +173,16 @@ export function DownloadSourcesTab({ configs, statuses, mirrors }: DownloadSourc
           </section>
         );
       })}
+
+      <section className="space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold text-white">Bot Protection Bypass</h3>
+          <p className="text-sm text-shelvarr-text-muted mt-0.5">
+            Route blocked requests through a headless browser that solves Cloudflare challenges
+          </p>
+        </div>
+        <FlareSolverrCard initialConfig={flareSolverr} />
+      </section>
     </div>
   );
 }
@@ -658,5 +670,68 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
     >
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
     </svg>
+  );
+}
+
+function FlareSolverrCard({ initialConfig }: { initialConfig: FlareSolverrConfig }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [url, setUrl] = useState(initialConfig.url);
+  const [enabled, setEnabled] = useState(initialConfig.enabled);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    const result = await saveFlareSolverrSettings({ url: url.trim(), enabled });
+    setSaving(false);
+    if (result.success) {
+      toast.success('FlareSolverr settings saved');
+      router.refresh();
+    } else {
+      toast.error(result.error ?? 'Failed to save');
+    }
+  };
+
+  return (
+    <div className="bg-shelvarr-surface border border-shelvarr-border rounded-lg p-4 space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="font-medium text-white text-sm">FlareSolverr</div>
+          <div className="text-xs text-shelvarr-text-muted mt-0.5">
+            Runs a headless Chrome to solve Cloudflare challenges. Must be running on this machine or accessible via network.
+          </div>
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer shrink-0">
+          <span className="text-xs text-shelvarr-text-muted">Enabled</span>
+          <div
+            onClick={() => setEnabled((v) => !v)}
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${enabled ? 'bg-shelvarr-primary' : 'bg-shelvarr-border'}`}
+          >
+            <span
+              className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${enabled ? 'translate-x-4.5' : 'translate-x-0.5'}`}
+            />
+          </div>
+        </label>
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-shelvarr-text-muted">URL</label>
+        <input
+          type="text"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="http://localhost:8191"
+          className="w-full bg-shelvarr-bg border border-shelvarr-border rounded px-3 py-1.5 text-sm text-white placeholder-shelvarr-text-muted focus:outline-none focus:border-shelvarr-primary"
+        />
+      </div>
+
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        className="bg-shelvarr-primary hover:bg-shelvarr-primary-hover text-white px-4 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-50"
+      >
+        {saving ? 'Saving…' : 'Save'}
+      </button>
+    </div>
   );
 }

@@ -1040,6 +1040,25 @@ export function getAllSettings(): Record<string, unknown> {
   return settings;
 }
 
+// ============ FlareSolverr Settings ============
+
+export interface FlareSolverrConfig {
+  url: string;
+  enabled: boolean;
+}
+
+export function getFlareSolverrConfig(): FlareSolverrConfig {
+  return {
+    url: getSetting<string>('flaresolvr_url', '') ?? '',
+    enabled: getSetting<boolean>('flaresolvr_enabled', false) ?? false,
+  };
+}
+
+export function setFlareSolverrConfig(config: Partial<FlareSolverrConfig>): void {
+  if (config.url !== undefined) setSetting('flaresolvr_url', config.url);
+  if (config.enabled !== undefined) setSetting('flaresolvr_enabled', config.enabled);
+}
+
 // ============ Wanted Books Functions ============
 
 /** The row is the domain shape here, so only the timestamp needs marking. */

@@ -31,8 +31,11 @@ import {
   moveSourceMirror,
   getSourceNetworkSettings,
   setSourceNetworkSettings,
+  getFlareSolverrConfig,
+  setFlareSolverrConfig,
   type DownloadSourceConfig,
   type SourceMirror,
+  type FlareSolverrConfig,
 } from '@/lib/db';
 import { authenticateZLibrary } from '@/lib/services/downloads/zlibrary';
 import { enqueueTask } from '@/lib/services/queue';
@@ -677,4 +680,20 @@ export async function unblockBookLink(id: number): Promise<{ success: boolean }>
   removeFromBookBlocklist(id);
   revalidatePath('/downloads');
   return { success: true };
+}
+
+export async function getFlareSolverrSettings(): Promise<FlareSolverrConfig> {
+  return getFlareSolverrConfig();
+}
+
+export async function saveFlareSolverrSettings(
+  config: FlareSolverrConfig
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    setFlareSolverrConfig(config);
+    revalidatePath('/settings');
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
 }

@@ -13,9 +13,10 @@
  * through to "no results" as it does today, which is not a regression.
  */
 
-import { updateSourceStatus } from '@shelvarr/db';
+import { updateSourceStatus, getFlareSolverrConfig } from '@shelvarr/db';
 import { mirrorStatusKey } from './mirrors';
 import { sourceFetch } from '../utils/source-http';
+import { flareSolverrFetch, FlareSolverrError } from '../utils/flaresolvr';
 
 // Substrings commonly found in Cloudflare/Turnstile (and similar) challenge
 // or interstitial pages. Matched case-insensitively against the response body.
@@ -56,6 +57,17 @@ export async function fetchSourcePage(
   const html = await response.text();
 
   if (detectChallenge(html, response)) {
+    const flare = getFlareSolverrConfig();
+    if (flare.enabled && flare.url) {
+      try {
+        const result = await flareSolverrFetch(url, flare.url);
+        return result.html;
+      } catch (error) {
+        // FlareSolverr failed — mark mirror degraded and surface the block.
+        console.warn(`FlareSolverr failed for ${hostOf(url)}:`, (error as FlareSolverrError).message);
+      }
+    }
+
     // Mark this mirror degraded so the next request picks a different one.
     try {
       const domain = hostOf(url);
