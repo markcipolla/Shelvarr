@@ -41,6 +41,7 @@ mock.module('../../../lib/actions/downloads.js', {
     // The card expands into a Network section too (E1-7), so the component
     // imports this alongside the mirror actions.
     saveDownloadSourceNetwork: mock.fn(async () => ({ success: true })),
+    saveFlareSolverrSettings: mock.fn(async () => ({ success: true })),
   },
 });
 
@@ -85,6 +86,7 @@ function renderTab() {
         },
       ]}
       mirrors={MIRRORS}
+      flareSolverr={{ url: '', enabled: false }}
     />
   );
 }
