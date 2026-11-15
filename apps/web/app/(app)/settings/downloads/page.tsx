@@ -2,6 +2,7 @@ import {
   getDownloadConfigs,
   getDownloadSourceStatuses,
   getSourceMirrorList,
+  getFlareSolverrSettings,
 } from '@/lib/actions/downloads';
 import { DownloadSourcesTab } from '@/components/settings/DownloadSourcesTab';
 
@@ -10,10 +11,11 @@ export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Download Sources · Settings' };
 
 export default async function DownloadSettingsPage() {
-  const [downloadConfigs, downloadStatuses, mirrors] = await Promise.all([
+  const [downloadConfigs, downloadStatuses, mirrors, flareSolverr] = await Promise.all([
     getDownloadConfigs(),
     getDownloadSourceStatuses(),
     getSourceMirrorList(),
+    getFlareSolverrSettings(),
   ]);
 
   return (
@@ -21,6 +23,7 @@ export default async function DownloadSettingsPage() {
       configs={downloadConfigs}
       statuses={downloadStatuses}
       mirrors={mirrors}
+      flareSolverr={flareSolverr}
     />
   );
 }
