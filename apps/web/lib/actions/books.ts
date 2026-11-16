@@ -10,7 +10,7 @@ import {
 import * as metadataService from '@/lib/services/metadata';
 import { getOrCreateAuthor, fetchAuthorMetadata, getAuthorByName } from '@/lib/actions/authors';
 import { enqueueTask } from '@/lib/services/queue';
-import { getReadProgress } from '@/lib/db';
+import { getReadProgress, markWantedBookAsAcquired } from '@/lib/db';
 import { getReadingUserId } from '@/lib/auth';
 
 export interface GetBooksParams {
@@ -99,6 +99,10 @@ async function applyMetadataToBook(bookId: number, metadata: metadataService.Boo
   if (result.success) {
     revalidatePath('/books');
     revalidatePath(`/books/${bookId}`);
+
+    // If this book was on the wanted list, mark it acquired.
+    const hardcoverId = metadata.source === 'hardcover' ? metadata.sourceId : undefined;
+    markWantedBookAsAcquired(hardcoverId, metadata.isbn, metadata.title);
 
     // Process authors in background
     processAuthors(metadata.authors).catch(() => {});

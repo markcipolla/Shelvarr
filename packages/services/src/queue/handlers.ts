@@ -506,6 +506,10 @@ async function matchBookMetadata(
           );
         }
       }
+
+      // If this book was on the wanted list, mark it acquired.
+      const hardcoverId = metadata.source === 'hardcover' ? metadata.sourceId : undefined;
+      markWantedBookAsAcquired(hardcoverId, metadata.isbn, metadata.title);
     }
   } catch (err) {
     console.warn('Metadata fetch failed, continuing without metadata:', err);
