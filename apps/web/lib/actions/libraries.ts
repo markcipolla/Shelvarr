@@ -9,7 +9,7 @@ import {
   getLibraryItemCount,
 } from '@/lib/services/library';
 import { scanLibrary as scanLib } from '@/lib/services/scanner';
-import { createTask, startTask, completeTask, failTask, enqueueTask } from '@/lib/services/queue';
+import { createTask, startTask, completeTask, failTask, enqueueTask, enqueueOnce } from '@/lib/services/queue';
 import type { LibraryType } from '@/types';
 
 /** Book libraries only by default — the book pages filter and scan by these. */
@@ -39,6 +39,8 @@ export async function createLibrary(formData: FormData) {
     }
 
     if (type === 'comic') {
+      // Work out what's already in the folder; proposals wait on /comics/import for review.
+      enqueueOnce('comic_library_import', { path });
       revalidatePath('/libraries');
       revalidatePath('/comics');
       return { success: true, library: result.library };
