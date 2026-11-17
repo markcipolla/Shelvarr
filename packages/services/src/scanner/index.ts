@@ -136,6 +136,16 @@ function isGenericTitle(title: string): boolean {
   return /^(book|chapter|part|vol(ume)?|issue|track)\s*\d+$/i.test(title);
 }
 
+/** Returns a better search title for a book whose stored title is generic (e.g. "Book 001"). */
+export function effectiveTitleForSearch(title: string | null, filePath: string | null): string | null {
+  if (!title) return null;
+  if (filePath && isGenericTitle(title)) {
+    const parentDir = basename(dirname(filePath));
+    if (parentDir && parentDir !== '.') return parentDir;
+  }
+  return title;
+}
+
 function parseFilename(filePath: string): { title: string; authors: string[] } {
   const filename = basename(filePath, extname(filePath));
 

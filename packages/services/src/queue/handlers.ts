@@ -11,7 +11,7 @@ import {
   RateLimitedError,
   type TaskHandler,
 } from './index';
-import { scanLibrary, updateBook, addBook, getBookById } from '../scanner';
+import { scanLibrary, updateBook, addBook, getBookById, effectiveTitleForSearch } from '../scanner';
 import { getAllLibraries, getLibraryById } from '../library';
 import { pruneExpired } from '../auth/sessions';
 import { runBackup } from '../backup/index';
@@ -202,13 +202,13 @@ const metadataHandler: TaskHandler = async (taskId, onProgress, signal) => {
   };
 
   // Get books to process
-  let books: { id: number; title: string | null; authors: string | null; isbn: string | null }[];
+  let books: { id: number; title: string | null; authors: string | null; isbn: string | null; file_path: string | null }[];
 
   if (data.bookIds && data.bookIds.length > 0) {
     // Specific books
     const placeholders = data.bookIds.map(() => '?').join(',');
-    books = query<{ id: number; title: string | null; authors: string | null; isbn: string | null }>(
-      `SELECT id, title, authors, isbn FROM books WHERE id IN (${placeholders})`,
+    books = query<{ id: number; title: string | null; authors: string | null; isbn: string | null; file_path: string | null }>(
+      `SELECT id, title, authors, isbn, file_path FROM books WHERE id IN (${placeholders})`,
       data.bookIds
     );
   } else if (data.libraryId) {
@@ -216,8 +216,8 @@ const metadataHandler: TaskHandler = async (taskId, onProgress, signal) => {
     const whereClause = data.unmatchedOnly
       ? 'WHERE library_id = ? AND metadata_source IS NULL'
       : 'WHERE library_id = ?';
-    books = query<{ id: number; title: string | null; authors: string | null; isbn: string | null }>(
-      `SELECT id, title, authors, isbn FROM books ${whereClause}`,
+    books = query<{ id: number; title: string | null; authors: string | null; isbn: string | null; file_path: string | null }>(
+      `SELECT id, title, authors, isbn, file_path FROM books ${whereClause}`,
       [data.libraryId]
     );
   } else {
@@ -225,8 +225,8 @@ const metadataHandler: TaskHandler = async (taskId, onProgress, signal) => {
     const whereClause = data.unmatchedOnly
       ? 'WHERE metadata_source IS NULL'
       : '';
-    books = query<{ id: number; title: string | null; authors: string | null; isbn: string | null }>(
-      `SELECT id, title, authors, isbn FROM books ${whereClause}`,
+    books = query<{ id: number; title: string | null; authors: string | null; isbn: string | null; file_path: string | null }>(
+      `SELECT id, title, authors, isbn, file_path FROM books ${whereClause}`,
       []
     );
   }
@@ -1493,8 +1493,9 @@ const bookMetadataHandler: TaskHandler = async (taskId, onProgress) => {
     authors: string | null;
     isbn: string | null;
     metadata_source: string | null;
+    file_path: string | null;
   }>(
-    'SELECT id, title, authors, isbn, metadata_source FROM books WHERE id = ?',
+    'SELECT id, title, authors, isbn, metadata_source, file_path FROM books WHERE id = ?',
     [data.bookId]
   );
 
