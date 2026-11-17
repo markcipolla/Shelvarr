@@ -168,7 +168,10 @@ export async function organizeLibrary(id: number) {
   return { success: true, taskId: task.id };
 }
 
-/** Rescan every volume folder in a comic library. */
+/**
+ * Rescan every volume folder in a comic library, and look for new series
+ * folders — the import skips folders it already recognises.
+ */
 export async function scanComicLibrary(id: number) {
   const library = await getLibraryById(id);
   if (!library || library.type !== 'comic') {
@@ -176,6 +179,7 @@ export async function scanComicLibrary(id: number) {
   }
 
   const task = enqueueTask('comic_scan_all', { libraryId: id, libraryName: library.name });
+  enqueueOnce('comic_library_import', { path: library.path });
 
   revalidatePath('/libraries');
   revalidatePath('/comics');
