@@ -273,11 +273,13 @@ const metadataHandler: TaskHandler = async (taskId, onProgress, signal) => {
         }
 
         const searchTitle = effectiveTitleForSearch(book.title, book.file_path) ?? book.title;
+        // If we fell back to the directory name, the parsed author is also garbage — drop it
+        const searchAuthor = searchTitle !== book.title ? undefined : authorName;
 
         // Call metadata service to auto-match
         const metadata = await metadataService.autoMatch(
           searchTitle,
-          authorName,
+          searchAuthor,
           book.isbn || undefined
         );
 
@@ -1519,11 +1521,13 @@ const bookMetadataHandler: TaskHandler = async (taskId, onProgress) => {
   }
 
   const searchTitle = effectiveTitleForSearch(book.title, book.file_path) ?? book.title;
+  // If we fell back to the directory name, the parsed author is also garbage — drop it
+  const searchAuthor = searchTitle !== book.title ? undefined : authorName;
 
   // Call metadata service to auto-match
   const metadata = await metadataService.autoMatch(
     searchTitle,
-    authorName,
+    searchAuthor,
     book.isbn || undefined
   );
 
