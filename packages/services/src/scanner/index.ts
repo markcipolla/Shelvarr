@@ -133,7 +133,7 @@ type ProgressCallback = (progress: ScanProgress) => void;
 
 // ponytail: simple regex check; extend pattern if other generic schemes appear
 function isGenericTitle(title: string): boolean {
-  return /^(book|chapter|part|vol(ume)?|issue|track)\s*\d+$/i.test(title);
+  return /^(book|chapter|part|vol(ume)?|issue|track)\s*\d+(?:\.\d+)?$/i.test(title);
 }
 
 /** Returns a better search title for a book whose stored title is generic (e.g. "Book 001"). */
