@@ -180,6 +180,20 @@ async function pruneRemote(
   return doomed.length;
 }
 
+/** Authorize against the saved credentials and return the bucket path, without uploading anything. */
+export async function testB2Connection(): Promise<string> {
+  const settings = getBackupSettings();
+  if (!settings.keyId || !settings.bucket) {
+    throw new Error('Enter a key ID and bucket name before testing.');
+  }
+  const applicationKey = getApplicationKey();
+  if (!applicationKey) {
+    throw new Error('No application key saved. Enter one and save before testing.');
+  }
+  const session = await authorize({ keyId: settings.keyId, applicationKey, bucket: settings.bucket });
+  return `${settings.bucket} (bucket id: ${session.bucketId})`;
+}
+
 /**
  * Take a snapshot, keep the last `keep` of them, and upload if configured.
  *

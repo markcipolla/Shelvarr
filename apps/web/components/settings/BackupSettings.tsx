@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { saveBackupSettingsAction, type BackupSettings as Settings, type LocalBackup } from '@/lib/actions/backup';
+import { saveBackupSettingsAction, testBackupConnectionAction, type BackupSettings as Settings, type LocalBackup } from '@/lib/actions/backup';
 import type { ScheduleView } from '@/lib/actions/settings';
 import { RecurringJobs } from './RecurringJobs';
 
@@ -35,10 +35,21 @@ export function BackupSettings({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const update = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
     setSaved(false);
+  };
+
+  const handleTest = async () => {
+    setBusy(true);
+    setTestResult(null);
+    const result = await testBackupConnectionAction();
+    setBusy(false);
+    setTestResult(result.success
+      ? { ok: true, message: `Connected — ${result.bucket}` }
+      : { ok: false, message: result.error });
   };
 
   const handleSave = async () => {
@@ -160,8 +171,21 @@ export function BackupSettings({
         >
           {busy ? 'Saving…' : 'Save'}
         </button>
+        <button
+          type="button"
+          onClick={handleTest}
+          disabled={busy || !form.b2Enabled}
+          className="px-4 py-2 text-sm rounded-lg bg-shelvarr-surface border border-shelvarr-border text-white hover:border-blue-500 disabled:opacity-50"
+        >
+          {busy ? 'Testing…' : 'Test connection'}
+        </button>
         {saved && <span className="text-sm text-shelvarr-text-muted">Saved.</span>}
         {error && <span className="text-sm text-red-400">{error}</span>}
+        {testResult && (
+          <span className={`text-sm ${testResult.ok ? 'text-green-400' : 'text-red-400'}`}>
+            {testResult.message}
+          </span>
+        )}
       </div>
 
       {schedule && (
