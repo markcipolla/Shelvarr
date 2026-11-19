@@ -62,19 +62,18 @@ const book = {
 const removeLabel = (title: string) => `Finished "${title}" — remove from Currently Reading`;
 
 /**
- * Find the remove button by iterating all buttons and comparing aria-label.
+ * Find the remove button via testing-library's screen, which always queries
+ * the rendered container rather than global.document (which may point to a
+ * different jsdom instance on some Node/jsdom version combinations).
  *
- * The button is nested inside a <div> mock of Link. Some jsdom + Node
- * combinations mis-parse complex CSS attribute selectors (quoted values with
- * embedded double quotes), so we avoid that by using querySelectorAll('button')
- * and doing the attribute comparison in JS.
+ * hidden:true includes elements whose ARIA role may be stripped by jsdom
+ * (e.g. button inside <a>), and falls back to attribute comparison so the
+ * value's embedded double-quotes don't need CSS escaping.
  */
 const removeBtn = (title: string) => {
   const name = removeLabel(title);
-  for (const btn of document.querySelectorAll<HTMLElement>('button')) {
-    if (btn.getAttribute('aria-label') === name) return btn;
-  }
-  return null;
+  const all = screen.queryAllByRole('button', { hidden: true });
+  return all.find(btn => btn.getAttribute('aria-label') === name) ?? null;
 };
 
 type FetchCall = { url: string; init: RequestInit };
