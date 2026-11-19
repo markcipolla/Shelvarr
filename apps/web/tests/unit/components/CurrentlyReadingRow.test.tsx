@@ -67,7 +67,7 @@ const removeLabel = (title: string) => `Finished "${title}" — remove from Curr
  * here. querySelector on the aria-label attribute works in all versions.
  */
 const removeBtn = (title: string) =>
-  document.querySelector<HTMLElement>(`[aria-label="${removeLabel(title)}"]`)!;
+  document.querySelector<HTMLElement>(`[aria-label='${removeLabel(title)}']`)!;
 
 type FetchCall = { url: string; init: RequestInit };
 let fetchCalls: FetchCall[] = [];
