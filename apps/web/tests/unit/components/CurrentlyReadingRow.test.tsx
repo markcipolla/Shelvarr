@@ -58,6 +58,17 @@ const book = {
 /** What the "×" on a card announces itself as. */
 const removeLabel = (title: string) => `Finished "${title}" — remove from Currently Reading`;
 
+/**
+ * Find the remove button by its aria-label via a direct DOM query.
+ *
+ * The button is nested inside <a> (BookCard > Link), which is invalid HTML.
+ * Different jsdom versions either strip its ARIA role or collapse it into the
+ * link's accessible name, so getByRole / getByLabelText are both unreliable
+ * here. querySelector on the aria-label attribute works in all versions.
+ */
+const removeBtn = (title: string) =>
+  document.querySelector<HTMLElement>(`[aria-label="${removeLabel(title)}"]`)!;
+
 type FetchCall = { url: string; init: RequestInit };
 let fetchCalls: FetchCall[] = [];
 let fetchResponse: { ok: boolean; body: unknown } = { ok: true, body: {} };
@@ -87,15 +98,15 @@ describe('CurrentlyReadingRow Component', () => {
   it('offers an × on every book on the shelf', () => {
     render(<CurrentlyReadingRow books={[book, { ...book, id: 8, title: 'Mistborn' }]} />);
 
-    assert.ok(screen.getByLabelText(removeLabel('The Final Empire')));
-    assert.ok(screen.getByLabelText(removeLabel('Mistborn')));
+    assert.ok(removeBtn('The Final Empire'));
+    assert.ok(removeBtn('Mistborn'));
   });
 
   it('marks the book read without sending a page, then refreshes the shelf', async () => {
     const user = userEvent.setup();
     render(<CurrentlyReadingRow books={[book]} />);
 
-    await user.click(screen.getByLabelText(removeLabel('The Final Empire')));
+    await user.click(removeBtn('The Final Empire'));
 
     await waitFor(() => assert.strictEqual(mockRefresh.mock.callCount(), 1));
     assert.strictEqual(fetchCalls.length, 1);
@@ -118,11 +129,9 @@ describe('CurrentlyReadingRow Component', () => {
     );
 
     // The × really is inside the link — otherwise there is nothing to stop.
-    assert.ok(screen.getByRole('link').contains(
-      screen.getByLabelText(removeLabel('The Final Empire'))
-    ));
+    assert.ok(screen.getByRole('link').contains(removeBtn('The Final Empire')));
 
-    await user.click(screen.getByLabelText(removeLabel('The Final Empire')));
+    await user.click(removeBtn('The Final Empire'));
 
     assert.strictEqual(outerClick.mock.callCount(), 0);
   });
@@ -131,7 +140,7 @@ describe('CurrentlyReadingRow Component', () => {
     const user = userEvent.setup();
     render(<CurrentlyReadingRow books={[book]} />);
 
-    await user.click(screen.getByLabelText(removeLabel('The Final Empire')));
+    await user.click(removeBtn('The Final Empire'));
     await waitFor(() => assert.strictEqual(mockToastSuccess.mock.callCount(), 1));
 
     const action = mockToastSuccess.mock.calls[0]?.arguments[1] as
@@ -153,11 +162,11 @@ describe('CurrentlyReadingRow Component', () => {
     const user = userEvent.setup();
     render(<CurrentlyReadingRow books={[book]} />);
 
-    await user.click(screen.getByLabelText(removeLabel('The Final Empire')));
+    await user.click(removeBtn('The Final Empire'));
 
     await waitFor(() => assert.strictEqual(mockToastError.mock.callCount(), 1));
     assert.strictEqual(mockToastError.mock.calls[0]?.arguments[0], 'Book not found');
     assert.strictEqual(mockRefresh.mock.callCount(), 0);
-    assert.ok(screen.getByLabelText(removeLabel('The Final Empire')));
+    assert.ok(removeBtn('The Final Empire'));
   });
 });
