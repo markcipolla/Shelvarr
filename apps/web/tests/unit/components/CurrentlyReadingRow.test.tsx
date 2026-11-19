@@ -31,8 +31,11 @@ mock.module('next/navigation', {
 
 mock.module('next/link', {
   namedExports: {},
+  // Render as <div> rather than <a>: jsdom enforces the HTML5 rule that
+  // interactive content (<button>) cannot be nested inside <a>, moving the
+  // button outside React's root div so click events never reach React handlers.
   defaultExport: ({ children, href, ...rest }: any) => (
-    <a href={href} {...rest}>{children}</a>
+    <div data-href={href} {...rest}>{children}</div>
   ),
 });
 
