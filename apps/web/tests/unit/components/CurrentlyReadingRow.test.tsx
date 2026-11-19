@@ -10,7 +10,7 @@
 import { describe, it, mock, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import '../../../tests/setup-react.js';
-import React from 'react';
+import type { ReactElement } from 'react';
 import { render, waitFor, cleanup } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 
@@ -54,7 +54,7 @@ const { CurrentlyReadingRow } = await import(
 // to be in the right document regardless of how testing-library wires document.
 let _container: Element = document.body;
 
-function renderTest(ui: React.ReactElement) {
+function renderTest(ui: ReactElement) {
   const result = render(ui);
   _container = result.container;
   return result;
@@ -109,7 +109,8 @@ describe('CurrentlyReadingRow Component', () => {
   it('offers an × on every book on the shelf', () => {
     renderTest(<CurrentlyReadingRow books={[book, { ...book, id: 8, title: 'Mistborn' }]} />);
 
-    assert.ok(removeBtn('The Final Empire'));
+    const html = _container.innerHTML;
+    assert.ok(removeBtn('The Final Empire'), `button not found; container HTML: ${html}`);
     assert.ok(removeBtn('Mistborn'));
   });
 
