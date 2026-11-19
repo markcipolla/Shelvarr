@@ -87,15 +87,15 @@ describe('CurrentlyReadingRow Component', () => {
   it('offers an × on every book on the shelf', () => {
     render(<CurrentlyReadingRow books={[book, { ...book, id: 8, title: 'Mistborn' }]} />);
 
-    assert.ok(screen.getByRole('button', { name: removeLabel('The Final Empire') }));
-    assert.ok(screen.getByRole('button', { name: removeLabel('Mistborn') }));
+    assert.ok(screen.getByRole('button', { name: removeLabel('The Final Empire'), hidden: true }));
+    assert.ok(screen.getByRole('button', { name: removeLabel('Mistborn'), hidden: true }));
   });
 
   it('marks the book read without sending a page, then refreshes the shelf', async () => {
     const user = userEvent.setup();
     render(<CurrentlyReadingRow books={[book]} />);
 
-    await user.click(screen.getByRole('button', { name: removeLabel('The Final Empire') }));
+    await user.click(screen.getByRole('button', { name: removeLabel('The Final Empire'), hidden: true }));
 
     await waitFor(() => assert.strictEqual(mockRefresh.mock.callCount(), 1));
     assert.strictEqual(fetchCalls.length, 1);
@@ -119,10 +119,10 @@ describe('CurrentlyReadingRow Component', () => {
 
     // The × really is inside the link — otherwise there is nothing to stop.
     assert.ok(screen.getByRole('link').contains(
-      screen.getByRole('button', { name: removeLabel('The Final Empire') })
+      screen.getByRole('button', { name: removeLabel('The Final Empire'), hidden: true })
     ));
 
-    await user.click(screen.getByRole('button', { name: removeLabel('The Final Empire') }));
+    await user.click(screen.getByRole('button', { name: removeLabel('The Final Empire'), hidden: true }));
 
     assert.strictEqual(outerClick.mock.callCount(), 0);
   });
@@ -131,7 +131,7 @@ describe('CurrentlyReadingRow Component', () => {
     const user = userEvent.setup();
     render(<CurrentlyReadingRow books={[book]} />);
 
-    await user.click(screen.getByRole('button', { name: removeLabel('The Final Empire') }));
+    await user.click(screen.getByRole('button', { name: removeLabel('The Final Empire'), hidden: true }));
     await waitFor(() => assert.strictEqual(mockToastSuccess.mock.callCount(), 1));
 
     const action = mockToastSuccess.mock.calls[0]?.arguments[1] as
@@ -153,11 +153,11 @@ describe('CurrentlyReadingRow Component', () => {
     const user = userEvent.setup();
     render(<CurrentlyReadingRow books={[book]} />);
 
-    await user.click(screen.getByRole('button', { name: removeLabel('The Final Empire') }));
+    await user.click(screen.getByRole('button', { name: removeLabel('The Final Empire'), hidden: true }));
 
     await waitFor(() => assert.strictEqual(mockToastError.mock.callCount(), 1));
     assert.strictEqual(mockToastError.mock.calls[0]?.arguments[0], 'Book not found');
     assert.strictEqual(mockRefresh.mock.callCount(), 0);
-    assert.ok(screen.getByRole('button', { name: removeLabel('The Final Empire') }));
+    assert.ok(screen.getByRole('button', { name: removeLabel('The Final Empire'), hidden: true }));
   });
 });
