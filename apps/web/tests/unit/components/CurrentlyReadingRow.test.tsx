@@ -34,8 +34,8 @@ mock.module('next/link', {
   // Render as <div> rather than <a>: jsdom enforces the HTML5 rule that
   // interactive content (<button>) cannot be nested inside <a>, moving the
   // button outside React's root div so click events never reach React handlers.
-  defaultExport: ({ children, href, ...rest }: any) => (
-    <div data-href={href} {...rest}>{children}</div>
+  defaultExport: ({ children, href }: any) => (
+    <div data-href={href}>{children}</div>
   ),
 });
 
@@ -62,15 +62,20 @@ const book = {
 const removeLabel = (title: string) => `Finished "${title}" — remove from Currently Reading`;
 
 /**
- * Find the remove button by its aria-label via a direct DOM query.
+ * Find the remove button by iterating all buttons and comparing aria-label.
  *
- * The button lives inside <a> (BookCard > Link), which is invalid HTML per the
- * content model. Different jsdom versions handle this differently: some move
- * the button out of the <a> in the DOM, and some strip its ARIA role. Direct
- * querySelector on the aria-label attribute sidesteps both.
+ * The button is nested inside a <div> mock of Link. Some jsdom + Node
+ * combinations mis-parse complex CSS attribute selectors (quoted values with
+ * embedded double quotes), so we avoid that by using querySelectorAll('button')
+ * and doing the attribute comparison in JS.
  */
-const removeBtn = (title: string) =>
-  document.querySelector<HTMLElement>(`[aria-label='${removeLabel(title)}']`)!;
+const removeBtn = (title: string) => {
+  const name = removeLabel(title);
+  for (const btn of document.querySelectorAll<HTMLElement>('button')) {
+    if (btn.getAttribute('aria-label') === name) return btn;
+  }
+  return null;
+};
 
 type FetchCall = { url: string; init: RequestInit };
 let fetchCalls: FetchCall[] = [];
