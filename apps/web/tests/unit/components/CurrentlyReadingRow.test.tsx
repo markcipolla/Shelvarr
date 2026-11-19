@@ -10,7 +10,8 @@
 import { describe, it, mock, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import '../../../tests/setup-react.js';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import React from 'react';
+import { render, waitFor, cleanup } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 
 const mockRefresh = mock.fn();
@@ -49,6 +50,16 @@ const { CurrentlyReadingRow } = await import(
   '../../../components/books/CurrentlyReadingRow.js'
 );
 
+// Updated by renderTest() — container is React's direct mount point, guaranteed
+// to be in the right document regardless of how testing-library wires document.
+let _container: Element = document.body;
+
+function renderTest(ui: React.ReactElement) {
+  const result = render(ui);
+  _container = result.container;
+  return result;
+}
+
 const book = {
   id: 7,
   title: 'The Final Empire',
@@ -61,19 +72,12 @@ const book = {
 /** What the "×" on a card announces itself as. */
 const removeLabel = (title: string) => `Finished "${title}" — remove from Currently Reading`;
 
-/**
- * Find the remove button via testing-library's screen, which always queries
- * the rendered container rather than global.document (which may point to a
- * different jsdom instance on some Node/jsdom version combinations).
- *
- * hidden:true includes elements whose ARIA role may be stripped by jsdom
- * (e.g. button inside <a>), and falls back to attribute comparison so the
- * value's embedded double-quotes don't need CSS escaping.
- */
-const removeBtn = (title: string) => {
+const removeBtn = (title: string): HTMLElement | null => {
   const name = removeLabel(title);
-  const all = screen.queryAllByRole('button', { hidden: true });
-  return all.find(btn => btn.getAttribute('aria-label') === name) ?? null;
+  for (const btn of _container.querySelectorAll<HTMLElement>('button')) {
+    if (btn.getAttribute('aria-label') === name) return btn;
+  }
+  return null;
 };
 
 type FetchCall = { url: string; init: RequestInit };
@@ -103,15 +107,15 @@ describe('CurrentlyReadingRow Component', () => {
   });
 
   it('offers an × on every book on the shelf', () => {
-    render(<CurrentlyReadingRow books={[book, { ...book, id: 8, title: 'Mistborn' }]} />);
+    renderTest(<CurrentlyReadingRow books={[book, { ...book, id: 8, title: 'Mistborn' }]} />);
 
     assert.ok(removeBtn('The Final Empire'));
     assert.ok(removeBtn('Mistborn'));
   });
 
   it('marks the book read without sending a page, then refreshes the shelf', async () => {
-    const user = userEvent.setup();
-    render(<CurrentlyReadingRow books={[book]} />);
+    const user = userEvent.setup({ document });
+    renderTest(<CurrentlyReadingRow books={[book]} />);
 
     await user.click(removeBtn('The Final Empire'));
 
@@ -127,9 +131,9 @@ describe('CurrentlyReadingRow Component', () => {
   });
 
   it('keeps the ×\'s click away from the card\'s link, which would open the book', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ document });
     const outerClick = mock.fn();
-    render(
+    renderTest(
       <div onClick={outerClick}>
         <CurrentlyReadingRow books={[book]} />
       </div>
@@ -141,8 +145,8 @@ describe('CurrentlyReadingRow Component', () => {
   });
 
   it('offers an Undo that puts the book back where it was', async () => {
-    const user = userEvent.setup();
-    render(<CurrentlyReadingRow books={[book]} />);
+    const user = userEvent.setup({ document });
+    renderTest(<CurrentlyReadingRow books={[book]} />);
 
     await user.click(removeBtn('The Final Empire'));
     await waitFor(() => assert.strictEqual(mockToastSuccess.mock.callCount(), 1));
@@ -163,8 +167,8 @@ describe('CurrentlyReadingRow Component', () => {
 
   it('reports the error and leaves the book on the shelf when the server refuses', async () => {
     fetchResponse = { ok: false, body: { error: 'Book not found' } };
-    const user = userEvent.setup();
-    render(<CurrentlyReadingRow books={[book]} />);
+    const user = userEvent.setup({ document });
+    renderTest(<CurrentlyReadingRow books={[book]} />);
 
     await user.click(removeBtn('The Final Empire'));
 
