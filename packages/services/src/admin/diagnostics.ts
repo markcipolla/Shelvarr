@@ -397,3 +397,67 @@ export function listComicDownloads(options: { state?: string; limit?: number } =
     completedAt: sqlTimeToIso(row.completedAt),
   }));
 }
+
+export interface BookQuery {
+  /** When true, only books with no metadata_source (unmatched). */
+  unmatched?: boolean;
+  /** Case-insensitive substring matched against title or authors. */
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export function listBooks(options: BookQuery = {}) {
+  const limit = Math.min(options.limit ?? 100, 500);
+  const offset = options.offset ?? 0;
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (options.unmatched) {
+    conditions.push('metadata_source IS NULL');
+  }
+  if (options.search) {
+    conditions.push('(LOWER(title) LIKE ? OR LOWER(authors) LIKE ?)');
+    const pattern = `%${options.search.toLowerCase()}%`;
+    params.push(pattern, pattern);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  params.push(limit, offset);
+
+  const rows = query<{
+    id: number;
+    title: string | null;
+    authors: string | null;
+    filePath: string;
+    extension: string | null;
+    fileSize: number | null;
+    metadataSource: string | null;
+    metadataId: string | null;
+    isbn: string | null;
+    createdAt: string | null;
+  }>(
+    `SELECT id, title, authors, file_path AS filePath, extension,
+            file_size AS fileSize, metadata_source AS metadataSource,
+            metadata_id AS metadataId, isbn,
+            created_at AS createdAt
+       FROM books
+       ${where}
+       ORDER BY title COLLATE NOCASE ASC
+       LIMIT ? OFFSET ?`,
+    params
+  );
+
+  const totalRow = queryOne<{ total: number }>(
+    `SELECT COUNT(*) AS total FROM books ${where.replace(/LIMIT.*/, '')}`,
+    params.slice(0, -2)
+  );
+
+  return {
+    books: rows.map((r) => ({ ...r, createdAt: sqlTimeToIso(r.createdAt) })),
+    total: totalRow?.total ?? 0,
+    limit,
+    offset,
+  };
+}

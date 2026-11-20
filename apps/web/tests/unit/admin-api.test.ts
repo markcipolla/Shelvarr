@@ -389,6 +389,7 @@ describe('admin diagnostics API', () => {
         'search_logs',
         'list_tasks',
         'get_task',
+        'list_books',
         'list_comic_downloads',
       ]);
       assert.ok(tools.every((tool) => tool.inputSchema));
