@@ -30,6 +30,19 @@ export async function listBackups() {
   return backup.listLocalBackups();
 }
 
+export async function testBackupConnectionAction() {
+  await requireAdmin();
+  try {
+    const bucket = await backup.testB2Connection();
+    return { success: true as const, bucket };
+  } catch (error) {
+    return {
+      success: false as const,
+      error: error instanceof Error ? error.message : 'Connection test failed',
+    };
+  }
+}
+
 export async function saveBackupSettingsAction(input: BackupSettingsInput) {
   await requireAdmin();
 

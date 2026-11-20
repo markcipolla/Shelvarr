@@ -42,6 +42,7 @@ mock.module('../../../lib/actions/downloads.js', {
     // imports this alongside the mirror actions.
     saveDownloadSourceNetwork: mock.fn(async () => ({ success: true })),
     saveFlareSolverrSettings: mock.fn(async () => ({ success: true })),
+    testFlareSolverr: mock.fn(async () => ({ success: true, version: '3.3.21' })),
   },
 });
 

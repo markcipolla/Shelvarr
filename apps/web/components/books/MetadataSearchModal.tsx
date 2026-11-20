@@ -25,7 +25,10 @@ export function MetadataSearchModal({
   const router = useRouter();
   const toast = useToast();
   const authors = parseAuthors(book.authors).join(' ');
-  const defaultQuery = book.title ? `${book.title} ${authors}`.trim() : '';
+  const isGenericTitle = book.title ? /^(book|chapter|part|vol(ume)?|issue|track)\s*\d+(?:\.\d+)?$/i.test(book.title) : false;
+  const parentDir = book.filePath ? book.filePath.split('/').slice(-2, -1)[0] ?? '' : '';
+  const effectiveTitle = isGenericTitle && parentDir ? parentDir : book.title;
+  const defaultQuery = effectiveTitle ? (isGenericTitle ? effectiveTitle : `${effectiveTitle} ${authors}`.trim()) : '';
 
   const [query, setQuery] = useState(providedQuery ?? defaultQuery);
   const [results, setResults] = useState<BookMetadata[]>([]);

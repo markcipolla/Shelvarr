@@ -131,6 +131,21 @@ export interface ScanProgress {
 
 type ProgressCallback = (progress: ScanProgress) => void;
 
+// ponytail: simple regex check; extend pattern if other generic schemes appear
+function isGenericTitle(title: string): boolean {
+  return /^(book|chapter|part|vol(ume)?|issue|track)\s*\d+(?:\.\d+)?$/i.test(title);
+}
+
+/** Returns a better search title for a book whose stored title is generic (e.g. "Book 001"). */
+export function effectiveTitleForSearch(title: string | null, filePath: string | null): string | null {
+  if (!title) return null;
+  if (filePath && isGenericTitle(title)) {
+    const parentDir = basename(dirname(filePath));
+    if (parentDir && parentDir !== '.') return parentDir;
+  }
+  return title;
+}
+
 function parseFilename(filePath: string): { title: string; authors: string[] } {
   const filename = basename(filePath, extname(filePath));
 
@@ -142,6 +157,8 @@ function parseFilename(filePath: string): { title: string; authors: string[] } {
 
   const dashParts = filename.split(' - ').map(s => s.trim()).filter(Boolean);
 
+  let parsed: { title: string; authors: string[] };
+
   if (dashParts.length >= 2) {
     // Assume first part is author if it looks like a name (short, no numbers)
     const first = dashParts[0] ?? '';
@@ -149,26 +166,34 @@ function parseFilename(filePath: string): { title: string; authors: string[] } {
     const isLikelyAuthor = first.length < 50 && !/\d/.test(first);
 
     if (isLikelyAuthor && first) {
-      return {
+      parsed = {
         authors: [first],
         title: dashParts.slice(1).join(' - '),
       };
-    }
-
-    // Otherwise treat last part as author
-    if (last) {
-      return {
+    } else if (last) {
+      // Otherwise treat last part as author
+      parsed = {
         title: dashParts.slice(0, -1).join(' - '),
         authors: [last],
       };
+    } else {
+      parsed = { title: filename, authors: [] };
+    }
+  } else {
+    // Just use filename as title
+    parsed = { title: filename, authors: [] };
+  }
+
+  // If the title looks generic (e.g. "Book 001"), use the parent directory name instead.
+  // Also discard the parsed "author" since it's likely also a generic token (e.g. "Book").
+  if (isGenericTitle(parsed.title)) {
+    const parentDir = basename(dirname(filePath));
+    if (parentDir && parentDir !== '.') {
+      return { title: parentDir, authors: [] };
     }
   }
 
-  // Just use filename as title
-  return {
-    title: filename,
-    authors: [],
-  };
+  return parsed;
 }
 
 function computeFileHash(filePath: string, sampleSize = 64 * 1024): string {

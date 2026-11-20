@@ -38,16 +38,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 9.15.0
-          dest: ~/setup-pnpm-${{ github.run_id }}
+          dest: ~/setup-pnpm-${{ github.job }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -64,16 +65,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 9.15.0
-          dest: ~/setup-pnpm-${{ github.run_id }}
+          dest: ~/setup-pnpm-${{ github.job }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -87,16 +89,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 9.15.0
-          dest: ~/setup-pnpm-${{ github.run_id }}
+          dest: ~/setup-pnpm-${{ github.job }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -171,7 +174,7 @@ jobs:
       - name: Install Playwright browser
         # A no-op when the cached browser already matches the pinned version,
         # which is why the cleanup step above does not delete it.
-        run: npx playwright install chromium
+        run: pnpm exec playwright install chromium
 
       # `test:e2e` is `next build && playwright test`, so it produces its own
       # build. This job used to run `next build` up front and then delete
