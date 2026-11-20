@@ -697,3 +697,19 @@ export async function saveFlareSolverrSettings(
     return { success: false, error: (error as Error).message };
   }
 }
+
+export async function testFlareSolverr(
+  url: string
+): Promise<{ success: boolean; version?: string; error?: string }> {
+  const endpoint = url.replace(/\/$/, '') + '/v1';
+  try {
+    const response = await fetch(endpoint, { signal: AbortSignal.timeout(10000) });
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}` };
+    }
+    const body = await response.json().catch(() => null);
+    return { success: true, version: body?.version };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+}

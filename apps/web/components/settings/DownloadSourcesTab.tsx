@@ -17,6 +17,7 @@ import {
   reorderDownloadSourceMirror,
   saveDownloadSourceNetwork,
   saveFlareSolverrSettings,
+  testFlareSolverr,
 } from '@/lib/actions/downloads';
 import type { DownloadSourceConfig, SourceMirror, FlareSolverrConfig } from '@/lib/db';
 import type { SourceStatus, ParserHealth } from '@/lib/services/downloads';
@@ -679,6 +680,21 @@ function FlareSolverrCard({ initialConfig }: { initialConfig: FlareSolverrConfig
   const [url, setUrl] = useState(initialConfig.url);
   const [enabled, setEnabled] = useState(initialConfig.enabled);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    const result = await testFlareSolverr(url.trim());
+    setTestResult({
+      success: result.success,
+      message: result.success
+        ? `Connected${result.version ? ` · v${result.version}` : ''}`
+        : (result.error ?? 'Unreachable'),
+    });
+    setTesting(false);
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -725,13 +741,27 @@ function FlareSolverrCard({ initialConfig }: { initialConfig: FlareSolverrConfig
         />
       </div>
 
-      <button
-        onClick={handleSave}
-        disabled={saving}
-        className="bg-shelvarr-primary hover:bg-shelvarr-primary-hover text-white px-4 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-50"
-      >
-        {saving ? 'Saving…' : 'Save'}
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="bg-shelvarr-primary hover:bg-shelvarr-primary-hover text-white px-4 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        <button
+          onClick={handleTest}
+          disabled={testing || !url.trim()}
+          className="bg-shelvarr-surface border border-shelvarr-border hover:border-shelvarr-primary text-shelvarr-text-muted hover:text-white px-4 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-50"
+        >
+          {testing ? 'Testing…' : 'Test'}
+        </button>
+        {testResult && (
+          <span className={`text-xs ${testResult.success ? 'text-green-400' : 'text-red-400'}`}>
+            {testResult.message}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

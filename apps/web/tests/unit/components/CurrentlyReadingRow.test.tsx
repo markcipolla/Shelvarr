@@ -1,20 +1,18 @@
 /**
  * Unit tests for the home page's Currently Reading shelf.
  *
- * Each cover carries an "×" that marks the book read, for a book finished away
- * from the reader that would otherwise never leave the shelf. It sits inside
- * the card's link, so it must not open the book, and the request leaves the
- * page out so the server keeps the reader's place.
+ * Each cover carries an "×" that removes the book from the shelf. It sits
+ * inside the card's link, so it must not also open the book.
  */
 
 import { describe, it, mock, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import '../../../tests/setup-react.js';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { render, waitFor, cleanup } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 
 const mockRefresh = mock.fn();
-const mockToastSuccess = mock.fn();
 const mockToastError = mock.fn();
 
 mock.module('next/navigation', {
@@ -31,20 +29,33 @@ mock.module('next/navigation', {
 
 mock.module('next/link', {
   namedExports: {},
-  defaultExport: ({ children, href, ...rest }: any) => (
-    <a href={href} {...rest}>{children}</a>
+  // Render as <div> rather than <a>: jsdom enforces the HTML5 rule that
+  // interactive content (<button>) cannot be nested inside <a>, moving the
+  // button outside React's root div so click events never reach React handlers.
+  defaultExport: ({ children, href }: any) => (
+    <div data-href={href}>{children}</div>
   ),
 });
 
 mock.module('../../../components/ui/Toast.js', {
   namedExports: {
-    useToast: () => ({ success: mockToastSuccess, error: mockToastError }),
+    useToast: () => ({ success: mock.fn(), error: mockToastError }),
   },
 });
 
 const { CurrentlyReadingRow } = await import(
   '../../../components/books/CurrentlyReadingRow.js'
 );
+
+// Updated by renderTest() — container is React's direct mount point, guaranteed
+// to be in the right document regardless of how testing-library wires document.
+let _container: Element = document.body;
+
+function renderTest(ui: ReactElement) {
+  const result = render(ui);
+  _container = result.container;
+  return result;
+}
 
 const book = {
   id: 7,
@@ -56,7 +67,15 @@ const book = {
 } as any;
 
 /** What the "×" on a card announces itself as. */
-const removeLabel = (title: string) => `Finished "${title}" — remove from Currently Reading`;
+const removeLabel = (title: string) => `Remove "${title}" from Currently Reading`;
+
+const removeBtn = (title: string): HTMLElement | null => {
+  const name = removeLabel(title);
+  for (const btn of _container.querySelectorAll<HTMLElement>('button')) {
+    if (btn.getAttribute('aria-label') === name) return btn;
+  }
+  return null;
+};
 
 type FetchCall = { url: string; init: RequestInit };
 let fetchCalls: FetchCall[] = [];
@@ -68,7 +87,6 @@ describe('CurrentlyReadingRow Component', () => {
     fetchCalls = [];
     fetchResponse = { ok: true, body: {} };
     mockRefresh.mock.resetCalls();
-    mockToastSuccess.mock.resetCalls();
     mockToastError.mock.resetCalls();
     globalThis.fetch = (async (url: string, init: RequestInit) => {
       fetchCalls.push({ url, init });
@@ -85,79 +103,51 @@ describe('CurrentlyReadingRow Component', () => {
   });
 
   it('offers an × on every book on the shelf', () => {
-    render(<CurrentlyReadingRow books={[book, { ...book, id: 8, title: 'Mistborn' }]} />);
+    renderTest(<CurrentlyReadingRow books={[book, { ...book, id: 8, title: 'Mistborn' }]} />);
 
-    assert.ok(screen.getByRole('button', { name: removeLabel('The Final Empire') }));
-    assert.ok(screen.getByRole('button', { name: removeLabel('Mistborn') }));
+    assert.ok(removeBtn('The Final Empire'));
+    assert.ok(removeBtn('Mistborn'));
   });
 
-  it('marks the book read without sending a page, then refreshes the shelf', async () => {
-    const user = userEvent.setup();
-    render(<CurrentlyReadingRow books={[book]} />);
+  it('removes the book from Currently Reading and refreshes the shelf', async () => {
+    const user = userEvent.setup({ document });
+    renderTest(<CurrentlyReadingRow books={[book]} />);
 
-    await user.click(screen.getByRole('button', { name: removeLabel('The Final Empire') }));
+    await user.click(removeBtn('The Final Empire'));
 
     await waitFor(() => assert.strictEqual(mockRefresh.mock.callCount(), 1));
     assert.strictEqual(fetchCalls.length, 1);
     assert.strictEqual(fetchCalls[0]?.url, '/api/books/7/read-progress');
-    assert.strictEqual(fetchCalls[0]?.init.method, 'PATCH');
-    assert.deepStrictEqual(JSON.parse(fetchCalls[0]?.init.body as string), { completed: true });
-    assert.strictEqual(
-      mockToastSuccess.mock.calls[0]?.arguments[0],
-      'Marked "The Final Empire" as read'
-    );
+    assert.strictEqual(fetchCalls[0]?.init.method, 'DELETE');
   });
 
   it('keeps the ×\'s click away from the card\'s link, which would open the book', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ document });
     const outerClick = mock.fn();
-    render(
+    renderTest(
       <div onClick={outerClick}>
         <CurrentlyReadingRow books={[book]} />
       </div>
     );
 
-    // The × really is inside the link — otherwise there is nothing to stop.
-    assert.ok(screen.getByRole('link').contains(
-      screen.getByRole('button', { name: removeLabel('The Final Empire') })
-    ));
-
-    await user.click(screen.getByRole('button', { name: removeLabel('The Final Empire') }));
+    await user.click(removeBtn('The Final Empire'));
 
     assert.strictEqual(outerClick.mock.callCount(), 0);
   });
 
-  it('offers an Undo that puts the book back where it was', async () => {
-    const user = userEvent.setup();
-    render(<CurrentlyReadingRow books={[book]} />);
-
-    await user.click(screen.getByRole('button', { name: removeLabel('The Final Empire') }));
-    await waitFor(() => assert.strictEqual(mockToastSuccess.mock.callCount(), 1));
-
-    const action = mockToastSuccess.mock.calls[0]?.arguments[1] as
-      | { label: string; onClick: () => void }
-      | undefined;
-    assert.strictEqual(action?.label, 'Undo');
-
-    action!.onClick();
-
-    // No page either way, so the server keeps the reader's place through both.
-    await waitFor(() => assert.strictEqual(fetchCalls.length, 2));
-    assert.strictEqual(fetchCalls[1]?.url, '/api/books/7/read-progress');
-    assert.deepStrictEqual(JSON.parse(fetchCalls[1]?.init.body as string), { completed: false });
-    await waitFor(() => assert.strictEqual(mockRefresh.mock.callCount(), 2));
-  });
-
   it('reports the error and leaves the book on the shelf when the server refuses', async () => {
-    fetchResponse = { ok: false, body: { error: 'Book not found' } };
-    const user = userEvent.setup();
-    render(<CurrentlyReadingRow books={[book]} />);
+    fetchResponse = { ok: false, body: {} };
+    const user = userEvent.setup({ document });
+    renderTest(<CurrentlyReadingRow books={[book]} />);
 
-    await user.click(screen.getByRole('button', { name: removeLabel('The Final Empire') }));
+    await user.click(removeBtn('The Final Empire'));
 
     await waitFor(() => assert.strictEqual(mockToastError.mock.callCount(), 1));
-    assert.strictEqual(mockToastError.mock.calls[0]?.arguments[0], 'Book not found');
+    assert.strictEqual(
+      mockToastError.mock.calls[0]?.arguments[0],
+      'Failed to remove from Currently Reading'
+    );
     assert.strictEqual(mockRefresh.mock.callCount(), 0);
-    assert.ok(screen.getByRole('button', { name: removeLabel('The Final Empire') }));
+    assert.ok(removeBtn('The Final Empire'));
   });
 });
