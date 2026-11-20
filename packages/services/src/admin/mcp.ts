@@ -18,6 +18,7 @@ import type { LogLevel } from '../utils/logger';
 import {
   getSystemStatus,
   getTask,
+  listBooks,
   listComicDownloads,
   listTasks,
   searchLogs,
@@ -60,8 +61,11 @@ const INSTRUCTIONS = [
   'refilled from that file on startup, so lines from before a restart survive;',
   'get_status shows app.startedAt, and logs.restored says how many buffered',
   'lines predate it. A section of get_status that failed to load is replaced by',
-  '{ "error": ... } rather than failing the whole snapshot. Nothing here can',
-  'change the server.',
+  '{ "error": ... } rather than failing the whole snapshot.',
+  '',
+  'list_books lists books in the library. Pass unmatched: true to see only books',
+  'with no metadata yet. Use search, limit, and offset to filter and page.',
+  'Nothing here can change the server.',
 ].join('\n');
 
 interface JsonRpcRequest {
@@ -189,6 +193,30 @@ export const MCP_TOOLS = [
     },
   },
   {
+    name: 'list_books',
+    title: 'List books',
+    description:
+      'Books in the library, ordered by title. Filter to unmatched books (no ' +
+      'metadata yet), search by title or author, and page through results with ' +
+      'limit and offset.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        unmatched: {
+          type: 'boolean',
+          description: 'When true, return only books with no metadata source.',
+        },
+        search: {
+          type: 'string',
+          description: 'Case-insensitive substring matched against title or authors.',
+        },
+        limit: { type: 'integer', minimum: 1, maximum: 500, description: 'Default 100.' },
+        offset: { type: 'integer', minimum: 0, description: 'Pagination offset. Default 0.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'list_comic_downloads',
     title: 'List comic downloads',
     description:
@@ -292,6 +320,22 @@ function runTool(name: string, args: Record<string, unknown>) {
       if (id === undefined) return toolError('id is required and must be a number');
       const task = getTask(id);
       return task ? toolResult(task) : toolError(`No task with id ${id}`);
+    }
+
+    case 'list_books': {
+      const unmatched = args['unmatched'] === true;
+      const search = optionalString(args, 'search');
+      const bookLimit = optionalInteger(args, 'limit');
+      const bookOffset = optionalInteger(args, 'offset');
+
+      return toolResult(
+        listBooks({
+          ...(unmatched ? { unmatched } : {}),
+          ...(search ? { search } : {}),
+          ...(bookLimit !== undefined ? { limit: bookLimit } : {}),
+          ...(bookOffset !== undefined ? { offset: bookOffset } : {}),
+        })
+      );
     }
 
     case 'list_comic_downloads': {
