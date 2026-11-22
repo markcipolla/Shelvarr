@@ -13,7 +13,8 @@
  */
 
 import { APP_VERSION } from '../constants';
-import type { TaskStatus, TaskType } from '../queue/index';
+import { cancelTask, enqueueTask, retryTask, type TaskStatus, type TaskType } from '../queue/index';
+import { runScheduleNow, setScheduleEnabled } from '../queue/scheduler';
 import type { LogLevel } from '../utils/logger';
 import {
   getSystemStatus,
@@ -46,8 +47,8 @@ export const MCP_SERVER_NAME = 'shelvarr-admin';
 
 /** Shown to the model when the server connects, so it knows what this is for. */
 const INSTRUCTIONS = [
-  'Read-only diagnostics for a running Shelvarr server (a self-hosted book and',
-  'comic library manager).',
+  'Diagnostics and management for a running Shelvarr server (a self-hosted book',
+  'and comic library manager).',
   '',
   'Start with get_status for a snapshot: version, uptime, library counts, task',
   'queue, recurring jobs, download queues and which integrations are configured.',
@@ -65,7 +66,11 @@ const INSTRUCTIONS = [
   '',
   'list_books lists books in the library. Pass unmatched: true to see only books',
   'with no metadata yet. Use search, limit, and offset to filter and page.',
-  'Nothing here can change the server.',
+  '',
+  'Management tools: run_schedule fires a scheduler job immediately without',
+  'disturbing its next scheduled run. set_schedule_enabled toggles a job on or',
+  'off. cancel_task stops a pending or running task. retry_task re-queues a',
+  'failed task. enqueue_task starts any task type with optional data.',
 ].join('\n');
 
 interface JsonRpcRequest {
@@ -234,6 +239,84 @@ export const MCP_TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'run_schedule',
+    title: 'Run a scheduled job now',
+    description:
+      'Fire a scheduled job immediately without disturbing its next scheduled run. ' +
+      'Returns the new task id. Use get_status to see schedule names.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Schedule name, e.g. "book_metadata_all".' },
+      },
+      required: ['name'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'set_schedule_enabled',
+    title: 'Enable or disable a schedule',
+    description: 'Turn a recurring job on or off.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Schedule name.' },
+        enabled: { type: 'boolean' },
+      },
+      required: ['name', 'enabled'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'cancel_task',
+    title: 'Cancel a task',
+    description: 'Cancel a pending or running task. Returns whether it was found and cancelled.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'integer', description: 'Task id.' },
+      },
+      required: ['id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'retry_task',
+    title: 'Retry a failed task',
+    description: 'Re-queue a failed task. Returns the new task.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'integer', description: 'Task id of the failed task to retry.' },
+      },
+      required: ['id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'enqueue_task',
+    title: 'Enqueue a task',
+    description: 'Start any task type immediately with optional data payload.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: {
+          type: 'string',
+          description:
+            'Task type, e.g. "metadata", "book_metadata", "scan", "book_scan_all", ' +
+            '"book_metadata_all", "organize", "download", "author_sync".',
+        },
+        data: {
+          type: 'object',
+          description: 'Optional payload passed to the task handler.',
+          additionalProperties: true,
+        },
+      },
+      required: ['type'],
+      additionalProperties: false,
+    },
+  },
 ] as const;
 
 /** A tool result: the JSON, both as text for the model and as structured content. */
@@ -348,6 +431,43 @@ function runTool(name: string, args: Record<string, unknown>) {
           ...(downloadLimit !== undefined ? { limit: downloadLimit } : {}),
         }),
       });
+    }
+
+    case 'run_schedule': {
+      const name = optionalString(args, 'name');
+      if (!name) return toolError('name is required');
+      const taskId = runScheduleNow(name);
+      return toolResult({ taskId });
+    }
+
+    case 'set_schedule_enabled': {
+      const name = optionalString(args, 'name');
+      if (!name) return toolError('name is required');
+      if (typeof args['enabled'] !== 'boolean') return toolError('enabled must be a boolean');
+      setScheduleEnabled(name, args['enabled']);
+      return toolResult({ name, enabled: args['enabled'] });
+    }
+
+    case 'cancel_task': {
+      const id = optionalInteger(args, 'id');
+      if (id === undefined) return toolError('id is required and must be a number');
+      const cancelled = cancelTask(id);
+      return toolResult({ id, cancelled });
+    }
+
+    case 'retry_task': {
+      const id = optionalInteger(args, 'id');
+      if (id === undefined) return toolError('id is required and must be a number');
+      const task = retryTask(id);
+      return task ? toolResult(task) : toolError(`No failed task with id ${id}`);
+    }
+
+    case 'enqueue_task': {
+      const type = optionalString(args, 'type');
+      if (!type) return toolError('type is required');
+      const data = args['data'] as Record<string, unknown> | undefined;
+      const task = enqueueTask(type as TaskType, data ?? {});
+      return toolResult(task);
     }
 
     default:

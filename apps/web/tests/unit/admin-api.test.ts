@@ -391,6 +391,11 @@ describe('admin diagnostics API', () => {
         'get_task',
         'list_books',
         'list_comic_downloads',
+        'run_schedule',
+        'set_schedule_enabled',
+        'cancel_task',
+        'retry_task',
+        'enqueue_task',
       ]);
       assert.ok(tools.every((tool) => tool.inputSchema));
     });
@@ -501,14 +506,5 @@ describe('admin diagnostics API', () => {
       assert.strictEqual(responses[0].id, 8);
     });
 
-    it('exposes only read-only tools', () => {
-      const response = admin.handleMcpMessage({ jsonrpc: '2.0', id: 9, method: 'tools/list' });
-      const tools = (response?.result as { tools: Array<{ name: string }> }).tools;
-
-      const mutating = tools.filter((tool) =>
-        /^(create|delete|remove|set|update|start|run|enqueue|cancel)_/.test(tool.name)
-      );
-      assert.deepStrictEqual(mutating, []);
-    });
   });
 });
