@@ -47,6 +47,7 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 9.15.0
+          dest: ~/setup-pnpm-${{ github.run_id }}-${{ github.job }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -72,6 +73,7 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 9.15.0
+          dest: ~/setup-pnpm-${{ github.run_id }}-${{ github.job }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -94,6 +96,7 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 9.15.0
+          dest: ~/setup-pnpm-${{ github.run_id }}-${{ github.job }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
