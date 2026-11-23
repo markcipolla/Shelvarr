@@ -257,9 +257,11 @@ describe('EpubReader Component', () => {
 
     render(<EpubReader book={book} onClose={() => {}} />);
 
+    // The epub loads via fake-indexeddb (cache miss) + fetch mock, which can
+    // be slow on CI runners. 5 s is generous but won't affect local runs.
     await waitFor(() => {
       assert.strictEqual(capturedProps?.location, 'epubcfi(/6/14!/4/2/1:0)');
-    });
+    }, { timeout: 5000 });
   });
 
   it('opens at the start when there is no saved progression', async () => {
