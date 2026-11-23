@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import '@/lib/config';
 import { queryOne, getReadProgress } from '@/lib/db';
-import { validateApiAuth, getReadingUserId } from '@shelvarr/services';
+import { validateApiAuth, getReadingUserId, admin } from '@shelvarr/services';
 import { deleteBook } from '@/lib/services/scanner';
 import { toApiBook } from '@shelvarr/services/api-response';
 
@@ -53,7 +53,8 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!validateApiAuth(request.headers)) {
+  const adminAuth = admin.authoriseAdminRequest(request.headers);
+  if (!adminAuth.ok && !validateApiAuth(request.headers)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
