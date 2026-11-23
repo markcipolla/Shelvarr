@@ -32,6 +32,9 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
+      - name: Start Docker daemon
+        run: sudo systemctl start docker
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
