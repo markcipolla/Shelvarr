@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import '@/lib/config';
 import { queryOne, getReadProgress } from '@/lib/db';
 import { validateApiAuth, getReadingUserId } from '@shelvarr/services';
+import { deleteBook } from '@/lib/services/scanner';
 import { toApiBook } from '@shelvarr/services/api-response';
 
 export const dynamic = 'force-dynamic';
@@ -46,4 +47,23 @@ export async function GET(
 
   const userId = getReadingUserId(request.headers);
   return NextResponse.json(toApiBook(row, userId, getReadProgress(userId, row.id)));
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  if (!validateApiAuth(request.headers)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const url = new URL(request.url);
+  const deleteFiles = url.searchParams.get('deleteFiles') === 'true';
+
+  const result = await deleteBook(Number(id), { deleteFiles });
+  if (!result.success) {
+    return NextResponse.json({ error: result.error }, { status: result.error === 'Book not found' ? 404 : 500 });
+  }
+  return NextResponse.json({ success: true, deletedFile: result.deletedFile });
 }
