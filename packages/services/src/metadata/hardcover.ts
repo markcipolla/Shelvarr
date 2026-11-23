@@ -59,6 +59,8 @@ function getApiToken(): string | null {
 }
 
 async function graphqlFetch<T>(query: string, variables: Record<string, unknown> = {}): Promise<T | null> {
+  // paceSource reserves the next slot synchronously before awaiting, so concurrent
+  // callers (e.g. Promise.allSettled batches) queue up rather than all firing at once.
   await paceSource('hardcover', MIN_REQUEST_INTERVAL_MS);
 
   const token = getApiToken();
