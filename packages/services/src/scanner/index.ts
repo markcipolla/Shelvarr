@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, rmdirSync, statSync, unlinkSync } from 'fs';
-import { join, extname, basename, dirname, resolve, sep } from 'path';
+import { join, extname, basename, dirname, relative, resolve, sep } from 'path';
 import { createHash } from 'crypto';
 import { readFileSync } from 'fs';
 import { query, queryOne, execute, hardcoverStatusLabel, progressUserId, sqlTimeToIso } from '@shelvarr/db';
@@ -131,6 +131,39 @@ export interface ScanProgress {
 
 type ProgressCallback = (progress: ScanProgress) => void;
 
+function isGenericTitle(title: string): boolean {
+  // Bare genre words ("Book") or with a trailing number ("Book 001", "Volume 3")
+  return /^(book|chapter|part|vol(ume)?|issue|track)(\s+\d+(\.\d+)?)?$/i.test(title.trim());
+}
+
+/**
+ * Returns a better search title for books whose stored title is generic (e.g. "Book 001").
+ * Uses the first non-generic folder component relative to the library root, so a file at
+ * <library>/Velocity Weapon/The Protectorate/Book - Book 001.epub returns "Velocity Weapon"
+ * rather than the series subfolder "The Protectorate".
+ */
+export function effectiveTitleForSearch(
+  title: string | null,
+  filePath: string | null,
+  libraryPath?: string | null
+): string | null {
+  if (!title) return null;
+  if (!filePath || !isGenericTitle(title)) return title;
+
+  if (libraryPath) {
+    const rel = relative(resolve(libraryPath), resolve(filePath));
+    const parts = rel.split(sep).slice(0, -1); // drop the filename itself
+    for (const part of parts) {
+      if (part && part !== '.' && !isGenericTitle(part)) return part;
+    }
+  }
+
+  // Fallback: immediate parent directory
+  const parentDir = basename(dirname(filePath));
+  if (parentDir && parentDir !== '.') return parentDir;
+  return title;
+}
+
 function parseFilename(filePath: string): { title: string; authors: string[] } {
   const filename = basename(filePath, extname(filePath));
 
@@ -142,6 +175,8 @@ function parseFilename(filePath: string): { title: string; authors: string[] } {
 
   const dashParts = filename.split(' - ').map(s => s.trim()).filter(Boolean);
 
+  let parsed: { title: string; authors: string[] };
+
   if (dashParts.length >= 2) {
     // Assume first part is author if it looks like a name (short, no numbers)
     const first = dashParts[0] ?? '';
@@ -149,26 +184,27 @@ function parseFilename(filePath: string): { title: string; authors: string[] } {
     const isLikelyAuthor = first.length < 50 && !/\d/.test(first);
 
     if (isLikelyAuthor && first) {
-      return {
-        authors: [first],
-        title: dashParts.slice(1).join(' - '),
-      };
+      parsed = { authors: [first], title: dashParts.slice(1).join(' - ') };
+    } else if (last) {
+      // Otherwise treat last part as author
+      parsed = { title: dashParts.slice(0, -1).join(' - '), authors: [last] };
+    } else {
+      parsed = { title: filename, authors: [] };
     }
+  } else {
+    parsed = { title: filename, authors: [] };
+  }
 
-    // Otherwise treat last part as author
-    if (last) {
-      return {
-        title: dashParts.slice(0, -1).join(' - '),
-        authors: [last],
-      };
+  // If the parsed title is still generic (e.g. "Book 001"), use the parent directory name.
+  // Also discard the parsed author since it's likely another generic token (e.g. "Book").
+  if (isGenericTitle(parsed.title)) {
+    const parentDir = basename(dirname(filePath));
+    if (parentDir && parentDir !== '.') {
+      return { title: parentDir, authors: [] };
     }
   }
 
-  // Just use filename as title
-  return {
-    title: filename,
-    authors: [],
-  };
+  return parsed;
 }
 
 function computeFileHash(filePath: string, sampleSize = 64 * 1024): string {
