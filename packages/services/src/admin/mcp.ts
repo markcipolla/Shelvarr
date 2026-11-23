@@ -17,6 +17,7 @@ import { cancelTask, enqueueTask, retryTask, type TaskStatus, type TaskType } fr
 import { runScheduleNow, setScheduleEnabled } from '../queue/scheduler';
 import type { LogLevel } from '../utils/logger';
 import {
+  findDuplicateBooks,
   getSystemStatus,
   getTask,
   listBooks,
@@ -60,6 +61,8 @@ const INSTRUCTIONS = [
   '',
   'list_books lists books in the library. Pass unmatched: true to see only books',
   'with no metadata yet. Use search, limit, and offset to filter and page.',
+  'find_duplicate_books returns groups of books that share a metadata_id, ISBN,',
+  'or normalised title+authors — the strongest signal first.',
   '',
   'Management tools: run_schedule fires a scheduler job immediately without',
   'disturbing its next scheduled run. set_schedule_enabled toggles a job on or',
@@ -214,6 +217,16 @@ export const MCP_TOOLS = [
       },
       additionalProperties: false,
     },
+  },
+  {
+    name: 'find_duplicate_books',
+    title: 'Find duplicate books',
+    description:
+      'Find books that appear to be duplicates, grouped by the reason: ' +
+      'same Hardcover metadata_id (strongest signal), same ISBN, or same ' +
+      'normalised title + authors. Each group lists the files that match. ' +
+      'Returns all duplicate groups at once — no pagination needed.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
     name: 'list_comic_downloads',
@@ -414,6 +427,9 @@ function runTool(name: string, args: Record<string, unknown>) {
         })
       );
     }
+
+    case 'find_duplicate_books':
+      return toolResult(findDuplicateBooks());
 
     case 'list_comic_downloads': {
       const state = optionalString(args, 'state');

@@ -6,7 +6,7 @@
  */
 
 import { getSetting, replaceHardcoverStatuses } from '@shelvarr/db';
-import { pace } from '../utils/pacing';
+import { paceSource } from '../utils/pacing';
 
 const API_BASE = 'https://api.hardcover.app/v1/graphql';
 
@@ -45,7 +45,6 @@ export interface BookMetadata {
 
 // Hardcover allows 60 requests a minute.
 const MIN_REQUEST_INTERVAL_MS = 1000;
-let lastRequestTime = 0;
 
 /** The key entered on the Metadata Sources tab, minus any pasted `Bearer `. */
 function getApiToken(): string | null {
@@ -60,11 +59,7 @@ function getApiToken(): string | null {
 }
 
 async function graphqlFetch<T>(query: string, variables: Record<string, unknown> = {}): Promise<T | null> {
-  const now = Date.now();
-  if (now - lastRequestTime < MIN_REQUEST_INTERVAL_MS) {
-    await pace(MIN_REQUEST_INTERVAL_MS - (now - lastRequestTime));
-  }
-  lastRequestTime = Date.now();
+  await paceSource('hardcover', MIN_REQUEST_INTERVAL_MS);
 
   const token = getApiToken();
   if (!token) {
