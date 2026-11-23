@@ -461,3 +461,102 @@ export function listBooks(options: BookQuery = {}) {
     offset,
   };
 }
+
+export interface DuplicateGroup {
+  reason: 'same_metadata_id' | 'same_isbn' | 'same_title_author';
+  key: string;
+  books: Array<{
+    id: number;
+    title: string | null;
+    authors: string | null;
+    filePath: string;
+    fileSize: number | null;
+    metadataSource: string | null;
+    metadataId: string | null;
+    isbn: string | null;
+  }>;
+}
+
+/**
+ * Find books that appear to be duplicates by comparing metadata_id, isbn,
+ * or normalised title+authors. Returns groups of two or more books.
+ */
+export function findDuplicateBooks(): { groups: DuplicateGroup[]; total: number } {
+  const groups: DuplicateGroup[] = [];
+
+  // 1. Same Hardcover metadata_id
+  const byMetaId = query<{ metadataId: string; ids: string }>(
+    `SELECT metadata_id AS metadataId, GROUP_CONCAT(id) AS ids
+       FROM books
+      WHERE metadata_id IS NOT NULL AND deleted_at IS NULL
+      GROUP BY metadata_id
+     HAVING COUNT(*) > 1`,
+    []
+  );
+  for (const row of byMetaId) {
+    const ids = row.ids.split(',').map(Number);
+    const books = query<{
+      id: number; title: string | null; authors: string | null; filePath: string;
+      fileSize: number | null; metadataSource: string | null; metadataId: string | null; isbn: string | null;
+    }>(
+      `SELECT id, title, authors, file_path AS filePath, file_size AS fileSize,
+              metadata_source AS metadataSource, metadata_id AS metadataId, isbn
+         FROM books WHERE id IN (${ids.map(() => '?').join(',')})`,
+      ids
+    );
+    groups.push({ reason: 'same_metadata_id', key: row.metadataId, books });
+  }
+
+  // 2. Same ISBN (excluding nulls already caught by metadata_id)
+  const metaIdKeys = new Set(groups.map(g => g.key));
+  const byIsbn = query<{ isbn: string; ids: string }>(
+    `SELECT isbn, GROUP_CONCAT(id) AS ids
+       FROM books
+      WHERE isbn IS NOT NULL AND deleted_at IS NULL
+      GROUP BY isbn
+     HAVING COUNT(*) > 1`,
+    []
+  );
+  for (const row of byIsbn) {
+    if (metaIdKeys.has(row.isbn)) continue; // already in a metadata_id group
+    const ids = row.ids.split(',').map(Number);
+    const books = query<{
+      id: number; title: string | null; authors: string | null; filePath: string;
+      fileSize: number | null; metadataSource: string | null; metadataId: string | null; isbn: string | null;
+    }>(
+      `SELECT id, title, authors, file_path AS filePath, file_size AS fileSize,
+              metadata_source AS metadataSource, metadata_id AS metadataId, isbn
+         FROM books WHERE id IN (${ids.map(() => '?').join(',')})`,
+      ids
+    );
+    groups.push({ reason: 'same_isbn', key: row.isbn, books });
+  }
+
+  // 3. Same normalised title + first author (case-insensitive, trims whitespace)
+  const seenIds = new Set(groups.flatMap(g => g.books.map(b => b.id)));
+  const byTitleAuthor = query<{ key: string; ids: string }>(
+    `SELECT LOWER(TRIM(title)) || '|' || LOWER(TRIM(COALESCE(authors, ''))) AS key,
+            GROUP_CONCAT(id) AS ids
+       FROM books
+      WHERE title IS NOT NULL AND deleted_at IS NULL
+      GROUP BY LOWER(TRIM(title)), LOWER(TRIM(COALESCE(authors, '')))
+     HAVING COUNT(*) > 1`,
+    []
+  );
+  for (const row of byTitleAuthor) {
+    const ids = row.ids.split(',').map(Number).filter(id => !seenIds.has(id));
+    if (ids.length < 2) continue;
+    const books = query<{
+      id: number; title: string | null; authors: string | null; filePath: string;
+      fileSize: number | null; metadataSource: string | null; metadataId: string | null; isbn: string | null;
+    }>(
+      `SELECT id, title, authors, file_path AS filePath, file_size AS fileSize,
+              metadata_source AS metadataSource, metadata_id AS metadataId, isbn
+         FROM books WHERE id IN (${ids.map(() => '?').join(',')})`,
+      ids
+    );
+    groups.push({ reason: 'same_title_author', key: row.key, books });
+  }
+
+  return { groups, total: groups.length };
+}

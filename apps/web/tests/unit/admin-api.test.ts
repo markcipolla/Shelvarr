@@ -390,6 +390,7 @@ describe('admin diagnostics API', () => {
         'list_tasks',
         'get_task',
         'list_books',
+        'find_duplicate_books',
         'list_comic_downloads',
         'run_schedule',
         'set_schedule_enabled',
