@@ -126,14 +126,14 @@ describe('ComicIssueRow Component', () => {
     assert.strictEqual(screen.queryByRole('button', { name: 'Find' }), null);
   });
 
-  it('shows the Downloaded badge and a Mark read button for an unread, downloaded issue', () => {
+  it('shows the file format badge and a Mark read button for an unread, downloaded issue', () => {
     render(<ComicIssueRow issue={makeIssue()} volumeId={3} volumeTitle="Sandman" />);
 
-    assert.ok(screen.getByText('Downloaded'));
+    assert.ok(screen.getByText('CBZ'));
     assert.ok(screen.getByRole('button', { name: 'Mark read' }));
   });
 
-  it('shows the Read badge and no Mark read button once completed', () => {
+  it('shows the Read badge, a Read button, and no Mark read button once completed', () => {
     render(
       <ComicIssueRow
         issue={makeIssue()}
@@ -142,7 +142,8 @@ describe('ComicIssueRow Component', () => {
       />
     );
 
-    assert.ok(screen.getByText('Read'));
+    assert.ok(screen.getByText('Read', { selector: 'span' }));
+    assert.ok(screen.getByRole('button', { name: 'Read' }));
     assert.strictEqual(screen.queryByRole('button', { name: 'Mark read' }), null);
   });
 });
