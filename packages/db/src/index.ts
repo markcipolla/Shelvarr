@@ -4082,6 +4082,64 @@ export function upsertManagedComicVolume(input: UpsertManagedVolumeInput): numbe
 }
 
 /**
+ * Find an unmatched (comicvine_id IS NULL) managed volume that claims a folder.
+ * Returns a minimal object compatible with ComicFolderOwner so addVolume can adopt it.
+ */
+export function findUnmatchedVolumeByFolder(folder: string): {
+  id: number;
+  comicvineId: 0;
+  folder: string;
+  managed: boolean;
+  title: string;
+  year: number | null;
+  publisher: string | null;
+  volumeNumber: number;
+  issueCount: number;
+} | null {
+  const key = folder.replace(/[\\/]+$/, '');
+  const row = queryOne<{ id: number; folder: string; title: string }>(
+    `SELECT id, folder, title FROM comics
+      WHERE comicvine_id IS NULL AND managed = 1 AND deleted_at IS NULL
+        AND folder = ?`,
+    [key]
+  );
+  return row
+    ? {
+        id: row.id,
+        comicvineId: 0,
+        folder: row.folder,
+        managed: true,
+        title: row.title,
+        year: null,
+        publisher: null,
+        volumeNumber: 1,
+        issueCount: 0,
+      }
+    : null;
+}
+
+/**
+ * Create an unmatched volume placeholder for a folder that has not been
+ * matched to ComicVine yet.  The row is managed (Shelvarr owns it) so it
+ * survives a mirror import and so it appears in the UI immediately.
+ */
+export function createUnmatchedVolume(
+  rootFolderId: number,
+  folder: string,
+  title: string
+): number {
+  const row = insertReturning<{ id: number }>(
+    `INSERT INTO comics (title, managed, root_folder_id, folder, monitored, monitor_new_issues, updated_at)
+     VALUES (?, 1, ?, ?, 1, 0, CURRENT_TIMESTAMP)
+     RETURNING id`,
+    [title, rootFolderId, folder]
+  );
+  if (!row) throw new Error(`Failed to create unmatched volume for ${folder}`);
+  ensureComicSlug(row.id);
+  return row.id;
+}
+
+/**
  * Replace a volume's issues with a fresh set from ComicVine.
  *
  * Issues are keyed by ComicVine id so local ids — which read progress and the

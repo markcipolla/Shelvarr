@@ -34,6 +34,8 @@ import {
   getComicVolumeIdsInRootFolder,
   getComicRootFolderForLibrary,
   getComicVolumesWithMissingIssues,
+  createUnmatchedVolume,
+  findUnmatchedVolumeByFolder,
   startComicDownloadAttempt,
   addBookDownload,
   getBookDownload,
@@ -2417,6 +2419,99 @@ function reusableProposals(path: string): Map<string, ReusableProposal> {
 }
 
 /**
+ * Walk a root folder and create an unmatched volume placeholder for every
+ * folder that is not already in the library.  Enqueues `comic_match` for each
+ * new placeholder so they are matched to ComicVine in the background.
+ *
+ * Mirrors how book scanning works: files appear in the UI immediately, as
+ * unmatched volumes, and metadata arrives separately.
+ */
+const comicLibraryScanHandler: TaskHandler = async (taskId, onProgress, _signal) => {
+  const data = comicTaskData<{ path?: string; rootFolderId?: number }>(
+    taskId,
+    'library scan configuration'
+  );
+  if (!data.path) throw new Error('Library scan task has no path');
+  if (!data.rootFolderId) throw new Error('Library scan task has no rootFolderId');
+
+  comicLibrary.mergeDuplicateComicVolumes();
+
+  const groups = await findImportGroups(data.path);
+  onProgress(0, groups.length);
+
+  const owners = comicLibrary.comicFolderOwners();
+  let created = 0;
+  let done = 0;
+  const newVolumeIds: number[] = [];
+
+  for (const group of groups) {
+    const key = comicLibrary.sameFolderKey(group.folder);
+    if (!owners.has(key) && !findUnmatchedVolumeByFolder(group.folder)) {
+      const title = group.info.series || group.folder.split('/').pop() || group.folder;
+      const volumeId = createUnmatchedVolume(data.rootFolderId, group.folder, title);
+      newVolumeIds.push(volumeId);
+      created++;
+    }
+    onProgress(++done, groups.length);
+  }
+
+  if (newVolumeIds.length > 0 && (await comicLibrary.isComicVineConfigured())) {
+    for (const volumeId of newVolumeIds) {
+      enqueueTask('comic_match', { volumeId });
+    }
+  }
+
+  return { path: data.path, groups: groups.length, created };
+};
+
+/**
+ * Match one unmatched volume to ComicVine.  Auto-applies when the title match
+ * is confident enough; otherwise leaves the volume unmatched for a human.
+ */
+const comicMatchHandler: TaskHandler = async (taskId, _onProgress, signal) => {
+  const data = comicTaskData<{ volumeId?: number }>(taskId, 'comic match configuration');
+  if (!data.volumeId) throw new Error('Comic match task has no volumeId');
+
+  const volumeRow = queryOne<{ id: number; title: string; folder: string | null; root_folder_id: number | null }>(
+    `SELECT id, title, folder, root_folder_id FROM comics
+      WHERE id = ? AND comicvine_id IS NULL AND managed = 1 AND deleted_at IS NULL`,
+    [data.volumeId]
+  );
+  if (!volumeRow) return { volumeId: data.volumeId, skipped: true, reason: 'already matched or not found' };
+  if (!volumeRow.folder) return { volumeId: data.volumeId, skipped: true, reason: 'no folder' };
+  if (!volumeRow.root_folder_id) return { volumeId: data.volumeId, skipped: true, reason: 'no root folder' };
+
+  const group = {
+    folder: volumeRow.folder,
+    files: [],
+    info: {
+      series: volumeRow.title,
+      year: null,
+      volumeNumber: null,
+      specialVersion: null,
+      issueNumber: null,
+      annual: false,
+    } as const,
+  };
+
+  const { proposals } = await proposeLibraryImport([group], { signal });
+  const proposal = proposals[0];
+
+  if (!proposal?.suggested) {
+    return { volumeId: data.volumeId, matched: false, title: volumeRow.title };
+  }
+
+  await comicLibrary.addVolume({
+    comicvineId: proposal.suggested.comicvineId,
+    rootFolderId: volumeRow.root_folder_id,
+    folder: volumeRow.folder,
+    signal,
+  });
+
+  return { volumeId: data.volumeId, matched: true, comicvineId: proposal.suggested.comicvineId, title: proposal.suggested.title };
+};
+
+/**
  * Walk a folder tree and work out which ComicVine volume each folder is.
  *
  * Proposals are returned rather than applied — adopting the wrong series would
@@ -2576,6 +2671,8 @@ export function registerAllHandlers(): void {
   registerTaskHandler('comic_scan_all', comicScanAllHandler);
   registerTaskHandler('comic_search_all', comicSearchAllHandler);
   registerTaskHandler('comic_resume', comicResumeHandler);
+  registerTaskHandler('comic_library_scan', comicLibraryScanHandler);
+  registerTaskHandler('comic_match', comicMatchHandler);
   registerTaskHandler('comic_library_import', comicLibraryImportHandler);
   registerTaskHandler('comic_library_apply', comicLibraryApplyHandler);
 

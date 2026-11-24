@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import '@/lib/config';
-import { validateApiAuth, comicLibrary } from '@shelvarr/services';
+import { validateApiAuth, comicLibrary, queue } from '@shelvarr/services';
 import { countVolumesInRootFolder } from '@/lib/db';
 import { statfsSync } from 'fs';
 
@@ -38,7 +38,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    return NextResponse.json({ folder: await comicLibrary.addRootFolder(body.path) }, { status: 201 });
+    const folder = await comicLibrary.addRootFolder(body.path);
+    let importTask = null;
+    const { task } = queue.enqueueOnce('comic_library_scan', {
+      path: folder.path,
+      rootFolderId: folder.id,
+    });
+    importTask = task;
+    return NextResponse.json({ folder, importTask }, { status: 201 });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Failed to add root folder' },
