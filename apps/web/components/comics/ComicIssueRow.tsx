@@ -32,7 +32,7 @@ export function ComicIssueRow({
   const [showReader, setShowReader] = useState(false);
   const [finding, setFinding] = useState(false);
   const readable = issue.files.length > 0;
-  const fileFormat = readable
+  const fileFormat = issue.files[0]
     ? (issue.files[0].filepath.split('.').pop() ?? '').toUpperCase() || 'FILE'
     : null;
 
