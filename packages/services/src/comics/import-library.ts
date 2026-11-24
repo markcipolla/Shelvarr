@@ -163,7 +163,7 @@ function describeGroup(folder: string, files: string[]): FilenameData {
 }
 
 /** Score a ComicVine candidate against what the folder says. Lower is better. */
-function candidateRank(candidate: ComicVolumeMetadata, info: FilenameData): number {
+function candidateRank(candidate: ComicVolumeMetadata, info: FilenameData, fileCount: number): number {
   let score = 0;
   if (!matchTitle(candidate.title, info.series)) score += 4;
   if (!matchYear(candidate.year, info.year, null, true)) score += 2;
@@ -171,6 +171,15 @@ function candidateRank(candidate: ComicVolumeMetadata, info: FilenameData): numb
     if (candidate.volumeNumber !== info.volumeNumber) score += 1;
   }
   if (candidate.translated) score += 1;
+  // A series with fewer issues than files on disk can't be right.
+  // For larger ratios, add a smooth penalty: 0 at 1:1, capped at 1 at 10×.
+  if (fileCount > 0 && candidate.issueCount > 0) {
+    if (candidate.issueCount < fileCount) {
+      score += 2;
+    } else {
+      score += Math.min(1, Math.log(candidate.issueCount / fileCount) / Math.log(10));
+    }
+  }
   return score;
 }
 
@@ -330,7 +339,7 @@ export async function proposeLibraryImport(
       log.warn('ComicVine search failed for group', { folder: group.folder, error });
     }
 
-    found.sort((a, b) => candidateRank(a, group.info) - candidateRank(b, group.info));
+    found.sort((a, b) => candidateRank(a, group.info, group.files.length) - candidateRank(b, group.info, group.files.length));
 
     // Only suggest automatically when the title actually matches — a wrong
     // auto-match is worse than no suggestion, because it silently adopts
