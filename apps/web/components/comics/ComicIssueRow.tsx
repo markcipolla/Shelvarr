@@ -92,7 +92,7 @@ export function ComicIssueRow({
               </span>
             );
           })()}
-          {readable && (
+          {readable && !progress?.completed && (
             <button
               type="button"
               onClick={() => setShowReader(true)}
