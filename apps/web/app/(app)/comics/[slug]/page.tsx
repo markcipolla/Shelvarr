@@ -93,6 +93,12 @@ export default async function ComicDetailPage({ params }: PageProps) {
             )}
           </div>
 
+          {volume.volume_folder && (
+            <p className="text-xs text-shelvarr-text-muted font-mono break-all">
+              {volume.volume_folder}
+            </p>
+          )}
+
           {volume.description && (
             <div
               className="text-shelvarr-text-muted prose prose-invert prose-sm max-w-none"

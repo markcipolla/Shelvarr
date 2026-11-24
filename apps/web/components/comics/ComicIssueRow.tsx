@@ -92,6 +92,15 @@ export function ComicIssueRow({
               </span>
             );
           })()}
+          {readable && (
+            <button
+              type="button"
+              onClick={() => setShowReader(true)}
+              className="px-2 py-1 rounded border border-shelvarr-border text-white hover:border-blue-500 hover:text-blue-400 transition-colors"
+            >
+              Read
+            </button>
+          )}
           {!progress?.completed && readable && (
             <MarkIssueReadButton issueId={issue.id} total={progress?.total} />
           )}
