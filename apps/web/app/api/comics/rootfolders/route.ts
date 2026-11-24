@@ -40,10 +40,11 @@ export async function POST(request: NextRequest) {
   try {
     const folder = await comicLibrary.addRootFolder(body.path);
     let importTask = null;
-    if (await comicLibrary.isComicVineConfigured()) {
-      const { task } = queue.enqueueOnce('comic_library_import', { path: folder.path });
-      importTask = task;
-    }
+    const { task } = queue.enqueueOnce('comic_library_scan', {
+      path: folder.path,
+      rootFolderId: folder.id,
+    });
+    importTask = task;
     return NextResponse.json({ folder, importTask }, { status: 201 });
   } catch (err) {
     return NextResponse.json(

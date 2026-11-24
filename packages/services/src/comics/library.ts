@@ -20,6 +20,7 @@ import {
   getComicVolumeByComicvineId,
   getComicVolumeCover,
   getComicVolumeFileStats,
+  findUnmatchedVolumeByFolder,
   getComicVolumeFolders,
   getComicVolumeIdentities,
   getManagedComicVolumes,
@@ -424,6 +425,7 @@ export async function addVolume(input: AddVolumeInput): Promise<AddVolumeResult>
   // so adopt whichever row is already there instead of inserting another.
   const existing =
     (input.folder ? comicFolderOwners().get(sameFolderKey(input.folder)) ?? null : null) ??
+    (input.folder ? findUnmatchedVolumeByFolder(input.folder) : null) ??
     getComicVolumeByComicvineId(metadata.comicvineId);
 
   if (existing) {
