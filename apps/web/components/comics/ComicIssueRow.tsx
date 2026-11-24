@@ -32,6 +32,9 @@ export function ComicIssueRow({
   const [showReader, setShowReader] = useState(false);
   const [finding, setFinding] = useState(false);
   const readable = issue.files.length > 0;
+  const fileFormat = issue.files[0]
+    ? (issue.files[0].filepath.split('.').pop() ?? '').toUpperCase() || 'FILE'
+    : null;
 
   return (
     <div className="p-3">
@@ -81,8 +84,8 @@ export function ComicIssueRow({
             }
             if (readable) {
               return (
-                <span className="bg-green-600/20 text-green-400 px-2 py-1 rounded">
-                  Downloaded
+                <span className="bg-green-600/20 text-green-400 px-2 py-1 rounded font-mono">
+                  {fileFormat}
                 </span>
               );
             }
@@ -92,6 +95,15 @@ export function ComicIssueRow({
               </span>
             );
           })()}
+          {readable && (
+            <button
+              type="button"
+              onClick={() => setShowReader(true)}
+              className="px-2 py-1 rounded border border-shelvarr-border text-white hover:border-blue-500 hover:text-blue-400 transition-colors"
+            >
+              Read
+            </button>
+          )}
           {!progress?.completed && readable && (
             <MarkIssueReadButton issueId={issue.id} total={progress?.total} />
           )}
