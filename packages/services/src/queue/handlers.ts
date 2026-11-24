@@ -2455,8 +2455,10 @@ const comicLibraryScanHandler: TaskHandler = async (taskId, onProgress, _signal)
     onProgress(++done, groups.length);
   }
 
-  for (const volumeId of newVolumeIds) {
-    enqueueTask('comic_match', { volumeId });
+  if (newVolumeIds.length > 0 && (await comicLibrary.isComicVineConfigured())) {
+    for (const volumeId of newVolumeIds) {
+      enqueueTask('comic_match', { volumeId });
+    }
   }
 
   return { path: data.path, groups: groups.length, created };
