@@ -64,8 +64,8 @@ describe('Download indicator counts', () => {
       comicDownload(803, 'https://example.test/stop', 'cancelled');
 
       const counts = db.getActiveComicDownloadCounts([801, 802, 803]);
-      assert.strictEqual(counts.get(801), 3, 'two queued plus one downloading');
-      assert.strictEqual(counts.get(802), 1);
+      assert.deepStrictEqual(counts.get(801), { queued: 2, downloading: 1 }, 'two queued plus one downloading');
+      assert.deepStrictEqual(counts.get(802), { queued: 1, downloading: 0 });
       assert.strictEqual(counts.get(803), undefined, 'nothing in flight, so no entry');
     });
 
@@ -74,6 +74,7 @@ describe('Download indicator counts', () => {
       comicDownload(802, 'https://example.test/b');
 
       assert.deepStrictEqual([...db.getActiveComicDownloadCounts([802]).keys()], [802]);
+      assert.deepStrictEqual(db.getActiveComicDownloadCounts([802]).get(802), { queued: 1, downloading: 0 });
       assert.strictEqual(db.getActiveComicDownloadCounts([]).size, 0);
     });
   });

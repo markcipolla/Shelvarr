@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import type { ComicVolumeSummary } from '@shelvarr/types';
-import { BookIcon, CheckIcon, LoadingSpinner } from '@/components/ui/Icons';
+import { BookIcon, CheckIcon, ClockIcon, LoadingSpinner } from '@/components/ui/Icons';
 import { BookCover } from '@/components/ui/BookCover';
 
 /**
@@ -12,6 +12,7 @@ import { BookCover } from '@/components/ui/BookCover';
  */
 export type ComicVolumeCardData = ComicVolumeSummary & {
   read?: boolean;
+  queued?: number;
   downloading?: number;
 };
 
@@ -65,6 +66,15 @@ export function ComicCard({ volume, progressLabel, overlay }: ComicCardProps) {
             {volume.downloading > 1 && volume.downloading}
             <span className="sr-only">
               {volume.downloading} download{volume.downloading === 1 ? '' : 's'} in flight
+            </span>
+          </div>
+        )}
+        {!volume.downloading && !!volume.queued && (
+          <div className="absolute bottom-2 right-2 flex items-center gap-1 bg-slate-600/90 text-white text-xs font-semibold px-2 py-1 rounded shadow-md ring-1 ring-black/20">
+            <ClockIcon className="w-3 h-3" />
+            {volume.queued > 1 && volume.queued}
+            <span className="sr-only">
+              {volume.queued} download{volume.queued === 1 ? '' : 's'} queued
             </span>
           </div>
         )}

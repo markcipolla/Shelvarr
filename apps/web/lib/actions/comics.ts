@@ -26,7 +26,7 @@ import { withComicCardState } from '@/lib/comics/cardState';
 export interface ComicsListResult {
   /** `read` is the signed-in person's: every issue of the volume, finished. */
   volumes: Array<
-    ComicVolumeSummary & { managed?: boolean; read?: boolean; downloading?: number }
+    ComicVolumeSummary & { managed?: boolean; read?: boolean; queued?: number; downloading?: number }
   >;
 }
 
