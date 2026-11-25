@@ -33,7 +33,7 @@ function basename(path: string): string {
  * Everything except the rename preview and the match fix runs as a background
  * task, so those buttons report a queued task rather than blocking.
  */
-export function VolumeActions({ volumeId, title }: { volumeId: number; title: string }) {
+export function VolumeActions({ volumeId, title, folder }: { volumeId: number; title: string; folder?: string | null }) {
   const router = useRouter();
 
   const [busy, setBusy] = useState<string | null>(null);
@@ -43,7 +43,7 @@ export function VolumeActions({ volumeId, title }: { volumeId: number; title: st
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [fixingMatch, setFixingMatch] = useState(false);
   const [findingReleases, setFindingReleases] = useState(false);
-  const [matchQuery, setMatchQuery] = useState(title);
+  const [matchQuery, setMatchQuery] = useState(folder ? basename(folder) : title);
   const [matches, setMatches] = useState<ComicVineSearchResultView[] | null>(null);
 
   const run = async (job: 'refresh' | 'scan' | 'search', label: string) => {
