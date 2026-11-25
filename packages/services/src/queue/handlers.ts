@@ -2481,9 +2481,17 @@ const comicMatchHandler: TaskHandler = async (taskId, _onProgress, signal) => {
   if (!volumeRow.folder) return { volumeId: data.volumeId, skipped: true, reason: 'no folder' };
   if (!volumeRow.root_folder_id) return { volumeId: data.volumeId, skipped: true, reason: 'no root folder' };
 
+  // Read actual files from disk so candidateRank can factor in file count.
+  let filesOnDisk: string[] = [];
+  try {
+    filesOnDisk = fs.readdirSync(volumeRow.folder).map((f) => `${volumeRow.folder}/${f}`);
+  } catch {
+    // Folder unreadable — proceed without file count hint.
+  }
+
   const group = {
     folder: volumeRow.folder,
-    files: [],
+    files: filesOnDisk,
     info: {
       series: volumeRow.title,
       year: null,
@@ -2501,12 +2509,15 @@ const comicMatchHandler: TaskHandler = async (taskId, _onProgress, signal) => {
     return { volumeId: data.volumeId, matched: false, title: volumeRow.title };
   }
 
-  await comicLibrary.addVolume({
+  const { volumeId: matchedVolumeId } = await comicLibrary.addVolume({
     comicvineId: proposal.suggested.comicvineId,
     rootFolderId: volumeRow.root_folder_id,
     folder: volumeRow.folder,
     signal,
   });
+
+  // Scan files now that the volume has a ComicVine match and known issues.
+  enqueueTask('comic_scan', { volumeId: matchedVolumeId });
 
   return { volumeId: data.volumeId, matched: true, comicvineId: proposal.suggested.comicvineId, title: proposal.suggested.title };
 };
