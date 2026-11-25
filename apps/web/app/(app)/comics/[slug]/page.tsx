@@ -73,7 +73,7 @@ export default async function ComicDetailPage({ params }: PageProps) {
 
           <div className="flex flex-wrap gap-2 text-sm">
             <span className="bg-shelvarr-surface border border-shelvarr-border rounded px-3 py-1 text-shelvarr-text-muted">
-              {volume.issues_downloaded}/{volume.issue_count} issues
+              {volume.issues.filter((i) => i.files.length > 0).length}/{volume.issue_count} issues
             </span>
             {read && (
               <span className="bg-green-600 text-white rounded px-3 py-1 flex items-center gap-1.5">
