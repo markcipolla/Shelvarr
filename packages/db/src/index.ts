@@ -2399,7 +2399,7 @@ export type ComicListSort =
  * managed or not yet migrated, filtered and sorted in the database.
  */
 export function listComicVolumes(
-  options: { search?: string; sort?: ComicListSort } = {}
+  options: { search?: string; sort?: ComicListSort; unmatchedOnly?: boolean } = {}
 ): Array<ComicVolumeSummary & { managed: boolean }> {
   const conditions = ['deleted_at IS NULL'];
   const params: unknown[] = [];
@@ -2408,6 +2408,10 @@ export function listComicVolumes(
     conditions.push('(title LIKE ? OR publisher LIKE ?)');
     const pattern = `%${options.search}%`;
     params.push(pattern, pattern);
+  }
+
+  if (options.unmatchedOnly) {
+    conditions.push('comicvine_id IS NULL AND managed = 1');
   }
 
   const orderBy: Record<ComicListSort, string> = {

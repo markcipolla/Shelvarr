@@ -18,17 +18,18 @@ export async function getSidebarCounts(): Promise<SidebarCounts> {
   `, []);
 
   // Volumes on the shelf, and the issues of them we actually hold files for.
-  const comics = queryOne<{ volumes: number; issues: number }>(`
+  const comics = queryOne<{ volumes: number; issues: number; unmatched: number }>(`
     SELECT
       COUNT(*) as volumes,
-      COALESCE(SUM(issues_downloaded), 0) as issues
+      COALESCE(SUM(issues_downloaded), 0) as issues,
+      SUM(CASE WHEN comicvine_id IS NULL AND managed = 1 THEN 1 ELSE 0 END) as unmatched
     FROM comics
     WHERE deleted_at IS NULL
   `, []);
 
   return {
     books: counts?.matched || 0,
-    unmatched: counts?.unmatched || 0,
+    unmatched: (counts?.unmatched || 0) + (comics?.unmatched || 0),
     comics: comics?.volumes || 0,
     comicIssues: comics?.issues || 0,
   };

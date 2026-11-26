@@ -45,6 +45,11 @@ export async function getComics(search?: string): Promise<ComicsListResult> {
   return { volumes: await withComicCardState(volumes) };
 }
 
+export async function getUnmatchedComics(): Promise<ComicsListResult> {
+  const volumes = listComicVolumes({ unmatchedOnly: true });
+  return { volumes: await withComicCardState(volumes) };
+}
+
 export async function getRecentComics(limit: number): Promise<ComicsListResult> {
   const volumes = listComicVolumes({ sort: 'recently_added' }).slice(0, limit);
   return { volumes: await withComicCardState(volumes) };
