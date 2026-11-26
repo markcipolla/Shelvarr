@@ -2910,16 +2910,21 @@ export function getComicDownloads(options: { state?: ComicDownloadState; volumeI
  * How many downloads are in flight for each of these volumes, so a grid can
  * mark the ones that are still filling up. One query covers a whole page.
  */
-export function getActiveComicDownloadCounts(volumeIds: number[]): Map<number, number> {
+export function getActiveComicDownloadCounts(
+  volumeIds: number[]
+): Map<number, { queued: number; downloading: number }> {
   if (volumeIds.length === 0) return new Map();
-  const rows = query<{ volume_id: number; count: number }>(
-    `SELECT volume_id, COUNT(*) AS count FROM comic_downloads
+  const rows = query<{ volume_id: number; queued: number; downloading: number }>(
+    `SELECT volume_id,
+        SUM(CASE WHEN state = 'queued' THEN 1 ELSE 0 END) AS queued,
+        SUM(CASE WHEN state IN ('downloading', 'importing') THEN 1 ELSE 0 END) AS downloading
+      FROM comic_downloads
       WHERE state IN (${ACTIVE_DOWNLOAD_STATES.map(() => '?').join(', ')})
         AND volume_id IN (${volumeIds.map(() => '?').join(', ')})
       GROUP BY volume_id`,
     [...ACTIVE_DOWNLOAD_STATES, ...volumeIds]
   );
-  return new Map(rows.map((r) => [r.volume_id, r.count]));
+  return new Map(rows.map((r) => [r.volume_id, { queued: r.queued, downloading: r.downloading }]));
 }
 
 /** Whether a link is already queued or running — avoids duplicate downloads. */

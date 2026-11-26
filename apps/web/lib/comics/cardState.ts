@@ -6,7 +6,9 @@ import { getReadingUserId } from '@/lib/auth';
 export type ComicVolumeCardState<T extends ComicVolumeSummary = ComicVolumeSummary> = T & {
   /** Whether the person looking at it has read the whole thing. */
   read: boolean;
-  /** Downloads in flight for this volume — 0 when nothing is on its way. */
+  /** Issues queued but not yet downloading — 0 when nothing is waiting. */
+  queued: number;
+  /** Issues actively downloading or importing — 0 when nothing is in flight. */
   downloading: number;
 };
 
@@ -26,6 +28,7 @@ export async function withComicCardState<T extends ComicVolumeSummary>(
   return volumes.map((volume) => ({
     ...volume,
     read: readIds.has(volume.id),
-    downloading: downloading.get(volume.id) ?? 0,
+    queued: downloading.get(volume.id)?.queued ?? 0,
+    downloading: downloading.get(volume.id)?.downloading ?? 0,
   }));
 }

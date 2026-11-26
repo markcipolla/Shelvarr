@@ -51,6 +51,15 @@ export function CheckIcon({ className }: IconProps) {
   );
 }
 
+export function ClockIcon({ className }: IconProps) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <circle cx="12" cy="12" r="10" strokeWidth={2} />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2" />
+    </svg>
+  );
+}
+
 export function LoadingSpinner({ className }: IconProps) {
   return (
     <svg className={className || "w-4 h-4 animate-spin text-shelvarr-text-muted"} fill="none" viewBox="0 0 24 24">
